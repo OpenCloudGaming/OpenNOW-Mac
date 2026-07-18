@@ -12,7 +12,6 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     private var remotePeerId = 1
     private var ackCounter = 0
     private var peerName = ""
-    private var peerResolution = "1920x1080"
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private var heartbeatSource: DispatchSourceTimer?
@@ -32,12 +31,6 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
 
     public var isConnected: Bool {
         webSocketTask?.state == .running
-    }
-
-    public func setPeerResolution(_ resolution: String) {
-        if !resolution.isEmpty {
-            peerResolution = resolution
-        }
     }
 
     public func connect(_ completion: @escaping (Bool, String) -> Void) {
@@ -115,7 +108,6 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
             guard self.webSocketTask === webSocketTask else { return }
             self.didOpen = true
             OPNNetworkLog.webSocketEvent("open", url: self.activeURL, detail: "protocol=\(`protocol` ?? "none")")
-            self.sendPeerInfo()
             self.setupHeartbeat()
             let completion = self.connectCompletion
             self.connectCompletion = nil
@@ -218,12 +210,6 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     private func sendJson(_ json: String) {
         guard let task = webSocketTask else { return }
         task.send(.string(json)) { _ in }
-    }
-
-    private func sendPeerInfo() {
-        ackCounter += 1
-        let info = NVSTPeerInfo(id: peerId, name: peerName, resolution: peerResolution)
-        sendJSONObject(NVSTSignalingMessageParser.peerInfoEnvelope(peerInfo: info, ackID: ackCounter))
     }
 
     private func handleMessage(_ text: String) {

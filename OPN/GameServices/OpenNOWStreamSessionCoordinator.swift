@@ -276,7 +276,6 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 sessionId: descriptor.id,
                 signalingUrl: sessionInfo.signalingUrl
             )
-            client.setPeerResolution(string(settings["resolution"], fallback: "1920x1080"))
             let settingsJSON = jsonString(settings)
             client.onOffer = { [weak self] sessionOffer in
                 guard let self else { return }
