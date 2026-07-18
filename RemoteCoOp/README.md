@@ -3,11 +3,40 @@
 This folder contains the browser Remote Co-Op reference stack:
 
 - `run-servers.mjs`: all-server Node runner for LAN/all-interface testing.
+- `panel/control-panel.mjs`: HTTPS background control panel that manages `run-servers.mjs`.
 - `server/broker.mjs`: signaling broker and static browser app server.
 - `browser/`: guest join page.
 - `turn/turn-server.mjs`: Node launcher/manager for a system `coturn` TURN server.
 
 The broker is signaling-only. It relays JSON messages between the macOS host and browser guests. It does not relay media and does not validate gameplay authority. The host app validates signed invite tokens, approves guests, assigns player slots, rejects stale input, and routes accepted input through the native GFN input path.
+
+## Background Service And Web Panel
+
+Production deployments should run the web control panel as the supervised service. The panel stays alive in the background, authenticates against system accounts, and starts/stops/restarts `run-servers.mjs` as its managed child process.
+
+Install Linux systemd service:
+
+```sh
+RemoteCoOp/service/install-linux.sh
+```
+
+Install macOS launchd service:
+
+```sh
+RemoteCoOp/service/install-macos.sh
+```
+
+Then open:
+
+```text
+https://198.12.95.48:8787/
+```
+
+The installers are non-interactive. They create the panel access group, install the PAM helper, generate a stable TURN secret, and start the panel. The panel uses a generated self-signed HTTPS certificate unless configured otherwise, so browsers will warn on first access.
+
+The panel also includes a Git updater. It only applies clean fast-forward updates and validates with `node RemoteCoOp/run-servers.mjs --dry-run` by default.
+
+See `RemoteCoOp/service/README.md` for service operation details.
 
 ## All Server Nodes
 

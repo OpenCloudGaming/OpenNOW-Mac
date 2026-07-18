@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenNOW Remote Co-Op Panel</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">OpenNOW Remote Co-Op</p>
+      <h1>Service Control</h1>
+    </div>
+    <button id="logout" class="secondary">Sign Out</button>
+  </header>
+
+  <main class="dashboard">
+    <section class="card hero">
+      <div>
+        <p class="label">Server State</p>
+        <h2 id="service-state">Loading</h2>
+        <p id="service-detail" class="muted">Waiting for panel status.</p>
+      </div>
+      <div class="actions">
+        <button id="start">Start</button>
+        <button id="stop" class="warning">Stop</button>
+        <button id="restart" class="secondary">Restart</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <p class="label">Broker</p>
+        <dl class="facts">
+          <div><dt>PID</dt><dd id="child-pid">-</dd></div>
+          <div><dt>Uptime</dt><dd id="child-uptime">-</dd></div>
+          <div><dt>Endpoint</dt><dd id="broker-endpoint">-</dd></div>
+          <div><dt>Last Exit</dt><dd id="last-exit">-</dd></div>
+        </dl>
+      </article>
+
+      <article class="card">
+        <p class="label">Panel</p>
+        <dl class="facts">
+          <div><dt>User</dt><dd id="panel-user">-</dd></div>
+          <div><dt>PID</dt><dd id="panel-pid">-</dd></div>
+          <div><dt>Uptime</dt><dd id="panel-uptime">-</dd></div>
+          <div><dt>Auto Update</dt><dd id="auto-update">-</dd></div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="card update-card">
+      <div>
+        <p class="label">Git Updater</p>
+        <h2 id="update-state">Checking</h2>
+        <p id="update-detail" class="muted">Fast-forward updates only. Dirty worktrees are refused.</p>
+      </div>
+      <div class="actions">
+        <button id="check-update" class="secondary">Check</button>
+        <button id="apply-update">Update Now</button>
+      </div>
+      <pre id="pending-commits" class="commit-list"></pre>
+    </section>
+
+    <section class="card logs-card">
+      <div class="logs-header">
+        <div>
+          <p class="label">Logs</p>
+          <h2>Live Output</h2>
+        </div>
+        <button id="refresh-logs" class="secondary">Refresh</button>
+      </div>
+      <pre id="logs" class="logs"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

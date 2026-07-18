@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.opennow.remote-coop.panel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>RemoteCoOp/panel/control-panel.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+  <key>UserName</key>
+  <string>__SERVICE_USER__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OPENNOW_REMOTE_COOP_PANEL_BIND_HOST</key>
+    <string>0.0.0.0</string>
+    <key>OPENNOW_REMOTE_COOP_PANEL_PORT</key>
+    <string>8787</string>
+    <key>OPENNOW_REMOTE_COOP_PUBLIC_HOST</key>
+    <string>198.12.95.48</string>
+    <key>OPENNOW_REMOTE_COOP_PORT</key>
+    <string>8788</string>
+    <key>OPENNOW_REMOTE_COOP_AUTOSTART</key>
+    <string>1</string>
+    <key>OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC</key>
+    <string>1</string>
+  </dict>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/opennow-remote-coop-panel.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/opennow-remote-coop-panel.err.log</string>
+</dict>
+</plist>

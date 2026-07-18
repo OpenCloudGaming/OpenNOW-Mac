@@ -26,6 +26,7 @@ if (args.has("--dry-run")) {
 const children = new Map();
 let stopping = false;
 
+sendPanelMessage({ kind: "remoteCoOpRunnerStarted" });
 startChild("turn", [turnScript]);
 startChild("broker", [brokerScript], { ipc: true });
 
@@ -73,9 +74,13 @@ function buildConfig() {
 function startChild(label, scriptArgs, options = {}) {
   const child = spawn(process.execPath, scriptArgs, { env: config.env, stdio: options.ipc ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"] });
   children.set(label, child);
+  sendPanelMessage({ kind: "remoteCoOpChildStarted", label, pid: child.pid });
   if (options.ipc) {
     child.on("message", message => {
-      if (label === "broker" && message?.kind === "remoteCoOpBrokerListening") printBrokerEndpoints(config, message.port, message.secure === true);
+      if (label === "broker" && message?.kind === "remoteCoOpBrokerListening") {
+        printBrokerEndpoints(config, message.port, message.secure === true);
+        sendPanelMessage(message);
+      }
     });
   }
   prefixStream(label, child.stdout, process.stdout);
@@ -85,8 +90,10 @@ function startChild(label, scriptArgs, options = {}) {
     if (!stopping) {
       const exitCode = code ?? (signal ? 1 : 0);
       console.error(`${label} exited${signal ? ` from ${signal}` : ""} with code ${exitCode}.`);
+      sendPanelMessage({ kind: "remoteCoOpChildExited", label, code, signal });
       stopAll(`child:${label}`, exitCode === 0 ? 1 : exitCode);
     } else if (children.size === 0) {
+      sendPanelMessage({ kind: "remoteCoOpRunnerExited", code: process.exitCode ?? 0 });
       process.exit(process.exitCode ?? 0);
     }
   });
@@ -101,6 +108,7 @@ function stopAll(reason, exitCode) {
   stopping = true;
   process.exitCode = exitCode;
   console.log(`Stopping Remote Co-Op server nodes (${reason}).`);
+  sendPanelMessage({ kind: "remoteCoOpRunnerStopping", reason, exitCode });
   for (const child of children.values()) {
     if (child.exitCode === null) child.kill("SIGTERM");
   }
@@ -110,6 +118,10 @@ function stopAll(reason, exitCode) {
     }
     process.exit(process.exitCode ?? 0);
   }, 5_000).unref();
+}
+
+function sendPanelMessage(message) {
+  if (typeof process.send === "function") process.send(message);
 }
 
 function prefixStream(label, stream, output) {

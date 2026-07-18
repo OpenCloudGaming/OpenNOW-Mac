@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenNOW Remote Co-Op Control Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__REPO_ROOT__
+EnvironmentFile=-/etc/opennow/remote-coop-panel.env
+ExecStart=__NODE__ RemoteCoOp/panel/control-panel.mjs
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=false
+ProtectSystem=false
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

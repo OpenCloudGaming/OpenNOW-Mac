@@ -101,3 +101,9 @@ Testing/
 .cache/
 .opencode
 .playwright-mcp/
+
+# Remote Co-Op local service state and secrets
+RemoteCoOp/panel/state/*
+!RemoteCoOp/panel/state/.gitkeep
+RemoteCoOp/service/*.env
+RemoteCoOp/service/*.local
