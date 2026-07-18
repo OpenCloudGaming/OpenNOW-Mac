@@ -11,7 +11,53 @@ ENV_DIR=/etc/opennow
 ENV_FILE=$ENV_DIR/remote-coop-panel.env
 HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
 
+ensure_pam_build_dependencies() {
+  if pam_helper_can_build; then return; fi
+
+  echo "Installing PAM helper build dependencies."
+  if command -v apt-get >/dev/null 2>&1; then
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential libpam0g-dev
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y gcc make pam-devel
+  elif command -v yum >/dev/null 2>&1; then
+    $SUDO yum install -y gcc make pam-devel
+  elif command -v zypper >/dev/null 2>&1; then
+    $SUDO zypper --non-interactive install gcc make pam-devel
+  elif command -v pacman >/dev/null 2>&1; then
+    $SUDO pacman -Sy --noconfirm base-devel pam
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add build-base linux-pam-dev
+  else
+    echo "error: no supported package manager found for installing PAM build dependencies." >&2
+    echo "Install a C compiler and PAM development headers, then rerun this installer." >&2
+    exit 1
+  fi
+
+  if ! pam_helper_can_build; then
+    echo "error: PAM helper dependencies are still unavailable after package installation." >&2
+    exit 1
+  fi
+}
+
+pam_helper_can_build() {
+  if ! command -v cc >/dev/null 2>&1; then return 1; fi
+  TMP=${TMPDIR:-/tmp}/opennow-pam-build-check-$$
+  if cc -x c -o "$TMP" - -lpam >/dev/null 2>&1 <<'EOF'
+#include <security/pam_appl.h>
+int main(void) { return PAM_SUCCESS == 0 ? 0 : 0; }
+EOF
+  then
+    rm -f "$TMP"
+    return 0
+  fi
+  rm -f "$TMP"
+  return 1
+}
+
 if [ "$(id -u)" -eq 0 ]; then SUDO=; fi
+
+ensure_pam_build_dependencies
 
 SERVICE_USER=${SERVICE_USER:-$(stat -c %U "$REPO_ROOT")}
 $SUDO groupadd -f "$SERVICE_GROUP"

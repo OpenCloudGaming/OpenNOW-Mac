@@ -16,7 +16,7 @@ macOS with launchd:
 RemoteCoOp/service/install-macos.sh
 ```
 
-The installers are non-interactive. They create the panel access group, build and install the PAM helper, install the service, and start the panel. Linux stores a generated TURN secret in `/etc/opennow/remote-coop-panel.env`; macOS lets the panel create its stable secret under `RemoteCoOp/panel/state/` on first boot.
+The installers are non-interactive. They create the panel access group, build and install the PAM helper, install the service, and start the panel. The Linux installer installs compiler and PAM development packages automatically when needed. Linux stores a generated TURN secret in `/etc/opennow/remote-coop-panel.env`; macOS lets the panel create its stable secret under `RemoteCoOp/panel/state/` on first boot.
 
 ## Uninstall
 
