@@ -79,6 +79,8 @@ function startChild(label, scriptArgs, options = {}) {
     child.on("message", message => {
       if (label === "broker" && message?.kind === "remoteCoOpBrokerListening") {
         printBrokerEndpoints(config, message.port, message.secure === true);
+        sendPanelMessage(brokerListeningMessage(config, message));
+      } else if (label === "broker" && message?.kind === "remoteCoOpBrokerStats") {
         sendPanelMessage(message);
       }
     });
@@ -155,6 +157,16 @@ function printSummary(config) {
 function printBrokerEndpoints(config, brokerPort, secure) {
   console.log(`  browser URL: ${secure ? "https" : "http"}://${config.publicHost}:${brokerPort}/`);
   console.log(`  websocket URL: ${secure ? "wss" : "ws"}://${config.publicHost}:${brokerPort}/remote-coop`);
+}
+
+function brokerListeningMessage(config, message) {
+  const secure = message.secure === true;
+  return {
+    ...message,
+    publicHost: config.publicHost,
+    browserURL: `${secure ? "https" : "http"}://${config.publicHost}:${message.port}/`,
+    websocketURL: `${secure ? "wss" : "ws"}://${config.publicHost}:${message.port}/remote-coop`
+  };
 }
 
 function alternatePortSummary(candidates) {

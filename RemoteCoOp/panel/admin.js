@@ -5,8 +5,15 @@ const elements = {
   serviceDetail: document.querySelector("#service-detail"),
   childPid: document.querySelector("#child-pid"),
   childUptime: document.querySelector("#child-uptime"),
+  joinEndpoint: document.querySelector("#join-endpoint"),
   brokerEndpoint: document.querySelector("#broker-endpoint"),
   lastExit: document.querySelector("#last-exit"),
+  activeSessions: document.querySelector("#active-sessions"),
+  activeGuests: document.querySelector("#active-guests"),
+  pendingSessions: document.querySelector("#pending-sessions"),
+  pastSessions: document.querySelector("#past-sessions"),
+  statsUpdated: document.querySelector("#stats-updated"),
+  recentSessions: document.querySelector("#recent-sessions"),
   panelUser: document.querySelector("#panel-user"),
   panelPid: document.querySelector("#panel-pid"),
   panelUptime: document.querySelector("#panel-uptime"),
@@ -114,12 +121,35 @@ function renderStatus(status) {
   elements.serviceDetail.textContent = child.pid ? `Running as process ${child.pid}.` : "Remote Co-Op child process is not running.";
   elements.childPid.textContent = child.pid ?? "-";
   elements.childUptime.textContent = duration(child.uptimeSeconds);
+  elements.joinEndpoint.textContent = joinEndpoint(child.broker);
   elements.brokerEndpoint.textContent = brokerEndpoint(child.broker);
   elements.lastExit.textContent = child.lastExit ? `${child.lastExit.at} code=${child.lastExit.code ?? "none"} signal=${child.lastExit.signal ?? "none"}` : "-";
+  renderCoOpStats(child.coopStats);
   elements.panelUser.textContent = status.user;
   elements.panelPid.textContent = status.panel.pid;
   elements.panelUptime.textContent = duration(status.panel.uptimeSeconds);
   elements.autoUpdate.textContent = status.panel.automaticUpdates ? `Enabled (${status.panel.updateIntervalSeconds}s)` : "Disabled";
+}
+
+function renderCoOpStats(stats = {}) {
+  elements.activeSessions.textContent = numberText(stats.activeSessions);
+  elements.activeGuests.textContent = numberText(stats.activeGuests);
+  elements.pendingSessions.textContent = `${numberText(stats.pendingSessions)} / ${numberText(stats.pendingGuests)} guests`;
+  elements.pastSessions.textContent = `${numberText(stats.pastSessions)} ended / ${numberText(stats.totalStarted)} started`;
+  elements.statsUpdated.textContent = stats.updatedAt ? new Date(stats.updatedAt).toLocaleString() : "-";
+  const recent = Array.isArray(stats.recentSessions) ? stats.recentSessions : [];
+  if (recent.length === 0) {
+    elements.recentSessions.innerHTML = '<p class="muted">No completed Co-Op sessions reported yet.</p>';
+    return;
+  }
+  elements.recentSessions.innerHTML = recent.map(session => `
+    <div class="session-row">
+      <strong>${escapeHTML(session.endedAt ? new Date(session.endedAt).toLocaleString() : "Unknown time")}</strong>
+      <span>${duration(Number(session.durationSeconds) || 0)}</span>
+      <span>${numberText(session.maxGuests)} max guests</span>
+      <span>${reasonText(session.reason)}</span>
+    </div>
+  `).join("");
 }
 
 function renderUpdateStatus(status, lastResult) {
@@ -146,8 +176,16 @@ function renderUpdateResult(result) {
 
 function brokerEndpoint(broker) {
   if (!broker) return "-";
+  if (broker.websocketURL) return broker.websocketURL;
   const scheme = broker.secure ? "wss" : "ws";
-  return `${scheme}://${broker.bindHost}:${broker.port}/remote-coop`;
+  return `${scheme}://${broker.publicHost || broker.bindHost}:${broker.port}/remote-coop`;
+}
+
+function joinEndpoint(broker) {
+  if (!broker) return "-";
+  if (broker.browserURL) return broker.browserURL;
+  const scheme = broker.secure ? "https" : "http";
+  return `${scheme}://${broker.publicHost || broker.bindHost}:${broker.port}/`;
 }
 
 function duration(seconds) {
@@ -156,6 +194,18 @@ function duration(seconds) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
   return [hours && `${hours}h`, minutes && `${minutes}m`, `${rest}s`].filter(Boolean).join(" ");
+}
+
+function numberText(value) {
+  return Number.isFinite(value) ? String(value) : "0";
+}
+
+function reasonText(value) {
+  return String(value || "closed").replace(/_/g, " ");
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[character]));
 }
 
 function title(value) {

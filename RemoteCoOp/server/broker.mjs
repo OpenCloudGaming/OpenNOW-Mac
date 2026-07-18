@@ -25,6 +25,7 @@ const networkLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_NETWORK", true
 const messageFlowLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_MESSAGES", false);
 const rooms = new Map();
 const sockets = new Set();
+const sessionStats = { totalStarted: 0, totalEnded: 0, recent: [] };
 let nextSocketID = 1;
 
 const contentTypes = new Map([
@@ -139,6 +140,7 @@ function listenOnAvailablePort(index) {
 server.on("listening", () => {
   console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()} brokerWebSocket=${brokerWebSocketProtocol}`);
   console.log(`Remote Co-Op logging: network=${networkLoggingEnabled ? "enabled" : "disabled"} messageFlow=${messageFlowLoggingEnabled ? "enabled" : "disabled"}`);
+  sendBrokerStats();
 });
 
 async function makeBrokerServer(handler) {
@@ -157,7 +159,7 @@ setInterval(() => {
     if (room.expiresAtMs > 0 && room.expiresAtMs <= now) {
       logNetwork("room.expired", { roomID, guests: room.guests.size, hostConnected: Boolean(room.host) });
       broadcast(room, { kind: "inviteEnded", roomID, reason: "Invite expired" });
-      closeRoom(roomID);
+      closeRoom(roomID, "expired");
     }
   }
   for (const state of sockets) {
@@ -194,13 +196,14 @@ function detachSocket(state, reason = "close", error = null) {
   if (state.role === "host" && room.host === state) {
     logNetwork("host.disconnected", { ...socketLogFields(state), guests: room.guests.size });
     broadcast(room, { kind: "inviteEnded", roomID: state.roomID, reason: "Host disconnected" }, state);
-    closeRoom(state.roomID);
+    closeRoom(state.roomID, "host_disconnected");
     return;
   }
   if (state.role === "guest" && state.participantID) {
     room.guests.delete(participantKey(state.participantID));
     logNetwork("guest.disconnected", { ...socketLogFields(state), hostConnected: Boolean(room.host) });
     if (room.host) send(room.host, { kind: "guestDisconnected", roomID: state.roomID, participantID: state.participantID });
+    sendBrokerStats();
   }
 }
 
@@ -305,6 +308,10 @@ function registerHost(state, message) {
   const room = roomFor(roomID);
   const payload = decodeInvitePayload(message.invite?.token);
   room.host = state;
+  if (room.hostRegisteredAtMs <= 0) {
+    room.hostRegisteredAtMs = Date.now();
+    sessionStats.totalStarted += 1;
+  }
   room.invite = message.invite ?? null;
   room.networkConfiguration = networkConfigurationFor(payload, roomID);
   room.expiresAtMs = inviteExpiryMilliseconds(message.invite?.token);
@@ -323,6 +330,7 @@ function registerHost(state, message) {
       displayName: guest.displayName || "Guest"
     }));
   }
+  sendBrokerStats();
 }
 
 function registerGuest(state, message) {
@@ -352,11 +360,13 @@ function registerGuest(state, message) {
   state.inviteToken = inviteToken;
   state.displayName = stringValue(message.displayName) || "Guest";
   room.guests.set(participantKey(participantID), state);
+  room.maxGuests = Math.max(room.maxGuests, room.guests.size);
   if (!room.invite && payload) room.networkConfiguration = networkConfigurationFor(payload, roomID);
   if (room.expiresAtMs <= 0) room.expiresAtMs = inviteExpiryMilliseconds(state.inviteToken);
   logNetwork(room.host ? "guest.joined" : "guest.pending", { ...socketLogFields(state), hostConnected: Boolean(room.host), guests: room.guests.size, transportMode: room.networkConfiguration.transportMode, latencyMode: room.networkConfiguration.latencyMode });
   send(state, { kind: "networkConfiguration", roomID, participantID, networkConfiguration: room.networkConfiguration });
   if (room.host) send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
+  sendBrokerStats();
 }
 
 function relayGuestEvent(state, message) {
@@ -382,7 +392,7 @@ function relayHostCommand(state, message) {
   if (message.kind === "inviteEnded") {
     logNetwork("room.ended", { ...socketLogFields(state), guests: room.guests.size });
     broadcast(room, outbound, state);
-    closeRoom(roomID);
+    closeRoom(roomID, "host_ended");
     return;
   }
   const participantID = stringValue(message.participantID ?? message.participant?.id);
@@ -390,7 +400,10 @@ function relayHostCommand(state, message) {
   if (key && room.guests.has(key)) {
     logNetwork("host.command.relayed", { ...socketLogFields(state), kind: message.kind ?? "unknown", participantID });
     send(room.guests.get(key), outbound);
-    if (message.kind === "participantRemoved" || message.kind === "guestRejected") room.guests.delete(key);
+    if (message.kind === "participantRemoved" || message.kind === "guestRejected") {
+      room.guests.delete(key);
+      sendBrokerStats();
+    }
   } else {
     logNetwork("host.command.broadcast", { ...socketLogFields(state), kind: message.kind ?? "unknown", guests: room.guests.size });
     broadcast(room, outbound, state);
@@ -431,21 +444,60 @@ function broadcast(room, message, except = null) {
   }
 }
 
-function closeRoom(roomID) {
+function closeRoom(roomID, reason = "closed") {
   const room = rooms.get(roomID);
   if (!room) return;
   logNetwork("room.closed", { roomID, hostConnected: Boolean(room.host), guests: room.guests.size });
+  recordClosedSession(room, reason);
   if (room.host) room.host.roomID = null;
   for (const guest of room.guests.values()) guest.roomID = null;
   rooms.delete(roomID);
+  sendBrokerStats();
 }
 
 function roomFor(roomID) {
   const existing = rooms.get(roomID);
   if (existing) return existing;
-  const room = { host: null, guests: new Map(), invite: null, networkConfiguration: networkConfigurationFor(null, roomID), expiresAtMs: 0 };
+  const room = { host: null, guests: new Map(), invite: null, networkConfiguration: networkConfigurationFor(null, roomID), expiresAtMs: 0, createdAtMs: Date.now(), hostRegisteredAtMs: 0, maxGuests: 0 };
   rooms.set(roomID, room);
   return room;
+}
+
+function recordClosedSession(room, reason) {
+  if (room.hostRegisteredAtMs <= 0) return;
+  sessionStats.totalEnded += 1;
+  sessionStats.recent.unshift({
+    endedAt: new Date().toISOString(),
+    durationSeconds: Math.max(0, Math.round((Date.now() - room.hostRegisteredAtMs) / 1_000)),
+    maxGuests: room.maxGuests,
+    reason: sanitizedEndReason(reason)
+  });
+  sessionStats.recent.length = Math.min(sessionStats.recent.length, 12);
+}
+
+function brokerStats() {
+  const allRooms = Array.from(rooms.values());
+  const activeRooms = allRooms.filter(room => room.hostRegisteredAtMs > 0);
+  const pendingRooms = allRooms.filter(room => room.hostRegisteredAtMs <= 0 && room.guests.size > 0);
+  return {
+    kind: "remoteCoOpBrokerStats",
+    activeSessions: activeRooms.length,
+    activeGuests: activeRooms.reduce((total, room) => total + room.guests.size, 0),
+    pendingSessions: pendingRooms.length,
+    pendingGuests: pendingRooms.reduce((total, room) => total + room.guests.size, 0),
+    pastSessions: sessionStats.totalEnded,
+    totalStarted: sessionStats.totalStarted,
+    recentSessions: sessionStats.recent,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function sendBrokerStats() {
+  if (typeof process.send === "function") process.send(brokerStats());
+}
+
+function sanitizedEndReason(reason) {
+  return ["closed", "expired", "host_disconnected", "host_ended"].includes(reason) ? reason : "closed";
 }
 
 function roomIDForInviteCode(value) {

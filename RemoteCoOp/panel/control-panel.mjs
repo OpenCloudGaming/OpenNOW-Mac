@@ -198,7 +198,7 @@ async function handleLogin(request, response) {
 function panelStatus(session) {
   return {
     csrfToken: session.csrfToken,
-    user: session.username,
+    user: "Authenticated",
     panel: {
       uptimeSeconds: Math.floor(process.uptime()),
       pid: process.pid,
@@ -221,6 +221,7 @@ class ChildManager {
     this.restartRequested = false;
     this.lastExit = null;
     this.broker = null;
+    this.coopStats = defaultCoOpStats();
   }
 
   async start(reason) {
@@ -286,6 +287,8 @@ class ChildManager {
     } else if (message.kind === "remoteCoOpBrokerListening") {
       this.broker = message;
       this.state = "running";
+    } else if (message.kind === "remoteCoOpBrokerStats") {
+      this.coopStats = coOpStatsFromMessage(message);
     } else if (message.kind === "remoteCoOpRunnerStopping") {
       this.state = "stopping";
     } else if (message.kind === "remoteCoOpChildExited") {
@@ -300,11 +303,38 @@ class ChildManager {
       pid: this.child?.pid ?? null,
       uptimeSeconds: this.child ? Math.floor((Date.now() - this.startedAt) / 1_000) : 0,
       broker: this.broker,
+      coopStats: this.coopStats,
       lastExit: this.lastExit,
       autostart: childAutostart,
       autorestart: childAutoRestart
     };
   }
+}
+
+function defaultCoOpStats() {
+  return { activeSessions: 0, activeGuests: 0, pendingSessions: 0, pendingGuests: 0, pastSessions: 0, totalStarted: 0, recentSessions: [], updatedAt: null };
+}
+
+function coOpStatsFromMessage(message) {
+  return {
+    activeSessions: finiteNumber(message.activeSessions),
+    activeGuests: finiteNumber(message.activeGuests),
+    pendingSessions: finiteNumber(message.pendingSessions),
+    pendingGuests: finiteNumber(message.pendingGuests),
+    pastSessions: finiteNumber(message.pastSessions),
+    totalStarted: finiteNumber(message.totalStarted),
+    recentSessions: Array.isArray(message.recentSessions) ? message.recentSessions.slice(0, 12).map(session => ({
+      endedAt: typeof session.endedAt === "string" ? session.endedAt : "",
+      durationSeconds: finiteNumber(session.durationSeconds),
+      maxGuests: finiteNumber(session.maxGuests),
+      reason: typeof session.reason === "string" ? session.reason : "closed"
+    })) : [],
+    updatedAt: typeof message.updatedAt === "string" ? message.updatedAt : null
+  };
+}
+
+function finiteNumber(value) {
+  return Number.isFinite(value) ? value : 0;
 }
 
 manager = new ChildManager();
@@ -469,11 +499,15 @@ function appendLog(label, message) {
 }
 
 function audit(username, action) {
-  appendLog("audit", `${username}: ${action}`);
+  appendLog("audit", `panel action=${action}`);
 }
 
 function redact(value) {
-  return String(value).replace(/((?:SECRET|TOKEN|PASSWORD|CREDENTIAL|KEY|CERT)[A-Z0-9_]*=)([^\s]+)/gi, "$1<redacted>").replace(/(--static-auth-secret=)([^\s]+)/gi, "$1<redacted>");
+  return String(value)
+    .replace(/((?:SECRET|TOKEN|PASSWORD|CREDENTIAL|KEY|CERT)[A-Z0-9_]*=)([^\s]+)/gi, "$1<redacted>")
+    .replace(/(--static-auth-secret=)([^\s]+)/gi, "$1<redacted>")
+    .replace(/\b(roomID|participantID|inviteToken|displayName|remote|forwardedFor)=((?:"[^"]*")|[^\s]+)/gi, "$1=<redacted>")
+    .replace(/\b(room|participant)=([^\s]+)/gi, "$1=<redacted>");
 }
 
 function emitEvent() {

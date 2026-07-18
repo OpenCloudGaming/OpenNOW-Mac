@@ -132,6 +132,25 @@ dd {
 .commit-list { display: none; margin: 1rem 0 0; max-height: 12rem; }
 .logs { min-height: 24rem; max-height: 42rem; white-space: pre-wrap; }
 
+.session-list {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.session-row {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 1fr repeat(3, max-content);
+  align-items: center;
+  border: 1px solid #1a2633;
+  border-radius: 16px;
+  background: #06090d;
+  padding: 0.8rem 1rem;
+}
+
+.session-row span { color: var(--muted); }
+
 .login-page {
   display: grid;
   place-items: center;

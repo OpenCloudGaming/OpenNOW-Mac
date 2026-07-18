@@ -35,15 +35,27 @@
         <dl class="facts">
           <div><dt>PID</dt><dd id="child-pid">-</dd></div>
           <div><dt>Uptime</dt><dd id="child-uptime">-</dd></div>
-          <div><dt>Endpoint</dt><dd id="broker-endpoint">-</dd></div>
+          <div><dt>Join Endpoint</dt><dd id="join-endpoint">-</dd></div>
+          <div><dt>Signaling Endpoint</dt><dd id="broker-endpoint">-</dd></div>
           <div><dt>Last Exit</dt><dd id="last-exit">-</dd></div>
+        </dl>
+      </article>
+
+      <article class="card">
+        <p class="label">Co-Op Sessions</p>
+        <dl class="facts">
+          <div><dt>Active Sessions</dt><dd id="active-sessions">-</dd></div>
+          <div><dt>Active Guests</dt><dd id="active-guests">-</dd></div>
+          <div><dt>Pending Sessions</dt><dd id="pending-sessions">-</dd></div>
+          <div><dt>Past Sessions</dt><dd id="past-sessions">-</dd></div>
+          <div><dt>Stats Updated</dt><dd id="stats-updated">-</dd></div>
         </dl>
       </article>
 
       <article class="card">
         <p class="label">Panel</p>
         <dl class="facts">
-          <div><dt>User</dt><dd id="panel-user">-</dd></div>
+          <div><dt>Access</dt><dd id="panel-user">-</dd></div>
           <div><dt>PID</dt><dd id="panel-pid">-</dd></div>
           <div><dt>Uptime</dt><dd id="panel-uptime">-</dd></div>
           <div><dt>Auto Update</dt><dd id="auto-update">-</dd></div>
@@ -62,6 +74,15 @@
         <button id="apply-update">Update Now</button>
       </div>
       <pre id="pending-commits" class="commit-list"></pre>
+    </section>
+
+    <section class="card sessions-card">
+      <div>
+        <p class="label">Recent Co-Op Sessions</p>
+        <h2>Anonymized History</h2>
+        <p class="muted">Aggregate session stats only. No room IDs, invite tokens, participant IDs, display names, IP addresses, or usernames are shown.</p>
+      </div>
+      <div id="recent-sessions" class="session-list"></div>
     </section>
 
     <section class="card logs-card">
