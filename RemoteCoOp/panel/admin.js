@@ -15,10 +15,6 @@ const elements = {
   pastSessions: document.querySelector("#past-sessions"),
   statsUpdated: document.querySelector("#stats-updated"),
   recentSessions: document.querySelector("#recent-sessions"),
-  panelUser: document.querySelector("#panel-user"),
-  panelPid: document.querySelector("#panel-pid"),
-  panelUptime: document.querySelector("#panel-uptime"),
-  autoUpdate: document.querySelector("#auto-update"),
   updateState: document.querySelector("#update-state"),
   updateDetail: document.querySelector("#update-detail"),
   pendingCommits: document.querySelector("#pending-commits"),
@@ -126,10 +122,6 @@ function renderStatus(status) {
   elements.brokerEndpoint.textContent = brokerEndpoint(child.broker);
   elements.lastExit.textContent = child.lastExit ? `${localTime(child.lastExit.at)} code=${child.lastExit.code ?? "none"} signal=${child.lastExit.signal ?? "none"}` : "-";
   renderCoOpStats(child.coopStats);
-  elements.panelUser.textContent = status.user;
-  elements.panelPid.textContent = status.panel.pid;
-  elements.panelUptime.textContent = duration(status.panel.uptimeSeconds);
-  elements.autoUpdate.textContent = status.panel.automaticUpdates ? `Enabled (${status.panel.updateIntervalSeconds}s)` : "Disabled";
 }
 
 function renderCoOpStats(stats = {}) {
