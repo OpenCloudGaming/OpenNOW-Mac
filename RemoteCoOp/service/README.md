@@ -16,7 +16,7 @@ macOS with launchd:
 RemoteCoOp/service/install-macos.sh
 ```
 
-The installers are non-interactive. They create the panel access group, build and install the PAM helper, install the service, and start the panel. The Linux installer installs compiler and PAM development packages automatically when needed. Linux stores a generated TURN secret in `/etc/opennow/remote-coop-panel.env`; macOS lets the panel create its stable secret under `RemoteCoOp/panel/state/` on first boot.
+The installers are non-interactive. They create the panel access group, build and install the PAM helper, install the service, and start the panel. The Linux installer installs compiler, PAM, and OpenSSL packages automatically when needed, opens common Linux host firewalls for the panel/broker/TURN ports, restarts the service, and checks local panel health. Linux stores a generated TURN secret in `/etc/opennow/remote-coop-panel.env`; macOS lets the panel create its stable secret under `RemoteCoOp/panel/state/` on first boot.
 
 ## Uninstall
 
@@ -85,6 +85,12 @@ OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=0
 sudo systemctl status opennow-remote-coop-panel
 sudo journalctl -u opennow-remote-coop-panel -f
 sudo systemctl restart opennow-remote-coop-panel
+```
+
+If a browser cannot reach the panel, rerun the installer first. It is safe to rerun and will refresh the service file, reopen supported host firewall rules, restart the panel, and check `https://127.0.0.1:8787/healthz` locally.
+
+```sh
+RemoteCoOp/service/install-linux.sh
 ```
 
 ## macOS Service Commands
