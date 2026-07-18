@@ -188,7 +188,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             attempts += 1
             try await Task.sleep(nanoseconds: pollDelayNanoseconds(attempt: attempts))
             latest = try await pollSession(sessionId: initial.sessionId, serverIp: initial.serverIp)
-            if latest.status > 3, latest.status != 6 {
+            if latest.status > 3, ![4, 5, 6].contains(latest.status) {
                 throw OpenNOWStreamSessionError.sessionAllocationFailed("Session in terminal error state")
             }
             lastPollWasPendingProgress = latest.isPendingProgress
@@ -525,7 +525,7 @@ private struct AllocatedStreamSession: Sendable {
     }
 
     var isPendingProgress: Bool {
-        if status == 6 { return true }
+        if [4, 5, 6].contains(status) { return true }
         guard status == 1 else { return false }
         return adsRequired || queuePosition > 0 || seatSetupStep > 0 || [1, 2, 3, 4].contains(progressState)
     }

@@ -336,16 +336,26 @@ public enum CloudMatchSessionState: Int, Sendable {
     case initializing = 1
     case readyForConnection = 2
     case streaming = 3
-    case paused = 6
+    case pausedUnintentional = 4
+    case pausedIntentional = 5
+    case resuming = 6
+    case finished = 7
 
-    public var isVendorResumable: Bool { true }
+    public var isVendorResumable: Bool {
+        switch self {
+        case .initializing, .readyForConnection, .streaming, .pausedUnintentional, .pausedIntentional, .resuming:
+            true
+        case .finished:
+            false
+        }
+    }
 
     public var isReadyForConnection: Bool {
         self == .readyForConnection || self == .streaming
     }
 
     public var canContinuePolling: Bool {
-        self == .initializing || self == .paused
+        self == .initializing || self == .pausedUnintentional || self == .pausedIntentional || self == .resuming
     }
 }
 

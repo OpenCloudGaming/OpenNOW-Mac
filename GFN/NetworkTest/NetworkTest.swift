@@ -110,6 +110,14 @@ public struct NetworkTestVideoProfile: Equatable, Sendable {
         ]
     }
 
+    public var vendorNetTestProfileObject: [String: Any] {
+        [
+            "widthInPixels": width,
+            "heightInPixels": height,
+            "framesPerSecond": frameRate,
+        ]
+    }
+
     public var monitorSettingsObject: [String: Any] {
         [
             "widthInPixels": width,
@@ -131,12 +139,11 @@ public struct NetworkTestSessionRequestPayload: Equatable, Sendable {
     public static let gfnPC = NetworkTestSessionRequestPayload()
 
     public var jsonObject: [String: Any] {
-        var requestData: [String: Any] = [
-            "networkTestProfile": [videoProfile.jsonObject],
-            "clientRequestMonitorSettings": [videoProfile.monitorSettingsObject],
+        let requestData: [String: Any] = [
+            "clientPlatformName": "gfn_browser_client",
+            "netTestProfile": videoProfile.vendorNetTestProfileObject,
         ]
-        if appId > 0 { requestData["appId"] = appId }
-        return ["sessionRequestData": requestData]
+        return ["netTestRequestData": requestData]
     }
 }
 
@@ -152,6 +159,9 @@ public enum NetworkTestRequestFactory {
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "x-nv-client-identity")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "nv-client-identity")
+        request.setValue("1.0", forHTTPHeaderField: "x-nv-client-version")
         if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         request.httpBody = body
         return request

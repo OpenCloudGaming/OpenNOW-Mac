@@ -88,6 +88,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "enablePersistingInGameSettings": true,
             "userAge": 26,
             "requestedStreamingFeatures": requestedStreamingFeatures(effectiveSettings, hdrEnabled: hdrEnabled),
+            "transport": sessionTransportPolicy(effectiveSettings),
         ]
 
         let layout = string(effectiveSettings["keyboardLayout"]).isEmpty ? "us" : string(effectiveSettings["keyboardLayout"])
@@ -429,6 +430,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "secureRTSPSupported": transportMode == "nvst",
                 "userAge": 26,
                 "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
+                "transport": sessionTransportPolicy(settings),
             ],
             "metaData": [],
         ]
@@ -574,7 +576,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     private func applyConnectionInfo(_ session: [String: Any], to info: inout [String: Any]) {
-        var media: [String: Any] = ["ip": "", "port": 0]
+        var signalingMediaFallback: [String: Any] = ["ip": "", "port": 0]
+        var videoMedia: [String: Any]?
+        var bundledMedia: [String: Any]?
         for connection in array(session["connectionInfo"]).compactMap({ $0 as? [String: Any] }) {
             let usage = int(connection["usage"])
             let ip = string(connection["ip"])
@@ -591,14 +595,18 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 } else {
                     info["signalingUrl"] = "wss://\(serverIp):443\(resourcePath.isEmpty ? "/nvst/" : resourcePath)"
                 }
-                if port > 0 { media = ["ip": serverIp, "port": port] }
+                if port > 0 { signalingMediaFallback = ["ip": serverIp, "port": port] }
             }
-            if usage == 2 {
+            if usage == 2 || usage == 17 {
                 let mediaIp = usableEndpointHost(ip).isEmpty ? extractHost(from: resourcePath) : usableEndpointHost(ip)
-                if let mediaIp, !mediaIp.isEmpty, port > 0 { media = ["ip": mediaIp, "port": port] }
+                if let mediaIp, !mediaIp.isEmpty, port > 0 {
+                    let candidate: [String: Any] = ["ip": mediaIp, "port": port]
+                    if usage == 2 { videoMedia = candidate }
+                    else { bundledMedia = candidate }
+                }
             }
         }
-        info["mediaConnectionInfo"] = media
+        info["mediaConnectionInfo"] = videoMedia ?? bundledMedia ?? signalingMediaFallback
     }
 
     private func negotiatedStreamProfile(from session: [String: Any]) -> [String: Any] {
@@ -889,6 +897,13 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
 private func streamTransportMode(_ settings: [String: Any]) -> String {
     let value = string(settings["transportMode"])
     return value.caseInsensitiveCompare("nvst") == .orderedSame ? "nvst" : "webrtc"
+}
+
+private func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any] {
+    [
+        "policy": min(max(int(settings["transportPolicy"], fallback: 2), 0), 2),
+        "relayProtocol": min(max(int(settings["relayProtocol"]), 0), 2),
+    ]
 }
 
 private func clientDisplayHdrCapabilities(_ capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {

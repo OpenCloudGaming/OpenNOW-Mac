@@ -663,6 +663,7 @@ import Foundation
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
     let metadata = try #require(requestData["metaData"] as? [[String: String]])
+    let transport = try #require(requestData["transport"] as? [String: Any])
     let metadataKeys = Set(metadata.compactMap { $0["key"] })
 
     #expect(result.0 == true)
@@ -683,6 +684,8 @@ import Foundation
     #expect(requestData["partnerCustomData"] as? String == "")
     #expect(requestData["userAge"] as? Int == 26)
     #expect(requestData["secureRTSPSupported"] as? Bool == false)
+    #expect(transport["policy"] as? Int == 2)
+    #expect(transport["relayProtocol"] as? Int == 0)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
     #expect(monitor["monitorId"] as? Int == 0)
@@ -735,12 +738,55 @@ import Foundation
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
     let metadata = try #require(requestData["metaData"] as? [[String: String]])
+    let transport = try #require(requestData["transport"] as? [String: Any])
 
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
+    #expect(transport["policy"] as? Int == 2)
+    #expect(transport["relayProtocol"] as? Int == 0)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
     #expect(!metadata.contains { $0["key"] == "GSStreamerType" })
+    }
+}
+
+@Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "bundle-media.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session/resume-session")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"],
+            "session": [
+                "sessionId": "resume-session",
+                "status": 2,
+                "sessionRequestData": ["appId": 123],
+                "sessionControlInfo": ["ip": host],
+                "connectionInfo": [
+                    ["usage": 14, "ip": "signaling.example.test", "port": 443, "resourcePath": "/nvst/"],
+                    ["usage": 17, "ip": "bundle.example.test", "port": 47998, "resourcePath": ""],
+                ],
+            ],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+            let media = info["mediaConnectionInfo"] as? [String: Any] ?? [:]
+            continuation.resume(returning: (success, media["ip"] as? String ?? "", media["port"] as? Int ?? 0, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.3.isEmpty)
+    #expect(result.1 == "bundle.example.test")
+    #expect(result.2 == 47998)
     }
 }
 
@@ -780,6 +826,7 @@ import Foundation
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
+    let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimPayload?["action"] as? Int == 2)
@@ -788,6 +835,8 @@ import Foundation
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
+    #expect(claimTransport?["policy"] as? Int == 2)
+    #expect(claimTransport?["relayProtocol"] as? Int == 0)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
     #expect(claimMonitorSettings.first?["widthInPixels"] as? Int == 7680)
     #expect(claimMonitorSettings.first?["heightInPixels"] as? Int == 4320)
@@ -821,8 +870,11 @@ import Foundation
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
+    let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
+    #expect(claimTransport?["policy"] as? Int == 2)
+    #expect(claimTransport?["relayProtocol"] as? Int == 0)
     #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
     #expect(!claimMetadata.contains { $0["key"] == "GSStreamerType" })
     }

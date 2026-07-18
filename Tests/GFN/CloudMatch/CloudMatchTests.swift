@@ -205,6 +205,20 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(descriptor?.state.canContinuePolling == true)
 }
 
+@Test func cloudMatchSessionStatesMatchVendorBackendValues() {
+    #expect(CloudMatchSessionState(rawValue: 1) == .initializing)
+    #expect(CloudMatchSessionState(rawValue: 2) == .readyForConnection)
+    #expect(CloudMatchSessionState(rawValue: 3) == .streaming)
+    #expect(CloudMatchSessionState(rawValue: 4) == .pausedUnintentional)
+    #expect(CloudMatchSessionState(rawValue: 5) == .pausedIntentional)
+    #expect(CloudMatchSessionState(rawValue: 6) == .resuming)
+    #expect(CloudMatchSessionState(rawValue: 7) == .finished)
+    #expect(CloudMatchSessionState.pausedUnintentional.canContinuePolling)
+    #expect(CloudMatchSessionState.pausedIntentional.canContinuePolling)
+    #expect(CloudMatchSessionState.resuming.canContinuePolling)
+    #expect(!CloudMatchSessionState.finished.isVendorResumable)
+}
+
 @Test func cloudMatchActiveSessionParserRejectsTerminalOrUnusableSessions() {
     #expect(CloudMatchActiveSessionParser.descriptor(from: ["sessionId": "session", "status": 7, "sessionControlInfo": ["ip": "control.example.test"]], streamingBaseURL: "https://cloudmatch.example.test/") == nil)
     #expect(CloudMatchActiveSessionParser.descriptor(from: ["status": 2, "sessionControlInfo": ["ip": "control.example.test"]], streamingBaseURL: "https://cloudmatch.example.test/") == nil)

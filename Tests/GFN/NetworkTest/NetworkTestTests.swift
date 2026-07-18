@@ -32,13 +32,18 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
     #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
+    #expect(request.value(forHTTPHeaderField: "x-nv-client-identity") == NetworkTest.defaultUserAgent)
+    #expect(request.value(forHTTPHeaderField: "nv-client-identity") == NetworkTest.defaultUserAgent)
+    #expect(request.value(forHTTPHeaderField: "x-nv-client-version") == "1.0")
     let body = try #require(request.httpBody)
     let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    let requestData = try #require(json["sessionRequestData"] as? [String: Any])
-    let profiles = try #require(requestData["networkTestProfile"] as? [[String: Any]])
-    #expect(requestData["appId"] as? Int == 123)
-    #expect(profiles.first?["width"] as? Int == 1280)
-    #expect(profiles.first?["height"] as? Int == 720)
+    let requestData = try #require(json["netTestRequestData"] as? [String: Any])
+    let profile = try #require(requestData["netTestProfile"] as? [String: Any])
+    #expect(requestData["clientPlatformName"] as? String == "gfn_browser_client")
+    #expect(requestData["appId"] == nil)
+    #expect(profile["widthInPixels"] as? Int == 1280)
+    #expect(profile["heightInPixels"] as? Int == 720)
+    #expect(profile["framesPerSecond"] as? Int == 60)
 }
 
 @Test func networkTestParsesVendorResultPayload() {
