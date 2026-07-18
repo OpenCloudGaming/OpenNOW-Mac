@@ -59,7 +59,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             metadata.append(["key": "GSStreamerType", "value": "WebRTC"])
         }
 
-        let sessionRequestData: [String: Any] = [
+        var sessionRequestData: [String: Any] = [
             "appId": launchAppId.stringValue,
             "internalTitle": internalTitle,
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
@@ -88,8 +88,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "enablePersistingInGameSettings": true,
             "userAge": 26,
             "requestedStreamingFeatures": requestedStreamingFeatures(effectiveSettings, hdrEnabled: hdrEnabled),
-            "transport": sessionTransportPolicy(effectiveSettings),
         ]
+        if let transport = sessionTransportPolicy(effectiveSettings) {
+            sessionRequestData["transport"] = transport
+        }
 
         let layout = string(effectiveSettings["keyboardLayout"]).isEmpty ? "us" : string(effectiveSettings["keyboardLayout"])
         let language = string(effectiveSettings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(effectiveSettings["gameLanguage"])
@@ -400,40 +402,43 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         if transportMode == "webrtc" {
             metadata.append(["key": "GSStreamerType", "value": "WebRTC"])
         }
+        var sessionRequestData: [String: Any] = [
+            "audioMode": int(settings["audioMode"], fallback: 2),
+            "remoteControllersBitmap": int(settings["remoteControllersBitmap"]),
+            "sdrHdrMode": hdrEnabled ? 1 : 0,
+            "networkTestSessionId": networkTestSessionIdValue(settings),
+            "availableSupportedControllers": stringArray(settings["availableSupportedControllers"]),
+            "clientVersion": "30.0",
+            "deviceHashId": deviceId,
+            "internalTitle": NSNull(),
+            "clientPlatformName": sessionClientPlatformName(transportMode),
+            "clientRequestMonitorSettings": [monitorSettings(settings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
+            "metaData": metadata,
+            "surroundAudioInfo": int(settings["surroundAudioInfo"], fallback: 0),
+            "clientTimezoneOffset": -TimeZone.current.secondsFromGMT() * 1000,
+            "clientIdentification": "GFN-PC",
+            "parentSessionId": NSNull(),
+            "appId": appId.intValue,
+            "streamerVersion": 1,
+            "appLaunchMode": int(settings["appLaunchMode"], fallback: 1),
+            "sdkVersion": "1.0",
+            "enhancedStreamMode": int(settings["enhancedStreamMode"], fallback: 1),
+            "useOps": bool(settings["useOps"], fallback: true),
+            "clientDisplayHdrCapabilities": clientDisplayHdrCapabilities(capabilities),
+            "accountLinked": bool(settings["accountLinked"], fallback: true),
+            "partnerCustomData": "",
+            "enablePersistingInGameSettings": true,
+            "secureRTSPSupported": transportMode == "nvst",
+            "userAge": 26,
+            "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
+        ]
+        if let transport = sessionTransportPolicy(settings) {
+            sessionRequestData["transport"] = transport
+        }
         let payload: [String: Any] = [
             "action": 2,
             "data": "RESUME",
-            "sessionRequestData": [
-                "audioMode": int(settings["audioMode"], fallback: 2),
-                "remoteControllersBitmap": int(settings["remoteControllersBitmap"]),
-                "sdrHdrMode": hdrEnabled ? 1 : 0,
-                "networkTestSessionId": networkTestSessionIdValue(settings),
-                "availableSupportedControllers": stringArray(settings["availableSupportedControllers"]),
-                "clientVersion": "30.0",
-                "deviceHashId": deviceId,
-                "internalTitle": NSNull(),
-                "clientPlatformName": sessionClientPlatformName(transportMode),
-                "clientRequestMonitorSettings": [monitorSettings(settings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
-                "metaData": metadata,
-                "surroundAudioInfo": int(settings["surroundAudioInfo"], fallback: 0),
-                "clientTimezoneOffset": -TimeZone.current.secondsFromGMT() * 1000,
-                "clientIdentification": "GFN-PC",
-                "parentSessionId": NSNull(),
-                "appId": appId.intValue,
-                "streamerVersion": 1,
-                "appLaunchMode": int(settings["appLaunchMode"], fallback: 1),
-                "sdkVersion": "1.0",
-                "enhancedStreamMode": int(settings["enhancedStreamMode"], fallback: 1),
-                "useOps": bool(settings["useOps"], fallback: true),
-                "clientDisplayHdrCapabilities": clientDisplayHdrCapabilities(capabilities),
-                "accountLinked": bool(settings["accountLinked"], fallback: true),
-                "partnerCustomData": "",
-                "enablePersistingInGameSettings": true,
-                "secureRTSPSupported": transportMode == "nvst",
-                "userAge": 26,
-                "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
-                "transport": sessionTransportPolicy(settings),
-            ],
+            "sessionRequestData": sessionRequestData,
             "metaData": [],
         ]
         let layout = string(settings["keyboardLayout"]).isEmpty ? "us" : string(settings["keyboardLayout"])
@@ -909,11 +914,16 @@ private func sessionClientPlatformName(_ transportMode: String) -> String {
     transportMode == "nvst" ? "windows" : "browser"
 }
 
-private func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any] {
-    [
+private func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any]? {
+    guard settings["transportPolicy"] != nil || settings["relayProtocol"] != nil || settings["relayLocation"] != nil else { return nil }
+    var transport: [String: Any] = [
         "policy": min(max(int(settings["transportPolicy"], fallback: 2), 0), 2),
         "relayProtocol": min(max(int(settings["relayProtocol"]), 0), 2),
     ]
+    if settings["relayLocation"] != nil {
+        transport["relayLocation"] = min(max(int(settings["relayLocation"]), 0), 2)
+    }
+    return transport
 }
 
 private func clientDisplayHdrCapabilities(_ capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {

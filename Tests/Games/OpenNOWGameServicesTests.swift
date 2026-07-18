@@ -663,7 +663,6 @@ import Foundation
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
     let metadata = try #require(requestData["metaData"] as? [[String: String]])
-    let transport = try #require(requestData["transport"] as? [String: Any])
     let metadataKeys = Set(metadata.compactMap { $0["key"] })
 
     #expect(result.0 == true)
@@ -684,8 +683,7 @@ import Foundation
     #expect(requestData["partnerCustomData"] as? String == "")
     #expect(requestData["userAge"] as? Int == 26)
     #expect(requestData["secureRTSPSupported"] as? Bool == false)
-    #expect(transport["policy"] as? Int == 2)
-    #expect(transport["relayProtocol"] as? Int == 0)
+    #expect(requestData["transport"] == nil)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
     #expect(monitor["monitorId"] as? Int == 0)
@@ -710,6 +708,42 @@ import Foundation
     #expect(metadataKeys.contains("networkLatencyMs") == true)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
     #expect(metadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
+    }
+}
+
+@Test func sessionManagerCreateSerializesExplicitTransportPolicy() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "create-explicit-transport.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["transportPolicy"] = 1
+    settings["relayProtocol"] = 2
+    settings["relayLocation"] = 1
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+    let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+    let transport = try #require(requestData["transport"] as? [String: Any])
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(transport["policy"] as? Int == 1)
+    #expect(transport["relayProtocol"] as? Int == 2)
+    #expect(transport["relayLocation"] as? Int == 1)
     }
 }
 
@@ -739,7 +773,6 @@ import Foundation
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
     let metadata = try #require(requestData["metaData"] as? [[String: String]])
-    let transport = try #require(requestData["transport"] as? [String: Any])
 
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
@@ -748,8 +781,7 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(requestData["clientPlatformName"] as? String == "windows")
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
-    #expect(transport["policy"] as? Int == 2)
-    #expect(transport["relayProtocol"] as? Int == 0)
+    #expect(requestData["transport"] == nil)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
     #expect(!metadata.contains { $0["key"] == "GSStreamerType" })
     }
@@ -832,7 +864,6 @@ import Foundation
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
-    let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
@@ -845,8 +876,7 @@ import Foundation
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
-    #expect(claimTransport?["policy"] as? Int == 2)
-    #expect(claimTransport?["relayProtocol"] as? Int == 0)
+    #expect(claimRequestData?["transport"] == nil)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
     #expect(claimMonitorSettings.first?["widthInPixels"] as? Int == 7680)
     #expect(claimMonitorSettings.first?["heightInPixels"] as? Int == 4320)
@@ -881,15 +911,13 @@ import Foundation
     let claimRequest = SessionManagerURLProtocol.recordedRequests(host: host).first { $0.httpMethod == "PUT" }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
-    let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
-    #expect(claimTransport?["policy"] as? Int == 2)
-    #expect(claimTransport?["relayProtocol"] as? Int == 0)
+    #expect(claimRequestData?["transport"] == nil)
     #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
     #expect(!claimMetadata.contains { $0["key"] == "GSStreamerType" })
     }
