@@ -20,6 +20,27 @@ import Testing
     #expect(configuration.webSocketSubprotocol == "x-nv-sessionid.session-123")
 }
 
+@Test func nvstBuildsSignInURLWithCloudMatchQueryAndHeaders() throws {
+    let configuration = NVSTSignalingConfiguration(
+        signalingServer: "edge.example.test",
+        sessionID: "session-123",
+        queryParameters: "token=abc&region=us-west",
+        additionalSubprotocols: ["extra.header"]
+    )
+
+    let url = try #require(configuration.signInURL(peerName: "peer-42"))
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+    #expect(query["peer_id"] == "peer-42")
+    #expect(query["version"] == "2")
+    #expect(query["peer_role"] == "1")
+    #expect(query["pairing_id"] == "session-123")
+    #expect(query["token"] == "abc")
+    #expect(query["region"] == "us-west")
+    #expect(configuration.webSocketSubprotocol == "x-nv-sessionid.session-123, extra.header")
+}
+
 @Test func nvstBuildsSignInURLFromExplicitSignalingURL() throws {
     let configuration = NVSTSignalingConfiguration(signalingServer: "unused.example", sessionID: "sid", signalingURL: "https://edge.example.test/custom/nvst")
 

@@ -47,7 +47,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
         var metadata = [
             ["key": "SubSessionId", "value": UUID().uuidString.lowercased()],
-            ["key": "wssignaling", "value": transportMode == "webrtc" ? "1" : "0"],
+            ["key": "wssignaling", "value": "1"],
             ["key": "networkType", "value": networkTypeValue(effectiveSettings)],
             ["key": "networkLatencyMs", "value": networkLatencyValue(effectiveSettings)],
             ["key": "ClientImeSupport", "value": "0"],
@@ -391,7 +391,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
         var metadata = [
             ["key": "SubSessionId", "value": UUID().uuidString.lowercased()],
-            ["key": "wssignaling", "value": transportMode == "webrtc" ? "1" : "0"],
+            ["key": "wssignaling", "value": "1"],
             ["key": "networkType", "value": networkTypeValue(settings)],
             ["key": "networkLatencyMs", "value": networkLatencyValue(settings)],
             ["key": "ClientImeSupport", "value": "0"],
@@ -558,6 +558,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "serverIp": "",
             "signalingServer": "",
             "signalingUrl": "",
+            "signalingQueryParameters": "",
+            "signalingHeaders": [],
             "iceServers": iceServers(from: session),
             "gpuType": string(session["gpuType"]),
             "mediaConnectionInfo": ["ip": "", "port": 0],
@@ -604,6 +606,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 } else {
                     info["signalingUrl"] = "wss://\(serverIp):443\(resourcePath.isEmpty ? "/nvst/" : resourcePath)"
                 }
+                info["signalingQueryParameters"] = string(connection["queryParameters"])
+                info["signalingHeaders"] = signalingHeaderTokens(from: connection["headers"])
                 if port > 0 { signalingMediaFallback = ["ip": serverIp, "port": port] }
             }
             if usage == 2 || usage == 17 {
@@ -616,6 +620,26 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             }
         }
         info["mediaConnectionInfo"] = videoMedia ?? bundledMedia ?? signalingMediaFallback
+    }
+
+    private func signalingHeaderTokens(from value: Any?) -> [String] {
+        if let tokens = value as? [String] {
+            return tokens.filter { !$0.isEmpty }
+        }
+        if let headers = value as? [String: String] {
+            return headers.map { "\($0.key).\($0.value)" }.filter { !$0.isEmpty }.sorted()
+        }
+        if let headers = value as? [String: Any] {
+            return headers.map { "\($0.key).\(string($0.value))" }.filter { !$0.isEmpty }.sorted()
+        }
+        if let entries = value as? [[String: Any]] {
+            return entries.compactMap { entry in
+                let key = string(entry["key"])
+                let value = string(entry["value"])
+                return key.isEmpty || value.isEmpty ? nil : "\(key).\(value)"
+            }
+        }
+        return []
     }
 
     private func negotiatedStreamProfile(from session: [String: Any]) -> [String: Any] {

@@ -18,14 +18,14 @@ import Testing
     try await networkTestIsolationLock.withLock {
         let host = "diagnostics-created.example.test"
         DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-            (201, Data("https://paste.rs/created".utf8))
+            (201, Data("https://paste.c-net.org/created".utf8))
         }
         defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
         let uploadURL = try #require(URL(string: "https://\(host)"))
         let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
 
-        #expect(result.absoluteString == "https://paste.rs/created")
+        #expect(result.absoluteString == "https://paste.c-net.org/created")
         let bodies = DiagnosticsUploadURLProtocol.recordedBodies(host: host)
         #expect(bodies.count == 1)
         #expect(String(decoding: bodies.first ?? Data(), as: UTF8.self) == "diagnostic line")
@@ -36,7 +36,7 @@ import Testing
     try await networkTestIsolationLock.withLock {
         let host = "diagnostics-partial.example.test"
         DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-            (206, Data("https://paste.rs/partial".utf8))
+            (206, Data("https://paste.c-net.org/partial".utf8))
         }
         defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
@@ -77,7 +77,7 @@ import Testing
     try await networkTestIsolationLock.withLock {
         let host = "diagnostics-oversized.example.test"
         DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-            (201, Data("https://paste.rs/oversized".utf8))
+            (201, Data("https://paste.c-net.org/oversized".utf8))
         }
         defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
@@ -85,7 +85,7 @@ import Testing
         let oversizedLog = String(repeating: "diagnostic line serverIp=10.1.2.3 token=secret-value\n", count: 12_000)
         let result = try await OPNSentry.uploadDiagnosticsLog(oversizedLog, session: diagnosticsUploadSession(), uploadURL: uploadURL)
 
-        #expect(result.absoluteString == "https://paste.rs/oversized")
+        #expect(result.absoluteString == "https://paste.c-net.org/oversized")
         let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
         let text = String(decoding: body, as: UTF8.self)
         #expect(body.count <= 384 * 1024)
@@ -107,16 +107,11 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
     private static let lock = NSLock()
     nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
     nonisolated(unsafe) private static var bodiesByHost: [String: [Data]] = [:]
-    nonisolated(unsafe) private static var installed = false
 
     static func install(host: String, handler: @escaping Handler) {
         lock.withLock {
             handlers[host] = handler
             bodiesByHost[host] = []
-            if !installed {
-                URLProtocol.registerClass(Self.self)
-                installed = true
-            }
         }
     }
 
@@ -124,10 +119,6 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
         lock.withLock {
             handlers[host] = nil
             bodiesByHost[host] = nil
-            if handlers.isEmpty, installed {
-                URLProtocol.unregisterClass(Self.self)
-                installed = false
-            }
         }
     }
 

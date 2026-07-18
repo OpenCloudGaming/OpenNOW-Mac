@@ -274,7 +274,9 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             let client = NVSTWebSocketSignalingClient(
                 signalingServer: sessionInfo.signalingServer,
                 sessionId: descriptor.id,
-                signalingUrl: sessionInfo.signalingUrl
+                signalingUrl: sessionInfo.signalingUrl,
+                queryParameters: sessionInfo.signalingQueryParameters,
+                additionalSubprotocols: sessionInfo.signalingHeaders
             )
             let settingsJSON = jsonString(settings)
             client.onOffer = { [weak self] sessionOffer in
@@ -511,6 +513,8 @@ private struct AllocatedStreamSession: Sendable {
     let serverIp: String
     let signalingServer: String
     let signalingUrl: String
+    let signalingQueryParameters: String
+    let signalingHeaders: [String]
     let streamingBaseUrl: String
     let status: Int
     let queuePosition: Int
@@ -534,6 +538,8 @@ private struct AllocatedStreamSession: Sendable {
         serverIp = Self.string(info["serverIp"])
         signalingServer = Self.string(info["signalingServer"])
         signalingUrl = Self.string(info["signalingUrl"])
+        signalingQueryParameters = Self.string(info["signalingQueryParameters"])
+        signalingHeaders = Self.stringArray(info["signalingHeaders"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
@@ -569,6 +575,12 @@ private struct AllocatedStreamSession: Sendable {
         if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }
         return false
+    }
+
+    private static func stringArray(_ value: Any?) -> [String] {
+        if let values = value as? [String] { return values }
+        if let values = value as? [NSString] { return values.map { $0 as String } }
+        return []
     }
 }
 

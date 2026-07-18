@@ -1964,7 +1964,7 @@ private struct DiagnosticsUploadConfirmationDialog: View {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("OpenNOW will upload the recent sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
+                        Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)

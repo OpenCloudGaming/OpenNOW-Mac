@@ -782,7 +782,7 @@ import Foundation
     #expect(requestData["clientPlatformName"] as? String == "windows")
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
     #expect(requestData["transport"] == nil)
-    #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
+    #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
     #expect(!metadata.contains { $0["key"] == "GSStreamerType" })
     }
 }
@@ -918,7 +918,7 @@ import Foundation
     #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
     #expect(claimRequestData?["transport"] == nil)
-    #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
+    #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
     #expect(!claimMetadata.contains { $0["key"] == "GSStreamerType" })
     }
 }

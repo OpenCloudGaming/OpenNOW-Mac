@@ -227,7 +227,7 @@ final class OPNSentry {
     }
 
     public static func uploadDiagnosticsLog(_ logText: String) async throws -> URL {
-        guard let url = URL(string: "https://paste.rs") else { throw OPNSentryDiagnosticsUploadError.invalidServiceURL }
+        guard let url = URL(string: "https://paste.c-net.org/") else { throw OPNSentryDiagnosticsUploadError.invalidServiceURL }
         return try await uploadDiagnosticsLog(logText, session: .shared, uploadURL: url)
     }
 
@@ -243,7 +243,7 @@ final class OPNSentry {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await URLSession.shared.data(for: request)
+            (responseData, response) = try await session.data(for: request)
             OPNNetworkLog.finish(request, operation: "diagnostics.upload", startedAt: networkStart, data: responseData, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(request, operation: "diagnostics.upload", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -592,7 +592,7 @@ final class OPNSentry {
         let sanitized = sanitizedUploadLog(text)
         guard let sanitizedData = sanitized.data(using: .utf8), !sanitizedData.isEmpty else { throw OPNSentryDiagnosticsUploadError.emptyLog }
         guard sanitizedData.count > maxDiagnosticsUploadBytes else { return sanitizedData }
-        let notice = "OpenNOW diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because paste.rs rejects larger payloads.\n\n"
+        let notice = "OpenNOW diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because the diagnostics paste service rejects larger payloads.\n\n"
         guard let noticeData = notice.data(using: .utf8), noticeData.count < maxDiagnosticsUploadBytes else { throw OPNSentryDiagnosticsUploadError.emptyLog }
         let suffixByteCount = max(0, maxDiagnosticsUploadBytes - noticeData.count - 16)
         var suffixText = String(decoding: sanitizedData.suffix(suffixByteCount), as: UTF8.self)
@@ -611,7 +611,7 @@ final class OPNSentry {
         guard let responseText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               let pasteURL = URL(string: responseText),
               pasteURL.scheme == "https",
-              pasteURL.host == "paste.rs" else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
+              pasteURL.host == "paste.c-net.org" else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
         return pasteURL
     }
 

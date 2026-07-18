@@ -25,8 +25,8 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         super.init()
     }
 
-    public convenience init(signalingServer: String, sessionId: String, signalingUrl: String) {
-        self.init(configuration: NVSTSignalingConfiguration(signalingServer: signalingServer, sessionID: sessionId, signalingURL: signalingUrl))
+    public convenience init(signalingServer: String, sessionId: String, signalingUrl: String, queryParameters: String = "", additionalSubprotocols: [String] = []) {
+        self.init(configuration: NVSTSignalingConfiguration(signalingServer: signalingServer, sessionID: sessionId, signalingURL: signalingUrl, queryParameters: queryParameters, additionalSubprotocols: additionalSubprotocols))
     }
 
     public var isConnected: Bool {
