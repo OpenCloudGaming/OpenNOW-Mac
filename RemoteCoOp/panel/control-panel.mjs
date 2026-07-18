@@ -16,7 +16,7 @@ const stateRoot = join(panelRoot, "state");
 const runServersScript = join(remoteCoOpRoot, "run-servers.mjs");
 const productionHost = "198.12.95.48";
 const bindHost = stringEnv("OPENNOW_REMOTE_COOP_PANEL_BIND_HOST", "0.0.0.0");
-const port = integerEnv("OPENNOW_REMOTE_COOP_PANEL_PORT", 8787);
+const port = integerEnv("OPENNOW_REMOTE_COOP_PANEL_PORT", 32187);
 const sessionTimeoutMs = integerEnv("OPENNOW_REMOTE_COOP_PANEL_SESSION_TIMEOUT_SECONDS", 3_600) * 1_000;
 const loginWindowMs = 5 * 60_000;
 const maxLoginFailures = 8;
@@ -368,7 +368,7 @@ function childEnvironment() {
   const env = {
     ...process.env,
     OPENNOW_REMOTE_COOP_PUBLIC_HOST: publicHost,
-    OPENNOW_REMOTE_COOP_PORT: stringEnv("OPENNOW_REMOTE_COOP_PORT", "8788"),
+    OPENNOW_REMOTE_COOP_PORT: stringEnv("OPENNOW_REMOTE_COOP_PORT", "32188"),
     OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", generatedTurnSecret)
   };
   return env;

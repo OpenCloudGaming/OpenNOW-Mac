@@ -78,10 +78,10 @@ function readConfig() {
     sharedSecret: stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", ""),
     listeningIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost),
     externalIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP", ""),
-    port: integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 3478),
-    tlsPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 443),
-    minPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MIN_PORT", 49160),
-    maxPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MAX_PORT", 49200),
+    port: integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 32189),
+    tlsPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 32443),
+    minPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MIN_PORT", 42160),
+    maxPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MAX_PORT", 42200),
     tlsCert,
     tlsKey,
     tlsEnabled: Boolean(tlsCert && tlsKey),
@@ -230,10 +230,10 @@ Required environment:
 Common environment:
   OPENNOW_REMOTE_COOP_TURNSERVER_BIN         Path/name of turnserver binary
   OPENNOW_REMOTE_COOP_TURN_REALM            TURN auth realm, defaults to public host
-  OPENNOW_REMOTE_COOP_TURN_PORT             UDP/TCP TURN port, default 3478
-  OPENNOW_REMOTE_COOP_TURN_TLS_PORT         TLS/TCP TURNS port, default 443
-  OPENNOW_REMOTE_COOP_TURN_MIN_PORT         Relay min UDP port, default 49160
-  OPENNOW_REMOTE_COOP_TURN_MAX_PORT         Relay max UDP port, default 49200
+  OPENNOW_REMOTE_COOP_TURN_PORT             UDP/TCP TURN port, default 32189
+  OPENNOW_REMOTE_COOP_TURN_TLS_PORT         TLS/TCP TURNS port, default 32443
+  OPENNOW_REMOTE_COOP_TURN_MIN_PORT         Relay min UDP port, default 42160
+  OPENNOW_REMOTE_COOP_TURN_MAX_PORT         Relay max UDP port, default 42200
   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP     Local listen IP, default public host
   OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP      Public relay IP when behind NAT
   OPENNOW_REMOTE_COOP_TURN_CERT             TLS certificate path

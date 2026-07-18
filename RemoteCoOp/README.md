@@ -29,10 +29,10 @@ RemoteCoOp/service/install-macos.sh
 Then open:
 
 ```text
-https://198.12.95.48:8787/
+https://198.12.95.48:<printed-panel-port>/
 ```
 
-The installers are non-interactive. They create the panel access group, install the PAM helper, generate a stable TURN secret, and start the panel. The panel uses a generated self-signed HTTPS certificate unless configured otherwise, so browsers will warn on first access.
+The installers are non-interactive. They create the panel access group, install the PAM helper, select currently unused high ports, generate a stable TURN secret, and start the panel. Use the panel URL printed by the installer. The panel uses a generated self-signed HTTPS certificate unless configured otherwise, so browsers will warn on first access.
 
 The panel also includes a Git updater. It only applies clean fast-forward updates and validates with `node RemoteCoOp/run-servers.mjs --dry-run` by default.
 
@@ -55,7 +55,7 @@ It defaults printed join/TURN URLs to `198.12.95.48`, generates an ephemeral TUR
 
 Production browser invites use HTTP/WS against the public IP by default to avoid browser domain HTTPS upgrades. HTTPS/WSS remains supported when explicitly configured with a certificate that clients trust for the IP address.
 
-If the broker port is busy, the runner lets the broker fall back to the next available configured alternate and prints the actual browser/WebSocket URLs after the broker binds. By default, `8789` and `8790` are tried after `8788`.
+If the broker port is busy, the runner lets the broker fall back to the next available configured alternate and prints the actual browser/WebSocket URLs after the broker binds. By default, `32190` and `32191` are tried after `32188`.
 
 Dry-run without starting long-lived servers:
 
@@ -91,18 +91,18 @@ node RemoteCoOp/server/broker.mjs
 Default endpoints:
 
 ```text
-Browser join page: http://198.12.95.48:8788/
-WebSocket signaling: ws://198.12.95.48:8788/remote-coop
+Browser join page: http://198.12.95.48:32188/
+WebSocket signaling: ws://198.12.95.48:32188/remote-coop
 ```
 
 Broker environment:
 
 ```text
 OPENNOW_REMOTE_COOP_BIND_HOST=198.12.95.48
-OPENNOW_REMOTE_COOP_PORT=8788
+OPENNOW_REMOTE_COOP_PORT=32188
 OPENNOW_REMOTE_COOP_PORT_ALTERNATES=8789,8790
 OPENNOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
-OPENNOW_REMOTE_COOP_TURN_URLS=turn:198.12.95.48:3478?transport=udp,turn:198.12.95.48:3478?transport=tcp
+OPENNOW_REMOTE_COOP_TURN_URLS=turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
 OPENNOW_REMOTE_COOP_LOG_NETWORK=1
@@ -168,7 +168,7 @@ node RemoteCoOp/turn/turn-server.mjs
 Run broker against local TURN:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:3478?transport=udp,turn:127.0.0.1:3478?transport=tcp' \
+OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp' \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
 node RemoteCoOp/server/broker.mjs
 ```
@@ -188,16 +188,16 @@ node RemoteCoOp/turn/turn-server.mjs
 Expose these firewall ports on the TURN host:
 
 ```text
-3478/udp       TURN UDP
-3478/tcp       TURN TCP
-443/tcp        TURNS TCP when cert/key are explicitly configured
-49160-49200/udp relay allocation range by default
+32189/udp      TURN UDP
+32189/tcp      TURN TCP
+32443/tcp      TURNS TCP when cert/key are explicitly configured
+42160-42200/udp relay allocation range by default
 ```
 
 Configure the broker with the same secret:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:198.12.95.48:3478?transport=udp,turn:198.12.95.48:3478?transport=tcp' \
+OPENNOW_REMOTE_COOP_TURN_URLS='turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp' \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600 \
 node RemoteCoOp/server/broker.mjs
@@ -232,9 +232,9 @@ This starts a temporary broker with test STUN/TURN settings and verifies:
 Target an already running broker:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:3478?transport=udp' \
+OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp' \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
-node RemoteCoOp/server/smoke-network-config.mjs --broker-url http://127.0.0.1:8788
+node RemoteCoOp/server/smoke-network-config.mjs --broker-url http://127.0.0.1:32188
 ```
 
 Validate TURN launcher config without starting coturn:
@@ -264,8 +264,8 @@ Local validation:
 
 WAN validation:
 
-1. Deploy broker on public IP `198.12.95.48` with HTTP/WS port `8788` open.
-2. Deploy TURN with UDP/TCP `3478` and the UDP relay range open.
+1. Deploy broker on public IP `198.12.95.48` with the selected high HTTP/WS port open.
+2. Deploy TURN with the selected high UDP/TCP port and UDP relay range open.
 3. Configure OpenNOW Remote Co-Op invites to use the deployed broker URL.
 4. Test host and guest on different networks.
 5. Repeat in Automatic mode.

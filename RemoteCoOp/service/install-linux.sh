@@ -10,11 +10,11 @@ ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
 ENV_DIR=/etc/opennow
 ENV_FILE=$ENV_DIR/remote-coop-panel.env
 HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
-PANEL_PORT=${OPENNOW_REMOTE_COOP_PANEL_PORT:-8787}
-BROKER_PORT=${OPENNOW_REMOTE_COOP_PORT:-8788}
-TURN_PORT=${OPENNOW_REMOTE_COOP_TURN_PORT:-3478}
-TURN_MIN_PORT=${OPENNOW_REMOTE_COOP_TURN_MIN_PORT:-49160}
-TURN_MAX_PORT=${OPENNOW_REMOTE_COOP_TURN_MAX_PORT:-49200}
+PANEL_PORT=${OPENNOW_REMOTE_COOP_PANEL_PORT:-}
+BROKER_PORT=${OPENNOW_REMOTE_COOP_PORT:-}
+TURN_PORT=${OPENNOW_REMOTE_COOP_TURN_PORT:-}
+TURN_MIN_PORT=${OPENNOW_REMOTE_COOP_TURN_MIN_PORT:-}
+TURN_MAX_PORT=${OPENNOW_REMOTE_COOP_TURN_MAX_PORT:-}
 
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -145,10 +145,174 @@ check_panel_health() {
   echo "Run: sudo journalctl -u opennow-remote-coop-panel -n 80 --no-pager" >&2
 }
 
+env_file_value() {
+  if ! $SUDO test -f "$ENV_FILE"; then return 1; fi
+  $SUDO sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
+}
+
+high_port() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -ge 20000 ] && [ "$1" -le 60999 ]
+}
+
+tcp_port_available() {
+  PORT_TO_CHECK=$1 node <<'EOF'
+const port = Number.parseInt(process.env.PORT_TO_CHECK || "", 10);
+if (!Number.isInteger(port)) process.exit(1);
+const server = require("node:net").createServer();
+server.once("error", () => process.exit(1));
+server.once("listening", () => server.close(() => process.exit(0)));
+server.listen(port, "0.0.0.0");
+setTimeout(() => process.exit(1), 1000).unref();
+EOF
+}
+
+udp_port_available() {
+  PORT_TO_CHECK=$1 node <<'EOF'
+const port = Number.parseInt(process.env.PORT_TO_CHECK || "", 10);
+if (!Number.isInteger(port)) process.exit(1);
+const socket = require("node:dgram").createSocket("udp4");
+socket.once("error", () => process.exit(1));
+socket.once("listening", () => socket.close(() => process.exit(0)));
+socket.bind(port, "0.0.0.0");
+setTimeout(() => process.exit(1), 1000).unref();
+EOF
+}
+
+port_is_avoided() {
+  CANDIDATE=$1
+  shift
+  for USED_PORT in "$@"; do
+    if [ "$CANDIDATE" = "$USED_PORT" ]; then return 0; fi
+  done
+  return 1
+}
+
+select_tcp_port() {
+  START=$1
+  END=$2
+  PREFERRED=$3
+  shift 3
+  if high_port "$PREFERRED" && ! port_is_avoided "$PREFERRED" "$@" && tcp_port_available "$PREFERRED"; then
+    echo "$PREFERRED"
+    return
+  fi
+  CANDIDATE=$START
+  while [ "$CANDIDATE" -le "$END" ]; do
+    if ! port_is_avoided "$CANDIDATE" "$@" && tcp_port_available "$CANDIDATE"; then
+      echo "$CANDIDATE"
+      return
+    fi
+    CANDIDATE=$((CANDIDATE + 1))
+  done
+  echo "error: no unused TCP port found in $START-$END" >&2
+  exit 1
+}
+
+select_turn_port() {
+  START=$1
+  END=$2
+  PREFERRED=$3
+  shift 3
+  if high_port "$PREFERRED" && ! port_is_avoided "$PREFERRED" "$@" && tcp_port_available "$PREFERRED" && udp_port_available "$PREFERRED"; then
+    echo "$PREFERRED"
+    return
+  fi
+  CANDIDATE=$START
+  while [ "$CANDIDATE" -le "$END" ]; do
+    if ! port_is_avoided "$CANDIDATE" "$@" && tcp_port_available "$CANDIDATE" && udp_port_available "$CANDIDATE"; then
+      echo "$CANDIDATE"
+      return
+    fi
+    CANDIDATE=$((CANDIDATE + 1))
+  done
+  echo "error: no unused TCP/UDP TURN port found in $START-$END" >&2
+  exit 1
+}
+
+udp_range_available() {
+  RANGE_START=$1
+  RANGE_END=$2
+  CANDIDATE=$RANGE_START
+  while [ "$CANDIDATE" -le "$RANGE_END" ]; do
+    if ! udp_port_available "$CANDIDATE"; then return 1; fi
+    CANDIDATE=$((CANDIDATE + 1))
+  done
+  return 0
+}
+
+select_udp_range() {
+  START=$1
+  END=$2
+  WIDTH=$3
+  PREFERRED_START=$4
+  PREFERRED_END=$5
+  if high_port "$PREFERRED_START" && high_port "$PREFERRED_END" && [ $((PREFERRED_END - PREFERRED_START + 1)) -eq "$WIDTH" ] && udp_range_available "$PREFERRED_START" "$PREFERRED_END"; then
+    echo "$PREFERRED_START $PREFERRED_END"
+    return
+  fi
+  CANDIDATE=$START
+  while [ $((CANDIDATE + WIDTH - 1)) -le "$END" ]; do
+    RANGE_END=$((CANDIDATE + WIDTH - 1))
+    if udp_range_available "$CANDIDATE" "$RANGE_END"; then
+      echo "$CANDIDATE $RANGE_END"
+      return
+    fi
+    CANDIDATE=$((CANDIDATE + WIDTH))
+  done
+  echo "error: no unused UDP relay range found in $START-$END" >&2
+  exit 1
+}
+
+select_service_ports() {
+  EXISTING_PANEL_PORT=$(env_file_value OPENNOW_REMOTE_COOP_PANEL_PORT || true)
+  EXISTING_BROKER_PORT=$(env_file_value OPENNOW_REMOTE_COOP_PORT || true)
+  EXISTING_TURN_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_PORT || true)
+  EXISTING_TURN_MIN_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_MIN_PORT || true)
+  EXISTING_TURN_MAX_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_MAX_PORT || true)
+
+  PANEL_PORT=$(select_tcp_port 32187 32250 "${PANEL_PORT:-${EXISTING_PANEL_PORT:-32187}}")
+  BROKER_PORT=$(select_tcp_port 32188 32299 "${BROKER_PORT:-${EXISTING_BROKER_PORT:-32188}}" "$PANEL_PORT")
+  TURN_PORT=$(select_turn_port 32189 32350 "${TURN_PORT:-${EXISTING_TURN_PORT:-32189}}" "$PANEL_PORT" "$BROKER_PORT")
+  set -- $(select_udp_range 42160 42999 41 "${TURN_MIN_PORT:-${EXISTING_TURN_MIN_PORT:-42160}}" "${TURN_MAX_PORT:-${EXISTING_TURN_MAX_PORT:-42200}}")
+  TURN_MIN_PORT=$1
+  TURN_MAX_PORT=$2
+}
+
+write_panel_environment() {
+  SECRET=$(env_file_value OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET || node -e 'console.log(require("crypto").randomBytes(48).toString("base64url"))')
+  PUBLIC_HOST=$(env_file_value OPENNOW_REMOTE_COOP_PUBLIC_HOST || echo "198.12.95.48")
+  TMP_ENV=${TMPDIR:-/tmp}/opennow-remote-coop-panel-env-$$
+  if $SUDO test -f "$ENV_FILE"; then
+    $SUDO sed '/^OPENNOW_REMOTE_COOP_PANEL_PORT=/d;/^OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=/d;/^OPENNOW_REMOTE_COOP_PUBLIC_HOST=/d;/^OPENNOW_REMOTE_COOP_PORT=/d;/^OPENNOW_REMOTE_COOP_PORT_ALTERNATES=/d;/^OPENNOW_REMOTE_COOP_TURN_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_TLS_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_MIN_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_MAX_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=/d;/^OPENNOW_REMOTE_COOP_AUTOSTART=/d;/^OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=/d' "$ENV_FILE" > "$TMP_ENV" || true
+  else
+    : > "$TMP_ENV"
+  fi
+  cat >> "$TMP_ENV" <<EOF
+OPENNOW_REMOTE_COOP_PANEL_PORT=$PANEL_PORT
+OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=$ADMIN_GROUP
+OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=1
+OPENNOW_REMOTE_COOP_PUBLIC_HOST=$PUBLIC_HOST
+OPENNOW_REMOTE_COOP_PORT=$BROKER_PORT
+OPENNOW_REMOTE_COOP_PORT_ALTERNATES=$((BROKER_PORT + 1)),$((BROKER_PORT + 2))
+OPENNOW_REMOTE_COOP_TURN_PORT=$TURN_PORT
+OPENNOW_REMOTE_COOP_TURN_TLS_PORT=32443
+OPENNOW_REMOTE_COOP_TURN_MIN_PORT=$TURN_MIN_PORT
+OPENNOW_REMOTE_COOP_TURN_MAX_PORT=$TURN_MAX_PORT
+OPENNOW_REMOTE_COOP_AUTOSTART=1
+OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=$SECRET
+EOF
+  $SUDO install -o root -g "$SERVICE_GROUP" -m 0640 "$TMP_ENV" "$ENV_FILE"
+  rm -f "$TMP_ENV"
+}
+
 if [ "$(id -u)" -eq 0 ]; then SUDO=; fi
 
 ensure_panel_runtime_dependencies
 ensure_pam_build_dependencies
+select_service_ports
 
 SERVICE_USER=${SERVICE_USER:-$(stat -c %U "$REPO_ROOT")}
 $SUDO groupadd -f "$SERVICE_GROUP"
@@ -159,21 +323,7 @@ if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
 fi
 
 $SUDO mkdir -p "$ENV_DIR" /usr/local/libexec
-if [ ! -f "$ENV_FILE" ]; then
-  SECRET=$(node -e 'console.log(require("crypto").randomBytes(48).toString("base64url"))')
-  $SUDO sh -c "cat > '$ENV_FILE'" <<EOF
-OPENNOW_REMOTE_COOP_PANEL_BIND_HOST=0.0.0.0
-OPENNOW_REMOTE_COOP_PANEL_PORT=8787
-OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=$ADMIN_GROUP
-OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=1
-OPENNOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48
-OPENNOW_REMOTE_COOP_PORT=8788
-OPENNOW_REMOTE_COOP_AUTOSTART=1
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=$SECRET
-EOF
-  $SUDO chmod 640 "$ENV_FILE"
-  $SUDO chown root:"$SERVICE_GROUP" "$ENV_FILE"
-fi
+write_panel_environment
 
 "$REPO_ROOT/RemoteCoOp/panel/auth/build-pam-auth-helper.sh" /tmp/opennow-remote-coop-pam-auth-helper
 $SUDO install -o root -g "$SERVICE_GROUP" -m 4750 /tmp/opennow-remote-coop-pam-auth-helper "$HELPER"
@@ -191,5 +341,8 @@ $SUDO systemctl restart opennow-remote-coop-panel.service
 check_panel_health
 
 echo "OpenNOW Remote Co-Op panel installed: https://198.12.95.48:$PANEL_PORT/"
+echo "Broker WebSocket port: $BROKER_PORT"
+echo "TURN port: $TURN_PORT"
+echo "TURN relay UDP range: $TURN_MIN_PORT-$TURN_MAX_PORT"
 echo "Panel access group: $ADMIN_GROUP"
 echo "Panel service user: $SERVICE_USER"

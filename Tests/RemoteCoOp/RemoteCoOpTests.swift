@@ -132,8 +132,8 @@ struct RemoteCoOpTests {
     func preferencesDefaultToProductionBrokerURLs() {
         let preferences = OPNRemoteCoOpPreferences()
 
-        #expect(preferences.signalingServerURL == "ws://198.12.95.48:8788/remote-coop")
-        #expect(preferences.guestJoinBaseURL == "http://198.12.95.48:8788/")
+        #expect(preferences.signalingServerURL == "ws://198.12.95.48:32188/remote-coop")
+        #expect(preferences.guestJoinBaseURL == "http://198.12.95.48:32188/")
     }
 
     @Test("preferences migrate legacy invite URL defaults")

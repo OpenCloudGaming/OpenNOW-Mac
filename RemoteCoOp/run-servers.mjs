@@ -38,15 +38,15 @@ function buildConfig() {
   const publicHost = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || productionHost;
   const generatedSecret = !stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
   const sharedSecret = generatedSecret ? randomBytes(32).toString("base64url") : stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
-  const turnPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 3478);
-  const turnTLSPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 443);
+  const turnPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 32189);
+  const turnTLSPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 32443);
   const turnCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "");
   const turnKeyPath = stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "");
   const tlsEnabled = Boolean(turnCertificatePath && turnKeyPath);
   const brokerCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_CERT", "") || turnCertificatePath;
   const brokerKeyPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_KEY", "") || turnKeyPath;
   const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
-  const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
+  const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 32188);
   const brokerPortCandidates = portCandidates(brokerPort, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
   const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", publicHost);
   const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost);
@@ -183,7 +183,7 @@ function portCandidates(preferredPort, alternateValue) {
     ? alternateValue.split(",").map(value => Number.parseInt(value.trim(), 10))
     : [preferredPort + 1, preferredPort + 2];
   const candidates = Array.from(new Set([preferredPort, ...parsedAlternates].filter(isUsablePort)));
-  return candidates.length > 0 ? candidates : [8788, 8789, 8790];
+  return candidates.length > 0 ? candidates : [32188, 32190, 32191];
 }
 
 function isUsablePort(value) {
@@ -209,7 +209,7 @@ directly.
 
 Useful environment:
   OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default 198.12.95.48
-  OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8788
+  OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 32188
   OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
   OPENNOW_REMOTE_COOP_BROKER_CERT          HTTPS certificate for broker; defaults to TURN cert
   OPENNOW_REMOTE_COOP_BROKER_KEY           HTTPS private key for broker; defaults to TURN key

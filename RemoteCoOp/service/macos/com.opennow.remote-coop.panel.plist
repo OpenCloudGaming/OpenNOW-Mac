@@ -18,11 +18,21 @@
     <key>OPENNOW_REMOTE_COOP_PANEL_BIND_HOST</key>
     <string>0.0.0.0</string>
     <key>OPENNOW_REMOTE_COOP_PANEL_PORT</key>
-    <string>8787</string>
+    <string>__PANEL_PORT__</string>
     <key>OPENNOW_REMOTE_COOP_PUBLIC_HOST</key>
     <string>198.12.95.48</string>
     <key>OPENNOW_REMOTE_COOP_PORT</key>
-    <string>8788</string>
+    <string>__BROKER_PORT__</string>
+    <key>OPENNOW_REMOTE_COOP_PORT_ALTERNATES</key>
+    <string>__BROKER_ALTERNATES__</string>
+    <key>OPENNOW_REMOTE_COOP_TURN_PORT</key>
+    <string>__TURN_PORT__</string>
+    <key>OPENNOW_REMOTE_COOP_TURN_TLS_PORT</key>
+    <string>32443</string>
+    <key>OPENNOW_REMOTE_COOP_TURN_MIN_PORT</key>
+    <string>__TURN_MIN_PORT__</string>
+    <key>OPENNOW_REMOTE_COOP_TURN_MAX_PORT</key>
+    <string>__TURN_MAX_PORT__</string>
     <key>OPENNOW_REMOTE_COOP_AUTOSTART</key>
     <string>1</string>
     <key>OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC</key>

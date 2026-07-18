@@ -15,7 +15,7 @@ if (args.includes("--help") || args.includes("-h")) {
 const brokerURLArg = argValue("--broker-url");
 const verbose = envFlag("OPENNOW_REMOTE_COOP_SMOKE_VERBOSE", false);
 const smokeSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET || "opennow-remote-coop-smoke-secret";
-const smokeTurnURLs = process.env.OPENNOW_REMOTE_COOP_TURN_URLS || "turn:127.0.0.1:3478?transport=udp,turn:127.0.0.1:3478?transport=tcp";
+const smokeTurnURLs = process.env.OPENNOW_REMOTE_COOP_TURN_URLS || "turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp";
 const smokeStunURLs = process.env.OPENNOW_REMOTE_COOP_STUN_URLS || "stun:stun.l.google.com:19302";
 const smokeTTLSeconds = process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS || "3600";
 
