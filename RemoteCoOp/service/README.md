@@ -53,7 +53,7 @@ The panel uses a generated self-signed HTTPS certificate unless `OPENNOW_REMOTE_
 
 Use a system username and password. Access is allowed for members of `opennow-coop-admin`. If that group does not exist, the panel falls back to local administrator groups.
 
-The installers create `opennow-coop-admin` and add the user running `sudo` to it when possible.
+The installers create `opennow-coop-admin` and add the invoking user plus the panel service user to it. Override the login account added by the installer with `LOGIN_USER=your-user`.
 
 ## Controls
 

@@ -7,6 +7,7 @@ NODE_BIN=${NODE_BIN:-$(command -v node)}
 SUDO=${SUDO:-sudo}
 SERVICE_GROUP=${SERVICE_GROUP:-opennow-coop}
 ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
+LOGIN_USER=${LOGIN_USER:-${SUDO_USER:-$(id -un)}}
 ENV_DIR=/etc/opennow
 ENV_FILE=$ENV_DIR/remote-coop-panel.env
 HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
@@ -318,8 +319,11 @@ SERVICE_USER=${SERVICE_USER:-$(stat -c %U "$REPO_ROOT")}
 $SUDO groupadd -f "$SERVICE_GROUP"
 $SUDO usermod -a -G "$SERVICE_GROUP" "$SERVICE_USER"
 $SUDO groupadd -f "$ADMIN_GROUP"
-if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
-  $SUDO usermod -a -G "$ADMIN_GROUP" "$SUDO_USER"
+if [ -n "$LOGIN_USER" ] && id "$LOGIN_USER" >/dev/null 2>&1; then
+  $SUDO usermod -a -G "$ADMIN_GROUP" "$LOGIN_USER"
+fi
+if [ -n "$SERVICE_USER" ] && id "$SERVICE_USER" >/dev/null 2>&1; then
+  $SUDO usermod -a -G "$ADMIN_GROUP" "$SERVICE_USER"
 fi
 
 $SUDO mkdir -p "$ENV_DIR" /usr/local/libexec
@@ -346,3 +350,4 @@ echo "TURN port: $TURN_PORT"
 echo "TURN relay UDP range: $TURN_MIN_PORT-$TURN_MAX_PORT"
 echo "Panel access group: $ADMIN_GROUP"
 echo "Panel service user: $SERVICE_USER"
+echo "Panel login user: $LOGIN_USER"

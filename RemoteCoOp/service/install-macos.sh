@@ -7,6 +7,7 @@ NODE_BIN=${NODE_BIN:-$(command -v node)}
 SUDO=${SUDO:-sudo}
 ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
 SERVICE_USER=${SERVICE_USER:-$(stat -f %Su "$REPO_ROOT")}
+LOGIN_USER=${LOGIN_USER:-${SUDO_USER:-$(id -un)}}
 PLIST=/Library/LaunchDaemons/com.opennow.remote-coop.panel.plist
 HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
 PANEL_PORT=${OPENNOW_REMOTE_COOP_PANEL_PORT:-}
@@ -147,8 +148,8 @@ select_service_ports
 if ! dscl . -read "/Groups/$ADMIN_GROUP" >/dev/null 2>&1; then
   $SUDO dseditgroup -o create "$ADMIN_GROUP"
 fi
-if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
-  $SUDO dseditgroup -o edit -a "$SUDO_USER" -t user "$ADMIN_GROUP"
+if [ -n "$LOGIN_USER" ] && id "$LOGIN_USER" >/dev/null 2>&1; then
+  $SUDO dseditgroup -o edit -a "$LOGIN_USER" -t user "$ADMIN_GROUP"
 fi
 $SUDO dseditgroup -o edit -a "$SERVICE_USER" -t user "$ADMIN_GROUP"
 
@@ -179,3 +180,4 @@ echo "TURN port: $TURN_PORT"
 echo "TURN relay UDP range: $TURN_MIN_PORT-$TURN_MAX_PORT"
 echo "Panel access group: $ADMIN_GROUP"
 echo "Panel service user: $SERVICE_USER"
+echo "Panel login user: $LOGIN_USER"
