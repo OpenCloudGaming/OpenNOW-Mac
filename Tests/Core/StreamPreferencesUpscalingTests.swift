@@ -15,9 +15,10 @@ import Testing
     }
 
     @Test func defaultsSixteenTenResolutionToNineteenTwentyByTwelveHundred() {
-        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex"]) {
+        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", "OpenNOW.Stream.StreamingQualityProfileIndex"]) {
             removePreferenceValue("OpenNOW.Stream.AspectIndex")
             removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+            removePreferenceValue("OpenNOW.Stream.StreamingQualityProfileIndex")
 
             let profile = OPNStreamPreferences.loadProfile()
 

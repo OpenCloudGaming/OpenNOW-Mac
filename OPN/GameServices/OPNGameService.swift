@@ -23,7 +23,7 @@ public struct OPNAppPatchStatus: Equatable, Sendable {
 final class OPNGameService: @unchecked Sendable {
     static let shared = OPNGameService()
 
-    private static let panelsHash = "f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0"
+    private static let panelsHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     private static let favoritesPanelHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     private static let marqueeHash = "dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f"
     private static let appMetaDataHash = "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63"
@@ -1313,6 +1313,10 @@ final class OPNGameService: @unchecked Sendable {
         postGraphQlJson(query: mutation, variables: variables) { [weak self] data, error in
             guard let self else { return }
             if !error.isEmpty {
+                if mutationName == "RemoveOwnedVariant", Self.isGraphQLNotFoundError(error) {
+                    self.dispatchOwnership(completion, true, "")
+                    return
+                }
                 self.dispatchOwnership(completion, false, error)
                 return
             }
@@ -1335,6 +1339,10 @@ final class OPNGameService: @unchecked Sendable {
         postGraphQlJson(query: mutation, variables: variables) { [weak self] data, error in
             guard let self else { return }
             if !error.isEmpty {
+                if mutationName == "RemoveFavoriteApp", Self.isGraphQLNotFoundError(error) {
+                    self.dispatchFavorite(completion, true, "")
+                    return
+                }
                 self.dispatchFavorite(completion, false, error)
                 return
             }
@@ -1424,6 +1432,10 @@ final class OPNGameService: @unchecked Sendable {
             return "inlineGraphQL"
         }
         return tokens[operationKeywordIndex + 1]
+    }
+
+    private static func isGraphQLNotFoundError(_ error: String) -> Bool {
+        error.contains("(404)") || error.contains("HTTP 404")
     }
 
     private func normalizeStreamingBaseUrl(_ url: String) -> String {

@@ -262,7 +262,7 @@ public enum GDNRequestFactory {
     }
 
     public static func cloudVariableRequest(name: String, context: GDNClientContext, additionalItems: [URLQueryItem] = [], configuration: GDNConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
-        var items = cloudVariablesQueryItems(additionalItems: [URLQueryItem(name: "name", value: name)] + context.queryItems)
+        var items = cloudVariablesQueryItems(additionalItems: [URLQueryItem(name: "cvName", value: name)] + context.queryItems)
         items.append(contentsOf: additionalItems)
         return cloudVariablesRequest(queryItems: items, configuration: configuration, timeoutInterval: timeoutInterval)
     }

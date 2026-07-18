@@ -379,6 +379,10 @@ import Foundation
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
+            let absoluteURL = request.url?.absoluteString ?? ""
+            if absoluteURL.contains("requestType=panels/MainV2") {
+                #expect(absoluteURL.contains("46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"))
+            }
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let variables = body["variables"] as? [String: Any] ?? [:]
             if variables["appIds"] != nil {
@@ -409,6 +413,39 @@ import Foundation
         #expect(result.1 == ["genre-action", "store-steam"])
         #expect(result.2 == "release_date")
         #expect(result.3 == "Show all featured")
+    }
+}
+
+@Test func vendorRemoveMutationsTreatNotFoundAsSuccess() async {
+        await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("remove-mutation-404-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("remove-mutation-404-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            #expect(request.url?.host == "games.geforce.com")
+            #expect(request.httpMethod == "POST")
+            return SessionManagerURLProtocol.response(json: ["errors": [["message": "not found"]]], status: 404)
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let favoriteResult: (Bool, String) = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.removeFavoriteApp("favorite-game-id") { success, error in
+                continuation.resume(returning: (success, error))
+            }
+        }
+        let ownedResult: (Bool, String) = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.removeOwnedVariant("123456") { success, error in
+                continuation.resume(returning: (success, error))
+            }
+        }
+
+        #expect(favoriteResult.0 == true)
+        #expect(favoriteResult.1.isEmpty)
+        #expect(ownedResult.0 == true)
+        #expect(ownedResult.1.isEmpty)
+        let queries = SessionManagerURLProtocol.recordedJSONBodies(host: host).compactMap { $0["query"] as? String }
+        #expect(queries.contains { $0.contains("RemoveFavoriteApp") })
+        #expect(queries.contains { $0.contains("RemoveOwnedVariant") })
     }
 }
 

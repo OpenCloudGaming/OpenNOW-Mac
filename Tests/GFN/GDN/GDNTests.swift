@@ -56,7 +56,7 @@ private struct MockGDNTransport: GDNHTTPTransport {
     let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
     #expect(components.path == "/cloudvariables/v3")
     #expect(items["product"] == "NVIDIAGDN")
-    #expect(items["name"] == "feature")
+    #expect(items["cvName"] == "feature")
     #expect(items["clientId"] == "client")
     #expect(items["clientVer"] == "2.0.80.173")
     #expect(items["deviceId"] == "device")
@@ -100,7 +100,7 @@ private struct MockGDNTransport: GDNHTTPTransport {
 @Test func gdnServiceFetchesSingleCloudVariable() async throws {
     let service = GDNService(transport: MockGDNTransport { request in
         #expect(request.url?.absoluteString.contains("product=NVIDIAGDN") == true)
-        #expect(request.url?.absoluteString.contains("name=feature") == true)
+        #expect(request.url?.absoluteString.contains("cvName=feature") == true)
         #expect(request.url?.absoluteString.contains("clientId=client") == true)
         return ["cloudVariable": ["name": "feature", "variation": "on", "value": true, "state": "Active"]]
     })
