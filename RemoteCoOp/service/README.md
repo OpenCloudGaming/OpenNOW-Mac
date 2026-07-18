@@ -18,6 +18,29 @@ RemoteCoOp/service/install-macos.sh
 
 The installers are non-interactive. They create the panel access group, build and install the PAM helper, install the service, and start the panel. Linux stores a generated TURN secret in `/etc/opennow/remote-coop-panel.env`; macOS lets the panel create its stable secret under `RemoteCoOp/panel/state/` on first boot.
 
+## Uninstall
+
+Linux:
+
+```sh
+RemoteCoOp/service/uninstall-linux.sh
+```
+
+macOS:
+
+```sh
+RemoteCoOp/service/uninstall-macos.sh
+```
+
+Uninstall is non-interactive and removes the service, PAM helper, and PAM config. It keeps generated secrets/state by default so reinstalling preserves TURN credentials and panel TLS/session material. Remove generated state with:
+
+```sh
+REMOVE_STATE=1 RemoteCoOp/service/uninstall-linux.sh
+REMOVE_STATE=1 RemoteCoOp/service/uninstall-macos.sh
+```
+
+The uninstall scripts leave users and groups intact by default. Remove the installer-created groups with `REMOVE_GROUPS=1`.
+
 ## Open The Panel
 
 ```text
