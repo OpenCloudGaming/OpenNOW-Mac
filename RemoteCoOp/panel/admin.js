@@ -1,4 +1,5 @@
 let csrfToken = "";
+const localTimeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 
 const elements = {
   serviceState: document.querySelector("#service-state"),
@@ -104,7 +105,7 @@ async function refreshLogs() {
   const response = await fetch("/admin/api/logs");
   if (!response.ok) return;
   const payload = await response.json();
-  elements.logs.textContent = payload.logs.map(entry => `${entry.at} [${entry.label}] ${entry.message}`).join("\n");
+  elements.logs.textContent = payload.logs.map(entry => `${localTime(entry.at)} [${entry.label}] ${entry.message}`).join("\n");
   elements.logs.scrollTop = elements.logs.scrollHeight;
 }
 
@@ -123,7 +124,7 @@ function renderStatus(status) {
   elements.childUptime.textContent = duration(child.uptimeSeconds);
   elements.joinEndpoint.textContent = joinEndpoint(child.broker);
   elements.brokerEndpoint.textContent = brokerEndpoint(child.broker);
-  elements.lastExit.textContent = child.lastExit ? `${child.lastExit.at} code=${child.lastExit.code ?? "none"} signal=${child.lastExit.signal ?? "none"}` : "-";
+  elements.lastExit.textContent = child.lastExit ? `${localTime(child.lastExit.at)} code=${child.lastExit.code ?? "none"} signal=${child.lastExit.signal ?? "none"}` : "-";
   renderCoOpStats(child.coopStats);
   elements.panelUser.textContent = status.user;
   elements.panelPid.textContent = status.panel.pid;
@@ -136,7 +137,7 @@ function renderCoOpStats(stats = {}) {
   elements.activeGuests.textContent = numberText(stats.activeGuests);
   elements.pendingSessions.textContent = `${numberText(stats.pendingSessions)} / ${numberText(stats.pendingGuests)} guests`;
   elements.pastSessions.textContent = `${numberText(stats.pastSessions)} ended / ${numberText(stats.totalStarted)} started`;
-  elements.statsUpdated.textContent = stats.updatedAt ? new Date(stats.updatedAt).toLocaleString() : "-";
+  elements.statsUpdated.textContent = localTime(stats.updatedAt);
   const recent = Array.isArray(stats.recentSessions) ? stats.recentSessions : [];
   if (recent.length === 0) {
     elements.recentSessions.innerHTML = '<p class="muted">No completed Co-Op sessions reported yet.</p>';
@@ -144,7 +145,7 @@ function renderCoOpStats(stats = {}) {
   }
   elements.recentSessions.innerHTML = recent.map(session => `
     <div class="session-row">
-      <strong>${escapeHTML(session.endedAt ? new Date(session.endedAt).toLocaleString() : "Unknown time")}</strong>
+      <strong>${escapeHTML(localTime(session.endedAt, "Unknown time"))}</strong>
       <span>${duration(Number(session.durationSeconds) || 0)}</span>
       <span>${numberText(session.maxGuests)} max guests</span>
       <span>${reasonText(session.reason)}</span>
@@ -161,7 +162,7 @@ function renderUpdateStatus(status, lastResult) {
     elements.updateDetail.textContent = `${status.pendingCommits.length} pending commit(s) from ${status.upstream}.`;
   } else {
     elements.updateState.textContent = "Up To Date";
-    elements.updateDetail.textContent = lastResult?.at ? `Last update result: ${lastResult.blockedReason || "applied"} at ${lastResult.at}.` : "No pending commits.";
+    elements.updateDetail.textContent = lastResult?.at ? `Last update result: ${lastResult.blockedReason || "applied"} at ${localTime(lastResult.at)}.` : "No pending commits.";
   }
   elements.pendingCommits.style.display = status.pendingCommits?.length ? "block" : "none";
   elements.pendingCommits.textContent = status.pendingCommits?.join("\n") ?? "";
@@ -194,6 +195,12 @@ function duration(seconds) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
   return [hours && `${hours}h`, minutes && `${minutes}m`, `${rest}s`].filter(Boolean).join(" ");
+}
+
+function localTime(value, fallback = "-") {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? localTimeFormatter.format(date) : fallback;
 }
 
 function numberText(value) {
