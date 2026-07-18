@@ -1176,6 +1176,7 @@ private enum StoreIconAsset: CaseIterable {
 private struct ExperimentalFeaturesSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
+    @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1205,11 +1206,25 @@ private struct ExperimentalFeaturesSettingsPage: View {
                     action: setRecordingEditorEarlyBetaEnabled
                 )
             }
+
+            SettingsCard(title: "Input") {
+                SettingsToggleRow(
+                    title: "Steam Controller Support",
+                    subtitle: steamControllerSupportEnabled ? "Valve Steam Controller input is forwarded to streams. Requires the Input Monitoring permission and the Steam client to be closed." : "Opt in to recognize Valve Steam Controllers (original and 2026 models) over USB, dongle, or Puck during streams.",
+                    isOn: steamControllerSupportEnabled,
+                    action: setSteamControllerSupportEnabled
+                )
+            }
         }
     }
 
     private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
         recordingEditorEarlyBetaEnabled = enabled
+    }
+
+    private func setSteamControllerSupportEnabled(_ enabled: Bool) {
+        steamControllerSupportEnabled = enabled
+        SteamControllerHIDMonitor.shared.setEnabled(enabled)
     }
 }
 

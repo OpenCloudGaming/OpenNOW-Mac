@@ -171,6 +171,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
         startApplicationUpdateChecks()
+        SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
