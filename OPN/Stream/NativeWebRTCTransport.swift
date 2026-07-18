@@ -17,9 +17,11 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private let remoteCoOpAudioRelayLock = NSLock()
     private var remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay?
     private var broadcastStatusObserverID: UUID?
+    private let continuationLock = NSLock()
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
+    private var answerTimeoutTask: Task<Void, Never>?
     private var statsTelemetryTask: Task<Void, Never>?
     private var isDisconnecting = false
     private var didEmitEnd = false
@@ -59,9 +61,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         WebRTCMediaTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         let nativeWindowAddress = await MainActor.run { nativeView.map { UInt(bitPattern: Unmanaged.passUnretained($0.nativeVideoView()).toOpaque()) } }
         return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
+            self.installContinuation(continuation)
             self.isDisconnecting = false
             self.didEmitEnd = false
+            self.startAnswerTimeout(sessionID: offer.session.id)
             self.session.onVideoFrame = { [weak self] framePointer in
                 guard let framePointer else { return }
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
@@ -188,10 +191,11 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     public func disconnect() async {
         WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         isDisconnecting = true
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = nil
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
-        let pendingContinuation = continuation
-        continuation = nil
+        let pendingContinuation = takeContinuation()
         recorder.stop()
         broadcaster.resumeUICapture()
         session.setEnhancedVideoFrameCaptureEnabled(false)
@@ -418,20 +422,51 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     ]
 
     private func resumeAnswer(_ answer: StreamAnswer) {
-        guard let continuation else { return }
-        self.continuation = nil
+        guard let continuation = takeContinuation() else { return }
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = nil
         WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
         startStatsTelemetry()
         continuation.resume(returning: answer)
     }
 
     private func resumeError(_ error: Error) {
-        guard let continuation else { return }
-        self.continuation = nil
+        guard let continuation = takeContinuation() else { return }
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = nil
         WebRTCMediaTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
         continuation.resume(throwing: error)
+    }
+
+    private func startAnswerTimeout(sessionID: String) {
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 20_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.resumeError(NativeWebRTCTransportError.connectionFailed("Native WebRTC answer was not created within 20 seconds for session \(sessionID)."))
+        }
+    }
+
+    private func installContinuation(_ continuation: CheckedContinuation<StreamAnswer, Error>) {
+        continuationLock.withLock { self.continuation = continuation }
+    }
+
+    private func takeContinuation() -> CheckedContinuation<StreamAnswer, Error>? {
+        continuationLock.withLock {
+            let value = continuation
+            continuation = nil
+            return value
+        }
+    }
+
+    private var hasPendingContinuation: Bool {
+        continuationLock.withLock { continuation != nil }
     }
 
     private func handleLocalIceCandidate(_ payload: NSDictionary) {
@@ -456,7 +491,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     private func handleEnded(message: String) {
-        if continuation != nil {
+        if hasPendingContinuation {
             resumeError(NativeWebRTCTransportError.connectionFailed(message))
             return
         }

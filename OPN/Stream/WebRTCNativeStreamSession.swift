@@ -16,6 +16,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var audioController: OPNLibWebRTCAudio!
     private var statsController: OPNLibWebRTCStats!
     private let statsLock = NSLock()
+    private let remoteIceLock = NSLock()
 
     private var impl: OPNLibWebRTCSessionImpl?
     private var callbackGeneration: UInt64 = 0
@@ -47,6 +48,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var onAnswer: ((String, String) -> Void)?
     private var onIceCandidate: (([String: Any]) -> Void)?
     private var onState: ((Bool, String) -> Void)?
+    private var pendingRemoteIcePayloads: [[AnyHashable: Any]] = []
+    private var isRemoteDescriptionReady = false
     var onVideoFrame: ((UnsafeMutableRawPointer?) -> Void)?
     var onEnhancedVideoFrame: ((UnsafeMutableRawPointer?) -> Void)?
     var onGameAudioFrame: ((UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
@@ -89,6 +92,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func start(sessionInfo: [String: Any], offerSdp: String, settings: [String: Any]) {
         stop()
         callbackGeneration &+= 1
+        remoteIceLock.withLock {
+            pendingRemoteIcePayloads.removeAll()
+            isRemoteDescriptionReady = false
+        }
         let generation = callbackGeneration
         self.settings = settings
         configuredMaxBitrateMbps = max(1, int(settings["maxBitrateMbps"], fallback: 50))
@@ -267,12 +274,14 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                         return
                     }
                     guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+                    self.markRemoteDescriptionReady()
                     injectDirectCandidatesIfNeeded(offerSdp: offerSdp)
                     handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
                 }
                 return
             }
             guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+            self.markRemoteDescriptionReady()
             injectDirectCandidatesIfNeeded(offerSdp: remoteOfferSdp)
             handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
         }
@@ -285,6 +294,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         statsController.stopPolling()
         audioController.stopMicrophoneLevelPolling()
         inputController.stop()
+        remoteIceLock.withLock {
+            pendingRemoteIcePayloads.removeAll()
+            isRemoteDescriptionReady = false
+        }
         if let impl {
             impl.owner = nil
             impl.reliableInputChannel?.delegate = nil
@@ -310,8 +323,46 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     }
 
     func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
-        guard let peerConnection = impl?.peerConnection else { return }
         if bool(payload["endOfCandidates"]) { return }
+        guard remoteDescriptionReady, let peerConnection = impl?.peerConnection else {
+            bufferRemoteIceCandidatePayload(payload)
+            return
+        }
+        addRemoteIceCandidatePayload(payload, peerConnection: peerConnection)
+    }
+
+    private var remoteDescriptionReady: Bool {
+        remoteIceLock.withLock { isRemoteDescriptionReady }
+    }
+
+    private func bufferRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
+        let count = remoteIceLock.withLock { () -> Int in
+            pendingRemoteIcePayloads.append(payload)
+            if pendingRemoteIcePayloads.count > 120 {
+                pendingRemoteIcePayloads.removeFirst(pendingRemoteIcePayloads.count - 120)
+            }
+            return pendingRemoteIcePayloads.count
+        }
+        WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.buffered", level: .debug, message: "Buffered remote ICE candidate until remote description is ready.", attributes: ["pending": String(count)])
+    }
+
+    private func markRemoteDescriptionReady() {
+        let buffered = remoteIceLock.withLock { () -> [[AnyHashable: Any]] in
+            isRemoteDescriptionReady = true
+            let payloads = pendingRemoteIcePayloads
+            pendingRemoteIcePayloads.removeAll()
+            return payloads
+        }
+        guard let peerConnection = impl?.peerConnection else { return }
+        for payload in buffered {
+            addRemoteIceCandidatePayload(payload, peerConnection: peerConnection)
+        }
+        if !buffered.isEmpty {
+            WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.flushed", level: .debug, message: "Flushed buffered remote ICE candidates.", attributes: ["count": String(buffered.count)])
+        }
+    }
+
+    private func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any], peerConnection: RTCPeerConnection) {
         let candidate = rewrittenRemoteCandidate(string(payload["candidate"]))
         guard !candidate.isEmpty else { return }
         let sdpMid = string(payload["sdpMid"])

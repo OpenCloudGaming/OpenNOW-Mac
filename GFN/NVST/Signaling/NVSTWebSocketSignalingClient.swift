@@ -109,6 +109,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
             self.didOpen = true
             OPNNetworkLog.webSocketEvent("open", url: self.activeURL, detail: "protocol=\(`protocol` ?? "none")")
             self.setupHeartbeat()
+            self.sendPeerInfo(reason: "open")
             let completion = self.connectCompletion
             self.connectCompletion = nil
             completion?(true, "")
@@ -213,10 +214,15 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     }
 
     private func handleMessage(_ text: String) {
-        guard let parsed = NVSTSignalingMessageParser.parse(text: text, peerName: peerName, currentPeerID: peerId) else { return }
+        guard let parsed = NVSTSignalingMessageParser.parse(text: text, peerName: peerName, currentPeerID: peerId) else {
+            OPNNetworkLog.webSocketEvent("messageIgnored", url: activeURL, detail: "reason=invalid_json bytes=\(text.utf8.count)")
+            return
+        }
         if let assignedPeerID = parsed.assignedPeerID {
+            let previousPeerID = peerId
             peerId = assignedPeerID
             OPNNetworkLog.webSocketEvent("peerAssigned", url: activeURL, detail: "peerId=\(peerId)")
+            if previousPeerID != peerId { sendPeerInfo(reason: "assigned") }
         }
         if let ackIDToSend = parsed.ackIDToSend {
             sendJson("{\"ack\":\(ackIDToSend)}")
@@ -244,6 +250,13 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
             OPNNetworkLog.webSocketEvent("iceCandidateReceived", url: activeURL, detail: "mid=\(candidate.sdpMid.isEmpty ? "none" : candidate.sdpMid) mline=\(candidate.sdpMLineIndex) candidateLength=\(candidate.candidate.count)")
             onIceCandidate?(candidate)
         }
+    }
+
+    private func sendPeerInfo(reason: String) {
+        ackCounter += 1
+        let peerInfo = NVSTPeerInfo(id: peerId, name: peerName, peerRole: 1, resolution: "1920x1080")
+        sendJSONObject(NVSTSignalingMessageParser.peerInfoEnvelope(peerInfo: peerInfo, ackID: ackCounter))
+        OPNNetworkLog.webSocketEvent("peerInfoSent", url: activeURL, detail: "reason=\(reason) peerId=\(peerId)")
     }
 
     private func sendPeerMessage(_ payload: [String: Any]) {
