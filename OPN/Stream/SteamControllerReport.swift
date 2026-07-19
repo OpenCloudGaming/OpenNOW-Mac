@@ -58,6 +58,8 @@ public enum SteamControllerReport {
     public static let nereidDongleProductID = 0x1305
     public static let vendorUsagePage = 0xff00
     public static let vendorUsage = 1
+    public static let gamepadUsagePage = 1
+    public static let gamepadUsage = 5
     public static let reportLength = 64
 
     static let productTraits: [Int: (model: SteamControllerModel, isWirelessReceiver: Bool)] = [
@@ -99,6 +101,7 @@ public enum SteamControllerReport {
     private static let tritonFeatureReportID = 1
     private static let tritonLizardModeSetting: UInt8 = 0x09
     private static let tritonLizardModeOff: UInt8 = 0x00
+    public static let deckStateReportID: UInt8 = 0x09
 
     private enum LegacyButtonMask {
         static let rightShoulder: UInt8 = 0x04
@@ -137,6 +140,38 @@ public enum SteamControllerReport {
         static let select: UInt32 = 0x0000_4000
         static let leftStick: UInt32 = 0x0000_8000
         static let leftShoulder: UInt32 = 0x0008_0000
+        static let leftGrip: UInt32 = 0x0002_0000
+        static let rightGrip: UInt32 = 0x0000_0080
+        static let leftGrip2: UInt32 = 0x0004_0000
+        static let rightGrip2: UInt32 = 0x0000_0100
+    }
+
+    private enum DeckStateButtonMask {
+        static let rightTriggerFull: UInt64 = 1 << 0
+        static let leftTriggerFull: UInt64 = 1 << 1
+        static let rightShoulder: UInt64 = 1 << 2
+        static let leftShoulder: UInt64 = 1 << 3
+        static let north: UInt64 = 1 << 4
+        static let east: UInt64 = 1 << 5
+        static let west: UInt64 = 1 << 6
+        static let south: UInt64 = 1 << 7
+        static let dpadUp: UInt64 = 1 << 8
+        static let dpadRight: UInt64 = 1 << 9
+        static let dpadLeft: UInt64 = 1 << 10
+        static let dpadDown: UInt64 = 1 << 11
+        static let select: UInt64 = 1 << 12
+        static let mode: UInt64 = 1 << 13
+        static let start: UInt64 = 1 << 14
+        static let leftGrip2: UInt64 = 1 << 15
+        static let rightGrip2: UInt64 = 1 << 16
+        static let leftPadPressed: UInt64 = 1 << 17
+        static let rightPadPressed: UInt64 = 1 << 18
+        static let leftPadTouched: UInt64 = 1 << 19
+        static let rightPadTouched: UInt64 = 1 << 20
+        static let leftStick: UInt64 = 1 << 22
+        static let rightStick: UInt64 = 1 << 26
+        static let leftGrip: UInt64 = 1 << 41
+        static let rightGrip: UInt64 = 1 << 42
     }
 
     public static func parse(_ report: [UInt8], previous: SteamControllerInputSnapshot, model: SteamControllerModel) -> SteamControllerReportEvent {
@@ -158,7 +193,10 @@ public enum SteamControllerReport {
                 ]),
             ]
         case .triton:
-            [tritonLizardModeDisableReport()]
+            [
+                tritonClearDigitalMappingsReport(),
+                tritonLizardModeDisableReport(),
+            ]
         }
     }
 
@@ -193,9 +231,20 @@ public enum SteamControllerReport {
             return connectionEvent(detail: report[1])
         case tritonBatteryReportID:
             return .ignored
+        case 0x7B:
+            return .ignored
         default:
+            if reportID != tritonStateReportID, reportID != tritonBLEStateReportID, reportID != tritonTimestampedStateReportID {
+                let hex = report.prefix(min(8, report.count)).map { String(format: "%02X", $0) }.joined(separator: " ")
+                print("[SteamController] unknown Triton reportID=0x\(String(format: "%02X", reportID)) length=\(report.count) bytes=\(hex)")
+            }
             return .ignored
         }
+    }
+
+    public static func parseDeckState(_ report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerReportEvent {
+        guard report.count >= 60, report.first == deckStateReportID else { return .ignored }
+        return .state(deckInputState(from: report))
     }
 
     private static func connectionEvent(detail: UInt8) -> SteamControllerReportEvent {
@@ -276,6 +325,46 @@ public enum SteamControllerReport {
         if bits & TritonButtonMask.dpadDown != 0 { buttons.insert(.dpadDown) }
         if bits & TritonButtonMask.dpadLeft != 0 { buttons.insert(.dpadLeft) }
         if bits & TritonButtonMask.dpadRight != 0 { buttons.insert(.dpadRight) }
+        if bits & TritonButtonMask.leftGrip != 0 { buttons.insert(.leftGrip) }
+        if bits & TritonButtonMask.rightGrip != 0 { buttons.insert(.rightGrip) }
+        if bits & TritonButtonMask.leftGrip2 != 0 { buttons.insert(.leftGrip2) }
+        if bits & TritonButtonMask.rightGrip2 != 0 { buttons.insert(.rightGrip2) }
+        return buttons
+    }
+
+    private static func deckInputState(from report: [UInt8]) -> SteamControllerInputSnapshot {
+        let buttons = UInt64(report[8]) | (UInt64(report[9]) << 8) | (UInt64(report[10]) << 16) | (UInt64(report[11]) << 24) | (UInt64(report[12]) << 32) | (UInt64(report[13]) << 40) | (UInt64(report[14]) << 48) | (UInt64(report[15]) << 56)
+        return SteamControllerInputSnapshot(
+            buttons: deckButtons(buttons),
+            leftTrigger: Float(UInt16(report[44]) | (UInt16(report[45]) << 8)) / Float(UInt16.max),
+            rightTrigger: Float(UInt16(report[46]) | (UInt16(report[47]) << 8)) / Float(UInt16.max),
+            leftStickX: axis(report, at: 48),
+            leftStickY: axis(report, at: 50),
+            rightStickX: axis(report, at: 52),
+            rightStickY: axis(report, at: 54)
+        )
+    }
+
+    private static func deckButtons(_ bits: UInt64) -> GamepadButtons {
+        var buttons: GamepadButtons = []
+        if bits & DeckStateButtonMask.south != 0 { buttons.insert(.south) }
+        if bits & DeckStateButtonMask.east != 0 { buttons.insert(.east) }
+        if bits & DeckStateButtonMask.west != 0 { buttons.insert(.west) }
+        if bits & DeckStateButtonMask.north != 0 { buttons.insert(.north) }
+        if bits & DeckStateButtonMask.leftShoulder != 0 { buttons.insert(.leftShoulder) }
+        if bits & DeckStateButtonMask.rightShoulder != 0 { buttons.insert(.rightShoulder) }
+        if bits & DeckStateButtonMask.select != 0 { buttons.insert(.select) }
+        if bits & DeckStateButtonMask.start != 0 { buttons.insert(.start) }
+        if bits & DeckStateButtonMask.leftStick != 0 { buttons.insert(.leftStick) }
+        if bits & DeckStateButtonMask.rightStick != 0 { buttons.insert(.rightStick) }
+        if bits & DeckStateButtonMask.dpadUp != 0 { buttons.insert(.dpadUp) }
+        if bits & DeckStateButtonMask.dpadDown != 0 { buttons.insert(.dpadDown) }
+        if bits & DeckStateButtonMask.dpadLeft != 0 { buttons.insert(.dpadLeft) }
+        if bits & DeckStateButtonMask.dpadRight != 0 { buttons.insert(.dpadRight) }
+        if bits & DeckStateButtonMask.leftGrip != 0 { buttons.insert(.leftGrip) }
+        if bits & DeckStateButtonMask.rightGrip != 0 { buttons.insert(.rightGrip) }
+        if bits & DeckStateButtonMask.leftGrip2 != 0 { buttons.insert(.leftGrip2) }
+        if bits & DeckStateButtonMask.rightGrip2 != 0 { buttons.insert(.rightGrip2) }
         return buttons
     }
 
@@ -288,6 +377,14 @@ public enum SteamControllerReport {
         var buffer = [UInt8](repeating: 0, count: reportLength)
         buffer.replaceSubrange(0..<bytes.count, with: bytes)
         return SteamControllerFeatureReport(reportID: 0, bytes: buffer)
+    }
+
+    private static func tritonClearDigitalMappingsReport() -> SteamControllerFeatureReport {
+        var buffer = [UInt8](repeating: 0, count: reportLength)
+        buffer[0] = UInt8(tritonFeatureReportID)
+        buffer[1] = clearDigitalMappingsCommand
+        buffer[2] = 0x00
+        return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }
 
     private static func tritonLizardModeDisableReport() -> SteamControllerFeatureReport {

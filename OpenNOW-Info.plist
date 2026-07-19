@@ -4,6 +4,23 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>gfnpc</string>
+			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>AppIcon</string>
+			<key>CFBundleTypeName</key>
+			<string>GeForce NOW game</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -16,23 +33,6 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeIconFile</key>
-			<string>AppIcon</string>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>gfnpc</string>
-			</array>
-			<key>CFBundleTypeName</key>
-			<string>GeForce NOW game</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-		</dict>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -56,16 +56,16 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
-	<key>NSHumanReadableCopyright</key>
-	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>OpenNOW writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
 </dict>
 </plist>

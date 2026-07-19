@@ -1175,8 +1175,10 @@ private enum StoreIconAsset: CaseIterable {
 
 private struct ExperimentalFeaturesSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
+    @State private var showingControllerTest = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1208,13 +1210,119 @@ private struct ExperimentalFeaturesSettingsPage: View {
             }
 
             SettingsCard(title: "Input") {
-                SettingsToggleRow(
-                    title: "Steam Controller Support",
-                    subtitle: steamControllerSupportEnabled ? "Valve Steam Controller input is forwarded to streams. Requires the Input Monitoring permission and the Steam client to be closed." : "Opt in to recognize Valve Steam Controllers (original and 2026 models) over USB, dongle, or Puck during streams.",
-                    isOn: steamControllerSupportEnabled,
-                    action: setSteamControllerSupportEnabled
-                )
+                HStack(alignment: .center, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Steam Controller Support")
+                            .font(.settingsNvidia(size: 15, weight: .bold))
+                            .foregroundStyle(.white.opacity(1))
+                        Text(steamControllerSupportEnabled ? "Valve Steam Controller input is forwarded to streams. Requires the Input Monitoring permission and the Steam client to be closed." : "Opt in to recognize Valve Steam Controllers (original and 2026 models) over USB, dongle, or Puck during streams.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { steamControllerSupportEnabled }, set: { setSteamControllerSupportEnabled($0) }))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+
+                if steamControllerSupportEnabled {
+                    SettingsDivider()
+                    HStack(spacing: 12) {
+                        Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? Color.openNowGreen : .orange)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(hidMonitor.inputMonitoringPermissionGranted ? "Input Monitoring Permission Granted" : "Input Monitoring Permission Required")
+                                .font(.settingsNvidia(size: 12, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.88))
+                            Text(hidMonitor.inputMonitoringPermissionGranted ? "Steam Controller HID access is enabled" : "Grant permission in System Settings → Privacy & Security → Input Monitoring")
+                                .font(.settingsNvidia(size: 11, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        Spacer()
+
+                        if !hidMonitor.inputMonitoringPermissionGranted {
+                            Button("Grant Permission") {
+                                hidMonitor.requestInputMonitoringPermission()
+                            }
+                            .font(.settingsNvidia(size: 12, weight: .bold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 14)
+                            .frame(height: 28)
+                            .background(Color.openNowGreen)
+                            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    SettingsDivider()
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Monitor Status")
+                                .font(.settingsNvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(hidMonitor.isMonitorActive ? Color.openNowGreen : .red)
+                                    .frame(width: 8, height: 8)
+                                Text(hidMonitor.isMonitorActive ? "Active" : "Inactive")
+                                    .font(.settingsNvidia(size: 12, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.88))
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Devices Matched")
+                                .font(.settingsNvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            Text("\(hidMonitor.matchedDeviceCount)")
+                                .font(.settingsNvidia(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Controllers Connected")
+                                .font(.settingsNvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            Text("\(SteamControllerHIDMonitor.connectedControllerCount)")
+                                .font(.settingsNvidia(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+
+                        Spacer()
+                    }
+
+                    SettingsDivider()
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Test Controller")
+                                .font(.settingsNvidia(size: 15, weight: .bold))
+                                .foregroundStyle(.white.opacity(1))
+                            Text("Open a visual tester to verify button presses, stick positions, and trigger values.")
+                                .font(.settingsNvidia(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+                        Spacer()
+                        Button("Open Tester") {
+                            showingControllerTest = true
+                        }
+                        .font(.settingsNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .frame(height: 32)
+                        .background(Color.openNowGreen)
+                        .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .buttonStyle(.plain)
+                    }
+                }
             }
+        }
+        .sheet(isPresented: $showingControllerTest) {
+            SteamControllerTestView()
         }
     }
 

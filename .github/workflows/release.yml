@@ -114,7 +114,7 @@ jobs:
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:
           CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
-          PRODUCT_BUNDLE_IDENTIFIER: io.github.opencloudgaming.opennow
+          PRODUCT_BUNDLE_IDENTIFIER: com.necorico.opennow
         shell: bash
 
       - name: Notarize DMG

@@ -31,6 +31,11 @@ private func writeInt16(_ report: inout [UInt8], at index: Int, value: Int16) {
     report[index + 1] = UInt8(bits >> 8)
 }
 
+private func writeUInt16(_ report: inout [UInt8], at index: Int, value: UInt16) {
+    report[index] = UInt8(value & 0xff)
+    report[index + 1] = UInt8(value >> 8)
+}
+
 private func connectionReport(detail: UInt8) -> [UInt8] {
     var report = [UInt8](repeating: 0, count: SteamControllerReport.reportLength)
     report[0] = 0x01
@@ -184,6 +189,13 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(snapshot.buttons.contains(.rightShoulder))
     }
 
+    @Test func mapsBackGripButtons() {
+        #expect(parsedState(tritonReport(buttons: 0x0002_0000), model: .triton).buttons.contains(.leftGrip))
+        #expect(parsedState(tritonReport(buttons: 0x0004_0000), model: .triton).buttons.contains(.leftGrip2))
+        #expect(parsedState(tritonReport(buttons: 0x0000_0080), model: .triton).buttons.contains(.rightGrip))
+        #expect(parsedState(tritonReport(buttons: 0x0000_0100), model: .triton).buttons.contains(.rightGrip2))
+    }
+
     @Test func mapsDpadMenuAndStickClicks() {
         let snapshot = parsedState(tritonReport(buttons: 0x0000_fc60), model: .triton)
         #expect(snapshot.buttons.contains(.dpadDown))
@@ -232,10 +244,93 @@ private func tritonReport(reportID: UInt8 = 0x42,
 
     @Test func lizardModeReportUsesFeatureReportOne() {
         let reports = SteamControllerReport.lizardModeDisableReports(model: .triton)
-        #expect(reports.count == 1)
+        #expect(reports.count == 2)
         #expect(reports[0].reportID == 1)
         #expect(reports[0].bytes.count == SteamControllerReport.reportLength)
-        #expect(Array(reports[0].bytes[0...5]) == [0x01, 0x87, 0x03, 0x09, 0x00, 0x00])
-        #expect(SteamControllerReport.lizardModeHeartbeatReport(model: .triton) == reports[0])
+        #expect(Array(reports[0].bytes[0...2]) == [0x01, 0x81, 0x00])
+        #expect(reports[1].reportID == 1)
+        #expect(reports[1].bytes.count == SteamControllerReport.reportLength)
+        #expect(Array(reports[1].bytes[0...5]) == [0x01, 0x87, 0x03, 0x09, 0x00, 0x00])
+        #expect(SteamControllerReport.lizardModeHeartbeatReport(model: .triton) == reports[1])
+    }
+}
+
+private func deckStateReport(buttons: UInt64 = 0,
+                             leftTrigger: UInt16 = 0,
+                             rightTrigger: UInt16 = 0,
+                             leftStickX: Int16 = 0,
+                             leftStickY: Int16 = 0,
+                             rightStickX: Int16 = 0,
+                             rightStickY: Int16 = 0) -> [UInt8] {
+    var report = [UInt8](repeating: 0, count: 60)
+    report[0] = 0x09
+    report[8] = UInt8(buttons & 0xff)
+    report[9] = UInt8((buttons >> 8) & 0xff)
+    report[10] = UInt8((buttons >> 16) & 0xff)
+    report[11] = UInt8((buttons >> 24) & 0xff)
+    report[12] = UInt8((buttons >> 32) & 0xff)
+    report[13] = UInt8((buttons >> 40) & 0xff)
+    report[14] = UInt8((buttons >> 48) & 0xff)
+    report[15] = UInt8((buttons >> 56) & 0xff)
+    writeUInt16(&report, at: 44, value: leftTrigger)
+    writeUInt16(&report, at: 46, value: rightTrigger)
+    writeInt16(&report, at: 48, value: leftStickX)
+    writeInt16(&report, at: 50, value: leftStickY)
+    writeInt16(&report, at: 52, value: rightStickX)
+    writeInt16(&report, at: 54, value: rightStickY)
+    return report
+}
+
+private func parsedDeckState(_ report: [UInt8]) -> SteamControllerInputSnapshot {
+    guard case .state(let snapshot) = SteamControllerReport.parseDeckState(report, previous: SteamControllerInputSnapshot()) else {
+        Issue.record("Expected a deck state event")
+        return SteamControllerInputSnapshot()
+    }
+    return snapshot
+}
+
+@Suite struct SteamControllerDeckReportTests {
+    @Test func mapsFaceButtonsAndShoulders() {
+        let snapshot = parsedDeckState(deckStateReport(buttons: 0x0000_0000_0000_00ff))
+        #expect(snapshot.buttons.contains(.south))
+        #expect(snapshot.buttons.contains(.east))
+        #expect(snapshot.buttons.contains(.west))
+        #expect(snapshot.buttons.contains(.north))
+        #expect(snapshot.buttons.contains(.leftShoulder))
+        #expect(snapshot.buttons.contains(.rightShoulder))
+    }
+
+    @Test func mapsAllBackGrips() {
+        let snapshot = parsedDeckState(deckStateReport(buttons: (1 << 41) | (1 << 42) | (1 << 15) | (1 << 16)))
+        #expect(snapshot.buttons.contains(.leftGrip))
+        #expect(snapshot.buttons.contains(.rightGrip))
+        #expect(snapshot.buttons.contains(.leftGrip2))
+        #expect(snapshot.buttons.contains(.rightGrip2))
+    }
+
+    @Test func mapsDpadMenuAndStickClicks() {
+        let snapshot = parsedDeckState(deckStateReport(buttons: 0x0000_0000_0440_5f00))
+        #expect(snapshot.buttons.contains(.dpadUp))
+        #expect(snapshot.buttons.contains(.dpadRight))
+        #expect(snapshot.buttons.contains(.dpadLeft))
+        #expect(snapshot.buttons.contains(.dpadDown))
+        #expect(snapshot.buttons.contains(.select))
+        #expect(snapshot.buttons.contains(.start))
+        #expect(snapshot.buttons.contains(.leftStick))
+        #expect(snapshot.buttons.contains(.rightStick))
+    }
+
+    @Test func mapsAnalogTriggersAndSticks() {
+        let snapshot = parsedDeckState(deckStateReport(leftTrigger: UInt16.max, rightTrigger: 32768, leftStickX: Int16.max, leftStickY: Int16.min, rightStickX: -16384, rightStickY: Int16.max))
+        #expect(snapshot.leftTrigger == 1.0)
+        #expect(abs(snapshot.rightTrigger - 0.5) < 0.001)
+        #expect(snapshot.leftStickX == 1.0)
+        #expect(snapshot.leftStickY == -1.0)
+        #expect(abs(snapshot.rightStickX + 0.5) < 0.001)
+        #expect(snapshot.rightStickY == 1.0)
+    }
+
+    @Test func ignoresShortReports() {
+        #expect(SteamControllerReport.parseDeckState([0x09], previous: SteamControllerInputSnapshot()) == .ignored)
     }
 }

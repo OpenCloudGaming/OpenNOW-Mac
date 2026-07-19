@@ -150,6 +150,10 @@ public struct GamepadButtons: OptionSet, Codable, Equatable, Hashable, Sendable 
     public static let dpadDown = GamepadButtons(rawValue: 1 << 11)
     public static let dpadLeft = GamepadButtons(rawValue: 1 << 12)
     public static let dpadRight = GamepadButtons(rawValue: 1 << 13)
+    public static let leftGrip = GamepadButtons(rawValue: 1 << 14)
+    public static let rightGrip = GamepadButtons(rawValue: 1 << 15)
+    public static let leftGrip2 = GamepadButtons(rawValue: 1 << 16)
+    public static let rightGrip2 = GamepadButtons(rawValue: 1 << 17)
 }
 
 public struct GamepadState: Codable, Equatable, Hashable, Sendable {
