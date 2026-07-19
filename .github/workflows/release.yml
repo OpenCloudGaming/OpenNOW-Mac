@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, Sign, Notarize, and Release
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          swift --version
+          xcodebuild -version
+        shell: bash
+
+      - name: Install signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" "$(security list-keychains -d user | sed 's/[" ]//g')"
+
+          echo "${CERT_BASE64}" | base64 -d > certificate.p12
+          security import certificate.p12 \
+            -k "${KEYCHAIN_PATH}" \
+            -P "${CERT_PASSWORD}" \
+            -A \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/xcodebuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}" > /dev/null
+
+          echo "Available signing identities:"
+          security find-identity -v -p basic "${KEYCHAIN_PATH}"
+
+          rm -f certificate.p12
+        shell: bash
+
+      - name: Clean build artifacts
+        run: |
+          set -euo pipefail
+          rm -rf DerivedData
+        shell: bash
+
+      - name: Build OpenNOW
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+          xcodebuild build \
+            -project OpenNOW.xcodeproj \
+            -scheme OpenNOW \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath DerivedData \
+            DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
+            CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY}" \
+            CODE_SIGN_STYLE=Manual \
+            SWIFT_COMPILATION_MODE=singlefile \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime --keychain ${KEYCHAIN_PATH}"
+        shell: bash
+
+      - name: Verify code signature
+        run: |
+          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+        shell: bash
+
+      - name: Create DMG
+        run: |
+          set -euo pipefail
+          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
+          DMG_PATH="OpenNOW.dmg"
+
+          echo "Stripping get-task-allow entitlement..."
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/${PRODUCT_BUNDLE_IDENTIFIER}.entitlements" 2>/dev/null || true
+
+          echo "Re-signing with stripped entitlements..."
+          codesign --force --deep --options runtime \
+            --entitlements "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" \
+            --sign "${CODE_SIGN_IDENTITY}" \
+            --timestamp \
+            --keychain "${RUNNER_TEMP}/build.keychain-db" \
+            "${APP_PATH}"
+
+          echo "Creating DMG..."
+          hdiutil create -volname OpenNOW -srcfolder "${APP_PATH}" -ov -format UDZO "${DMG_PATH}"
+          codesign --force --keychain "${RUNNER_TEMP}/build.keychain-db" \
+            --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
+        env:
+          CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
+          PRODUCT_BUNDLE_IDENTIFIER: io.github.opencloudgaming.opennow
+        shell: bash
+
+      - name: Notarize DMG
+        env:
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          echo "${NOTARY_KEY}" | base64 -d > notary.p8
+
+          xcrun notarytool submit OpenNOW.dmg \
+            --key notary.p8 \
+            --key-id "${NOTARY_KEY_ID}" \
+            --issuer "${NOTARY_ISSUER_ID}" \
+            --team-id "${TEAM_ID}" \
+            --wait \
+            --timeout 30m \
+            > notarytool-output.txt 2>&1 || true
+
+          cat notarytool-output.txt
+
+          SUBMISSION_ID=$(grep "  id:" notarytool-output.txt | tail -1 | awk '{print $2}')
+          STATUS=$(grep "  status:" notarytool-output.txt | tail -1 | awk '{print $2}')
+
+          echo "Submission ID: ${SUBMISSION_ID}"
+          echo "Status: ${STATUS}"
+
+          if [ "${STATUS}" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: ${STATUS}"
+            xcrun notarytool log "${SUBMISSION_ID}" \
+              --key notary.p8 \
+              --key-id "${NOTARY_KEY_ID}" \
+              --issuer "${NOTARY_ISSUER_ID}" \
+              --team-id "${TEAM_ID}" \
+              notarization-log.json || true
+            if [ -f notarization-log.json ]; then
+              cat notarization-log.json
+            fi
+            rm -f notary.p8
+            exit 1
+          fi
+
+          xcrun stapler staple OpenNOW.dmg
+          rm -f notary.p8 notarytool-output.txt
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenNOW
+          path: OpenNOW.dmg
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenNOW.dmg
+          generate_release_notes: true
