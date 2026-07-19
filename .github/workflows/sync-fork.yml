@@ -18,13 +18,13 @@ jobs:
         run: |
           git remote add upstream https://github.com/OpenCloudGaming/OpenNOW-Mac.git
           git fetch upstream main
-          git push origin "refs/remotes/upstream/main:refs/heads/upstream" --force
+          git push origin "refs/remotes/upstream/main:refs/heads/upstream/main" --force
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Check for changes
         run: |
-          git fetch origin main upstream
+          git fetch origin main
           if git merge-base --is-ancestor upstream/main origin/main; then
             echo "BEHIND=false" >> $GITHUB_OUTPUT
           else
@@ -37,7 +37,7 @@ jobs:
         run: |
           gh pr create \
             --base main \
-            --head upstream \
+            --head upstream/main \
             --title "chore: sync upstream" \
             --body "Upstream has new commits. Review and merge into main." \
             --label "upstream-sync" || true
