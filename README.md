@@ -2,6 +2,8 @@
 
 OpenNOW is a native macOS cloud gaming client for browsing, launching, streaming, and recording GeForce NOW sessions.
 
+> **This is a fork of [OpenNOW-Mac](https://github.com/opennow/opennow-mac) that adds support for the Steam Controller 2026 ("Triton")** — including wired, Bluetooth LE, and 2.4 GHz dongle variants, with full HID input parsing and gamepad forwarding to GeForce NOW streams.
+
 ## Current State
 
 The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and a root Swift package for tests. The visible frontend lives under `View` and includes:
