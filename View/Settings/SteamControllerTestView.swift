@@ -5,6 +5,8 @@ struct SteamControllerTestView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = SteamControllerTestModel()
 
+    private static let backgroundColor = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -24,7 +26,7 @@ struct SteamControllerTestView: View {
             }
         }
         .frame(minWidth: 860, minHeight: 700)
-        .background(Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255))
+        .background(Self.backgroundColor)
         .foregroundStyle(.white)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
@@ -92,143 +94,120 @@ struct SteamControllerTestView: View {
         .padding(.vertical, 80)
     }
 
+    // MARK: - Controller diagram
+
     private var controllerDiagram: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
+            shoulderRow
             controllerBody
-            shoulderButtons
-            backGripButtons
-        }
-    }
-
-    private var backGripButtons: some View {
-        HStack(spacing: 12) {
-            VStack(spacing: 4) {
-                gripButton("L4", pressed: model.snapshot.buttons.contains(.leftGrip))
-                    .frame(width: 70, height: 28)
-                gripButton("L5", pressed: model.snapshot.buttons.contains(.leftGrip2))
-                    .frame(width: 70, height: 28)
-            }
-            Text("BACK GRIPS")
-                .font(OpenNOWNVIDIAFont.font(size: 8, weight: .bold))
-                .tracking(0.8)
+            Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
+                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .medium))
+                .tracking(0.5)
                 .foregroundStyle(.white.opacity(0.2))
-            VStack(spacing: 4) {
-                gripButton("R4", pressed: model.snapshot.buttons.contains(.rightGrip))
-                    .frame(width: 70, height: 28)
-                gripButton("R5", pressed: model.snapshot.buttons.contains(.rightGrip2))
-                    .frame(width: 70, height: 28)
-            }
         }
-        .padding(.top, 16)
     }
 
-    private func gripButton(_ label: String, pressed: Bool) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
-                )
-            Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
-                .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.5))
+    private var shoulderRow: some View {
+        HStack {
+            VStack(spacing: 4) {
+                triggerButton("L2", value: model.snapshot.leftTrigger)
+                    .frame(width: 120, height: 30)
+                bumperButton("L1", pressed: model.snapshot.buttons.contains(.leftShoulder))
+                    .frame(width: 140, height: 22)
+            }
+            Spacer()
+            VStack(spacing: 4) {
+                triggerButton("R2", value: model.snapshot.rightTrigger)
+                    .frame(width: 120, height: 30)
+                bumperButton("R1", pressed: model.snapshot.buttons.contains(.rightShoulder))
+                    .frame(width: 140, height: 22)
+            }
         }
+        .padding(.horizontal, 82)
+        .frame(width: 560)
     }
 
     private var controllerBody: some View {
         ZStack {
-            controllerOutline
+            SteamControllerSilhouette()
+                .fill(Color.white.opacity(0.035))
+            SteamControllerSilhouette()
+                .stroke(Color.white.opacity(0.14), lineWidth: 1.5)
 
-            VStack {
-                HStack(spacing: 0) {
-                    leftStickView
-                        .frame(width: 120, height: 120)
-                    Spacer()
-                    faceButtonsView
-                        .frame(width: 120, height: 120)
-                }
-                .padding(.horizontal, 60)
-                .padding(.top, 20)
+            dpadView
+                .frame(width: 100, height: 100)
+                .position(x: 152, y: 132)
 
-                Spacer()
+            faceButtonsView
+                .frame(width: 110, height: 110)
+                .position(x: 408, y: 132)
 
-                HStack(spacing: 0) {
-                    dpadView
-                        .frame(width: 100, height: 100)
-                    Spacer()
-                    rightStickView
-                        .frame(width: 120, height: 120)
-                }
-                .padding(.horizontal, 70)
-                .padding(.bottom, 20)
-            }
-            .frame(width: 440, height: 280)
+            centerButton(icon: "square.on.square", pressed: model.snapshot.buttons.contains(.select))
+                .position(x: 238, y: 92)
+            centerButton(icon: "line.3.horizontal", pressed: model.snapshot.buttons.contains(.start))
+                .position(x: 322, y: 92)
 
-            centerButtonsView
+            steamButtonView(pressed: model.snapshot.buttons.contains(.mode))
+                .position(x: 280, y: 162)
+            quickAccessButtonView(pressed: model.snapshot.buttons.contains(.quickAccess))
+                .position(x: 280, y: 205)
+
+            stickView(
+                label: "LS",
+                x: model.snapshot.leftStickX,
+                y: model.snapshot.leftStickY,
+                pressed: model.snapshot.buttons.contains(.leftStick)
+            )
+            .position(x: 206, y: 240)
+
+            stickView(
+                label: "RS",
+                x: model.snapshot.rightStickX,
+                y: model.snapshot.rightStickY,
+                pressed: model.snapshot.buttons.contains(.rightStick)
+            )
+            .position(x: 354, y: 240)
+
+            trackpadView(model.snapshot.leftPad)
+                .rotationEffect(.degrees(-14))
+                .position(x: 168, y: 330)
+            trackpadView(model.snapshot.rightPad)
+                .rotationEffect(.degrees(14))
+                .position(x: 392, y: 330)
+
+            backGripPill("L4", pressed: model.snapshot.buttons.contains(.leftGrip))
+                .rotationEffect(.degrees(-14))
+                .position(x: 84, y: 296)
+            backGripPill("L5", pressed: model.snapshot.buttons.contains(.leftGrip2))
+                .rotationEffect(.degrees(-18))
+                .position(x: 72, y: 344)
+            backGripPill("R4", pressed: model.snapshot.buttons.contains(.rightGrip))
+                .rotationEffect(.degrees(14))
+                .position(x: 476, y: 296)
+            backGripPill("R5", pressed: model.snapshot.buttons.contains(.rightGrip2))
+                .rotationEffect(.degrees(18))
+                .position(x: 488, y: 344)
         }
-        .frame(width: 500, height: 320)
+        .frame(width: 560, height: 440)
     }
 
-    private var controllerOutline: some View {
-        Canvas { context, size in
-            let w = size.width
-            let h = size.height
-
-            let bodyRect = CGRect(x: w * 0.08, y: h * 0.05, width: w * 0.84, height: h * 0.9)
-            let bodyPath = Path(roundedRect: bodyRect, cornerRadius: 60)
-
-            let leftGrip = Path { p in
-                p.move(to: CGPoint(x: w * 0.12, y: h * 0.55))
-                p.addQuadCurve(to: CGPoint(x: w * 0.02, y: h * 0.95),
-                               control: CGPoint(x: w * 0.0, y: h * 0.75))
-                p.addQuadCurve(to: CGPoint(x: w * 0.18, y: h * 0.95),
-                               control: CGPoint(x: w * 0.08, y: h * 1.02))
-                p.addLine(to: CGPoint(x: w * 0.22, y: h * 0.7))
+    private func triggerButton(_ label: String, value: Float) -> some View {
+        let pressed = value > 0.05
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: 14,
+            bottomLeadingRadius: 6,
+            bottomTrailingRadius: 6,
+            topTrailingRadius: 14
+        )
+        return ZStack {
+            shape.fill(Color.white.opacity(0.04))
+            GeometryReader { geo in
+                shape
+                    .fill(Color.openNowGreen.opacity(0.3))
+                    .frame(width: geo.size.width * CGFloat(max(0, min(1, value))))
             }
-
-            let rightGrip = Path { p in
-                p.move(to: CGPoint(x: w * 0.88, y: h * 0.55))
-                p.addQuadCurve(to: CGPoint(x: w * 0.98, y: h * 0.95),
-                               control: CGPoint(x: w * 1.0, y: h * 0.75))
-                p.addQuadCurve(to: CGPoint(x: w * 0.82, y: h * 0.95),
-                               control: CGPoint(x: w * 0.92, y: h * 1.02))
-                p.addLine(to: CGPoint(x: w * 0.78, y: h * 0.7))
-            }
-
-            let strokeColor = Color.white.opacity(0.12)
-            let fillColor = Color.white.opacity(0.03)
-
-            context.fill(bodyPath, with: .color(fillColor))
-            context.stroke(bodyPath, with: .color(strokeColor), lineWidth: 1.5)
-            context.stroke(leftGrip, with: .color(strokeColor), lineWidth: 1.5)
-            context.stroke(rightGrip, with: .color(strokeColor), lineWidth: 1.5)
-        }
-    }
-
-    private var shoulderButtons: some View {
-        HStack(spacing: 0) {
-            triggerButton("L2", value: model.snapshot.leftTrigger, pressed: model.snapshot.leftTrigger > 0.05)
-                .frame(width: 100, height: 36)
-            bumperButton("L1", pressed: model.snapshot.buttons.contains(.leftShoulder))
-                .frame(width: 80, height: 28)
-            Spacer()
-            bumperButton("R1", pressed: model.snapshot.buttons.contains(.rightShoulder))
-                .frame(width: 80, height: 28)
-            triggerButton("R2", value: model.snapshot.rightTrigger, pressed: model.snapshot.rightTrigger > 0.05)
-                .frame(width: 100, height: 36)
-        }
-        .frame(width: 500)
-    }
-
-    private func triggerButton(_ label: String, value: Float, pressed: Bool) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
-                )
+            .clipShape(shape)
+            shape.stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             HStack(spacing: 4) {
                 Text(label)
                     .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
@@ -243,10 +222,10 @@ struct SteamControllerTestView: View {
 
     private func bumperButton(_ label: String, pressed: Bool) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 6)
+            Capsule()
                 .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    Capsule()
                         .stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
                 )
             Text(label)
@@ -255,54 +234,40 @@ struct SteamControllerTestView: View {
         }
     }
 
-    private var leftStickView: some View {
-        stickView(
-            label: "LS",
-            x: model.snapshot.leftStickX,
-            y: model.snapshot.leftStickY,
-            pressed: model.snapshot.buttons.contains(.leftStick)
-        )
-    }
-
-    private var rightStickView: some View {
-        stickView(
-            label: "RS",
-            x: model.snapshot.rightStickX,
-            y: model.snapshot.rightStickY,
-            pressed: model.snapshot.buttons.contains(.rightStick)
-        )
-    }
-
     private func stickView(label: String, x: Float, y: Float, pressed: Bool) -> some View {
         let active = pressed || abs(x) > 0.05 || abs(y) > 0.05
         return ZStack {
             Circle()
-                .stroke(Color.white.opacity(active ? 0.2 : 0.08), lineWidth: 1)
-                .background(Circle().fill(Color.white.opacity(0.02)))
-
-            Circle()
-                .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                .frame(width: 8, height: 8)
+                .fill(Color.white.opacity(0.02))
+                .overlay(
+                    Circle().stroke(
+                        pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(active ? 0.22 : 0.1),
+                        lineWidth: pressed ? 1.5 : 1
+                    )
+                )
+                .frame(width: 88, height: 88)
 
             Path { p in
-                p.move(to: CGPoint(x: 0, y: -45))
-                p.addLine(to: CGPoint(x: 0, y: 45))
-                p.move(to: CGPoint(x: -45, y: 0))
-                p.addLine(to: CGPoint(x: 45, y: 0))
+                p.move(to: CGPoint(x: 44, y: 6))
+                p.addLine(to: CGPoint(x: 44, y: 82))
+                p.move(to: CGPoint(x: 6, y: 44))
+                p.addLine(to: CGPoint(x: 82, y: 44))
             }
-            .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
+            .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
+            .frame(width: 88, height: 88)
 
             Circle()
                 .fill(active ? Color.openNowGreen : Color.white.opacity(0.3))
-                .frame(width: 18, height: 18)
+                .frame(width: 20, height: 20)
                 .shadow(color: active ? Color.openNowGreen.opacity(0.5) : .clear, radius: 6)
-                .offset(x: CGFloat(x) * 35, y: CGFloat(-y) * 35)
+                .offset(x: CGFloat(x) * 30, y: CGFloat(-y) * 30)
 
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 8, weight: .bold))
                 .foregroundStyle(.white.opacity(0.2))
-                .offset(y: 50)
+                .offset(y: 54)
         }
+        .frame(width: 104, height: 118)
     }
 
     private var faceButtonsView: some View {
@@ -358,27 +323,116 @@ struct SteamControllerTestView: View {
         }
     }
 
-    private var centerButtonsView: some View {
-        HStack(spacing: 20) {
-            centerButton("SELECT", pressed: model.snapshot.buttons.contains(.select))
-            centerButton("START", pressed: model.snapshot.buttons.contains(.start))
+    private func centerButton(icon: String, pressed: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
+            Circle()
+                .stroke(pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.35))
         }
-        .offset(y: -60)
+        .frame(width: 24, height: 24)
     }
 
-    private func centerButton(_ label: String, pressed: Bool) -> some View {
-        Text(label)
-            .font(OpenNOWNVIDIAFont.font(size: 8, weight: .bold))
-            .tracking(0.8)
-            .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.25))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(pressed ? Color.openNowGreen.opacity(0.15) : Color.white.opacity(0.03))
-            )
-            .overlay(Capsule().stroke(pressed ? Color.openNowGreen.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 0.5))
+    private func steamButtonView(pressed: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.05))
+                .overlay(Circle().stroke(pressed ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.16), lineWidth: 1))
+                .shadow(color: pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 6)
+            Canvas { context, size in
+                let ink = pressed ? Color.openNowGreen : Color.white.opacity(0.4)
+                let bigCenter = CGPoint(x: size.width * 0.40, y: size.height * 0.62)
+                let smallCenter = CGPoint(x: size.width * 0.66, y: size.height * 0.36)
+                var rod = Path()
+                rod.move(to: bigCenter)
+                rod.addLine(to: smallCenter)
+                context.stroke(rod, with: .color(ink), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                let bigRadius = size.width * 0.17
+                let smallRadius = size.width * 0.11
+                context.fill(Path(ellipseIn: CGRect(x: bigCenter.x - bigRadius, y: bigCenter.y - bigRadius, width: bigRadius * 2, height: bigRadius * 2)), with: .color(ink))
+                context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallRadius, y: smallCenter.y - smallRadius, width: smallRadius * 2, height: smallRadius * 2)), with: .color(ink))
+                let bigHole = bigRadius * 0.45
+                let smallHole = smallRadius * 0.45
+                context.fill(Path(ellipseIn: CGRect(x: bigCenter.x - bigHole, y: bigCenter.y - bigHole, width: bigHole * 2, height: bigHole * 2)), with: .color(Self.backgroundColor))
+                context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallHole, y: smallCenter.y - smallHole, width: smallHole * 2, height: smallHole * 2)), with: .color(Self.backgroundColor))
+            }
+            .frame(width: 34, height: 34)
+            .clipShape(Circle())
+        }
+        .frame(width: 36, height: 36)
     }
+
+    private func quickAccessButtonView(pressed: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
+            Circle()
+                .stroke(pressed ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
+            Image(systemName: "ellipsis")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.35))
+        }
+        .frame(width: 20, height: 20)
+        .shadow(color: pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 5)
+    }
+
+    private func trackpadView(_ pad: SteamControllerTrackpadState) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(pad.pressed ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.045))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12).stroke(
+                        pad.pressed ? Color.openNowGreen.opacity(0.8) : (pad.touched ? Color.openNowGreen.opacity(0.45) : Color.white.opacity(0.14)),
+                        lineWidth: pad.pressed ? 1.5 : 1
+                    )
+                )
+                .shadow(color: pad.pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 6)
+            Canvas { context, size in
+                let count = 5
+                for row in 0..<count {
+                    for column in 0..<count {
+                        let x = size.width * CGFloat(column + 1) / CGFloat(count + 1)
+                        let y = size.height * CGFloat(row + 1) / CGFloat(count + 1)
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)),
+                            with: .color(.white.opacity(0.1))
+                        )
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            if pad.touched {
+                Circle()
+                    .fill(pad.pressed ? Color.openNowGreen : Color.openNowGreen.opacity(0.6))
+                    .frame(width: 12, height: 12)
+                    .shadow(color: Color.openNowGreen.opacity(0.5), radius: 4)
+                    .offset(x: CGFloat(pad.x) * 30, y: CGFloat(-pad.y) * 30)
+            }
+        }
+        .frame(width: 76, height: 76)
+    }
+
+    private func backGripPill(_ label: String, pressed: Bool) -> some View {
+        ZStack {
+            Capsule()
+                .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.02))
+            Capsule()
+                .stroke(
+                    pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(0.18),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
+                )
+            Text(label)
+                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
+                .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.4))
+        }
+        .frame(width: 42, height: 20)
+    }
+
+    // MARK: - Raw values
 
     private var rawValuesPanel: some View {
         VStack(spacing: 16) {
@@ -407,6 +461,10 @@ struct SteamControllerTestView: View {
             axisBar("RY", value: model.snapshot.rightStickY)
             axisBar("LT", value: model.snapshot.leftTrigger * 2 - 1, raw: model.snapshot.leftTrigger, unsigned: true)
             axisBar("RT", value: model.snapshot.rightTrigger * 2 - 1, raw: model.snapshot.rightTrigger, unsigned: true)
+            axisBar("LPX", value: model.snapshot.leftPad.x)
+            axisBar("LPY", value: model.snapshot.leftPad.y)
+            axisBar("RPX", value: model.snapshot.rightPad.x)
+            axisBar("RPY", value: model.snapshot.rightPad.y)
         }
         .frame(maxWidth: .infinity)
     }
@@ -417,7 +475,7 @@ struct SteamControllerTestView: View {
             Text(label)
                 .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
                 .foregroundStyle(.white.opacity(0.4))
-                .frame(width: 22, alignment: .leading)
+                .frame(width: 28, alignment: .leading)
             GeometryReader { geo in
                 let barWidth = geo.size.width
                 if unsigned {
@@ -461,6 +519,8 @@ struct SteamControllerTestView: View {
             buttonStateRow("RB", active: model.snapshot.buttons.contains(.rightShoulder))
             buttonStateRow("SEL", active: model.snapshot.buttons.contains(.select))
             buttonStateRow("STA", active: model.snapshot.buttons.contains(.start))
+            buttonStateRow("STM", active: model.snapshot.buttons.contains(.mode))
+            buttonStateRow("QAM", active: model.snapshot.buttons.contains(.quickAccess))
             buttonStateRow("LS", active: model.snapshot.buttons.contains(.leftStick))
             buttonStateRow("RS", active: model.snapshot.buttons.contains(.rightStick))
             buttonStateRow("DU", active: model.snapshot.buttons.contains(.dpadUp))
@@ -471,6 +531,10 @@ struct SteamControllerTestView: View {
             buttonStateRow("R4", active: model.snapshot.buttons.contains(.rightGrip))
             buttonStateRow("L5", active: model.snapshot.buttons.contains(.leftGrip2))
             buttonStateRow("R5", active: model.snapshot.buttons.contains(.rightGrip2))
+            buttonStateRow("LPT", active: model.snapshot.leftPad.touched)
+            buttonStateRow("RPT", active: model.snapshot.rightPad.touched)
+            buttonStateRow("LPC", active: model.snapshot.leftPad.pressed)
+            buttonStateRow("RPC", active: model.snapshot.rightPad.pressed)
         }
         .frame(maxWidth: .infinity)
     }
@@ -485,6 +549,31 @@ struct SteamControllerTestView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(active ? Color.openNowGreen.opacity(0.8) : .white.opacity(0.2))
         }
+    }
+}
+
+private struct SteamControllerSilhouette: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * w, y: rect.minY + y * h)
+        }
+
+        var path = Path()
+        path.move(to: point(0.5, 0.055))
+        path.addQuadCurve(to: point(0.78, 0.085), control: point(0.645, 0.04))
+        path.addQuadCurve(to: point(0.965, 0.36), control: point(0.94, 0.12))
+        path.addQuadCurve(to: point(0.88, 0.92), control: point(1.005, 0.66))
+        path.addQuadCurve(to: point(0.64, 0.90), control: point(0.77, 1.02))
+        path.addQuadCurve(to: point(0.5, 0.64), control: point(0.56, 0.70))
+        path.addQuadCurve(to: point(0.36, 0.90), control: point(0.44, 0.70))
+        path.addQuadCurve(to: point(0.12, 0.92), control: point(0.23, 1.02))
+        path.addQuadCurve(to: point(0.035, 0.36), control: point(-0.005, 0.66))
+        path.addQuadCurve(to: point(0.22, 0.085), control: point(0.06, 0.12))
+        path.addQuadCurve(to: point(0.5, 0.055), control: point(0.355, 0.04))
+        path.closeSubpath()
+        return path
     }
 }
 

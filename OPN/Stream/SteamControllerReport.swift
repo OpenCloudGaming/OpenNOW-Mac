@@ -1,5 +1,25 @@
 import Foundation
 
+public struct SteamControllerTrackpadState: Equatable, Sendable {
+    public var x: Float
+    public var y: Float
+    public var pressure: Float
+    public var touched: Bool
+    public var pressed: Bool
+
+    public init(x: Float = 0,
+                y: Float = 0,
+                pressure: Float = 0,
+                touched: Bool = false,
+                pressed: Bool = false) {
+        self.x = x
+        self.y = y
+        self.pressure = pressure
+        self.touched = touched
+        self.pressed = pressed
+    }
+}
+
 public struct SteamControllerInputSnapshot: Equatable, Sendable {
     public var buttons: GamepadButtons
     public var leftTrigger: Float
@@ -8,6 +28,8 @@ public struct SteamControllerInputSnapshot: Equatable, Sendable {
     public var leftStickY: Float
     public var rightStickX: Float
     public var rightStickY: Float
+    public var leftPad: SteamControllerTrackpadState
+    public var rightPad: SteamControllerTrackpadState
 
     public init(buttons: GamepadButtons = [],
                 leftTrigger: Float = 0,
@@ -15,7 +37,9 @@ public struct SteamControllerInputSnapshot: Equatable, Sendable {
                 leftStickX: Float = 0,
                 leftStickY: Float = 0,
                 rightStickX: Float = 0,
-                rightStickY: Float = 0) {
+                rightStickY: Float = 0,
+                leftPad: SteamControllerTrackpadState = SteamControllerTrackpadState(),
+                rightPad: SteamControllerTrackpadState = SteamControllerTrackpadState()) {
         self.buttons = buttons
         self.leftTrigger = leftTrigger
         self.rightTrigger = rightTrigger
@@ -23,6 +47,8 @@ public struct SteamControllerInputSnapshot: Equatable, Sendable {
         self.leftStickY = leftStickY
         self.rightStickX = rightStickX
         self.rightStickY = rightStickY
+        self.leftPad = leftPad
+        self.rightPad = rightPad
     }
 }
 
@@ -116,6 +142,7 @@ public enum SteamControllerReport {
         static let dpadLeft: UInt8 = 0x04
         static let dpadDown: UInt8 = 0x08
         static let select: UInt8 = 0x10
+        static let steam: UInt8 = 0x20
         static let start: UInt8 = 0x40
 
         static let rightPadClick: UInt8 = 0x04
@@ -130,6 +157,7 @@ public enum SteamControllerReport {
         static let east: UInt32 = 0x0000_0002
         static let west: UInt32 = 0x0000_0004
         static let north: UInt32 = 0x0000_0008
+        static let quickAccess: UInt32 = 0x0000_0010
         static let rightStick: UInt32 = 0x0000_0020
         static let start: UInt32 = 0x0000_0040
         static let rightShoulder: UInt32 = 0x0000_0200
@@ -139,11 +167,16 @@ public enum SteamControllerReport {
         static let dpadUp: UInt32 = 0x0000_2000
         static let select: UInt32 = 0x0000_4000
         static let leftStick: UInt32 = 0x0000_8000
+        static let steam: UInt32 = 0x0001_0000
         static let leftShoulder: UInt32 = 0x0008_0000
         static let leftGrip: UInt32 = 0x0002_0000
         static let rightGrip: UInt32 = 0x0000_0080
         static let leftGrip2: UInt32 = 0x0004_0000
         static let rightGrip2: UInt32 = 0x0000_0100
+        static let rightPadTouch: UInt32 = 0x0020_0000
+        static let rightPadClick: UInt32 = 0x0040_0000
+        static let leftPadTouch: UInt32 = 0x0200_0000
+        static let leftPadClick: UInt32 = 0x0400_0000
     }
 
     private enum DeckStateButtonMask {
@@ -172,6 +205,7 @@ public enum SteamControllerReport {
         static let rightStick: UInt64 = 1 << 26
         static let leftGrip: UInt64 = 1 << 41
         static let rightGrip: UInt64 = 1 << 42
+        static let quickAccess: UInt64 = 1 << 50
     }
 
     public static func parse(_ report: [UInt8], previous: SteamControllerInputSnapshot, model: SteamControllerModel) -> SteamControllerReportEvent {
@@ -223,9 +257,13 @@ public enum SteamControllerReport {
     private static func parseTriton(_ report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerReportEvent {
         guard let reportID = report.first else { return .ignored }
         switch reportID {
-        case tritonStateReportID, tritonBLEStateReportID, tritonTimestampedStateReportID:
+        case tritonStateReportID, tritonBLEStateReportID:
             guard report.count >= 18 else { return .ignored }
-            return .state(tritonInputState(from: report))
+            return .state(tritonInputState(from: report, padOffset: 18))
+        case tritonTimestampedStateReportID:
+            // The timestamped report inserts a 16-bit trackpad timestamp before the pad data.
+            guard report.count >= 18 else { return .ignored }
+            return .state(tritonInputState(from: report, padOffset: 20))
         case tritonWirelessStatusReportID, tritonWirelessStatusXReportID:
             guard report.count >= 2 else { return .ignored }
             return connectionEvent(detail: report[1])
@@ -277,9 +315,9 @@ public enum SteamControllerReport {
         return snapshot
     }
 
-    private static func tritonInputState(from report: [UInt8]) -> SteamControllerInputSnapshot {
+    private static func tritonInputState(from report: [UInt8], padOffset: Int) -> SteamControllerInputSnapshot {
         let buttons = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
-        return SteamControllerInputSnapshot(
+        var snapshot = SteamControllerInputSnapshot(
             buttons: tritonButtons(buttons),
             leftTrigger: max(0, axis(report, at: 6)),
             rightTrigger: max(0, axis(report, at: 8)),
@@ -288,6 +326,23 @@ public enum SteamControllerReport {
             rightStickX: axis(report, at: 14),
             rightStickY: axis(report, at: 16)
         )
+        if report.count >= padOffset + 12 {
+            snapshot.leftPad = SteamControllerTrackpadState(
+                x: axis(report, at: padOffset),
+                y: axis(report, at: padOffset + 2),
+                pressure: pressure(report, at: padOffset + 4),
+                touched: buttons & TritonButtonMask.leftPadTouch != 0,
+                pressed: buttons & TritonButtonMask.leftPadClick != 0
+            )
+            snapshot.rightPad = SteamControllerTrackpadState(
+                x: axis(report, at: padOffset + 6),
+                y: axis(report, at: padOffset + 8),
+                pressure: pressure(report, at: padOffset + 10),
+                touched: buttons & TritonButtonMask.rightPadTouch != 0,
+                pressed: buttons & TritonButtonMask.rightPadClick != 0
+            )
+        }
+        return snapshot
     }
 
     private static func legacyButtons(highBits: UInt8, midBits: UInt8, lowBits: UInt8) -> GamepadButtons {
@@ -303,6 +358,7 @@ public enum SteamControllerReport {
         if midBits & LegacyButtonMask.dpadLeft != 0 { buttons.insert(.dpadLeft) }
         if midBits & LegacyButtonMask.dpadDown != 0 { buttons.insert(.dpadDown) }
         if midBits & LegacyButtonMask.select != 0 { buttons.insert(.select) }
+        if midBits & LegacyButtonMask.steam != 0 { buttons.insert(.mode) }
         if midBits & LegacyButtonMask.start != 0 { buttons.insert(.start) }
         if lowBits & LegacyButtonMask.stickClick != 0 { buttons.insert(.leftStick) }
         if lowBits & LegacyButtonMask.rightPadClick != 0 { buttons.insert(.rightStick) }
@@ -329,6 +385,8 @@ public enum SteamControllerReport {
         if bits & TritonButtonMask.rightGrip != 0 { buttons.insert(.rightGrip) }
         if bits & TritonButtonMask.leftGrip2 != 0 { buttons.insert(.leftGrip2) }
         if bits & TritonButtonMask.rightGrip2 != 0 { buttons.insert(.rightGrip2) }
+        if bits & TritonButtonMask.steam != 0 { buttons.insert(.mode) }
+        if bits & TritonButtonMask.quickAccess != 0 { buttons.insert(.quickAccess) }
         return buttons
     }
 
@@ -341,7 +399,21 @@ public enum SteamControllerReport {
             leftStickX: axis(report, at: 48),
             leftStickY: axis(report, at: 50),
             rightStickX: axis(report, at: 52),
-            rightStickY: axis(report, at: 54)
+            rightStickY: axis(report, at: 54),
+            leftPad: SteamControllerTrackpadState(
+                x: axis(report, at: 16),
+                y: axis(report, at: 18),
+                pressure: pressure(report, at: 56),
+                touched: buttons & DeckStateButtonMask.leftPadTouched != 0,
+                pressed: buttons & DeckStateButtonMask.leftPadPressed != 0
+            ),
+            rightPad: SteamControllerTrackpadState(
+                x: axis(report, at: 20),
+                y: axis(report, at: 22),
+                pressure: pressure(report, at: 58),
+                touched: buttons & DeckStateButtonMask.rightPadTouched != 0,
+                pressed: buttons & DeckStateButtonMask.rightPadPressed != 0
+            )
         )
     }
 
@@ -365,12 +437,19 @@ public enum SteamControllerReport {
         if bits & DeckStateButtonMask.rightGrip != 0 { buttons.insert(.rightGrip) }
         if bits & DeckStateButtonMask.leftGrip2 != 0 { buttons.insert(.leftGrip2) }
         if bits & DeckStateButtonMask.rightGrip2 != 0 { buttons.insert(.rightGrip2) }
+        if bits & DeckStateButtonMask.mode != 0 { buttons.insert(.mode) }
+        if bits & DeckStateButtonMask.quickAccess != 0 { buttons.insert(.quickAccess) }
         return buttons
     }
 
     private static func axis(_ report: [UInt8], at index: Int) -> Float {
         let raw = Int16(bitPattern: UInt16(report[index]) | (UInt16(report[index + 1]) << 8))
         return max(-1, min(1, Float(raw) / Float(Int16.max)))
+    }
+
+    private static func pressure(_ report: [UInt8], at index: Int) -> Float {
+        let raw = UInt16(report[index]) | (UInt16(report[index + 1]) << 8)
+        return min(1, Float(raw) / 32768)
     }
 
     private static func legacyFeatureReport(_ bytes: [UInt8]) -> SteamControllerFeatureReport {

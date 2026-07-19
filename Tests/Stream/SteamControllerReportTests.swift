@@ -80,6 +80,12 @@ private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapsh
         #expect(snapshot.buttons.contains(.rightStick))
     }
 
+    @Test func mapsSteamButton() {
+        let snapshot = parsedState(inputReport(buttons: (0, 0b0010_0000, 0)))
+        #expect(snapshot.buttons.contains(.mode))
+        #expect(parsedState(inputReport()).buttons.contains(.mode) == false)
+    }
+
     @Test func mapsAnalogTriggers() {
         let snapshot = parsedState(inputReport(leftTrigger: 255, rightTrigger: 128))
         #expect(snapshot.leftTrigger == 1.0)
@@ -151,7 +157,13 @@ private func tritonReport(reportID: UInt8 = 0x42,
                           leftStickX: Int16 = 0,
                           leftStickY: Int16 = 0,
                           rightStickX: Int16 = 0,
-                          rightStickY: Int16 = 0) -> [UInt8] {
+                          rightStickY: Int16 = 0,
+                          leftPadX: Int16 = 0,
+                          leftPadY: Int16 = 0,
+                          leftPadPressure: UInt16 = 0,
+                          rightPadX: Int16 = 0,
+                          rightPadY: Int16 = 0,
+                          rightPadPressure: UInt16 = 0) -> [UInt8] {
     var report = [UInt8](repeating: 0, count: 54)
     report[0] = reportID
     report[1] = 1
@@ -165,6 +177,14 @@ private func tritonReport(reportID: UInt8 = 0x42,
     writeInt16(&report, at: 12, value: leftStickY)
     writeInt16(&report, at: 14, value: rightStickX)
     writeInt16(&report, at: 16, value: rightStickY)
+    // Report 0x47 carries a 16-bit trackpad timestamp before the pad data.
+    let padOffset = reportID == 0x47 ? 20 : 18
+    writeInt16(&report, at: padOffset, value: leftPadX)
+    writeInt16(&report, at: padOffset + 2, value: leftPadY)
+    writeInt16(&report, at: padOffset + 4, value: Int16(bitPattern: leftPadPressure))
+    writeInt16(&report, at: padOffset + 6, value: rightPadX)
+    writeInt16(&report, at: padOffset + 8, value: rightPadY)
+    writeInt16(&report, at: padOffset + 10, value: Int16(bitPattern: rightPadPressure))
     return report
 }
 
@@ -194,6 +214,56 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(parsedState(tritonReport(buttons: 0x0004_0000), model: .triton).buttons.contains(.leftGrip2))
         #expect(parsedState(tritonReport(buttons: 0x0000_0080), model: .triton).buttons.contains(.rightGrip))
         #expect(parsedState(tritonReport(buttons: 0x0000_0100), model: .triton).buttons.contains(.rightGrip2))
+    }
+
+    @Test func mapsSteamAndQuickAccessButtons() {
+        let snapshot = parsedState(tritonReport(buttons: 0x0001_0010), model: .triton)
+        #expect(snapshot.buttons.contains(.mode))
+        #expect(snapshot.buttons.contains(.quickAccess))
+
+        let steamOnly = parsedState(tritonReport(buttons: 0x0001_0000), model: .triton)
+        #expect(steamOnly.buttons.contains(.mode))
+        #expect(steamOnly.buttons.contains(.quickAccess) == false)
+    }
+
+    @Test func mapsTrackpads() {
+        let touchBits: UInt32 = 0x0200_0000 | 0x0020_0000
+        let snapshot = parsedState(
+            tritonReport(buttons: touchBits,
+                         leftPadX: Int16.max,
+                         leftPadY: Int16.min,
+                         leftPadPressure: 16384,
+                         rightPadX: -16384,
+                         rightPadY: 16384,
+                         rightPadPressure: 32768),
+            model: .triton
+        )
+        #expect(snapshot.leftPad.touched)
+        #expect(snapshot.leftPad.pressed == false)
+        #expect(snapshot.leftPad.x == 1.0)
+        #expect(snapshot.leftPad.y == -1.0)
+        #expect(abs(snapshot.leftPad.pressure - 0.5) < 0.001)
+        #expect(snapshot.rightPad.touched)
+        #expect(abs(snapshot.rightPad.x + 0.5) < 0.001)
+        #expect(abs(snapshot.rightPad.y - 0.5) < 0.001)
+        #expect(snapshot.rightPad.pressure == 1.0)
+    }
+
+    @Test func mapsTrackpadClicks() {
+        let clickBits: UInt32 = 0x0400_0000 | 0x0040_0000
+        let snapshot = parsedState(tritonReport(buttons: clickBits), model: .triton)
+        #expect(snapshot.leftPad.pressed)
+        #expect(snapshot.rightPad.pressed)
+    }
+
+    @Test func mapsTrackpadsInTimestampedReport() {
+        let snapshot = parsedState(
+            tritonReport(reportID: 0x47, buttons: 0x0200_0000, leftPadX: Int16.max, rightPadY: Int16.max),
+            model: .triton
+        )
+        #expect(snapshot.leftPad.touched)
+        #expect(snapshot.leftPad.x == 1.0)
+        #expect(snapshot.rightPad.y == 1.0)
     }
 
     @Test func mapsDpadMenuAndStickClicks() {
@@ -261,7 +331,13 @@ private func deckStateReport(buttons: UInt64 = 0,
                              leftStickX: Int16 = 0,
                              leftStickY: Int16 = 0,
                              rightStickX: Int16 = 0,
-                             rightStickY: Int16 = 0) -> [UInt8] {
+                             rightStickY: Int16 = 0,
+                             leftPadX: Int16 = 0,
+                             leftPadY: Int16 = 0,
+                             rightPadX: Int16 = 0,
+                             rightPadY: Int16 = 0,
+                             leftPadPressure: UInt16 = 0,
+                             rightPadPressure: UInt16 = 0) -> [UInt8] {
     var report = [UInt8](repeating: 0, count: 60)
     report[0] = 0x09
     report[8] = UInt8(buttons & 0xff)
@@ -272,12 +348,18 @@ private func deckStateReport(buttons: UInt64 = 0,
     report[13] = UInt8((buttons >> 40) & 0xff)
     report[14] = UInt8((buttons >> 48) & 0xff)
     report[15] = UInt8((buttons >> 56) & 0xff)
+    writeInt16(&report, at: 16, value: leftPadX)
+    writeInt16(&report, at: 18, value: leftPadY)
+    writeInt16(&report, at: 20, value: rightPadX)
+    writeInt16(&report, at: 22, value: rightPadY)
     writeUInt16(&report, at: 44, value: leftTrigger)
     writeUInt16(&report, at: 46, value: rightTrigger)
     writeInt16(&report, at: 48, value: leftStickX)
     writeInt16(&report, at: 50, value: leftStickY)
     writeInt16(&report, at: 52, value: rightStickX)
     writeInt16(&report, at: 54, value: rightStickY)
+    writeUInt16(&report, at: 56, value: leftPadPressure)
+    writeUInt16(&report, at: 58, value: rightPadPressure)
     return report
 }
 
@@ -306,6 +388,36 @@ private func parsedDeckState(_ report: [UInt8]) -> SteamControllerInputSnapshot 
         #expect(snapshot.buttons.contains(.rightGrip))
         #expect(snapshot.buttons.contains(.leftGrip2))
         #expect(snapshot.buttons.contains(.rightGrip2))
+    }
+
+    @Test func mapsSteamAndQuickAccessButtons() {
+        let snapshot = parsedDeckState(deckStateReport(buttons: (1 << 13) | (1 << 50)))
+        #expect(snapshot.buttons.contains(.mode))
+        #expect(snapshot.buttons.contains(.quickAccess))
+        #expect(parsedDeckState(deckStateReport()).buttons.contains(.mode) == false)
+    }
+
+    @Test func mapsTrackpads() {
+        let touchAndClickBits: UInt64 = (1 << 19) | (1 << 20) | (1 << 17)
+        let snapshot = parsedDeckState(
+            deckStateReport(buttons: touchAndClickBits,
+                            leftPadX: Int16.max,
+                            leftPadY: Int16.min,
+                            rightPadX: -16384,
+                            rightPadY: 16384,
+                            leftPadPressure: 32768,
+                            rightPadPressure: 16384)
+        )
+        #expect(snapshot.leftPad.touched)
+        #expect(snapshot.leftPad.pressed)
+        #expect(snapshot.rightPad.touched)
+        #expect(snapshot.rightPad.pressed == false)
+        #expect(snapshot.leftPad.x == 1.0)
+        #expect(snapshot.leftPad.y == -1.0)
+        #expect(snapshot.leftPad.pressure == 1.0)
+        #expect(abs(snapshot.rightPad.x + 0.5) < 0.001)
+        #expect(abs(snapshot.rightPad.y - 0.5) < 0.001)
+        #expect(abs(snapshot.rightPad.pressure - 0.5) < 0.001)
     }
 
     @Test func mapsDpadMenuAndStickClicks() {

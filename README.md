@@ -14,6 +14,37 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - Local gameplay recordings with saved metadata and a recordings browser
 - Settings for account, connections, gameplay, server location, upscaling, system, and diagnostics
 
+## Steam Controller Support (Experimental)
+
+OpenNOW can read Valve Steam Controllers directly over HID, bypassing Steam. The pipeline is:
+
+1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and product ID (see below), opens them via IOKit HID, disables the firmware's built-in keyboard/mouse emulation ("lizard mode") with periodic heartbeats, and streams raw input reports.
+2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `SteamControllerInputSnapshot` (buttons, triggers, sticks, and trackpads).
+3. Snapshots feed the in-app test screen (Settings → Steam Controller Test) and, during streaming, `NativeWebRTCGamepadMonitor`, which forwards a standard gamepad subset (face buttons, D-pad, bumpers, triggers, sticks, select/start) to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and shown in the test screen but are not forwarded to the stream.
+
+### Supported hardware
+
+| Product ID | Device |
+|---|---|
+| `0x1102` | Steam Controller (2015), wired |
+| `0x1142` | Steam Controller (2015) wireless dongle |
+| `0x1302` | Steam Controller (2026, "Triton"), wired |
+| `0x1303` | Steam Controller (2026), Bluetooth LE |
+| `0x1304` | Steam Controller (2026) 2.4 GHz dongle ("Proteus") |
+| `0x1305` | Steam Controller (2026) dongle variant ("Nereid") |
+
+### Report formats and mappings
+
+The parser understands three report layouts, with bit/byte mappings verified against Valve's contributions to SDL's HIDAPI drivers:
+
+- **Legacy (2015)** — `ValveInReport_t`-framed packets; buttons across three bytes, trackpads double as stick/D-pad emulation. Reference: [`SDL_hidapi_steam.c`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam.c).
+- **Triton (2026)** — report IDs `0x42` (wired/dongle state), `0x45` (BLE state), and `0x47` (timestamped state; inserts a 16-bit trackpad timestamp before the pad fields, shifting them by 2 bytes). A 32-bit button mask includes the Steam button (`0x0001_0000`), Quick Access (`0x0000_0010`), four back grips, trackpad touch/click bits, and per-pad X/Y plus pressure. Reference: [`SDL_hidapi_steam_triton.c`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c).
+- **Deck state** — report ID `0x09`, the Steam Deck-style 64-bit button mask with pads at fixed offsets; used when a device speaks the deck packet format. Reference: [`SDL_hidapi_steamdeck.c`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c).
+
+Struct layouts for all three formats are documented in SDL's [`controller_structs.h`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/steam/controller_structs.h). Axis values normalize to `-1...1` (`Int16` full scale), triggers and pad pressure to `0...1`. Parsing is covered by `Tests/Stream/SteamControllerReportTests.swift`.
+
+Note: Steam grabs the physical controller exclusively while it is running — quit Steam before testing.
+
 ## Project Layout
 
 - `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
