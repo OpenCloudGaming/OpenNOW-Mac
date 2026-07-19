@@ -16,7 +16,7 @@ private extension Font {
     }
 }
 
-@MainActor private struct SettingsAccountSnapshot {
+private struct SettingsAccountSnapshot: Sendable {
     let displayName: String
     let membershipTier: String
     let providerName: String
@@ -25,7 +25,7 @@ private extension Font {
     let authStatus: String
     let rememberSession: Bool
 
-    init(viewModel: CatalogViewModel) {
+    @MainActor init(viewModel: CatalogViewModel) {
         displayName = viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
         membershipTier = Self.membershipTier(viewModel: viewModel)
         providerName = Self.providerName(viewModel.account.providerName)
@@ -43,7 +43,7 @@ private extension Font {
         authStatus.caseInsensitiveCompare("Logged In") == .orderedSame
     }
 
-    private static func membershipTier(viewModel: CatalogViewModel) -> String {
+    @MainActor private static func membershipTier(viewModel: CatalogViewModel) -> String {
         if viewModel.subscriptionStatus.isAvailable { return viewModel.subscriptionStatus.membershipTier }
         if !viewModel.account.membershipTier.isEmpty { return viewModel.account.membershipTier }
         return viewModel.subscriptionStatus.membershipTier
@@ -2281,7 +2281,7 @@ private struct SettingsToggleRow: View {
                     .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
             }
             Spacer()
-            Toggle("", isOn: Binding(get: { isOn }, set: action))
+            Toggle("", isOn: Binding(get: { isOn }, set: { action($0) }))
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .disabled(isLocked)
@@ -2310,7 +2310,7 @@ private struct SettingsTextFieldRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(width: 250, alignment: .leading)
-            TextField(placeholder, text: Binding(get: { draft }, set: updateDraft))
+            TextField(placeholder, text: Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsNvidia(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
@@ -2382,7 +2382,7 @@ private struct SettingsSliderRow: View {
                     .foregroundStyle(Color.openNowGreen.opacity(isLocked ? 0.48 : 1))
             }
             .frame(width: 250, alignment: .leading)
-            Slider(value: Binding(get: { value }, set: action), in: range, step: step)
+            Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
                 .tint(Color.openNowGreen)
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)

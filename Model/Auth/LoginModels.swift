@@ -162,7 +162,7 @@ final class LoginDeviceRegistration {
     init(
         id: String = "primary",
         deviceId: String = UUID().uuidString,
-        displayName: String = Host.current().localizedName ?? "OpenNOW Mac",
+        displayName: String? = nil,
         pendingOAuthState: String = "",
         pendingOAuthCodeVerifier: String = "",
         pendingOAuthProviderIdpId: String = "",
@@ -172,7 +172,8 @@ final class LoginDeviceRegistration {
     ) {
         self.id = id
         self.deviceId = deviceId
-        self.displayName = displayName
+        let hostName = ProcessInfo.processInfo.hostName
+        self.displayName = displayName ?? (!hostName.isEmpty ? hostName : "OpenNOW Mac")
         self.pendingOAuthState = pendingOAuthState
         self.pendingOAuthCodeVerifier = pendingOAuthCodeVerifier
         self.pendingOAuthProviderIdpId = pendingOAuthProviderIdpId
