@@ -1,0 +1,113 @@
+name: Cut Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.38). Leave empty to read from project.pbxproj MARKETING_VERSION.'
+        required: false
+        default: ''
+        type: string
+      commitish:
+        description: 'Branch or commit SHA to tag (defaults to main)'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Detect token type
+        id: token-type
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -n "${GH_PAT}" ]; then
+            echo "using_pat=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "using_pat=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GH_PAT not found — tag push will use GITHUB_TOKEN and release.yml will be triggered manually."
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          ref: ${{ inputs.commitish }}
+
+      - name: Resolve version
+        run: |
+          set -euo pipefail
+          INPUT_VERSION="${{ inputs.version }}"
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION="${INPUT_VERSION}"
+            echo "Using version from workflow input: ${VERSION}"
+          else
+            VERSION=$(grep -m1 'MARKETING_VERSION' OpenNOW.xcodeproj/project.pbxproj \
+              | sed -E 's/.*=\s*([^;]+);.*/\1/' | tr -d '[:space:]')
+            if [ -z "${VERSION}" ]; then
+              echo "::error::Could not extract MARKETING_VERSION from OpenNOW.xcodeproj/project.pbxproj"
+              exit 1
+            fi
+            echo "Using MARKETING_VERSION from project.pbxproj: ${VERSION}"
+          fi
+          VERSION="${VERSION#v}"
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::error::Invalid version format: ${VERSION}"
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG=v${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Check tag availability
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/${TAG}" > /dev/null; then
+            echo "::error::Tag ${TAG} already exists"
+            exit 1
+          fi
+          echo "Tag ${TAG} is available"
+
+      - name: Create and push tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Trigger Release workflow manually
+        if: steps.token-type.outputs.using_pat == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Tag pushed with GITHUB_TOKEN — triggering release.yml on ref ${TAG}..."
+          sleep 3
+          gh workflow run release.yml --ref "${TAG}"
+          sleep 5
+          RUN_ID=$(gh run list --workflow=release.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+          echo "Release workflow started: run ${RUN_ID}"
+          echo "View: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release Tag Created"
+            echo ""
+            echo "- **Tag:** \`${TAG}\`"
+            echo "- **Target:** \`${{ inputs.commitish }}\`"
+            echo ""
+            if [ "${{ steps.token-type.outputs.using_pat }}" = "true" ]; then
+              echo "The [Release workflow](../release.yml) was triggered automatically by the tag push."
+            else
+              echo "The [Release workflow](../release.yml) was triggered manually (GITHUB_TOKEN fallback)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
