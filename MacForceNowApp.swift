@@ -146,7 +146,7 @@ final class MacForceNowAppDelegate: NSObject, NSApplicationDelegate {
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
 
-    private let githubUpdater = MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "opennow-mac")
+    private let githubUpdater = MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
