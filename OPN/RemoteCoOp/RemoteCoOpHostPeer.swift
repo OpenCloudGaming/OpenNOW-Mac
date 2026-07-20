@@ -42,16 +42,33 @@ public protocol OPNRemoteCoOpHostPeerFactory: Sendable {
 
 public enum OPNRemoteCoOpHostPeerInputDecoder {
     public static func decode(_ text: String, expectedParticipantID: UUID? = nil) -> OPNRemoteCoOpInputPacket? {
-        decode(Data(text.utf8), expectedParticipantID: expectedParticipantID)
+        decodePackets(Data(text.utf8), expectedParticipantID: expectedParticipantID).last
     }
 
     public static func decode(_ data: Data, expectedParticipantID: UUID? = nil) -> OPNRemoteCoOpInputPacket? {
-        guard let message = try? OPNRemoteCoOpWireCodec.decode(data),
-              message.kind == .guestInput,
-              let packet = message.input else { return nil }
-        if let expectedParticipantID, packet.participantID != expectedParticipantID { return nil }
-        if let participantID = message.participantID, participantID != packet.participantID { return nil }
-        return packet
+        decodePackets(data, expectedParticipantID: expectedParticipantID).last
+    }
+
+    public static func decodePackets(_ text: String, expectedParticipantID: UUID? = nil) -> [OPNRemoteCoOpInputPacket] {
+        decodePackets(Data(text.utf8), expectedParticipantID: expectedParticipantID)
+    }
+
+    public static func decodePackets(_ data: Data, expectedParticipantID: UUID? = nil) -> [OPNRemoteCoOpInputPacket] {
+        guard let message = try? OPNRemoteCoOpWireCodec.decode(data), message.kind == .guestInput else { return [] }
+        let packets = Self.packets(from: message)
+        return packets.filter { packet in
+            if let expectedParticipantID, packet.participantID != expectedParticipantID { return false }
+            if let participantID = message.participantID, participantID != packet.participantID { return false }
+            return true
+        }.sorted { $0.sequenceNumber < $1.sequenceNumber }
+    }
+
+    private static func packets(from message: OPNRemoteCoOpWireMessage) -> [OPNRemoteCoOpInputPacket] {
+        var packets = message.inputs ?? []
+        if let input = message.input, !packets.contains(where: { $0.sequenceNumber == input.sequenceNumber && $0.participantID == input.participantID }) {
+            packets.append(input)
+        }
+        return packets
     }
 }
 
@@ -181,7 +198,8 @@ private actor OPNRemoteCoOpHostInputScheduler {
     private let coordinator: OPNRemoteCoOpHostCoordinator
     private let forwardInput: @Sendable (UserInputEvent) async -> Void
     private var latencyMode: OPNRemoteCoOpLatencyMode
-    private var pendingInputs: [UUID: PendingInput] = [:]
+    private var pendingInputs: [UUID: [PendingInput]] = [:]
+    private var latestRoutedInputs: [UUID: OPNRemoteCoOpInputPacket] = [:]
     private var drainTask: Task<Void, Never>?
     private var routedInputCount: UInt64 = 0
     private var supersededInputCount: UInt64 = 0
@@ -208,21 +226,29 @@ private actor OPNRemoteCoOpHostInputScheduler {
             return
         }
 
-        if let pending = pendingInputs[packet.participantID] {
+        let participantID = packet.participantID
+        if let newest = newestKnownInput(participantID: participantID), newest.sequenceNumber >= packet.sequenceNumber {
             supersededInputCount &+= 1
-            guard pending.packet.sequenceNumber < packet.sequenceNumber else { return }
+            return
         }
-        pendingInputs[packet.participantID] = PendingInput(packet: packet, receivedAtNanoseconds: receivedAtNanoseconds)
-        scheduleDrainIfNeeded()
+        let previous = newestKnownInput(participantID: participantID)
+        pendingInputs[participantID, default: []].append(PendingInput(packet: packet, receivedAtNanoseconds: receivedAtNanoseconds))
+        if previous == nil || previous?.buttons != packet.buttons {
+            await drainPendingInputs(shouldCancelScheduledDrain: true)
+        } else {
+            scheduleDrainIfNeeded()
+        }
     }
 
     func remove(participantID: UUID) {
         pendingInputs[participantID] = nil
+        latestRoutedInputs[participantID] = nil
         if pendingInputs.isEmpty { cancelScheduledDrain() }
     }
 
     func removeAll() {
         pendingInputs.removeAll()
+        latestRoutedInputs.removeAll()
         cancelScheduledDrain()
     }
 
@@ -240,7 +266,9 @@ private actor OPNRemoteCoOpHostInputScheduler {
     private func drainPendingInputs(shouldCancelScheduledDrain: Bool) async {
         if shouldCancelScheduledDrain { cancelScheduledDrain() }
         drainTask = nil
-        let inputs = pendingInputs.values.sorted { $0.receivedAtNanoseconds < $1.receivedAtNanoseconds }
+        let inputs = pendingInputs
+            .flatMap { participantID, inputs in condensedInputs(for: participantID, inputs: inputs) }
+            .sorted { $0.receivedAtNanoseconds < $1.receivedAtNanoseconds }
         pendingInputs.removeAll()
         for input in inputs {
             await route(input.packet, receivedAtNanoseconds: input.receivedAtNanoseconds)
@@ -252,6 +280,7 @@ private actor OPNRemoteCoOpHostInputScheduler {
         let routedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
         let routedEvents = await coordinator.handle(.guestInput(packet))
         for routedEvent in routedEvents { await forwardInput(routedEvent) }
+        if !routedEvents.isEmpty { latestRoutedInputs[packet.participantID] = packet }
         routedInputCount &+= 1
         guard latencyMode == .lowLatency, routedInputCount.isMultiple(of: Self.telemetryInterval) else { return }
         WebRTCMediaTelemetry.capture("webrtc.remote_coop.input.coalesced", level: .debug, message: "Remote Co-Op low latency input coalescing active.", attributes: [
@@ -261,6 +290,35 @@ private actor OPNRemoteCoOpHostInputScheduler {
             "sequenceNumber": String(packet.sequenceNumber),
             "supersededInputs": String(supersededInputCount)
         ])
+    }
+
+    private func newestKnownInput(participantID: UUID) -> OPNRemoteCoOpInputPacket? {
+        let pendingNewest = pendingInputs[participantID]?.max { $0.packet.sequenceNumber < $1.packet.sequenceNumber }?.packet
+        guard let routed = latestRoutedInputs[participantID] else { return pendingNewest }
+        guard let pendingNewest else { return routed }
+        return pendingNewest.sequenceNumber > routed.sequenceNumber ? pendingNewest : routed
+    }
+
+    private func condensedInputs(for participantID: UUID, inputs: [PendingInput]) -> [PendingInput] {
+        let sortedInputs = inputs.sorted { $0.packet.sequenceNumber < $1.packet.sequenceNumber }
+        var reference = latestRoutedInputs[participantID]
+        var latestAnalogInput: PendingInput?
+        var condensed: [PendingInput] = []
+
+        for input in sortedInputs {
+            if let reference, reference.buttons == input.packet.buttons {
+                latestAnalogInput = input
+                continue
+            }
+            if let analogInput = latestAnalogInput {
+                condensed.append(analogInput)
+                latestAnalogInput = nil
+            }
+            condensed.append(input)
+            reference = input.packet
+        }
+        if let analogInput = latestAnalogInput { condensed.append(analogInput) }
+        return condensed
     }
 
     private func cancelScheduledDrain() {

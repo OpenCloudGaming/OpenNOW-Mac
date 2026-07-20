@@ -35,6 +35,8 @@ let approved = false;
 let sequenceNumber = 0;
 let lastSentState = "";
 let lastSentAt = 0;
+let lastInputChangedAt = 0;
+let inputHistory = [];
 let pollHandle = null;
 let pollMode = "stopped";
 let networkConfiguration = null;
@@ -109,6 +111,7 @@ function joinRoom() {
     return;
   }
   const endpoint = signalingEndpoint();
+  resetInputHistory();
   diagnostics = initialDiagnostics();
   updateDiagnostics({ websocket: `connecting ${endpoint}`, transportMode: invite.transportMode ?? "automatic" });
   socket = new WebSocket(endpoint);
@@ -230,7 +233,9 @@ function startPolling() {
     if (elements.gamepadName) elements.gamepadName.textContent = gamepad.id;
     const input = inputPacket(gamepad, time);
     const state = inputStateKey(input);
-    if (state === lastSentState && time - lastSentAt < 250) return;
+    const changed = state !== lastSentState;
+    if (changed) lastInputChangedAt = time;
+    if (!changed && !shouldSendUnchangedInput(time)) return;
     lastSentState = state;
     lastSentAt = time;
     sendInput(input);
@@ -274,6 +279,19 @@ function restartPollingIfActive() {
 function inputPollIntervalMilliseconds() {
   if (latencyMode() !== "lowLatency") return 0;
   return document.visibilityState === "visible" ? 4 : 16;
+}
+
+function shouldSendUnchangedInput(time) {
+  if (latencyMode() !== "lowLatency") return time - lastSentAt >= 250;
+  return time - lastInputChangedAt <= inputRecoveryWindowMilliseconds();
+}
+
+function inputHistoryLimit() {
+  return latencyMode() === "lowLatency" ? 8 : 1;
+}
+
+function inputRecoveryWindowMilliseconds() {
+  return 96;
 }
 
 function inputPacket(gamepad, sampledAtMilliseconds = performance.now()) {
@@ -335,18 +353,32 @@ function sendInput(input) {
   const sampledAtMilliseconds = input.sampledAtMilliseconds ?? performance.now();
   const wireInput = { ...input };
   delete wireInput.sampledAtMilliseconds;
-  const message = { kind: "guestInput", roomID: inviteRoomID(), participantID, input: wireInput };
+  pushInputHistory(wireInput);
+  const message = { kind: "guestInput", roomID: inviteRoomID(), participantID, input: wireInput, inputs: inputHistory };
   if (inputChannel?.readyState === "open") {
     inputChannel.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
     recordInputSent(input, "data channel", sampledAtMilliseconds);
     return;
   }
-  if (networkConfiguration?.websocketInputFallbackEnabled !== false) {
-    send(message);
+  if (networkConfiguration?.websocketInputFallbackEnabled !== false && latencyMode() !== "lowLatency") {
+    send({ kind: "guestInput", roomID: inviteRoomID(), participantID, input: wireInput });
     recordInputSent(input, "WebSocket fallback", sampledAtMilliseconds);
   } else {
-    updateDiagnostics({ input: "blocked: no open data channel and fallback disabled" });
+    updateDiagnostics({ input: "blocked: waiting for low latency data channel" });
   }
+}
+
+function pushInputHistory(input) {
+  inputHistory.push(input);
+  inputHistory = inputHistory.slice(-inputHistoryLimit());
+}
+
+function resetInputHistory() {
+  sequenceNumber = 0;
+  lastSentState = "";
+  lastSentAt = 0;
+  lastInputChangedAt = 0;
+  inputHistory = [];
 }
 
 function configurePeerConnection(configuration) {
@@ -445,13 +477,14 @@ function closePeerConnection() {
 }
 
 function automaticFallbackConfiguration() {
+  const mode = invite?.latencyMode ?? "quality";
   return {
     transportMode: invite?.transportMode ?? "automatic",
     iceTransportPolicy: invite?.transportMode === "relayOnly" ? "relay" : "all",
-    latencyMode: invite?.latencyMode ?? "quality",
+    latencyMode: mode,
     iceServers: [],
     dataChannelInputEnabled: true,
-    websocketInputFallbackEnabled: true,
+    websocketInputFallbackEnabled: mode !== "lowLatency",
     directPeerCandidateWarning: "Using invite defaults until the broker provides ICE settings."
   };
 }
@@ -823,6 +856,7 @@ function appendTrack(currentObject, track) {
 function disconnect(notifyHost = true) {
   approved = false;
   stopPolling();
+  resetInputHistory();
   closePeerConnection();
   if (notifyHost && socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: inviteRoomID(), participantID });
   socket?.close();

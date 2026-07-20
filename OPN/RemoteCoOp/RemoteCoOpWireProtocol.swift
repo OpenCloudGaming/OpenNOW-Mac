@@ -74,6 +74,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var invite: OPNRemoteCoOpInvite?
     public var participant: OPNRemoteCoOpParticipant?
     public var input: OPNRemoteCoOpInputPacket?
+    public var inputs: [OPNRemoteCoOpInputPacket]?
     public var inputRejection: OPNRemoteCoOpWireInputRoutingRejection?
     public var reason: String?
     public var peerSignal: OPNRemoteCoOpWirePeerSignal?
@@ -88,6 +89,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 invite: OPNRemoteCoOpInvite? = nil,
                 participant: OPNRemoteCoOpParticipant? = nil,
                 input: OPNRemoteCoOpInputPacket? = nil,
+                inputs: [OPNRemoteCoOpInputPacket]? = nil,
                 inputRejection: OPNRemoteCoOpWireInputRoutingRejection? = nil,
                 reason: String? = nil,
                 peerSignal: OPNRemoteCoOpWirePeerSignal? = nil,
@@ -102,6 +104,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.invite = invite
         self.participant = participant
         self.input = input
+        self.inputs = inputs
         self.inputRejection = inputRejection
         self.reason = reason
         self.peerSignal = peerSignal
@@ -120,6 +123,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         invite = try container.decodeIfPresent(OPNRemoteCoOpInvite.self, forKey: .invite)
         participant = try container.decodeIfPresent(OPNRemoteCoOpParticipant.self, forKey: .participant)
         input = try container.decodeIfPresent(OPNRemoteCoOpInputPacket.self, forKey: .input)
+        inputs = try container.decodeIfPresent([OPNRemoteCoOpInputPacket].self, forKey: .inputs)
         inputRejection = try container.decodeIfPresent(OPNRemoteCoOpWireInputRoutingRejection.self, forKey: .inputRejection)
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         peerSignal = try container.decodeIfPresent(OPNRemoteCoOpWirePeerSignal.self, forKey: .peerSignal)
@@ -133,7 +137,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
             guard let participantID, let inviteToken else { return nil }
             return .guestJoinRequested(participantID: participantID, inviteToken: inviteToken, displayName: displayName ?? "Guest")
         case .guestInput:
-            guard let input else { return nil }
+            guard let input = input ?? inputs?.last else { return nil }
             return .guestInput(input)
         case .guestDisconnected:
             guard let participantID else { return nil }

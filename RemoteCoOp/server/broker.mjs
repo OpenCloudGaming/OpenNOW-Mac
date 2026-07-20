@@ -520,7 +520,7 @@ function networkConfigurationFor(payload, roomID) {
     latencyMode,
     iceServers,
     dataChannelInputEnabled: true,
-    websocketInputFallbackEnabled: true,
+    websocketInputFallbackEnabled: latencyMode !== "lowLatency",
     directPeerCandidateWarning: warningFor(transportMode, iceServers)
   };
 }
