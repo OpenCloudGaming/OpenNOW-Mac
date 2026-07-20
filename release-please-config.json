@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "bootstrap-sha": "8b368dab54cfadb994e43b2f2fe9f2edaa9a6385",
+  "extra-files": [
+    "OpenNOW.xcodeproj/project.pbxproj"
+  ]
+}
