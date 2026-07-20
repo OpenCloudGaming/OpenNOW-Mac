@@ -22,8 +22,13 @@ enum RecordingEditorBetaPreference {
     static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
 }
 
+enum RecordingRightsNoticePreference {
+    static let key = "OpenNOW.Recordings.RightsNoticeAcknowledged"
+}
+
 struct RecordingsView: View {
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
+    @AppStorage(RecordingRightsNoticePreference.key) private var rightsNoticeAcknowledged = false
     @State private var recordings: [WebRTCStreamRecording] = []
     @State private var selectedRecording: WebRTCStreamRecording?
     @State private var player: AVPlayer?
@@ -68,6 +73,11 @@ struct RecordingsView: View {
             }
         }
         .background(RecordingsBackdrop())
+        .overlay {
+            if !rightsNoticeAcknowledged {
+                RecordingRightsNotice { rightsNoticeAcknowledged = true }
+            }
+        }
         .onAppear { reload(showMessage: false) }
         .onChange(of: visibleRecordings.map(\.id)) { _, ids in
             guard let selectedRecording, !ids.contains(selectedRecording.id) else { return }
@@ -1172,4 +1182,38 @@ private func resolutionBadge(_ recording: WebRTCStreamRecording) -> String {
 
 private func bitrateText(_ recording: WebRTCStreamRecording) -> String {
     recording.videoBitrateMbps == 0 ? "Auto" : "\(recording.videoBitrateMbps) Mbps"
+}
+
+private struct RecordingRightsNotice: View {
+    let onAcknowledge: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.recordingsNvidia(size: 22, weight: .bold))
+                        .foregroundStyle(.orange)
+                    Text("About Recording GeForce NOW Sessions")
+                        .font(.recordingsNvidia(size: 18, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.96))
+                }
+                Text("Some game publishers restrict recording or broadcasting of their titles on cloud gaming services. You are responsible for complying with the terms of service of GeForce NOW, the game publisher, and any applicable store policies when recording sessions.")
+                    .font(.recordingsNvidia(size: 13, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button("I Understand", action: onAcknowledge)
+                        .buttonStyle(RecordingActionButtonStyle(tone: .primary))
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 460)
+            .background(RecordingsLayout.card)
+            .overlay { Rectangle().stroke(RecordingsLayout.strongStroke, lineWidth: 1) }
+        }
+    }
 }

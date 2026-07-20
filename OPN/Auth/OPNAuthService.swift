@@ -360,6 +360,12 @@ public final class OPNAuthService: @unchecked Sendable {
         guard !userId.isEmpty else { return }
         var activeUserId: String?
         let existing = loadAccountDictionaries(activeUserId: &activeUserId)
+        let removed = existing.filter { sessionIdentity(from: $0) == userId }
+        removed.forEach { removedAccount in
+            if let identity = sessionIdentity(from: removedAccount) {
+                GFNTokenStore.delete(forIdentity: identity)
+            }
+        }
         let accounts = existing.filter { sessionIdentity(from: $0) != userId }
         let newActive = activeUserId == userId ? accounts.compactMap(sessionIdentity).first : activeUserId
         saveAccountDictionaries(accounts, activeUserId: newActive)
@@ -384,6 +390,7 @@ public final class OPNAuthService: @unchecked Sendable {
             }
             return
         }
+        GFNTokenStore.deleteAll()
         [accountsFilePath(), sessionFilePath(), legacySessionFilePath()].forEach { path in
             if let path { try? FileManager.default.removeItem(atPath: path) }
         }
@@ -665,15 +672,11 @@ public final class OPNAuthService: @unchecked Sendable {
     }
 
     private func sessionIdentity(from dictionary: NSDictionary) -> String? {
-        ["user_id", "email", "display_name", "access_token"].compactMap { dictionary[$0] as? String }.first { !$0.isEmpty }
+        ["user_id", "email", "display_name"].compactMap { dictionary[$0] as? String }.first { !$0.isEmpty }
     }
 
     private func dictionary(from session: OPNAuthSession) -> NSDictionary {
         let dictionary = NSMutableDictionary()
-        put(session.accessToken, key: "access_token", into: dictionary)
-        put(session.idToken, key: "id_token", into: dictionary)
-        put(session.refreshToken, key: "refresh_token", into: dictionary)
-        put(session.clientToken, key: "client_token", into: dictionary)
         put(session.userId, key: "user_id", into: dictionary)
         put(session.displayName, key: "display_name", into: dictionary)
         put(session.email, key: "email", into: dictionary)
@@ -684,16 +687,28 @@ public final class OPNAuthService: @unchecked Sendable {
         dictionary["client_token_expiry"] = session.clientTokenExpiry
         dictionary["client_token_expiry_length"] = session.clientTokenExpiryLength
         dictionary["id_token_expiry"] = session.idTokenExpiry
+        if let identity = sessionIdentity(from: session), !identity.isEmpty {
+            let tokens = GFNTokenStore.Tokens(
+                accessToken: session.accessToken,
+                idToken: session.idToken,
+                refreshToken: session.refreshToken,
+                clientToken: session.clientToken
+            )
+            GFNTokenStore.save(tokens, forIdentity: identity)
+        }
         return dictionary
     }
 
     private func session(from dictionary: NSDictionary) -> OPNAuthSession {
-        guard let accessToken = dictionary["access_token"] as? String, !accessToken.isEmpty else { return OPNAuthSession() }
+        let identity = sessionIdentity(from: dictionary)
+        let keychainTokens = identity.flatMap { GFNTokenStore.load(forIdentity: $0) }
+        let accessToken = (keychainTokens?.accessToken ?? (dictionary["access_token"] as? String)) ?? ""
+        guard !accessToken.isEmpty else { return OPNAuthSession() }
         var session = OPNAuthSession()
         session.accessToken = accessToken
-        session.idToken = dictionary["id_token"] as? String ?? ""
-        session.refreshToken = dictionary["refresh_token"] as? String ?? ""
-        session.clientToken = dictionary["client_token"] as? String ?? ""
+        session.idToken = keychainTokens?.idToken ?? (dictionary["id_token"] as? String ?? "")
+        session.refreshToken = keychainTokens?.refreshToken ?? (dictionary["refresh_token"] as? String ?? "")
+        session.clientToken = keychainTokens?.clientToken ?? (dictionary["client_token"] as? String ?? "")
         session.userId = dictionary["user_id"] as? String ?? ""
         session.displayName = dictionary["display_name"] as? String ?? ""
         session.email = dictionary["email"] as? String ?? ""
@@ -705,6 +720,16 @@ public final class OPNAuthService: @unchecked Sendable {
         session.clientTokenExpiryLength = JarvisSessionParser.int64Value(dictionary["client_token_expiry_length"]) ?? 0
         session.idTokenExpiry = JarvisSessionParser.int64Value(dictionary["id_token_expiry"]) ?? 0
         session.isAuthenticated = true
+        if let identity, !identity.isEmpty, keychainTokens == nil,
+           let legacyAccess = dictionary["access_token"] as? String, !legacyAccess.isEmpty {
+            let tokens = GFNTokenStore.Tokens(
+                accessToken: legacyAccess,
+                idToken: dictionary["id_token"] as? String ?? "",
+                refreshToken: dictionary["refresh_token"] as? String ?? "",
+                clientToken: dictionary["client_token"] as? String ?? ""
+            )
+            GFNTokenStore.save(tokens, forIdentity: identity)
+        }
         return session
     }
 
@@ -757,6 +782,14 @@ public final class OPNAuthService: @unchecked Sendable {
         let message: String
         init(_ message: String) { self.message = message }
         var errorDescription: String? { message }
+    }
+
+    func logKeychainError(_ operation: String, identity: String, error: Error) {
+        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
+    }
+
+    func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
+        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
     }
 }
 

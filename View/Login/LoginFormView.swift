@@ -19,9 +19,17 @@ struct LoginFormView: View {
             ZStack(alignment: .leading) {
                 leftPanel(metrics: metrics)
                     .frame(width: metrics.panelWidth, height: proxy.size.height)
+
+                if viewModel.isShowingTermsOfUse {
+                    TermsOfUseDialog(viewModel: viewModel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(0.70))
+                        .transition(.opacity)
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
+        .animation(.snappy, value: viewModel.isShowingTermsOfUse)
     }
 
     private func leftPanel(metrics: VendorLoginWallMetrics) -> some View {
@@ -165,8 +173,11 @@ struct LoginFormView: View {
 
     private func startVendorLogin() {
         viewModel.rememberSession = true
-        viewModel.acceptedTerms = true
-        viewModel.launchOAuth()
+        if viewModel.acceptedTerms {
+            viewModel.launchOAuth()
+        } else {
+            viewModel.presentTermsOfUseIfNeeded()
+        }
     }
 
     private var appVersionText: String {
@@ -236,5 +247,65 @@ private struct VendorContentString: View {
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+private struct TermsOfUseDialog: View {
+    @ObservedObject var viewModel: LoginViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.nvidiaSans(size: 22, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+                Text("GeForce NOW Terms of Use")
+                    .font(.nvidiaSans(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            Text("OpenNOW is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
+                .font(.nvidiaSans(size: 13, weight: .regular))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
+                HStack {
+                    Image(systemName: "link")
+                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                    Link("Read the full GeForce NOW Terms of Use", destination: touURL)
+                        .font(.nvidiaSans(size: 13, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            HStack {
+                Button("Decline", action: viewModel.declineTermsOfUse)
+                    .buttonStyle(VendorTermsDeclineButtonStyle())
+                Spacer()
+                Button("Accept & Continue", action: viewModel.acceptTermsOfUse)
+                    .buttonStyle(VendorGetInButtonStyle())
+            }
+        }
+        .padding(28)
+        .frame(width: 460)
+        .background(Color.black.opacity(0.92))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+    }
+}
+
+private struct VendorTermsDeclineButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.nvidiaSans(size: 13, weight: .bold))
+            .foregroundStyle(.white.opacity(0.72))
+            .padding(.horizontal, 22)
+            .frame(height: 46)
+            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.05))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1) }
     }
 }

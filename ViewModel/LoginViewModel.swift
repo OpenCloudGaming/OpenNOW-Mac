@@ -27,6 +27,7 @@ final class LoginViewModel: ObservableObject {
     @Published var selectedProvider = LoginProvider.nvidia
     @Published var rememberSession = true
     @Published var acceptedTerms = false
+    @Published var isShowingTermsOfUse = false
     @Published var isShowingAccountPicker = false
     @Published var validationMessage = ""
     @Published var successMessage = ""
@@ -94,7 +95,29 @@ final class LoginViewModel: ObservableObject {
         ensureDeviceRegistration()
         prefillLastAccount()
         refreshLoginProviders()
+        acceptedTerms = UserDefaults.standard.bool(forKey: Self.termsAcceptedKey)
         OpenNOWLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
+    }
+
+    private static let termsAcceptedKey = "OpenNOW.Login.GFNTermsAccepted"
+
+    func presentTermsOfUseIfNeeded() {
+        guard !acceptedTerms else { return }
+        isShowingTermsOfUse = true
+    }
+
+    func acceptTermsOfUse() {
+        acceptedTerms = true
+        UserDefaults.standard.set(true, forKey: Self.termsAcceptedKey)
+        isShowingTermsOfUse = false
+        launchOAuth()
+    }
+
+    func declineTermsOfUse() {
+        acceptedTerms = false
+        UserDefaults.standard.removeObject(forKey: Self.termsAcceptedKey)
+        isShowingTermsOfUse = false
+        validationMessage = "You must accept the GeForce NOW Terms of Use to continue."
     }
 
     func toggleAccountPicker() {
