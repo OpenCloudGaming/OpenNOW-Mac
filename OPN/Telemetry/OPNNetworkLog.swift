@@ -109,7 +109,7 @@ public enum OPNNetworkLog {
 
     private static func startContext(_ request: URLRequest, operation: String, trace: OPNSentryTransaction?) -> OPNNetworkLogContext {
         let context = OPNNetworkLogContext(operation: operation, startedAt: Date(), requestSummary: requestSummary(request), trace: trace)
-        trace?.setTag("opennow.operation", value: operation)
+        trace?.setTag("macforce-now.operation", value: operation)
         if shouldLogStart(operation: operation) {
             OPNSentry.logInfoMessage(logMessage(level: "info", area: "Network", message: "HTTP request started operation=\(operation) request=\(context.requestSummary)"))
         }
@@ -127,8 +127,8 @@ public enum OPNNetworkLog {
 
     private static func finishTrace(_ trace: OPNSentryTransaction?, operation: String, statusCode: Int, durationMilliseconds: Int, byteCount: Int, outcome: String) {
         guard let trace else { return }
-        trace.setTag("opennow.operation", value: operation)
-        trace.setTag("opennow.outcome", value: outcome)
+        trace.setTag("macforce-now.operation", value: operation)
+        trace.setTag("macforce-now.outcome", value: outcome)
         if statusCode >= 0 {
             trace.setTag("http.status_code", value: String(statusCode))
         }
@@ -153,10 +153,10 @@ public enum OPNNetworkLog {
             attributes["error_domain"] = error.domain
             attributes["error_code"] = error.code
         }
-        _ = OPNSentry.recordCounterMetric(key: "opennow.http.requests.count", value: 1, attributes: attributes)
-        _ = OPNSentry.recordDistributionMetric(key: "opennow.http.duration_ms", value: Double(durationMilliseconds), unit: "millisecond", attributes: attributes)
+        _ = OPNSentry.recordCounterMetric(key: "macforce-now.http.requests.count", value: 1, attributes: attributes)
+        _ = OPNSentry.recordDistributionMetric(key: "macforce-now.http.duration_ms", value: Double(durationMilliseconds), unit: "millisecond", attributes: attributes)
         if byteCount > 0 {
-            _ = OPNSentry.recordDistributionMetric(key: "opennow.http.response_bytes", value: Double(byteCount), unit: "byte", attributes: attributes)
+            _ = OPNSentry.recordDistributionMetric(key: "macforce-now.http.response_bytes", value: Double(byteCount), unit: "byte", attributes: attributes)
         }
     }
 
@@ -245,7 +245,7 @@ public enum OPNNetworkLog {
     }
 
     private static func readableOperationName(_ operation: String) -> String {
-        operation.isEmpty ? "OpenNOW network request" : operation
+        operation.isEmpty ? "MacForce Now network request" : operation
     }
 
     private static func logMessage(level: String, area: String, message: String) -> String {

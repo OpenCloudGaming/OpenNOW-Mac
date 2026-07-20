@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenNOWGitHubRelease: Sendable {
+struct MacForceNowGitHubRelease: Sendable {
     let version: String
     let tagName: String
     let releaseNotes: String
@@ -9,7 +9,7 @@ struct OpenNOWGitHubRelease: Sendable {
     let assetDownloadURL: String
 }
 
-actor OpenNOWGitHubUpdater {
+actor MacForceNowGitHubUpdater {
     private enum UpdateError: LocalizedError {
         case invalidResponse(String)
         case noReleaseAsset
@@ -24,9 +24,9 @@ actor OpenNOWGitHubUpdater {
             case .invalidResponse(let message), .downloadFailed(let message), .validationFailed(let message), .installerLaunchFailed(let message):
                 message
             case .noReleaseAsset:
-                "The latest GitHub release does not include an OpenNOW macOS zip asset."
+                "The latest GitHub release does not include an MacForce Now macOS zip asset."
             case .notBundledApp:
-                "Updates can only be installed from the packaged OpenNOW.app bundle."
+                "Updates can only be installed from the packaged MacForceNow.app bundle."
             case .extractionFailed:
                 "The update archive could not be extracted."
             }
@@ -51,7 +51,7 @@ actor OpenNOWGitHubUpdater {
         session = URLSession(configuration: configuration)
     }
 
-    func checkForUpdate() async throws -> OpenNOWGitHubRelease? {
+    func checkForUpdate() async throws -> MacForceNowGitHubRelease? {
         guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest") else {
             throw UpdateError.invalidResponse("The GitHub release URL is invalid.")
         }
@@ -59,7 +59,7 @@ actor OpenNOWGitHubUpdater {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("OpenNOW-Updater", forHTTPHeaderField: "User-Agent")
+        request.setValue("MacForceNow-Updater", forHTTPHeaderField: "User-Agent")
 
         logInfo("Checking GitHub release metadata repository=\(owner)/\(repository) currentVersion=\(currentVersion)")
         let networkStart = OPNNetworkLog.start(&request, operation: "updater.releaseMetadata")
@@ -86,7 +86,7 @@ actor OpenNOWGitHubUpdater {
         return compareVersion(release.version, to: currentVersion) > 0 ? release : nil
     }
 
-    func installRelease(_ release: OpenNOWGitHubRelease) async throws -> Bool {
+    func installRelease(_ release: MacForceNowGitHubRelease) async throws -> Bool {
         let bundleURL = Bundle.main.bundleURL
         guard bundleURL.pathExtension.lowercased() == "app" else {
             throw UpdateError.notBundledApp
@@ -114,7 +114,7 @@ actor OpenNOWGitHubUpdater {
         return try stageAndLaunchInstaller(downloadedArchiveURL: archiveURL, release: release, currentBundleURL: bundleURL)
     }
 
-    private func stageAndLaunchInstaller(downloadedArchiveURL: URL, release: OpenNOWGitHubRelease, currentBundleURL: URL) throws -> Bool {
+    private func stageAndLaunchInstaller(downloadedArchiveURL: URL, release: MacForceNowGitHubRelease, currentBundleURL: URL) throws -> Bool {
         let fileManager = FileManager.default
         let stagingURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let archiveCopyURL = stagingURL.appendingPathComponent(release.assetName, isDirectory: false)
@@ -140,7 +140,7 @@ actor OpenNOWGitHubUpdater {
         try validateCandidateBundle(newBundleURL, expectedVersion: release.version, currentBundleURL: currentBundleURL)
 
         let installTargetURL = try writableInstallTarget(for: currentBundleURL)
-        let scriptURL = stagingURL.appendingPathComponent("install-opennow-update.sh", isDirectory: false)
+        let scriptURL = stagingURL.appendingPathComponent("install-macforce-now-update.sh", isDirectory: false)
         let backupPath = installTargetURL.deletingLastPathComponent().appendingPathComponent(".\(installTargetURL.lastPathComponent).previous").path
         logInfo("Resolved update install target currentBundle=\(currentBundleURL.path) installTarget=\(installTargetURL.path)")
         let script = """
@@ -188,7 +188,7 @@ actor OpenNOWGitHubUpdater {
         OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Update", message: message))
     }
 
-    private func release(from json: [String: Any]) throws -> OpenNOWGitHubRelease {
+    private func release(from json: [String: Any]) throws -> MacForceNowGitHubRelease {
         let tagName = json["tag_name"] as? String ?? ""
         let version = normalizedVersion(tagName)
         let releaseNotes = json["body"] as? String ?? ""
@@ -196,7 +196,7 @@ actor OpenNOWGitHubUpdater {
         let assets = json["assets"] as? [[String: Any]] ?? []
         let selectedAsset = assets.first { asset in
             let name = asset["name"] as? String ?? ""
-            return name.hasPrefix("OpenNOW-") && name.hasSuffix("-macOS.zip")
+            return name.hasPrefix("MacForceNow-") && name.hasSuffix("-macOS.zip")
         } ?? assets.first { asset in
             let name = (asset["name"] as? String ?? "").lowercased()
             return name.hasSuffix(".zip") && name.contains("macos")
@@ -211,7 +211,7 @@ actor OpenNOWGitHubUpdater {
             throw UpdateError.noReleaseAsset
         }
 
-        return OpenNOWGitHubRelease(
+        return MacForceNowGitHubRelease(
             version: version,
             tagName: tagName,
             releaseNotes: releaseNotes,
@@ -249,17 +249,17 @@ actor OpenNOWGitHubUpdater {
         logInfo("Validating update bundle expectedVersion=\(expectedVersion) runningVersion=\(currentVersion) installedVersion=\(installedVersion) candidateVersion=\(candidateVersion ?? "missing") currentIdentifier=\(currentIdentifier ?? "missing") candidateIdentifier=\(candidateIdentifier ?? "missing") executableExists=\(executableExists ? "true" : "false")")
 
         guard candidateIdentifier == currentIdentifier else {
-            throw UpdateError.validationFailed("The downloaded app bundle identifier was \(candidateIdentifier ?? "missing"), but OpenNOW expected \(currentIdentifier ?? "missing").")
+            throw UpdateError.validationFailed("The downloaded app bundle identifier was \(candidateIdentifier ?? "missing"), but MacForce Now expected \(currentIdentifier ?? "missing").")
         }
         guard executableExists else {
-            throw UpdateError.validationFailed("The downloaded app bundle did not contain an executable OpenNOW app binary.")
+            throw UpdateError.validationFailed("The downloaded app bundle did not contain an executable MacForce Now app binary.")
         }
         guard let candidateVersion, compareVersion(candidateVersion, to: expectedVersion) == 0 else {
             throw UpdateError.validationFailed("The downloaded app bundle version was \(candidateVersion ?? "missing"), but the GitHub release expected \(expectedVersion).")
         }
         let effectiveCurrentVersion = compareVersion(installedVersion, to: currentVersion) > 0 ? installedVersion : currentVersion
         guard compareVersion(candidateVersion, to: effectiveCurrentVersion) > 0 else {
-            throw UpdateError.validationFailed("OpenNOW is already on version \(effectiveCurrentVersion). Relaunch OpenNOW and check for updates again if the app still shows an older version.")
+            throw UpdateError.validationFailed("MacForce Now is already on version \(effectiveCurrentVersion). Relaunch MacForce Now and check for updates again if the app still shows an older version.")
         }
         guard verifyCodeSignature(for: candidateURL) else {
             throw UpdateError.validationFailed("The downloaded app bundle did not pass macOS code-signature verification.")
@@ -284,7 +284,7 @@ actor OpenNOWGitHubUpdater {
             return userApplicationsURL.appendingPathComponent(currentBundleURL.lastPathComponent, isDirectory: true)
         }
 
-        throw UpdateError.validationFailed("OpenNOW could not find a writable Applications folder for installing the update.")
+        throw UpdateError.validationFailed("MacForce Now could not find a writable Applications folder for installing the update.")
     }
 
     private func isWritableDirectory(_ directoryURL: URL) -> Bool {

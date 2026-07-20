@@ -5,17 +5,17 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 NODE_BIN=${NODE_BIN:-$(command -v node)}
 SUDO=${SUDO:-sudo}
-SERVICE_GROUP=${SERVICE_GROUP:-opennow-coop}
-ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
+SERVICE_GROUP=${SERVICE_GROUP:-macforce-now-coop}
+ADMIN_GROUP=${ADMIN_GROUP:-macforce-now-coop-admin}
 LOGIN_USER=${LOGIN_USER:-${SUDO_USER:-$(id -un)}}
-ENV_DIR=/etc/opennow
+ENV_DIR=/etc/macforce-now
 ENV_FILE=$ENV_DIR/remote-coop-panel.env
-HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
-PANEL_PORT=${OPENNOW_REMOTE_COOP_PANEL_PORT:-}
-BROKER_PORT=${OPENNOW_REMOTE_COOP_PORT:-}
-TURN_PORT=${OPENNOW_REMOTE_COOP_TURN_PORT:-}
-TURN_MIN_PORT=${OPENNOW_REMOTE_COOP_TURN_MIN_PORT:-}
-TURN_MAX_PORT=${OPENNOW_REMOTE_COOP_TURN_MAX_PORT:-}
+HELPER=/usr/local/libexec/macforce-now-remote-coop-pam-auth-helper
+PANEL_PORT=${MACFORCE_NOW_REMOTE_COOP_PANEL_PORT:-}
+BROKER_PORT=${MACFORCE_NOW_REMOTE_COOP_PORT:-}
+TURN_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_PORT:-}
+TURN_MIN_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT:-}
+TURN_MAX_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT:-}
 
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -76,7 +76,7 @@ ensure_pam_build_dependencies() {
 
 pam_helper_can_build() {
   if ! command -v cc >/dev/null 2>&1; then return 1; fi
-  TMP=${TMPDIR:-/tmp}/opennow-pam-build-check-$$
+  TMP=${TMPDIR:-/tmp}/macforce-now-pam-build-check-$$
   if cc -x c -o "$TMP" - -lpam >/dev/null 2>&1 <<'EOF'
 #include <security/pam_appl.h>
 int main(void) { return PAM_SUCCESS == 0 ? 0 : 0; }
@@ -142,8 +142,8 @@ check_panel_health() {
   done
 
   echo "warning: panel did not answer https://127.0.0.1:$PANEL_PORT/healthz yet." >&2
-  echo "Run: sudo systemctl status opennow-remote-coop-panel" >&2
-  echo "Run: sudo journalctl -u opennow-remote-coop-panel -n 80 --no-pager" >&2
+  echo "Run: sudo systemctl status macforce-now-remote-coop-panel" >&2
+  echo "Run: sudo journalctl -u macforce-now-remote-coop-panel -n 80 --no-pager" >&2
 }
 
 env_file_value() {
@@ -268,11 +268,11 @@ select_udp_range() {
 }
 
 select_service_ports() {
-  EXISTING_PANEL_PORT=$(env_file_value OPENNOW_REMOTE_COOP_PANEL_PORT || true)
-  EXISTING_BROKER_PORT=$(env_file_value OPENNOW_REMOTE_COOP_PORT || true)
-  EXISTING_TURN_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_PORT || true)
-  EXISTING_TURN_MIN_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_MIN_PORT || true)
-  EXISTING_TURN_MAX_PORT=$(env_file_value OPENNOW_REMOTE_COOP_TURN_MAX_PORT || true)
+  EXISTING_PANEL_PORT=$(env_file_value MACFORCE_NOW_REMOTE_COOP_PANEL_PORT || true)
+  EXISTING_BROKER_PORT=$(env_file_value MACFORCE_NOW_REMOTE_COOP_PORT || true)
+  EXISTING_TURN_PORT=$(env_file_value MACFORCE_NOW_REMOTE_COOP_TURN_PORT || true)
+  EXISTING_TURN_MIN_PORT=$(env_file_value MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT || true)
+  EXISTING_TURN_MAX_PORT=$(env_file_value MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT || true)
 
   PANEL_PORT=$(select_tcp_port 32187 32250 "${PANEL_PORT:-${EXISTING_PANEL_PORT:-32187}}")
   BROKER_PORT=$(select_tcp_port 32188 32299 "${BROKER_PORT:-${EXISTING_BROKER_PORT:-32188}}" "$PANEL_PORT")
@@ -283,27 +283,27 @@ select_service_ports() {
 }
 
 write_panel_environment() {
-  SECRET=$(env_file_value OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET || node -e 'console.log(require("crypto").randomBytes(48).toString("base64url"))')
-  PUBLIC_HOST=$(env_file_value OPENNOW_REMOTE_COOP_PUBLIC_HOST || echo "198.12.95.48")
-  TMP_ENV=${TMPDIR:-/tmp}/opennow-remote-coop-panel-env-$$
+  SECRET=$(env_file_value MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET || node -e 'console.log(require("crypto").randomBytes(48).toString("base64url"))')
+  PUBLIC_HOST=$(env_file_value MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST || echo "198.12.95.48")
+  TMP_ENV=${TMPDIR:-/tmp}/macforce-now-remote-coop-panel-env-$$
   if $SUDO test -f "$ENV_FILE"; then
-    $SUDO sed '/^OPENNOW_REMOTE_COOP_PANEL_PORT=/d;/^OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=/d;/^OPENNOW_REMOTE_COOP_PUBLIC_HOST=/d;/^OPENNOW_REMOTE_COOP_PORT=/d;/^OPENNOW_REMOTE_COOP_PORT_ALTERNATES=/d;/^OPENNOW_REMOTE_COOP_TURN_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_TLS_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_MIN_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_MAX_PORT=/d;/^OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=/d;/^OPENNOW_REMOTE_COOP_AUTOSTART=/d;/^OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=/d' "$ENV_FILE" > "$TMP_ENV" || true
+    $SUDO sed '/^MACFORCE_NOW_REMOTE_COOP_PANEL_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=/d;/^MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=/d;/^MACFORCE_NOW_REMOTE_COOP_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES=/d;/^MACFORCE_NOW_REMOTE_COOP_TURN_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT=/d;/^MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=/d;/^MACFORCE_NOW_REMOTE_COOP_AUTOSTART=/d;/^MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=/d' "$ENV_FILE" > "$TMP_ENV" || true
   else
     : > "$TMP_ENV"
   fi
   cat >> "$TMP_ENV" <<EOF
-OPENNOW_REMOTE_COOP_PANEL_PORT=$PANEL_PORT
-OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=$ADMIN_GROUP
-OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=1
-OPENNOW_REMOTE_COOP_PUBLIC_HOST=$PUBLIC_HOST
-OPENNOW_REMOTE_COOP_PORT=$BROKER_PORT
-OPENNOW_REMOTE_COOP_PORT_ALTERNATES=$((BROKER_PORT + 1)),$((BROKER_PORT + 2))
-OPENNOW_REMOTE_COOP_TURN_PORT=$TURN_PORT
-OPENNOW_REMOTE_COOP_TURN_TLS_PORT=32443
-OPENNOW_REMOTE_COOP_TURN_MIN_PORT=$TURN_MIN_PORT
-OPENNOW_REMOTE_COOP_TURN_MAX_PORT=$TURN_MAX_PORT
-OPENNOW_REMOTE_COOP_AUTOSTART=1
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=$SECRET
+MACFORCE_NOW_REMOTE_COOP_PANEL_PORT=$PANEL_PORT
+MACFORCE_NOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS=$ADMIN_GROUP
+MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC=1
+MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=$PUBLIC_HOST
+MACFORCE_NOW_REMOTE_COOP_PORT=$BROKER_PORT
+MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES=$((BROKER_PORT + 1)),$((BROKER_PORT + 2))
+MACFORCE_NOW_REMOTE_COOP_TURN_PORT=$TURN_PORT
+MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT=32443
+MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT=$TURN_MIN_PORT
+MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT=$TURN_MAX_PORT
+MACFORCE_NOW_REMOTE_COOP_AUTOSTART=1
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=$SECRET
 EOF
   $SUDO install -o root -g "$SERVICE_GROUP" -m 0640 "$TMP_ENV" "$ENV_FILE"
   rm -f "$TMP_ENV"
@@ -329,22 +329,22 @@ fi
 $SUDO mkdir -p "$ENV_DIR" /usr/local/libexec
 write_panel_environment
 
-"$REPO_ROOT/RemoteCoOp/panel/auth/build-pam-auth-helper.sh" /tmp/opennow-remote-coop-pam-auth-helper
-$SUDO install -o root -g "$SERVICE_GROUP" -m 4750 /tmp/opennow-remote-coop-pam-auth-helper "$HELPER"
-rm -f /tmp/opennow-remote-coop-pam-auth-helper
+"$REPO_ROOT/RemoteCoOp/panel/auth/build-pam-auth-helper.sh" /tmp/macforce-now-remote-coop-pam-auth-helper
+$SUDO install -o root -g "$SERVICE_GROUP" -m 4750 /tmp/macforce-now-remote-coop-pam-auth-helper "$HELPER"
+rm -f /tmp/macforce-now-remote-coop-pam-auth-helper
 
-if [ ! -f /etc/pam.d/opennow-remote-coop ]; then
-  $SUDO install -o root -g root -m 0644 "$REPO_ROOT/RemoteCoOp/panel/auth/opennow-remote-coop.pam.example" /etc/pam.d/opennow-remote-coop
+if [ ! -f /etc/pam.d/macforce-now-remote-coop ]; then
+  $SUDO install -o root -g root -m 0644 "$REPO_ROOT/RemoteCoOp/panel/auth/macforce-now-remote-coop.pam.example" /etc/pam.d/macforce-now-remote-coop
 fi
 
-$SUDO sh -c "sed 's#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__SERVICE_GROUP__#$SERVICE_GROUP#g' '$REPO_ROOT/RemoteCoOp/service/linux/opennow-remote-coop-panel.service' > /etc/systemd/system/opennow-remote-coop-panel.service"
+$SUDO sh -c "sed 's#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__SERVICE_GROUP__#$SERVICE_GROUP#g' '$REPO_ROOT/RemoteCoOp/service/linux/macforce-now-remote-coop-panel.service' > /etc/systemd/system/macforce-now-remote-coop-panel.service"
 $SUDO systemctl daemon-reload
-$SUDO systemctl enable opennow-remote-coop-panel.service
+$SUDO systemctl enable macforce-now-remote-coop-panel.service
 open_firewall_ports
-$SUDO systemctl restart opennow-remote-coop-panel.service
+$SUDO systemctl restart macforce-now-remote-coop-panel.service
 check_panel_health
 
-echo "OpenNOW Remote Co-Op panel installed: https://198.12.95.48:$PANEL_PORT/"
+echo "MacForce Now Remote Co-Op panel installed: https://198.12.95.48:$PANEL_PORT/"
 echo "Broker WebSocket port: $BROKER_PORT"
 echo "TURN port: $TURN_PORT"
 echo "TURN relay UDP range: $TURN_MIN_PORT-$TURN_MAX_PORT"

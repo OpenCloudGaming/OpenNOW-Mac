@@ -1,6 +1,6 @@
 //
 //  LoginStyles.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension Font {
-    static func nvidiaSans(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func nvidiaSans(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

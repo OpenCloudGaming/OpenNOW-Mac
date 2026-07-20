@@ -1,5 +1,5 @@
 //  CatalogViewModel.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -365,9 +365,9 @@ final class CatalogViewModel: ObservableObject {
                     : "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)"
                 Task { @MainActor in
                     if success {
-                        OpenNOWLog.info(.auth, message)
+                        MacForceNowLog.info(.auth, message)
                     } else {
-                        OpenNOWLog.warning(.auth, message)
+                        MacForceNowLog.warning(.auth, message)
                     }
                     continuation.resume()
                 }
@@ -570,39 +570,39 @@ final class CatalogViewModel: ObservableObject {
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
         configureCatalogService()
         let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
-        OpenNOWLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
+        MacForceNowLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
         setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
         if let game = matchingGame(for: shortcut, in: allKnownGames) {
-            OpenNOWLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            MacForceNowLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
         if let game = Self.launchGame(from: shortcut, title: title) {
-            OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+            MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: 0)
             return
         }
-        OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
+        MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
             let resultBox = CatalogSendableValue(result)
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 guard success else {
-                    OpenNOWLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
+                    MacForceNowLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
                     self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
                     return
                 }
                 let games = resultBox.value.games
-                OpenNOWLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
+                MacForceNowLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
                 guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
-                    OpenNOWLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
+                    MacForceNowLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
                     self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
                     return
                 }
-                OpenNOWLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+                MacForceNowLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
                 self.catalogGames = games
                 self.selectGame(game)
                 self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
@@ -624,7 +624,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        OpenNOWLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
+        MacForceNowLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
         activeLaunchSession = nil
@@ -690,17 +690,17 @@ final class CatalogViewModel: ObservableObject {
             guard let self else { return }
             self.launchMessage = ""
             guard success, let plan else {
-                OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
+                MacForceNowLog.error(.launch, "Launch plan failed: \(message)")
                 self.clearLaunchFlow()
                 self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
                 return
             }
             switch plan {
             case .ready(let configuration):
-                OpenNOWLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
+                MacForceNowLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
                 self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
             case .activeSession(let active, let resume, let replacement):
-                OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
+                MacForceNowLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
                 self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle)
@@ -849,7 +849,7 @@ final class CatalogViewModel: ObservableObject {
         guard !isConnectingTwitch, !twitchAccountStatus.isConnected else { return }
         Task { @MainActor in
             isConnectingTwitch = true
-            actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."
+            actionMessage = "Opening Twitch activation in your browser. Approve MacForce Now to finish connecting."
             errorMessage = ""
             do {
                 twitchAccountStatus = try await TwitchOAuthService.start(clientID: TwitchOAuthService.clientID)
@@ -873,7 +873,7 @@ final class CatalogViewModel: ObservableObject {
     private func startCatalogTwitchBroadcast() {
         guard !catalogBroadcastStatus.isBroadcasting, !isCatalogBroadcastPreparing else { return }
         let selectedTitle = (selectedGame?.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = selectedTitle.isEmpty ? "OpenNOW Live" : selectedTitle
+        let title = selectedTitle.isEmpty ? "MacForce Now Live" : selectedTitle
         let selectedApplicationID = selectedGame.map(Self.favoriteAppId(for:)) ?? ""
         let applicationID = selectedApplicationID.isEmpty ? "catalog" : selectedApplicationID
         guard let configuration = catalogBroadcastConfiguration(title: title, applicationID: applicationID) else {
@@ -908,7 +908,7 @@ final class CatalogViewModel: ObservableObject {
         catalogBroadcastStatus = status
         switch status {
         case .publishing:
-            actionMessage = "Twitch broadcast is publishing the OpenNOW catalog."
+            actionMessage = "Twitch broadcast is publishing the MacForce Now catalog."
         case .idle:
             if actionMessage == "Stopping Twitch broadcast." { actionMessage = "Twitch broadcast stopped." }
         case .failed(let message):
@@ -1884,7 +1884,7 @@ final class CatalogViewModel: ObservableObject {
                         self.applyPatchingStatuses(statuses)
                     } else if !error.isEmpty {
                         if self.refreshAuthIfNeeded(error: error) { return }
-                        OpenNOWLog.warning(.catalog, "App patch status poll failed: \(error)")
+                        MacForceNowLog.warning(.catalog, "App patch status poll failed: \(error)")
                     }
                 }
             }
@@ -2279,7 +2279,7 @@ struct CatalogStoreDefinition: Identifiable, Equatable {
 }
 
 struct CatalogPlaytimeStatistics: Codable, Equatable {
-    private static let storagePrefix = "OpenNOW.Catalog.PlaytimeStatistics"
+    private static let storagePrefix = "MacForceNow.Catalog.PlaytimeStatistics"
 
     static let empty = CatalogPlaytimeStatistics(totalSeconds: 0, sessionCount: 0, lastSessionSeconds: 0, longestSessionSeconds: 0, lastPlayedTitle: "", lastPlayedAt: nil)
 
@@ -2362,7 +2362,7 @@ struct CatalogSubscriptionStatus: Equatable {
 }
 
 struct CatalogPreviousGameSession: Codable, Equatable {
-    private static let storageKey = "OpenNOW.Catalog.PreviousGameSession"
+    private static let storageKey = "MacForceNow.Catalog.PreviousGameSession"
 
     let title: String
     let appId: String

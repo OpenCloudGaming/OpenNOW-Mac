@@ -1,7 +1,7 @@
 import Foundation
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func gameShortcutRoundTripsLaunchRouteIdentifiers() throws {
     let shortcut = GFNGameShortcut(
@@ -46,7 +46,7 @@ import Testing
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-    let plistURL = rootURL.appendingPathComponent("OpenNOW-Info.plist")
+    let plistURL = rootURL.appendingPathComponent("MacForceNow-Info.plist")
     let data = try Data(contentsOf: plistURL)
     let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
     let documentTypes = try #require(plist?["CFBundleDocumentTypes"] as? [[String: Any]])

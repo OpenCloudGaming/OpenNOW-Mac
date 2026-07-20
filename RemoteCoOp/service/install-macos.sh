@@ -5,16 +5,16 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 NODE_BIN=${NODE_BIN:-$(command -v node)}
 SUDO=${SUDO:-sudo}
-ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
+ADMIN_GROUP=${ADMIN_GROUP:-macforce-now-coop-admin}
 SERVICE_USER=${SERVICE_USER:-$(stat -f %Su "$REPO_ROOT")}
 LOGIN_USER=${LOGIN_USER:-${SUDO_USER:-$(id -un)}}
-PLIST=/Library/LaunchDaemons/com.opennow.remote-coop.panel.plist
-HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
-PANEL_PORT=${OPENNOW_REMOTE_COOP_PANEL_PORT:-}
-BROKER_PORT=${OPENNOW_REMOTE_COOP_PORT:-}
-TURN_PORT=${OPENNOW_REMOTE_COOP_TURN_PORT:-}
-TURN_MIN_PORT=${OPENNOW_REMOTE_COOP_TURN_MIN_PORT:-}
-TURN_MAX_PORT=${OPENNOW_REMOTE_COOP_TURN_MAX_PORT:-}
+PLIST=/Library/LaunchDaemons/com.macforce-now.remote-coop.panel.plist
+HELPER=/usr/local/libexec/macforce-now-remote-coop-pam-auth-helper
+PANEL_PORT=${MACFORCE_NOW_REMOTE_COOP_PANEL_PORT:-}
+BROKER_PORT=${MACFORCE_NOW_REMOTE_COOP_PORT:-}
+TURN_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_PORT:-}
+TURN_MIN_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT:-}
+TURN_MAX_PORT=${MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT:-}
 
 high_port() {
   case "$1" in
@@ -154,27 +154,27 @@ fi
 $SUDO dseditgroup -o edit -a "$SERVICE_USER" -t user "$ADMIN_GROUP"
 
 $SUDO mkdir -p /usr/local/libexec
-"$REPO_ROOT/RemoteCoOp/panel/auth/build-pam-auth-helper.sh" /tmp/opennow-remote-coop-pam-auth-helper
-$SUDO install -o root -g "$ADMIN_GROUP" -m 4750 /tmp/opennow-remote-coop-pam-auth-helper "$HELPER"
-rm -f /tmp/opennow-remote-coop-pam-auth-helper
+"$REPO_ROOT/RemoteCoOp/panel/auth/build-pam-auth-helper.sh" /tmp/macforce-now-remote-coop-pam-auth-helper
+$SUDO install -o root -g "$ADMIN_GROUP" -m 4750 /tmp/macforce-now-remote-coop-pam-auth-helper "$HELPER"
+rm -f /tmp/macforce-now-remote-coop-pam-auth-helper
 
-if [ ! -f /etc/pam.d/opennow-remote-coop ]; then
-  $SUDO install -o root -g wheel -m 0644 "$REPO_ROOT/RemoteCoOp/panel/auth/opennow-remote-coop.macos.pam.example" /etc/pam.d/opennow-remote-coop
+if [ ! -f /etc/pam.d/macforce-now-remote-coop ]; then
+  $SUDO install -o root -g wheel -m 0644 "$REPO_ROOT/RemoteCoOp/panel/auth/macforce-now-remote-coop.macos.pam.example" /etc/pam.d/macforce-now-remote-coop
 fi
 
-TMP_PLIST=/tmp/com.opennow.remote-coop.panel.plist
-sed "s#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__PANEL_PORT__#$PANEL_PORT#g; s#__BROKER_PORT__#$BROKER_PORT#g; s#__BROKER_ALTERNATES__#$((BROKER_PORT + 1)),$((BROKER_PORT + 2))#g; s#__TURN_PORT__#$TURN_PORT#g; s#__TURN_MIN_PORT__#$TURN_MIN_PORT#g; s#__TURN_MAX_PORT__#$TURN_MAX_PORT#g" "$REPO_ROOT/RemoteCoOp/service/macos/com.opennow.remote-coop.panel.plist" > "$TMP_PLIST"
+TMP_PLIST=/tmp/com.macforce-now.remote-coop.panel.plist
+sed "s#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__PANEL_PORT__#$PANEL_PORT#g; s#__BROKER_PORT__#$BROKER_PORT#g; s#__BROKER_ALTERNATES__#$((BROKER_PORT + 1)),$((BROKER_PORT + 2))#g; s#__TURN_PORT__#$TURN_PORT#g; s#__TURN_MIN_PORT__#$TURN_MIN_PORT#g; s#__TURN_MAX_PORT__#$TURN_MAX_PORT#g" "$REPO_ROOT/RemoteCoOp/service/macos/com.macforce-now.remote-coop.panel.plist" > "$TMP_PLIST"
 $SUDO install -o root -g wheel -m 0644 "$TMP_PLIST" "$PLIST"
 rm -f "$TMP_PLIST"
 
-if launchctl print system/com.opennow.remote-coop.panel >/dev/null 2>&1; then
+if launchctl print system/com.macforce-now.remote-coop.panel >/dev/null 2>&1; then
   $SUDO launchctl bootout system "$PLIST" || true
 fi
 $SUDO launchctl bootstrap system "$PLIST"
-$SUDO launchctl enable system/com.opennow.remote-coop.panel
-$SUDO launchctl kickstart -k system/com.opennow.remote-coop.panel
+$SUDO launchctl enable system/com.macforce-now.remote-coop.panel
+$SUDO launchctl kickstart -k system/com.macforce-now.remote-coop.panel
 
-echo "OpenNOW Remote Co-Op panel installed: https://198.12.95.48:$PANEL_PORT/"
+echo "MacForce Now Remote Co-Op panel installed: https://198.12.95.48:$PANEL_PORT/"
 echo "Broker WebSocket port: $BROKER_PORT"
 echo "TURN port: $TURN_PORT"
 echo "TURN relay UDP range: $TURN_MIN_PORT-$TURN_MAX_PORT"

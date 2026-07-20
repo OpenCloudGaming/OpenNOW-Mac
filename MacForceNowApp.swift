@@ -1,6 +1,6 @@
 //
-//  OpenNOWApp.swift
-//  OpenNOW
+//  MacForceNowApp.swift
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -10,11 +10,11 @@ import Darwin
 import SwiftUI
 import SwiftData
 
-enum OpenNOWUpdatePreferences {
-    static let automaticUpdateChecksEnabledKey = "OpenNOWAutomaticUpdateChecksEnabled"
+enum MacForceNowUpdatePreferences {
+    static let automaticUpdateChecksEnabledKey = "MacForceNowAutomaticUpdateChecksEnabled"
     static let defaultAutomaticUpdateChecksEnabled = true
 
-    private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
+    private static let remindAfterKey = "MacForceNowUpdateRemindAfter"
 
     static var automaticUpdateChecksEnabled: Bool {
         get {
@@ -77,8 +77,8 @@ enum OpenNOWUpdatePreferences {
 }
 
 @main
-struct OpenNOWApp: App {
-    @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
+struct MacForceNowApp: App {
+    @NSApplicationDelegateAdaptor(MacForceNowAppDelegate.self) private var appDelegate
     @StateObject private var twitchRealtime = TwitchRealtimeController()
 
     let sharedModelContainer: ModelContainer
@@ -86,11 +86,11 @@ struct OpenNOWApp: App {
     init() {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
-        OpenNOWLog.info(.app, "OpenNOW application initializing")
+        MacForceNowLog.info(.app, "MacForce Now application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container
         CatalogImageCache.shared.configure(container: container)
-        OpenNOWLog.info(.app, "OpenNOW application initialization completed")
+        MacForceNowLog.info(.app, "MacForce Now application initialization completed")
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -104,16 +104,16 @@ struct OpenNOWApp: App {
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            OpenNOWLog.info(.app, "SwiftData model container created")
+            MacForceNowLog.info(.app, "SwiftData model container created")
             return container
         } catch {
-            OpenNOWLog.fatal(.app, "Could not create SwiftData model container: \(error.localizedDescription)")
+            MacForceNowLog.fatal(.app, "Could not create SwiftData model container: \(error.localizedDescription)")
             fatalError("Could not create ModelContainer: \(error)")
         }
     }
 
     var body: some Scene {
-        Window("OpenNOW", id: "main") {
+        Window("MacForce Now", id: "main") {
             ContentView()
                 .environmentObject(twitchRealtime)
                 .onAppear { twitchRealtime.start() }
@@ -141,12 +141,12 @@ struct OpenNOWApp: App {
 }
 
 @MainActor
-final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
+final class MacForceNowAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
 
-    private let githubUpdater = OpenNOWGitHubUpdater(owner: "anderson-oki", repository: "opennow-mac")
+    private let githubUpdater = MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "opennow-mac")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
@@ -154,13 +154,13 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private var isCompletingUserApprovedTermination = false
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        OpenNOWLog.info(.shortcut, "application(openFile:) received: \(filename)")
+        MacForceNowLog.info(.shortcut, "application(openFile:) received: \(filename)")
         postOpenedFile(URL(fileURLWithPath: filename))
         return true
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        OpenNOWLog.info(.shortcut, "application(openFiles:) received \(filenames.count) file(s)")
+        MacForceNowLog.info(.shortcut, "application(openFiles:) received \(filenames.count) file(s)")
         for filename in filenames {
             postOpenedFile(URL(fileURLWithPath: filename))
         }
@@ -168,43 +168,43 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        OpenNOWLog.info(.app, "NSApplication did finish launching")
+        MacForceNowLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
         startApplicationUpdateChecks()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        OpenNOWLog.info(.app, "NSApplication will terminate")
+        MacForceNowLog.info(.app, "NSApplication will terminate")
         removeStreamShortcutMonitor()
         stopApplicationUpdateChecks()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        OpenNOWLog.info(.app, "Application will terminate after last window closes")
+        MacForceNowLog.info(.app, "Application will terminate after last window closes")
         return true
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isCompletingUserApprovedTermination {
-            OpenNOWLog.info(.app, "Completing user-approved application termination")
+            MacForceNowLog.info(.app, "Completing user-approved application termination")
             return .terminateNow
         }
         guard WebRTCMediaStreamLifecycle.hasActiveStream else {
-            OpenNOWLog.info(.app, "Application termination allowed with no active stream")
+            MacForceNowLog.info(.app, "Application termination allowed with no active stream")
             return .terminateNow
         }
-        OpenNOWLog.warning(.app, "Application termination requested while a stream is active")
+        MacForceNowLog.warning(.app, "Application termination requested while a stream is active")
         guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true
-                OpenNOWLog.info(.app, "User approved application termination with active stream")
+                MacForceNowLog.info(.app, "User approved application termination with active stream")
             } else {
-                OpenNOWLog.info(.app, "User cancelled application termination with active stream")
+                MacForceNowLog.info(.app, "User cancelled application termination with active stream")
             }
             sender.reply(toApplicationShouldTerminate: shouldTerminateApplication)
         }) else {
-            OpenNOWLog.warning(.app, "Active stream quit decision unavailable; allowing termination")
+            MacForceNowLog.warning(.app, "Active stream quit decision unavailable; allowing termination")
             return .terminateNow
         }
         return .terminateLater
@@ -212,7 +212,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     private func postOpenedFile(_ url: URL) {
         Task { @MainActor in
-            OpenNOWFileOpenCoordinator.shared.enqueue(url)
+            MacForceNowFileOpenCoordinator.shared.enqueue(url)
         }
     }
 
@@ -244,16 +244,16 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func requestApplicationUpdateCheck() {
-        (NSApp.delegate as? OpenNOWAppDelegate)?.checkForApplicationUpdates()
+        (NSApp.delegate as? MacForceNowAppDelegate)?.checkForApplicationUpdates()
     }
 
     static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
-        OpenNOWUpdatePreferences.automaticUpdateChecksEnabled = enabled
-        (NSApp.delegate as? OpenNOWAppDelegate)?.refreshApplicationUpdateCheckSchedule()
+        MacForceNowUpdatePreferences.automaticUpdateChecksEnabled = enabled
+        (NSApp.delegate as? MacForceNowAppDelegate)?.refreshApplicationUpdateCheckSchedule()
     }
 
     private func startApplicationUpdateChecks() {
-        guard OpenNOWUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
+        guard MacForceNowUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
         guard applicationUpdateCheckTimer == nil else { return }
         checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
         applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
@@ -279,7 +279,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshApplicationUpdateCheckSchedule() {
-        guard OpenNOWUpdatePreferences.automaticUpdateChecksCanBeScheduled else {
+        guard MacForceNowUpdatePreferences.automaticUpdateChecksCanBeScheduled else {
             stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
             return
         }
@@ -291,7 +291,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkForApplicationUpdates(showingCurrentStatus: Bool, automatic: Bool) {
-        if automatic, !OpenNOWUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
+        if automatic, !MacForceNowUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
         guard updateCheckTask == nil, updateInstallTask == nil else { return }
         updateCheckTask = Task { @MainActor in
             defer { updateCheckTask = nil }
@@ -301,7 +301,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
                     if showingCurrentStatus {
                         let currentVersion = githubUpdater.currentVersion
                         let alert = NSAlert()
-                        alert.messageText = "OpenNOW is up to date"
+                        alert.messageText = "MacForce Now is up to date"
                         alert.informativeText = "Version \(currentVersion) is the latest release available on GitHub."
                         alert.addButton(withTitle: "OK")
                         presentAlert(alert)
@@ -322,7 +322,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
+    private func presentUpdateAlert(for release: MacForceNowGitHubRelease) {
         updateInstallTask?.cancel()
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -333,8 +333,8 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
             }
 
             let alert = NSAlert()
-            alert.messageText = "OpenNOW \(release.version) is available"
-            alert.informativeText = "Current version: \(currentVersion)\n\nA newer signed OpenNOW build is available.\n\n\(notes)"
+            alert.messageText = "MacForce Now \(release.version) is available"
+            alert.informativeText = "Current version: \(currentVersion)\n\nA newer signed MacForce Now build is available.\n\n\(notes)"
             alert.addButton(withTitle: "Install and Relaunch")
             alert.addButton(withTitle: "Remind Me Tomorrow")
             alert.addButton(withTitle: "Cancel")
@@ -343,7 +343,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
                 case .alertFirstButtonReturn:
                     self?.installUpdate(release)
                 case .alertSecondButtonReturn:
-                    OpenNOWUpdatePreferences.remindTomorrow()
+                    MacForceNowUpdatePreferences.remindTomorrow()
                 default:
                     break
                 }
@@ -351,20 +351,20 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func installUpdate(_ release: OpenNOWGitHubRelease) {
+    private func installUpdate(_ release: MacForceNowGitHubRelease) {
         guard updateInstallTask == nil else { return }
         updateInstallTask = Task { @MainActor in
             defer { updateInstallTask = nil }
             do {
                 let launchedInstaller = try await githubUpdater.installRelease(release)
                 guard launchedInstaller else {
-                    showUpdateInstallFailed(message: "OpenNOW could not launch the update installer.")
+                    showUpdateInstallFailed(message: "MacForce Now could not launch the update installer.")
                     return
                 }
                 NSApp.terminate(self)
             } catch is CancellationError {
             } catch {
-                showUpdateInstallFailed(message: error.localizedDescription.isEmpty ? "OpenNOW could not install the downloaded update." : error.localizedDescription)
+                showUpdateInstallFailed(message: error.localizedDescription.isEmpty ? "MacForce Now could not install the downloaded update." : error.localizedDescription)
             }
         }
     }

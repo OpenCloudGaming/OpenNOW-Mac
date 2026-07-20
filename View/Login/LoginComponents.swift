@@ -1,6 +1,6 @@
 //
 //  LoginComponents.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -10,7 +10,7 @@ import SwiftUI
 
 struct LoginBackdrop: View {
     var body: some View {
-        OpenNOWDesign.Surface.app
+        MacForceNowDesign.Surface.app
         .ignoresSafeArea()
     }
 }
@@ -34,7 +34,7 @@ struct VendorResourceImage: View {
             return cachedImage
         }
 
-        for subdirectory in ["OpenNOW", "Resources/OpenNOW", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+        for subdirectory in ["MacForceNow", "Resources/MacForceNow", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
                 imageCache.setObject(image, forKey: cacheKey)

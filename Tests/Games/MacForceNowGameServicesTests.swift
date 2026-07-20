@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func launchAppIdRejectsZeroAndInvalidValues() {
     #expect(OPNLaunchAppId.resolve("0") == nil)
@@ -59,7 +59,7 @@ import Foundation
 }
 
 @Test func streamCoordinatorRejectsZeroApplicationIdBeforeNetworkWork() async {
-    let coordinator = OpenNOWStreamSessionCoordinator()
+    let coordinator = MacForceNowStreamSessionCoordinator()
     let configuration = StreamLaunchConfiguration(
         title: "Invalid Launch",
         applicationID: "0",
@@ -71,7 +71,7 @@ import Foundation
     do {
         _ = try await coordinator.startSession(configuration: configuration)
         Issue.record("Expected coordinator to reject appId 0 before session allocation")
-    } catch let error as OpenNOWStreamSessionError {
+    } catch let error as MacForceNowStreamSessionError {
         #expect(error.errorDescription == "This game does not include a launchable GeForce NOW app id.")
     } catch {
         Issue.record("Unexpected error type: \(error)")
@@ -95,7 +95,7 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-        let coordinator = OpenNOWStreamSessionCoordinator()
+        let coordinator = MacForceNowStreamSessionCoordinator()
         let session = StreamSessionDescriptor(
             id: "session-report",
             applicationID: "123",
@@ -127,7 +127,7 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-        let coordinator = OpenNOWStreamSessionCoordinator()
+        let coordinator = MacForceNowStreamSessionCoordinator()
         let session = StreamSessionDescriptor(id: "session-report", applicationID: "123", serverAddress: "stop.example.test", title: "Report Game", metadata: ["accessToken": "token"])
 
         try await coordinator.finishSession(session, reason: .userRequested)
@@ -143,7 +143,7 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-        let coordinator = OpenNOWStreamSessionCoordinator()
+        let coordinator = MacForceNowStreamSessionCoordinator()
         let session = StreamSessionDescriptor(id: "session-report", applicationID: "123", serverAddress: "stop.example.test", title: "Report Game")
 
         try await coordinator.finishSession(session, reason: .completed)
@@ -959,7 +959,7 @@ import Foundation
 @Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-stale-internal.example.test"
-    UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
+    UserDefaults.standard.set("resume-session", forKey: "MacForceNow.Stream.ActiveSessionId")
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
@@ -968,7 +968,7 @@ import Foundation
         return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
     }
     defer {
-        UserDefaults.standard.removeObject(forKey: "OpenNOW.Stream.ActiveSessionId")
+        UserDefaults.standard.removeObject(forKey: "MacForceNow.Stream.ActiveSessionId")
         SessionManagerURLProtocol.uninstall(host: host)
     }
 
@@ -984,7 +984,7 @@ import Foundation
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
-    #expect(UserDefaults.standard.string(forKey: "OpenNOW.Stream.ActiveSessionId") == nil)
+    #expect(UserDefaults.standard.string(forKey: "MacForceNow.Stream.ActiveSessionId") == nil)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
     }
 }

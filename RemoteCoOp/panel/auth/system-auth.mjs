@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 
 const authRoot = dirname(fileURLToPath(import.meta.url));
 const bundledHelper = join(authRoot, "pam-auth-helper");
-const installedHelper = "/usr/local/libexec/opennow-remote-coop-pam-auth-helper";
-const defaultExplicitGroup = "opennow-coop-admin";
+const installedHelper = "/usr/local/libexec/macforce-now-remote-coop-pam-auth-helper";
+const defaultExplicitGroup = "macforce-now-coop-admin";
 const fallbackAdminGroups = process.platform === "darwin" ? ["admin"] : ["sudo", "wheel"];
 
 export function authConfiguration() {
@@ -52,14 +52,14 @@ export function normalizeUsername(value) {
 }
 
 function helperPath() {
-  const configured = process.env.OPENNOW_REMOTE_COOP_PANEL_AUTH_HELPER;
+  const configured = process.env.MACFORCE_NOW_REMOTE_COOP_PANEL_AUTH_HELPER;
   if (typeof configured === "string" && configured.trim()) return configured.trim();
   if (existsSync(installedHelper)) return installedHelper;
   return bundledHelper;
 }
 
 function allowedGroups() {
-  const configured = process.env.OPENNOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS;
+  const configured = process.env.MACFORCE_NOW_REMOTE_COOP_PANEL_ALLOWED_GROUPS;
   const groups = typeof configured === "string" && configured.trim()
     ? configured.split(",").map(group => group.trim()).filter(Boolean)
     : [defaultExplicitGroup];

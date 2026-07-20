@@ -1,7 +1,7 @@
 import Foundation
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Suite(.serialized) struct StreamPreferencesLocationTests {
     @Test func automaticServerLocationKeepsProviderCloudMatchBase() {
@@ -38,7 +38,7 @@ import Testing
 
     @Test func cachedRegionsDeduplicatePersistedNormalizedUrls() {
         let defaults = UserDefaults.standard
-        let cachedRegionsKey = "OpenNOW.Stream.CachedRegions"
+        let cachedRegionsKey = "MacForceNow.Stream.CachedRegions"
         let previousCachedRegions = defaults.object(forKey: cachedRegionsKey)
         defer {
             if let previousCachedRegions { defaults.set(previousCachedRegions, forKey: cachedRegionsKey) }

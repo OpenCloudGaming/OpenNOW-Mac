@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func ircParserDecodesPrivmsg() throws {
     let line = "@badge-info=;badges=;color=#9146FF;display-name=Jayian;id=abc :jayian!jayian@jayian.tmi.twitch.tv PRIVMSG #jayian :hello stream"

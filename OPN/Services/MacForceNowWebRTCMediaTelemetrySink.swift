@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
+struct MacForceNowWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
         let level = Self.sentryLevel(for: event)

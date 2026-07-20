@@ -45,10 +45,10 @@
 		</dict>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>OpenNOW OAuth Callback</string>
+			<string>MacForce Now OAuth Callback</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>opennow</string>
+				<string>macforce-now</string>
 			</array>
 		</dict>
 	</array>
@@ -62,10 +62,10 @@
 		<true/>
 	</dict>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>OpenNOW writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>
+	<string>MacForce Now writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
+	<string>MacForce Now uses the microphone for voice chat during GeForce NOW streams.</string>
 </dict>
 </plist>

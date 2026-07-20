@@ -47,8 +47,8 @@ private enum WebRTCMediaStreamTheme {
 }
 
 private extension Font {
-    static func streamNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func streamNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
@@ -1365,7 +1365,7 @@ public struct WebRTCMediaStreamSurface: View {
             return
         }
         twitchMarkerMessage = "Creating marker..."
-        let markerDescription = description.nilIfEmpty ?? configuration.title.nilIfEmpty ?? "OpenNOW stream marker"
+        let markerDescription = description.nilIfEmpty ?? configuration.title.nilIfEmpty ?? "MacForce Now stream marker"
         Task { @MainActor in
             twitchMarkerMessage = await onStreamMarker?(configuration.title, configuration.applicationID, markerDescription) ?? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))"
             twitchMarkerDraft = ""
@@ -1992,7 +1992,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func beginStreamingPerformanceMode() {
         guard streamingPerformanceActivity == nil else { return }
-        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "OpenNOW active cloud gaming stream")
+        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "MacForce Now active cloud gaming stream")
         WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 

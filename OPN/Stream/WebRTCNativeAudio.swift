@@ -24,7 +24,7 @@ private let coreAudioRecordingCallback: AURenderCallback = { refCon, actionFlags
 final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
     weak var owner: OPNLibWebRTCStreamSession?
 
-    private let audioQueue = DispatchQueue(label: "io.opencg.opennow.webrtc.coreaudio")
+    private let audioQueue = DispatchQueue(label: "io.opencg.macforce-now.webrtc.coreaudio")
     private var playoutUnit: AudioUnit?
     private var recordingUnit: AudioUnit?
     private var outputDevice = AudioDeviceID(kAudioObjectUnknown)

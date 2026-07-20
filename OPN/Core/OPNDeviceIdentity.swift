@@ -14,7 +14,7 @@ public final class OPNDeviceIdentity: NSObject {
             return cachedCloudmatchDeviceId
         }
 
-        let supportDirectory = ("~/Library/Application Support/OpenNOW" as NSString).expandingTildeInPath
+        let supportDirectory = ("~/Library/Application Support/MacForceNow" as NSString).expandingTildeInPath
         let path = (supportDirectory as NSString).appendingPathComponent("device-id.plist")
         let legacyPath = ("~/Library/Application Support/com.nvidia.gfn-device-id" as NSString).expandingTildeInPath
         let existing = NSDictionary(contentsOfFile: path) ?? NSDictionary(contentsOfFile: legacyPath)

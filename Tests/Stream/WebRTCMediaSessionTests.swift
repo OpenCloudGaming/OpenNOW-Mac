@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private actor RecordingSessionProvider: StreamSessionProvider {
     private(set) var finished: [(StreamSessionDescriptor, StreamEndReason)] = []

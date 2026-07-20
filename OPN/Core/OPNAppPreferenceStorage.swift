@@ -1,7 +1,7 @@
 import Foundation
 
 public struct OPNAppPreferenceStorage: @unchecked Sendable {
-    public static let standard = OPNAppPreferenceStorage(defaults: .standard, defaultsDomain: "io.github.opencloudgaming.opennow")
+    public static let standard = OPNAppPreferenceStorage(defaults: .standard, defaultsDomain: "io.github.opencloudgaming.macforce-now")
 
     private let defaults: UserDefaults
     private let defaultsDomain: String

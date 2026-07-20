@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private actor MockUDSState {
     private(set) var requests: [URLRequest] = []

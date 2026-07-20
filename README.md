@@ -1,10 +1,12 @@
-# OpenNOW
+# MacForce Now
 
-OpenNOW is a native macOS cloud gaming client for browsing, launching, streaming, and recording GeForce NOW sessions.
+MacForce Now is a native macOS cloud gaming client for browsing, launching, streaming, and recording GeForce NOW sessions.
 
-> **OpenNOW is an independent community project and is not affiliated with, endorsed by, or sponsored by NVIDIA.** NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
+> **MacForce Now is an independent community project and is not affiliated with, endorsed by, or sponsored by NVIDIA.** NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
 
 > **This is a fork of [OpenNOW-Mac](https://github.com/opennow/opennow-mac) that adds support for the Steam Controller 2026 ("Triton")** — including wired, Bluetooth LE, and 2.4 GHz dongle variants, with full HID input parsing and gamepad forwarding to GeForce NOW streams.
+
+> **Why the rename?** This fork was renamed from OpenNOW to MacForce Now so it can be installed alongside the upstream OpenNOW app on the same Mac without conflicts. The bundle identifier, URL scheme, keychain services, UserDefaults domain, and preference keys are all distinct from upstream, so both apps coexist without overwriting each other's credentials, preferences, or OAuth state.
 
 ## Current State
 
@@ -20,7 +22,7 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 
 ## Steam Controller Support (Experimental)
 
-OpenNOW can read Valve Steam Controllers directly over HID, bypassing Steam. The pipeline is:
+MacForce Now can read Valve Steam Controllers directly over HID, bypassing Steam. The pipeline is:
 
 1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and product ID (see below), opens them via IOKit HID, disables the firmware's built-in keyboard/mouse emulation ("lizard mode") with periodic heartbeats, and streams raw input reports.
 2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `SteamControllerInputSnapshot` (buttons, triggers, sticks, and trackpads).
@@ -52,7 +54,7 @@ Note: Steam grabs the physical controller exclusively while it is running — qu
 ## Project Layout
 
 - `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `OpenNOWApp.swift` - macOS app entry point and application delegate
+- `MacForceNowApp.swift` - macOS app entry point and application delegate
 - `Resources` - bundled images, fonts, and store icon assets
 - `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state and presentation coordination for login, catalog, controller catalog, and recordings
@@ -62,14 +64,14 @@ Note: Steam grabs the physical controller exclusively while it is running — qu
 
 ## Packages
 
-The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
+The root `Package.swift` exposes a testable `MacForceNow` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
 
 ## Building
 
 Build the macOS app from the repository root:
 
 ```sh
-xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
 ```
 
 ## Testing
@@ -87,7 +89,7 @@ swift test --scratch-path .build/shared --filter WebRTCStreamRecording
 ```
 
 ```sh
-swift test --scratch-path .build/shared --filter OpenNOWGameServicesTests
+swift test --scratch-path .build/shared --filter MacForceNowGameServicesTests
 ```
 
 Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.

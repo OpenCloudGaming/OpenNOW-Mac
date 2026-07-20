@@ -1,12 +1,12 @@
 import SwiftUI
 
-enum OpenNOWStartupAnimation {
+enum MacForceNowStartupAnimation {
     static let duration: TimeInterval = 5.0
     static let dismissalDelayNanoseconds: UInt64 = 5_300_000_000
     static let fadeDuration: TimeInterval = 0.56
 }
 
-struct OpenNOWStartupLoadingView: View {
+struct MacForceNowStartupLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var startDate = Date()
 
@@ -16,21 +16,21 @@ struct OpenNOWStartupLoadingView: View {
 
             TimelineView(.animation) { timeline in
                 let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
-                let progress = startupClamp(elapsed / OpenNOWStartupAnimation.duration)
+                let progress = startupClamp(elapsed / MacForceNowStartupAnimation.duration)
                 let loop = reduceMotion ? 0 : elapsed.truncatingRemainder(dividingBy: 3.2) / 3.2
 
                 ZStack {
-                    OpenNOWStartupBackdrop(progress: progress, loop: loop)
+                    MacForceNowStartupBackdrop(progress: progress, loop: loop)
 
-                    OpenNOWStartupDepthGrid(progress: progress, loop: loop, compact: compact)
+                    MacForceNowStartupDepthGrid(progress: progress, loop: loop, compact: compact)
 
-                    OpenNOWStartupOrbitalSystem(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
+                    MacForceNowStartupOrbitalSystem(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
 
-                    OpenNOWStartupDiagnostics(progress: progress, compact: compact)
+                    MacForceNowStartupDiagnostics(progress: progress, compact: compact)
 
-                    OpenNOWStartupCoreLogo(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
+                    MacForceNowStartupCoreLogo(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
 
-                    OpenNOWStartupSequenceFooter(progress: progress, loop: loop, compact: compact)
+                    MacForceNowStartupSequenceFooter(progress: progress, loop: loop, compact: compact)
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
@@ -40,11 +40,11 @@ struct OpenNOWStartupLoadingView: View {
         .background(.black)
         .onAppear { startDate = Date() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("OpenNOW is starting")
+        .accessibilityLabel("MacForce Now is starting")
     }
 }
 
-private struct OpenNOWStartupBackdrop: View {
+private struct MacForceNowStartupBackdrop: View {
     let progress: Double
     let loop: Double
 
@@ -94,7 +94,7 @@ private struct OpenNOWStartupBackdrop: View {
     }
 }
 
-private struct OpenNOWStartupDepthGrid: View {
+private struct MacForceNowStartupDepthGrid: View {
     let progress: Double
     let loop: Double
     let compact: Bool
@@ -134,7 +134,7 @@ private struct OpenNOWStartupDepthGrid: View {
     }
 }
 
-private struct OpenNOWStartupCoreLogo: View {
+private struct MacForceNowStartupCoreLogo: View {
     let progress: Double
     let loop: Double
     let compact: Bool
@@ -183,13 +183,13 @@ private struct OpenNOWStartupCoreLogo: View {
     }
 }
 
-private struct OpenNOWStartupOrbitalSystem: View {
+private struct MacForceNowStartupOrbitalSystem: View {
     let progress: Double
     let loop: Double
     let compact: Bool
     let reduceMotion: Bool
 
-    private static let modules: [OpenNOWStartupModule] = [
+    private static let modules: [MacForceNowStartupModule] = [
         .init(title: "AUTH", detail: "session vault", angle: -150, radius: 0.78, stageStart: 0.18),
         .init(title: "CATALOG", detail: "game index", angle: -92, radius: 0.90, stageStart: 0.28),
         .init(title: "NETWORK", detail: "edge route", angle: -34, radius: 0.82, stageStart: 0.38),
@@ -212,7 +212,7 @@ private struct OpenNOWStartupOrbitalSystem: View {
                     let x = cos(angle) * radius
                     let y = sin(angle) * radius * 0.58
 
-                    OpenNOWStartupModuleCard(module: module, load: load, compact: compact)
+                    MacForceNowStartupModuleCard(module: module, load: load, compact: compact)
                         .frame(width: compact ? 138 : 184, height: compact ? 54 : 66)
                         .scaleEffect(CGFloat(0.74 + reveal * 0.26))
                         .rotation3DEffect(.degrees(module.angle * 0.14 + spin * 0.16), axis: (x: 0.08, y: x > 0 ? -1 : 1, z: 0), perspective: 0.72)
@@ -228,7 +228,7 @@ private struct OpenNOWStartupOrbitalSystem: View {
     }
 }
 
-private struct OpenNOWStartupModule: Identifiable {
+private struct MacForceNowStartupModule: Identifiable {
     let id = UUID()
     let title: String
     let detail: String
@@ -237,8 +237,8 @@ private struct OpenNOWStartupModule: Identifiable {
     let stageStart: Double
 }
 
-private struct OpenNOWStartupModuleCard: View {
-    let module: OpenNOWStartupModule
+private struct MacForceNowStartupModuleCard: View {
+    let module: MacForceNowStartupModule
     let load: Double
     let compact: Bool
 
@@ -280,7 +280,7 @@ private struct OpenNOWStartupModuleCard: View {
     }
 }
 
-private struct OpenNOWStartupDiagnostics: View {
+private struct MacForceNowStartupDiagnostics: View {
     let progress: Double
     let compact: Bool
 
@@ -327,7 +327,7 @@ private struct OpenNOWStartupDiagnostics: View {
     }
 }
 
-private struct OpenNOWStartupSequenceFooter: View {
+private struct MacForceNowStartupSequenceFooter: View {
     let progress: Double
     let loop: Double
     let compact: Bool
@@ -339,7 +339,7 @@ private struct OpenNOWStartupSequenceFooter: View {
                 .tracking(compact ? 1.8 : 2.8)
                 .foregroundStyle(.white.opacity(0.76))
 
-            OpenNOWStartupProgressRail(loop: loop, progress: progress)
+            MacForceNowStartupProgressRail(loop: loop, progress: progress)
                 .frame(width: compact ? 230 : 360, height: 5)
 
             Text("Logo core initializes first. Services attach as the cloud client comes online.")
@@ -363,7 +363,7 @@ private struct OpenNOWStartupSequenceFooter: View {
     }
 }
 
-private struct OpenNOWStartupProgressRail: View {
+private struct MacForceNowStartupProgressRail: View {
     let loop: Double
     let progress: Double
 

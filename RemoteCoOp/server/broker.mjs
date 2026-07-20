@@ -6,23 +6,23 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const productionHost = "198.12.95.48";
-const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 32188);
-const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
-const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? productionHost;
+const port = integerEnv("MACFORCE_NOW_REMOTE_COOP_PORT", 32188);
+const portAlternates = portCandidates(port, process.env.MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES);
+const bindHost = process.env.MACFORCE_NOW_REMOTE_COOP_BIND_HOST ?? productionHost;
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
-const brokerCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "");
-const brokerKeyPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "");
+const brokerCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
+const brokerKeyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "");
 const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
 const brokerHTTPProtocol = brokerTLSEnabled ? "https" : "http";
 const brokerWebSocketProtocol = brokerTLSEnabled ? "wss" : "ws";
-const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
-const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:32189?transport=udp,turn:${productionHost}:32189?transport=tcp`);
-const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
-const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
-const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
-const turnCredentialTTLSeconds = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
-const networkLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_NETWORK", true);
-const messageFlowLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_MESSAGES", false);
+const stunURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
+const turnURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:32189?transport=udp,turn:${productionHost}:32189?transport=tcp`);
+const turnUsername = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_USERNAME ?? "";
+const turnCredential = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
+const turnSharedSecret = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
+const turnCredentialTTLSeconds = Number.parseInt(process.env.MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
+const networkLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_NETWORK", true);
+const messageFlowLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_MESSAGES", false);
 const rooms = new Map();
 const sockets = new Set();
 const sessionStats = { totalStarted: 0, totalEnded: 0, recent: [] };
@@ -36,7 +36,7 @@ const contentTypes = new Map([
 ]);
 
 if (Boolean(brokerCertificatePath) !== Boolean(brokerKeyPath)) {
-  console.error("OpenNOW Remote Co-Op broker HTTPS requires both OPENNOW_REMOTE_COOP_BROKER_CERT and OPENNOW_REMOTE_COOP_BROKER_KEY, or matching TLS/TURN cert and key environment variables.");
+  console.error("MacForce Now Remote Co-Op broker HTTPS requires both MACFORCE_NOW_REMOTE_COOP_BROKER_CERT and MACFORCE_NOW_REMOTE_COOP_BROKER_KEY, or matching TLS/TURN cert and key environment variables.");
   process.exit(1);
 }
 
@@ -118,18 +118,18 @@ function listenOnAvailablePort(index) {
   const onError = error => {
     server.off("listening", onListening);
     if (error.code === "EADDRINUSE" && index + 1 < portAlternates.length) {
-      console.warn(`OpenNOW Remote Co-Op broker port ${candidate} is in use; trying ${portAlternates[index + 1]}.`);
+      console.warn(`MacForce Now Remote Co-Op broker port ${candidate} is in use; trying ${portAlternates[index + 1]}.`);
       listenOnAvailablePort(index + 1);
       return;
     }
-    console.error(`OpenNOW Remote Co-Op broker failed to listen on ${bindHost}:${candidate}: ${error.message}`);
+    console.error(`MacForce Now Remote Co-Op broker failed to listen on ${bindHost}:${candidate}: ${error.message}`);
     process.exit(1);
   };
   const onListening = () => {
     server.off("error", onError);
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : candidate;
-    console.log(`OpenNOW Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
+    console.log(`MacForce Now Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
     if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port, secure: brokerTLSEnabled });
   };
   server.once("error", onError);
@@ -148,7 +148,7 @@ async function makeBrokerServer(handler) {
   try {
     return createHTTPSServer({ cert: await readFile(brokerCertificatePath), key: await readFile(brokerKeyPath) }, handler);
   } catch (error) {
-    console.error(`OpenNOW Remote Co-Op broker failed to load HTTPS certificate/key: ${error.message}`);
+    console.error(`MacForce Now Remote Co-Op broker failed to load HTTPS certificate/key: ${error.message}`);
     process.exit(1);
   }
 }

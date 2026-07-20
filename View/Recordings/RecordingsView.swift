@@ -13,17 +13,17 @@ enum RecordingsLayout {
 }
 
 extension Font {
-    static func recordingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func recordingsNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
 enum RecordingEditorBetaPreference {
-    static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
+    static let key = "MacForceNow.Recordings.EditorEarlyBetaOptIn"
 }
 
 enum RecordingRightsNoticePreference {
-    static let key = "OpenNOW.Recordings.RightsNoticeAcknowledged"
+    static let key = "MacForceNow.Recordings.RightsNoticeAcknowledged"
 }
 
 struct RecordingsView: View {
@@ -67,7 +67,7 @@ struct RecordingsView: View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 recordingsList
-                    .frame(width: OpenNOWDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
+                    .frame(width: MacForceNowDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -92,7 +92,7 @@ struct RecordingsView: View {
             Button("Delete Recording", role: .destructive) { deletePendingRecording() }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("This permanently removes the video file and metadata from OpenNOW recordings.")
+            Text("This permanently removes the video file and metadata from MacForce Now recordings.")
         }
         .onDisappear {
             cancelEditorPreview()

@@ -32,7 +32,7 @@ if (args.has("--dry-run")) {
 }
 
 if (!turnserverPath) {
-  console.error("error: turnserver was not found. Install coturn, or set OPENNOW_REMOTE_COOP_TURNSERVER_BIN.");
+  console.error("error: turnserver was not found. Install coturn, or set MACFORCE_NOW_REMOTE_COOP_TURNSERVER_BIN.");
   console.error("macOS: brew install coturn");
   console.error("Debian/Ubuntu: sudo apt-get install coturn");
   process.exit(1);
@@ -67,26 +67,26 @@ function stopChild(signal) {
 }
 
 function readConfig() {
-  const devAllowLoopback = booleanEnv("OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK", false);
-  const publicHost = stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", devAllowLoopback ? "127.0.0.1" : productionHost);
-  const tlsCert = stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "");
-  const tlsKey = stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "");
+  const devAllowLoopback = booleanEnv("MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK", false);
+  const publicHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST", devAllowLoopback ? "127.0.0.1" : productionHost);
+  const tlsCert = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
+  const tlsKey = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "");
   return {
-    turnserverBin: stringEnv("OPENNOW_REMOTE_COOP_TURNSERVER_BIN", "turnserver"),
+    turnserverBin: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURNSERVER_BIN", "turnserver"),
     publicHost,
-    realm: stringEnv("OPENNOW_REMOTE_COOP_TURN_REALM", publicHost || "opennow-remote-coop"),
-    sharedSecret: stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", ""),
-    listeningIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost),
-    externalIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP", ""),
-    port: integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 32189),
-    tlsPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 32443),
-    minPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MIN_PORT", 42160),
-    maxPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_MAX_PORT", 42200),
+    realm: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_REALM", publicHost || "macforce-now-remote-coop"),
+    sharedSecret: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", ""),
+    listeningIP: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost),
+    externalIP: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_EXTERNAL_IP", ""),
+    port: integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PORT", 32189),
+    tlsPort: integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT", 32443),
+    minPort: integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT", 42160),
+    maxPort: integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT", 42200),
     tlsCert,
     tlsKey,
     tlsEnabled: Boolean(tlsCert && tlsKey),
     devAllowLoopback,
-    verbose: booleanEnv("OPENNOW_REMOTE_COOP_TURN_VERBOSE", false)
+    verbose: booleanEnv("MACFORCE_NOW_REMOTE_COOP_TURN_VERBOSE", false)
   };
 }
 
@@ -94,26 +94,26 @@ function validateConfig(config) {
   const errors = [];
   const warnings = [];
   const portFields = [
-    ["OPENNOW_REMOTE_COOP_TURN_PORT", config.port],
-    ["OPENNOW_REMOTE_COOP_TURN_TLS_PORT", config.tlsPort],
-    ["OPENNOW_REMOTE_COOP_TURN_MIN_PORT", config.minPort],
-    ["OPENNOW_REMOTE_COOP_TURN_MAX_PORT", config.maxPort]
+    ["MACFORCE_NOW_REMOTE_COOP_TURN_PORT", config.port],
+    ["MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT", config.tlsPort],
+    ["MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT", config.minPort],
+    ["MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT", config.maxPort]
   ];
 
-  if (!config.publicHost) errors.push("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST is required unless OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1.");
-  if (!config.sharedSecret) errors.push("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET is required and must match the broker secret.");
-  if (config.sharedSecret && config.sharedSecret.length < 16) warnings.push("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET should be at least 16 characters in production.");
-  if (!config.realm) errors.push("OPENNOW_REMOTE_COOP_TURN_REALM is required.");
+  if (!config.publicHost) errors.push("MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST is required unless MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1.");
+  if (!config.sharedSecret) errors.push("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET is required and must match the broker secret.");
+  if (config.sharedSecret && config.sharedSecret.length < 16) warnings.push("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET should be at least 16 characters in production.");
+  if (!config.realm) errors.push("MACFORCE_NOW_REMOTE_COOP_TURN_REALM is required.");
 
   for (const [name, value] of portFields) {
     if (!Number.isInteger(value) || value < 1 || value > 65_535) errors.push(`${name} must be an integer from 1 to 65535.`);
   }
-  if (config.minPort > config.maxPort) errors.push("OPENNOW_REMOTE_COOP_TURN_MIN_PORT must be less than or equal to OPENNOW_REMOTE_COOP_TURN_MAX_PORT.");
+  if (config.minPort > config.maxPort) errors.push("MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT must be less than or equal to MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT.");
 
-  if (Boolean(config.tlsCert) !== Boolean(config.tlsKey)) errors.push("OPENNOW_REMOTE_COOP_TURN_CERT and OPENNOW_REMOTE_COOP_TURN_KEY must be provided together.");
-  if (!config.devAllowLoopback && isLoopbackHost(config.publicHost)) errors.push("Loopback TURN hosts require OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1.");
+  if (Boolean(config.tlsCert) !== Boolean(config.tlsKey)) errors.push("MACFORCE_NOW_REMOTE_COOP_TURN_CERT and MACFORCE_NOW_REMOTE_COOP_TURN_KEY must be provided together.");
+  if (!config.devAllowLoopback && isLoopbackHost(config.publicHost)) errors.push("Loopback TURN hosts require MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1.");
   if (!config.devAllowLoopback && !config.tlsEnabled) warnings.push("No TLS certificate/key configured. TURN UDP/TCP can still work, but TURNS over TCP 443 will not be advertised.");
-  if (!config.devAllowLoopback && !config.externalIP) warnings.push("OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP is recommended when coturn runs behind NAT.");
+  if (!config.devAllowLoopback && !config.externalIP) warnings.push("MACFORCE_NOW_REMOTE_COOP_TURN_EXTERNAL_IP is recommended when coturn runs behind NAT.");
 
   return { errors, warnings };
 }
@@ -149,14 +149,14 @@ function brokerEnvironment(config) {
   const urls = [`turn:${config.publicHost}:${config.port}?transport=udp`, `turn:${config.publicHost}:${config.port}?transport=tcp`];
   if (config.tlsEnabled) urls.push(`turns:${config.publicHost}:${config.tlsPort}?transport=tcp`);
   return {
-    OPENNOW_REMOTE_COOP_TURN_URLS: urls.join(","),
-    OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: config.sharedSecret,
-    OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: "3600"
+    MACFORCE_NOW_REMOTE_COOP_TURN_URLS: urls.join(","),
+    MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: config.sharedSecret,
+    MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: "3600"
   };
 }
 
 function printSummary(config, turnserverPath, turnserverArgs) {
-  console.log("OpenNOW Remote Co-Op TURN server configuration");
+  console.log("MacForce Now Remote Co-Op TURN server configuration");
   console.log(`  mode: ${config.devAllowLoopback ? "development" : "production"}`);
   console.log(`  public host: ${config.publicHost}`);
   console.log(`  listening: ${config.listeningIP}:${config.port}`);
@@ -220,32 +220,32 @@ function isLoopbackHost(host) {
 function printHelp() {
   console.log(`Usage: node RemoteCoOp/turn/turn-server.mjs [--dry-run]
 
-Starts coturn for OpenNOW Remote Co-Op. This Node app manages the system
+Starts coturn for MacForce Now Remote Co-Op. This Node app manages the system
 turnserver binary; it does not implement TURN itself.
 
 Required environment:
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default 198.12.95.48
-  OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET    Shared REST auth secret, also used by broker
+  MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default 198.12.95.48
+  MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET    Shared REST auth secret, also used by broker
 
 Common environment:
-  OPENNOW_REMOTE_COOP_TURNSERVER_BIN         Path/name of turnserver binary
-  OPENNOW_REMOTE_COOP_TURN_REALM            TURN auth realm, defaults to public host
-  OPENNOW_REMOTE_COOP_TURN_PORT             UDP/TCP TURN port, default 32189
-  OPENNOW_REMOTE_COOP_TURN_TLS_PORT         TLS/TCP TURNS port, default 32443
-  OPENNOW_REMOTE_COOP_TURN_MIN_PORT         Relay min UDP port, default 42160
-  OPENNOW_REMOTE_COOP_TURN_MAX_PORT         Relay max UDP port, default 42200
-  OPENNOW_REMOTE_COOP_TURN_LISTENING_IP     Local listen IP, default public host
-  OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP      Public relay IP when behind NAT
-  OPENNOW_REMOTE_COOP_TURN_CERT             TLS certificate path
-  OPENNOW_REMOTE_COOP_TURN_KEY              TLS private key path
-  OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1  Enables local 127.0.0.1 testing
+  MACFORCE_NOW_REMOTE_COOP_TURNSERVER_BIN         Path/name of turnserver binary
+  MACFORCE_NOW_REMOTE_COOP_TURN_REALM            TURN auth realm, defaults to public host
+  MACFORCE_NOW_REMOTE_COOP_TURN_PORT             UDP/TCP TURN port, default 32189
+  MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT         TLS/TCP TURNS port, default 32443
+  MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT         Relay min UDP port, default 42160
+  MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT         Relay max UDP port, default 42200
+  MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP     Local listen IP, default public host
+  MACFORCE_NOW_REMOTE_COOP_TURN_EXTERNAL_IP      Public relay IP when behind NAT
+  MACFORCE_NOW_REMOTE_COOP_TURN_CERT             TLS certificate path
+  MACFORCE_NOW_REMOTE_COOP_TURN_KEY              TLS private key path
+  MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1  Enables local 127.0.0.1 testing
 
 Examples:
-  OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
-  OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=local-development-secret \
+  MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
+  MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=local-development-secret \
   node RemoteCoOp/turn/turn-server.mjs --dry-run
 
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=198.12.95.48 \
-  OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
+  MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST=198.12.95.48 \
+  MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
   node RemoteCoOp/turn/turn-server.mjs`);
 }

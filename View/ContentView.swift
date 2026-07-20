@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -11,7 +11,7 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    private static let defaultWindowTitle = "OpenNOW"
+    private static let defaultWindowTitle = "MacForce Now"
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LoginAccount.lastLoginAt, order: .reverse) private var accounts: [LoginAccount]
@@ -30,7 +30,7 @@ struct ContentView: View {
             }
 
             if isShowingStartupLoading {
-                OpenNOWStartupLoadingView()
+                MacForceNowStartupLoadingView()
                     .transition(.opacity)
                     .zIndex(100)
             }
@@ -62,15 +62,15 @@ struct ContentView: View {
     }
 
     private func dismissStartupLoading() async {
-        try? await Task.sleep(nanoseconds: OpenNOWStartupAnimation.dismissalDelayNanoseconds)
+        try? await Task.sleep(nanoseconds: MacForceNowStartupAnimation.dismissalDelayNanoseconds)
         guard !Task.isCancelled else { return }
-        withAnimation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration)) {
+        withAnimation(.easeInOut(duration: MacForceNowStartupAnimation.fadeDuration)) {
             isShowingStartupLoading = false
         }
     }
 
     private func drainOpenedFiles() {
-        for url in OpenNOWFileOpenCoordinator.shared.drainPendingFileURLs() {
+        for url in MacForceNowFileOpenCoordinator.shared.drainPendingFileURLs() {
             viewModel.handleOpenedFile(url)
         }
     }

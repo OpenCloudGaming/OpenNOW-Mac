@@ -1,4 +1,4 @@
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by OpenCode on 6/16/26.
 //
@@ -14,7 +14,7 @@ struct WebRTCMediaStreamView: View {
     let onProgress: WebRTCMediaStreamProgressHandler?
     let onEnd: WebRTCMediaStreamCompletion
     @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
-    private let coordinator = OpenNOWStreamSessionCoordinator()
+    private let coordinator = MacForceNowStreamSessionCoordinator()
 
     var body: some View {
         WebRTCMediaStreamSurface(
@@ -49,7 +49,7 @@ struct WebRTCMediaStreamView: View {
             }
         )
         .onAppear {
-            WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
+            WebRTCMediaTelemetry.configure(sink: MacForceNowWebRTCMediaTelemetrySink())
         }
     }
 
@@ -127,7 +127,7 @@ struct WebRTCMediaStreamView: View {
 
     private static func createTwitchMarker(title: String, applicationID: String, description: String) async -> String {
         guard (try? TwitchTokenStore.load()) != nil else { return "Connect Twitch OAuth to create markers." }
-        let description = description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (title.isEmpty ? "OpenNOW stream marker" : title) : description
+        let description = description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (title.isEmpty ? "MacForce Now stream marker" : title) : description
         do {
             return try await TwitchOAuthService.createStreamMarker(clientID: TwitchOAuthService.clientID, description: description)
         } catch {

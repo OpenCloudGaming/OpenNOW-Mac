@@ -1,5 +1,5 @@
 //  LoginFormView.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -264,7 +264,7 @@ private struct TermsOfUseDialog: View {
                     .foregroundStyle(.white)
             }
 
-            Text("OpenNOW is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
+            Text("MacForce Now is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
                 .font(.nvidiaSans(size: 13, weight: .regular))
                 .foregroundStyle(.white.opacity(0.78))
                 .lineSpacing(3)

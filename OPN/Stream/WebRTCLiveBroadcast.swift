@@ -212,8 +212,8 @@ public final class WebRTCLiveBroadcastController: @unchecked Sendable {
 final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     var onStatusChanged: (@MainActor @Sendable (WebRTCLiveBroadcastStatus) -> Void)?
 
-    private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast")
-    private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast.conversion", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "io.opencg.macforce-now.twitch.broadcast")
+    private let conversionQueue = DispatchQueue(label: "io.opencg.macforce-now.twitch.broadcast.conversion", qos: .userInitiated)
     private let encoder = WebRTCH264LiveEncoder()
     private let audioEncoder = WebRTCAACLiveEncoder()
     private var publisher: RTMPPublisher?
@@ -724,7 +724,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
 }
 
 private final class WebRTCWindowBroadcastCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast.ui-capture", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "io.opencg.macforce-now.twitch.broadcast.ui-capture", qos: .userInitiated)
     private let onFrame: @Sendable (CVPixelBuffer) -> Void
     private var stream: SCStream?
 
@@ -740,7 +740,7 @@ private final class WebRTCWindowBroadcastCapture: NSObject, SCStreamOutput, SCSt
             window.owningApplication?.processID == processID && window.frame.width >= 64 && window.frame.height >= 64
         }
         guard let window = candidateWindows.max(by: { lhs, rhs in lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height }) else {
-            throw BroadcastError.capture("OpenNOW window is not available for broadcast capture.")
+            throw BroadcastError.capture("MacForce Now window is not available for broadcast capture.")
         }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let configuration = SCStreamConfiguration()

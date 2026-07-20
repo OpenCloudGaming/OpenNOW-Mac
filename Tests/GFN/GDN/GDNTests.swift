@@ -1,7 +1,7 @@
 import Foundation
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private struct MockGDNTransport: GDNHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]

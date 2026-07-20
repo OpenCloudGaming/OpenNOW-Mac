@@ -1,4 +1,4 @@
-# OpenNOW Remote Co-Op Operations
+# MacForce Now Remote Co-Op Operations
 
 This folder contains the browser Remote Co-Op reference stack:
 
@@ -48,10 +48,10 @@ node RemoteCoOp/run-servers.mjs
 
 The runner starts:
 
-- `server/broker.mjs` with `OPENNOW_REMOTE_COOP_BIND_HOST=198.12.95.48`.
-- `turn/turn-server.mjs` with `OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=198.12.95.48`.
+- `server/broker.mjs` with `MACFORCE_NOW_REMOTE_COOP_BIND_HOST=198.12.95.48`.
+- `turn/turn-server.mjs` with `MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP=198.12.95.48`.
 
-It defaults printed join/TURN URLs to `198.12.95.48`, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
+It defaults printed join/TURN URLs to `198.12.95.48`, generates an ephemeral TURN shared secret when one is not provided, and injects matching `MACFORCE_NOW_REMOTE_COOP_TURN_URLS` into the broker.
 
 Production browser invites use HTTP/WS against the public IP by default to avoid browser domain HTTPS upgrades. HTTPS/WSS remains supported when explicitly configured with a certificate that clients trust for the IP address.
 
@@ -66,15 +66,15 @@ node RemoteCoOp/run-servers.mjs --dry-run
 Override the advertised public host for LAN testing:
 
 ```sh
-OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 \
+MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 \
 node RemoteCoOp/run-servers.mjs
 ```
 
 For production, provide a stable TURN REST secret:
 
 ```sh
-OPENNOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48 \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
+MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48 \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
 node RemoteCoOp/run-servers.mjs
 ```
 
@@ -98,29 +98,29 @@ WebSocket signaling: ws://198.12.95.48:32188/remote-coop
 Broker environment:
 
 ```text
-OPENNOW_REMOTE_COOP_BIND_HOST=198.12.95.48
-OPENNOW_REMOTE_COOP_PORT=32188
-OPENNOW_REMOTE_COOP_PORT_ALTERNATES=8789,8790
-OPENNOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
-OPENNOW_REMOTE_COOP_TURN_URLS=turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
-OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
-OPENNOW_REMOTE_COOP_LOG_NETWORK=1
-OPENNOW_REMOTE_COOP_LOG_MESSAGES=0
+MACFORCE_NOW_REMOTE_COOP_BIND_HOST=198.12.95.48
+MACFORCE_NOW_REMOTE_COOP_PORT=32188
+MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES=8789,8790
+MACFORCE_NOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
+MACFORCE_NOW_REMOTE_COOP_TURN_URLS=turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
+MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
+MACFORCE_NOW_REMOTE_COOP_LOG_NETWORK=1
+MACFORCE_NOW_REMOTE_COOP_LOG_MESSAGES=0
 ```
 
-When `OPENNOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-separated `OPENNOW_REMOTE_COOP_PORT_ALTERNATES` list. Keep OpenNOW's Remote Co-Op Signaling Server and Guest Join URL settings aligned with the actual broker URL printed at startup.
+When `MACFORCE_NOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-separated `MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES` list. Keep MacForce Now's Remote Co-Op Signaling Server and Guest Join URL settings aligned with the actual broker URL printed at startup.
 
 If broker certificate/key paths are configured, the broker serves HTTPS/WSS. Without them, it serves HTTP/WS.
 
-Static TURN credentials are also supported with `OPENNOW_REMOTE_COOP_TURN_USERNAME` and `OPENNOW_REMOTE_COOP_TURN_CREDENTIAL`, but shared-secret REST credentials are preferred for production.
+Static TURN credentials are also supported with `MACFORCE_NOW_REMOTE_COOP_TURN_USERNAME` and `MACFORCE_NOW_REMOTE_COOP_TURN_CREDENTIAL`, but shared-secret REST credentials are preferred for production.
 
 ## Broker Network Logging
 
 The broker writes network lifecycle logs to stdout by default. Disable them with:
 
 ```sh
-OPENNOW_REMOTE_COOP_LOG_NETWORK=0 node RemoteCoOp/server/broker.mjs
+MACFORCE_NOW_REMOTE_COOP_LOG_NETWORK=0 node RemoteCoOp/server/broker.mjs
 ```
 
 Network logs use `[network]` lines and include HTTP request status, WebSocket upgrade decisions, socket open/close/error, host registration, guest pending/join/disconnect, room expiry/close, relay decisions, and rejection reasons. They intentionally omit invite tokens, raw SDP, TURN secrets, and full message payloads.
@@ -128,7 +128,7 @@ Network logs use `[network]` lines and include HTTP request status, WebSocket up
 Full signaling message flow logs remain opt-in for short debugging windows:
 
 ```sh
-OPENNOW_REMOTE_COOP_LOG_MESSAGES=1 node RemoteCoOp/server/broker.mjs
+MACFORCE_NOW_REMOTE_COOP_LOG_MESSAGES=1 node RemoteCoOp/server/broker.mjs
 ```
 
 Message flow logs print message kind, role, room ID, participant ID, and peer signal kind only; they do not print full payloads.
@@ -152,24 +152,24 @@ sudo apt-get install coturn
 Dry-run local config:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
+MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=macforce-now-remote-coop-local-secret \
 node RemoteCoOp/turn/turn-server.mjs --dry-run
 ```
 
 Run local development TURN:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
+MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=macforce-now-remote-coop-local-secret \
 node RemoteCoOp/turn/turn-server.mjs
 ```
 
 Run broker against local TURN:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp' \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
+MACFORCE_NOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp' \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=macforce-now-remote-coop-local-secret \
 node RemoteCoOp/server/broker.mjs
 ```
 
@@ -178,10 +178,10 @@ node RemoteCoOp/server/broker.mjs
 Run TURN on the production public IP `198.12.95.48`:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=198.12.95.48 \
-OPENNOW_REMOTE_COOP_TURN_REALM=198.12.95.48 \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
-OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP=203.0.113.10 \
+MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST=198.12.95.48 \
+MACFORCE_NOW_REMOTE_COOP_TURN_REALM=198.12.95.48 \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
+MACFORCE_NOW_REMOTE_COOP_TURN_EXTERNAL_IP=203.0.113.10 \
 node RemoteCoOp/turn/turn-server.mjs
 ```
 
@@ -197,13 +197,13 @@ Expose these firewall ports on the TURN host:
 Configure the broker with the same secret:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp' \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
-OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600 \
+MACFORCE_NOW_REMOTE_COOP_TURN_URLS='turn:198.12.95.48:32189?transport=udp,turn:198.12.95.48:32189?transport=tcp' \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
+MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS=3600 \
 node RemoteCoOp/server/broker.mjs
 ```
 
-The Node broker can still terminate TLS directly with `OPENNOW_REMOTE_COOP_BROKER_CERT` and `OPENNOW_REMOTE_COOP_BROKER_KEY`, or it can keep binding to `127.0.0.1` behind a reverse proxy. The default production path intentionally uses the public IP over HTTP/WS.
+The Node broker can still terminate TLS directly with `MACFORCE_NOW_REMOTE_COOP_BROKER_CERT` and `MACFORCE_NOW_REMOTE_COOP_BROKER_KEY`, or it can keep binding to `127.0.0.1` behind a reverse proxy. The default production path intentionally uses the public IP over HTTP/WS.
 
 ## Transport Modes
 
@@ -232,16 +232,16 @@ This starts a temporary broker with test STUN/TURN settings and verifies:
 Target an already running broker:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp' \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
+MACFORCE_NOW_REMOTE_COOP_TURN_URLS='turn:127.0.0.1:32189?transport=udp' \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=macforce-now-remote-coop-local-secret \
 node RemoteCoOp/server/smoke-network-config.mjs --broker-url http://127.0.0.1:32188
 ```
 
 Validate TURN launcher config without starting coturn:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
-OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=opennow-remote-coop-local-secret \
+MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1 \
+MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=macforce-now-remote-coop-local-secret \
 node RemoteCoOp/turn/turn-server.mjs --dry-run
 ```
 
@@ -251,7 +251,7 @@ Local validation:
 
 1. Start the TURN server in development mode.
 2. Start the broker with matching TURN URLs and shared secret.
-3. Launch OpenNOW.
+3. Launch MacForceNow.
 4. Enable Remote Co-Op and reserve at least one guest controller.
 5. Start a real GFN stream.
 6. Create a Remote Co-Op invite.
@@ -266,7 +266,7 @@ WAN validation:
 
 1. Deploy broker on public IP `198.12.95.48` with the selected high HTTP/WS port open.
 2. Deploy TURN with the selected high UDP/TCP port and UDP relay range open.
-3. Configure OpenNOW Remote Co-Op invites to use the deployed broker URL.
+3. Configure MacForce Now Remote Co-Op invites to use the deployed broker URL.
 4. Test host and guest on different networks.
 5. Repeat in Automatic mode.
 6. Repeat in Relay Only mode.
@@ -288,8 +288,8 @@ Use the Copy button when reporting E2E failures. Avoid sharing invite tokens or 
 ## Security Notes
 
 - Do not run anonymous TURN in production.
-- Use `OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET` with short-lived REST credentials.
-- Keep `OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1` limited to local development.
+- Use `MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET` with short-lived REST credentials.
+- Keep `MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK=1` limited to local development.
 - Keep the coturn CLI disabled.
 - Bound the relay port range and firewall only the required ports.
 - Treat TURN as bandwidth-relay infrastructure and monitor/limit it at the deployment layer.

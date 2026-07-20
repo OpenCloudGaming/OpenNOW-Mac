@@ -23,7 +23,7 @@ final class OPNActiveSessionObject: NSObject {
 }
 
 enum OPNActiveSessionService {
-    private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
+    private static let persistedSessionIdKey = "MacForceNow.Stream.ActiveSessionId"
 
     static func loadPersistedActiveSessionId() -> String {
         UserDefaults.standard.string(forKey: persistedSessionIdKey) ?? ""

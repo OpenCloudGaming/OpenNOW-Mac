@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenNOW Remote Co-Op Control Panel
+Description=MacForce Now Remote Co-Op Control Panel
 After=network-online.target
 Wants=network-online.target
 
@@ -8,7 +8,7 @@ Type=simple
 User=__SERVICE_USER__
 Group=__SERVICE_GROUP__
 WorkingDirectory=__REPO_ROOT__
-EnvironmentFile=-/etc/opennow/remote-coop-panel.env
+EnvironmentFile=-/etc/macforce-now/remote-coop-panel.env
 ExecStart=__NODE__ RemoteCoOp/panel/control-panel.mjs
 Restart=always
 RestartSec=3

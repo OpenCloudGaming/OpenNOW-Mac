@@ -1,6 +1,6 @@
 //
 //  CatalogImageCacheEntry.swift
-//  OpenNOW
+//  MacForceNow
 //
 
 import Foundation

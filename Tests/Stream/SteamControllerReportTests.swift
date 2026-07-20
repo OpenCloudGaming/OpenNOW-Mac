@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private func inputReport(buttons: (UInt8, UInt8, UInt8) = (0, 0, 0),
                          leftTrigger: UInt8 = 0,

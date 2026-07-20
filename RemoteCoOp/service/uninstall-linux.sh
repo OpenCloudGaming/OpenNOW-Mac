@@ -4,13 +4,13 @@ set -eu
 SUDO=${SUDO:-sudo}
 REMOVE_STATE=${REMOVE_STATE:-0}
 REMOVE_GROUPS=${REMOVE_GROUPS:-0}
-SERVICE_NAME=opennow-remote-coop-panel.service
-SERVICE_GROUP=${SERVICE_GROUP:-opennow-coop}
-ADMIN_GROUP=${ADMIN_GROUP:-opennow-coop-admin}
-ENV_FILE=/etc/opennow/remote-coop-panel.env
-ENV_DIR=/etc/opennow
-HELPER=/usr/local/libexec/opennow-remote-coop-pam-auth-helper
-PAM_FILE=/etc/pam.d/opennow-remote-coop
+SERVICE_NAME=macforce-now-remote-coop-panel.service
+SERVICE_GROUP=${SERVICE_GROUP:-macforce-now-coop}
+ADMIN_GROUP=${ADMIN_GROUP:-macforce-now-coop-admin}
+ENV_FILE=/etc/macforce-now/remote-coop-panel.env
+ENV_DIR=/etc/macforce-now
+HELPER=/usr/local/libexec/macforce-now-remote-coop-pam-auth-helper
+PAM_FILE=/etc/pam.d/macforce-now-remote-coop
 UNIT_FILE=/etc/systemd/system/$SERVICE_NAME
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=; fi
@@ -37,7 +37,7 @@ if [ "$REMOVE_GROUPS" = "1" ]; then
   $SUDO groupdel "$SERVICE_GROUP" >/dev/null 2>&1 || true
 fi
 
-echo "OpenNOW Remote Co-Op panel service uninstalled."
+echo "MacForce Now Remote Co-Op panel service uninstalled."
 if [ "$REMOVE_STATE" != "1" ]; then
   echo "Kept $ENV_FILE. Rerun with REMOVE_STATE=1 to remove generated service secrets."
 fi

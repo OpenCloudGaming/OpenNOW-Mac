@@ -112,9 +112,9 @@ final class OPNVideoTextureSource: NSObject {
             textureFrame.cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
             textureFrame.contentWidth = UInt(i420.width)
             textureFrame.contentHeight = UInt(i420.height)
-            textureFrame.lumaTexture = reusablePlaneTexture(&i420LumaTexture, width: Int(i420.width), height: Int(i420.height), bytes: i420.dataY, bytesPerRow: Int(i420.strideY), label: "OpenNOW I420 Y")
-            textureFrame.chromaUTexture = reusablePlaneTexture(&i420ChromaUTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataU, bytesPerRow: Int(i420.strideU), label: "OpenNOW I420 U")
-            textureFrame.chromaVTexture = reusablePlaneTexture(&i420ChromaVTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataV, bytesPerRow: Int(i420.strideV), label: "OpenNOW I420 V")
+            textureFrame.lumaTexture = reusablePlaneTexture(&i420LumaTexture, width: Int(i420.width), height: Int(i420.height), bytes: i420.dataY, bytesPerRow: Int(i420.strideY), label: "MacForce Now I420 Y")
+            textureFrame.chromaUTexture = reusablePlaneTexture(&i420ChromaUTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataU, bytesPerRow: Int(i420.strideU), label: "MacForce Now I420 U")
+            textureFrame.chromaVTexture = reusablePlaneTexture(&i420ChromaVTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataV, bytesPerRow: Int(i420.strideV), label: "MacForce Now I420 V")
             guard textureFrame.lumaTexture != nil, textureFrame.chromaUTexture != nil, textureFrame.chromaVTexture != nil else {
                 frameSource?.pointee = Self.frameBufferClassName(buffer)
                 pixelFormat?.pointee = "I420"
@@ -583,7 +583,7 @@ final class OPNMetalFXUpscaler: NSObject {
                     texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: baseAddress, bytesPerRow: bytesPerRow)
                 }
             }
-            texture.label = "OpenNOW MetalFX neutral motion"
+            texture.label = "MacForce Now MetalFX neutral motion"
             neutralMotionTexture = texture
         }
         return neutralMotionTexture
@@ -775,8 +775,8 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
         guard sourceWidth > 0, sourceHeight > 0, outputWidth >= sourceWidth, outputHeight >= sourceHeight else { return false }
-        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .renderTarget], label: "OpenNOW MetalFX source"),
-              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
+        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .renderTarget], label: "MacForce Now MetalFX source"),
+              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "MacForce Now MetalFX output") else {
             result.fallbackReason = "MetalFX texture allocation failed"
             recordDrop(in: result)
             return false
@@ -818,7 +818,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         guard isMetalFXAvailable, temporalPresentPipeline != nil else { return false }
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
-        guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
+        guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "MacForce Now MetalFX output") else {
             result.fallbackReason = "MetalFX output texture allocation failed"
             return false
         }
@@ -827,7 +827,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         guard let primaryTexture else { return false }
         let width = Int(textureFrame.contentWidth) > 0 ? Int(textureFrame.contentWidth) : primaryTexture.width
         let height = Int(textureFrame.contentHeight) > 0 ? Int(textureFrame.contentHeight) : primaryTexture.height
-        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW MetalFX source intermediate") else {
+        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "MacForce Now MetalFX source intermediate") else {
             result.fallbackReason = "MetalFX intermediate texture allocation failed"
             return false
         }
@@ -890,10 +890,10 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let height = drawable.texture.height
         let motionWidth = max(1, (width + 1) / 2)
         let motionHeight = max(1, (height + 1) / 2)
-        guard let currentTexture = reusableTexture(&temporalCurrentTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal current"),
-              let outputTexture = reusableTexture(&temporalOutputTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal output"),
-              let historyTexture = reusableTexture(&temporalHistoryTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal history"),
-              let motionTexture = reusableTexture(&temporalMotionTexture, width: motionWidth, height: motionHeight, pixelFormat: .rgba16Float, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal half-res motion") else {
+        guard let currentTexture = reusableTexture(&temporalCurrentTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "MacForce Now temporal current"),
+              let outputTexture = reusableTexture(&temporalOutputTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "MacForce Now temporal output"),
+              let historyTexture = reusableTexture(&temporalHistoryTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "MacForce Now temporal history"),
+              let motionTexture = reusableTexture(&temporalMotionTexture, width: motionWidth, height: motionHeight, pixelFormat: .rgba16Float, usage: [.renderTarget, .shaderRead], label: "MacForce Now temporal half-res motion") else {
             result.fallbackReason = "temporal upscaler could not allocate history textures"
             temporalHistoryValid = false
             return false

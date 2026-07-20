@@ -13,12 +13,12 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     private let catalogPath: String
     private let catalogDefinitionsPath: String
     private let imagePath: String
-    private let ioQueue = DispatchQueue(label: "com.opennow.game-data-cache.io", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "com.macforce-now.game-data-cache.io", qos: .utility)
 
     private override init() {
         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        rootPath = baseURL.appendingPathComponent("OpenNOW/GameData", isDirectory: true).path
+        rootPath = baseURL.appendingPathComponent("MacForceNow/GameData", isDirectory: true).path
         catalogPath = (rootPath as NSString).appendingPathComponent("catalog")
         catalogDefinitionsPath = (rootPath as NSString).appendingPathComponent("catalog-definitions")
         imagePath = (rootPath as NSString).appendingPathComponent("images")

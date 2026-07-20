@@ -1,5 +1,5 @@
 //  CatalogView.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -13,9 +13,9 @@ import SwiftUI
 private enum CatalogVendorLayout {
     static let windowTopInset: CGFloat = 42
     static let appBarHeight: CGFloat = 56
-    static let appBarBackground = OpenNOWDesign.Surface.appBar
-    static let mallSurface = OpenNOWDesign.Surface.app
-    static let tileTray = OpenNOWDesign.Surface.tileTray
+    static let appBarBackground = MacForceNowDesign.Surface.appBar
+    static let mallSurface = MacForceNowDesign.Surface.app
+    static let tileTray = MacForceNowDesign.Surface.tileTray
     static let sectionHeaderMargin: CGFloat = 40
     static let carouselContainerMargin: CGFloat = 32
     static let tileHorizontalMargin: CGFloat = 8
@@ -34,29 +34,29 @@ private enum CatalogVendorLayout {
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
-        width > 0 ? OpenNOWDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
+        width > 0 ? MacForceNowDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
     }
 
     static func searchWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.42, minimum: 280, maximum: 540)
+        MacForceNowDesign.clamped(width * 0.42, minimum: 280, maximum: 540)
     }
 
     static func launchPanelWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width - 64, minimum: 360, maximum: 640)
+        MacForceNowDesign.clamped(width - 64, minimum: 360, maximum: 640)
     }
 
     static func heroTextLeading(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
+        MacForceNowDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
     }
 
     static func heroTextWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
+        MacForceNowDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
     }
 }
 
 extension Font {
-    static func nvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func nvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
@@ -71,7 +71,7 @@ struct CatalogView: View {
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
     @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var streamWindowTopInset: CGFloat = 0
@@ -222,7 +222,7 @@ struct CatalogView: View {
 
     private func consumePendingGameShortcut() {
         guard let shortcut = pendingGameShortcut else { return }
-        OpenNOWLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
+        MacForceNowLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }
@@ -1128,7 +1128,7 @@ private struct CatalogMainMenuPanel: View {
                     .font(.nvidia(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundStyle(Color.openNowGreen)
-                Text("OpenNOW Menu")
+                Text("MacForce Now Menu")
                     .font(.nvidia(size: 20, weight: .bold))
                     .foregroundStyle(.white.opacity(0.96))
             }
@@ -2820,8 +2820,8 @@ private struct CatalogShowAllOverlay: View {
 }
 
 private enum CatalogShowAllWindowPreferences {
-    private static let widthKey = "OpenNOW.catalog.showAllWindow.width"
-    private static let heightKey = "OpenNOW.catalog.showAllWindow.height"
+    private static let widthKey = "MacForceNow.catalog.showAllWindow.width"
+    private static let heightKey = "MacForceNow.catalog.showAllWindow.height"
 
     static func loadSize() -> CGSize? {
         let width = UserDefaults.standard.double(forKey: widthKey)
@@ -4353,7 +4353,7 @@ private struct CatalogErrorPresentation {
             return
         }
         if Self.looksTechnical(message) {
-            title = "OpenNOW received an unexpected service response."
+            title = "MacForce Now received an unexpected service response."
             hint = "Try again in a moment. If it keeps happening, copy the details for diagnostics."
             technicalDetails = message
             return

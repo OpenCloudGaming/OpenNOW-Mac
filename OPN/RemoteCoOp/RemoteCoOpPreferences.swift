@@ -2,18 +2,18 @@ import Foundation
 
 public enum OPNRemoteCoOpPreferencesStore {
     private static let storage = OPNAppPreferenceStorage.standard
-    private static let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
-    private static let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
-    private static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
-    private static let transportModeKey = "OpenNOW.RemoteCoOp.TransportMode"
-    private static let qualityPresetKey = "OpenNOW.RemoteCoOp.QualityPreset"
-    private static let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
-    private static let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
+    private static let alphaOptInKey = "MacForceNow.RemoteCoOp.AlphaOptIn"
+    private static let enabledKey = "MacForceNow.RemoteCoOp.Enabled"
+    private static let reservedGuestSlotsKey = "MacForceNow.RemoteCoOp.ReservedGuestSlots"
+    private static let transportModeKey = "MacForceNow.RemoteCoOp.TransportMode"
+    private static let qualityPresetKey = "MacForceNow.RemoteCoOp.QualityPreset"
+    private static let latencyModeKey = "MacForceNow.RemoteCoOp.LatencyMode"
+    private static let lowLatencyDefaultMigrationVersionKey = "MacForceNow.RemoteCoOp.LowLatencyDefaultMigrationVersion"
     private static let lowLatencyDefaultMigrationVersion = 1
-    private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
-    private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
-    private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
-    private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
+    private static let requireHostApprovalKey = "MacForceNow.RemoteCoOp.RequireHostApproval"
+    private static let signalingServerURLKey = "MacForceNow.RemoteCoOp.SignalingServerURL"
+    private static let guestJoinBaseURLKey = "MacForceNow.RemoteCoOp.GuestJoinBaseURL"
+    private static let hideGuestInviteDetailsKey = "MacForceNow.RemoteCoOp.HideGuestInviteDetails"
 
     public static var isAlphaOptedIn: Bool {
         bool(storage.object(forKey: alphaOptInKey), defaultValue: false)

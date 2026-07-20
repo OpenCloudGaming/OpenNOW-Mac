@@ -11,7 +11,7 @@ typealias OPNLibWebRTCStateHandler = @convention(block) (Bool, NSString) -> Void
 final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     static let maxGamepadControllers = 4
 
-    private let statsQueue = DispatchQueue(label: "io.opencg.opennow.webrtc.stats")
+    private let statsQueue = DispatchQueue(label: "io.opencg.macforce-now.webrtc.stats")
     private var inputController: OPNLibWebRTCInput!
     private var audioController: OPNLibWebRTCAudio!
     private var statsController: OPNLibWebRTCStats!
@@ -619,7 +619,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         guard string(settings["microphoneMode"]) != "disabled", impl.localMicrophoneTrack == nil else { return }
         let audioSource = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
         audioSource.volume = microphoneVolume
-        let audioTrack = factory.audioTrack(with: audioSource, trackId: "opennow-microphone")
+        let audioTrack = factory.audioTrack(with: audioSource, trackId: "macforce-now-microphone")
         audioTrack.isEnabled = microphoneEnabled
         if attachMicrophoneTrack(impl: impl, audioTrack: audioTrack) {
             impl.localMicrophoneTrack = audioTrack

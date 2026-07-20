@@ -1,7 +1,7 @@
 import Foundation
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func loginSessionAuthenticationUpdatePreservesIdentifier() {
     let session = LoginSession(

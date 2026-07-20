@@ -1,5 +1,5 @@
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Suite("WebRTCLiveBroadcast")
 struct WebRTCLiveBroadcastTests {

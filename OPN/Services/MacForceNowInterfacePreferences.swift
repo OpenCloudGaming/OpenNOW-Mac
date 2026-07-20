@@ -1,12 +1,12 @@
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by OpenAI on 7/6/26.
 //
 
 import Foundation
 
-enum OpenNOWInterfacePreferences {
-    static let controllerModeEnabledKey = "OpenNOW.Interface.ControllerModeEnabled"
+enum MacForceNowInterfacePreferences {
+    static let controllerModeEnabledKey = "MacForceNow.Interface.ControllerModeEnabled"
 
     static var controllerModeEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: controllerModeEnabledKey) }

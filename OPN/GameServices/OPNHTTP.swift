@@ -109,6 +109,6 @@ final class OPNHTTP: NSObject {
 
     private static func recordHTTPMetric(response: URLResponse?, error: NSError?, expectedStatus: Int, outcome: String) {
         let attributes = httpMetricAttributes(response: response, error: error, expectedStatus: expectedStatus, outcome: outcome) as NSDictionary
-        _ = OPNSentry.recordCounterMetric(key: "opennow.http.requests.count", value: 1, attributes: attributes as? [String: Any])
+        _ = OPNSentry.recordCounterMetric(key: "macforce-now.http.requests.count", value: 1, attributes: attributes as? [String: Any])
     }
 }

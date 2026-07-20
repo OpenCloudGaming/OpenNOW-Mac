@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private struct CommonPerformanceAuditMeasurement: Encodable {
     let package: String
@@ -18,7 +18,7 @@ private struct CommonPerformanceAuditOutput: Encodable {
 }
 
 @Test func streamPreferencesPerformanceAudit() throws {
-    guard ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT"] == "1" else { return }
+    guard ProcessInfo.processInfo.environment["MACFORCE_NOW_PERF_AUDIT"] == "1" else { return }
 
     let measurements = [
         measureCommonAuditOperation(operation: "OPNStreamPreferences.loadDeviceCapabilities", iterations: 200) {
@@ -37,7 +37,7 @@ private struct CommonPerformanceAuditOutput: Encodable {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(output)
-    if let outputPath = ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT_OUTPUT"], !outputPath.isEmpty {
+    if let outputPath = ProcessInfo.processInfo.environment["MACFORCE_NOW_PERF_AUDIT_OUTPUT"], !outputPath.isEmpty {
         try data.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
     }
     print(String(decoding: data, as: UTF8.self))

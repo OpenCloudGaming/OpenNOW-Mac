@@ -959,7 +959,7 @@ public enum OPNStreamPreferences {
         for key in streamingProfileKeys {
             storage.removeObject(forKey: key)
         }
-        storage.removeObject(forKey: "OpenNOW.Stream.LowLatencyModeEnabled")
+        storage.removeObject(forKey: "MacForceNow.Stream.LowLatencyModeEnabled")
         storage.synchronize()
     }
 
@@ -1335,7 +1335,7 @@ public enum OPNStreamPreferences {
         let orderedIndices = prioritizedRegionMeasurementIndices(regions)
         let group = DispatchGroup()
         let queue = OperationQueue()
-        queue.name = "com.opennow.stream.region-measurements"
+        queue.name = "com.macforce-now.stream.region-measurements"
         queue.qualityOfService = .utility
         queue.maxConcurrentOperationCount = maxConcurrentRegionMeasurements
         for index in orderedIndices {
@@ -1619,48 +1619,48 @@ public enum OPNStreamPreferences {
     ]
 
     private enum Keys {
-        static let aspectIndex = "OpenNOW.Stream.AspectIndex"
-        static let resolutionIndex = "OpenNOW.Stream.ResolutionIndex"
-        static let fpsIndex = "OpenNOW.Stream.FpsIndex"
-        static let codecIndex = "OpenNOW.Stream.CodecIndex"
-        static let bitrateIndex = "OpenNOW.Stream.BitrateIndex"
-        static let colorQualityIndex = "OpenNOW.Stream.ColorQualityIndex"
-        static let transportModeIndex = "OpenNOW.Stream.TransportModeIndex"
-        static let streamingQualityProfileIndex = "OpenNOW.Stream.StreamingQualityProfileIndex"
-        static let cloudGsyncEnabled = "OpenNOW.Stream.CloudGsyncEnabled"
-        static let fallbackToLogicalResolution = "OpenNOW.Stream.FallbackToLogicalResolution"
-        static let hudStreamingModeIndex = "OpenNOW.Stream.HudStreamingModeIndex"
-        static let sdrColorSpaceIndex = "OpenNOW.Stream.SDRColorSpaceIndex"
-        static let hdrColorSpaceIndex = "OpenNOW.Stream.HDRColorSpaceIndex"
-        static let prefilterModeIndex = "OpenNOW.Stream.PrefilterModeIndex"
-        static let prefilterSharpness = "OpenNOW.Stream.PrefilterSharpness"
-        static let prefilterDenoise = "OpenNOW.Stream.PrefilterDenoise"
-        static let upscalingModeIndex = "OpenNOW.Stream.UpscalingModeIndex"
-        static let upscalingTargetIndex = "OpenNOW.Stream.UpscalingTargetIndex"
-        static let upscalingSharpness = "OpenNOW.Stream.UpscalingSharpness"
-        static let upscalingDenoise = "OpenNOW.Stream.UpscalingDenoise"
-        static let recordingVideoBitrateMbps = "OpenNOW.Stream.RecordingVideoBitrateMbps"
-        static let recordingAudioBitrateKbps = "OpenNOW.Stream.RecordingAudioBitrateKbps"
-        static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"
-        static let l4sEnabled = "OpenNOW.Stream.L4SEnabled"
-        static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
-        static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
-        static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
-        static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"
-        static let preventDisplaySleepWhileStreaming = "OpenNOW.Stream.PreventDisplaySleepWhileStreaming"
-        static let gameVolume = "OpenNOW.Stream.GameVolume"
-        static let microphoneVolume = "OpenNOW.Stream.MicrophoneVolume"
-        static let microphoneShortcutEnabled = "OpenNOW.Stream.MicrophoneShortcutEnabled"
-        static let microphoneMode = "OpenNOW.Stream.MicrophoneMode"
-        static let microphoneDeviceId = "OpenNOW.Stream.MicrophoneDeviceId"
-        static let microphonePushToTalkKeyCode = "OpenNOW.Stream.MicrophonePushToTalkKeyCode"
-        static let microphonePushToTalkModifierMask = "OpenNOW.Stream.MicrophonePushToTalkModifierMask"
-        static let selectedRegionUrl = "OpenNOW.Stream.RegionUrl"
-        static let cachedRegions = "OpenNOW.Stream.CachedRegions"
-        static let cachedCloudVariablesJSON = "OpenNOW.Stream.CloudVariablesJSON"
-        static let cachedCloudVariablesTimestamp = "OpenNOW.Stream.CloudVariablesTimestamp"
-        static let hdrEnabled = "OpenNOW.Stream.HDREnabled"
-        static let gameProfiles = "OpenNOW.Stream.GameProfiles"
+        static let aspectIndex = "MacForceNow.Stream.AspectIndex"
+        static let resolutionIndex = "MacForceNow.Stream.ResolutionIndex"
+        static let fpsIndex = "MacForceNow.Stream.FpsIndex"
+        static let codecIndex = "MacForceNow.Stream.CodecIndex"
+        static let bitrateIndex = "MacForceNow.Stream.BitrateIndex"
+        static let colorQualityIndex = "MacForceNow.Stream.ColorQualityIndex"
+        static let transportModeIndex = "MacForceNow.Stream.TransportModeIndex"
+        static let streamingQualityProfileIndex = "MacForceNow.Stream.StreamingQualityProfileIndex"
+        static let cloudGsyncEnabled = "MacForceNow.Stream.CloudGsyncEnabled"
+        static let fallbackToLogicalResolution = "MacForceNow.Stream.FallbackToLogicalResolution"
+        static let hudStreamingModeIndex = "MacForceNow.Stream.HudStreamingModeIndex"
+        static let sdrColorSpaceIndex = "MacForceNow.Stream.SDRColorSpaceIndex"
+        static let hdrColorSpaceIndex = "MacForceNow.Stream.HDRColorSpaceIndex"
+        static let prefilterModeIndex = "MacForceNow.Stream.PrefilterModeIndex"
+        static let prefilterSharpness = "MacForceNow.Stream.PrefilterSharpness"
+        static let prefilterDenoise = "MacForceNow.Stream.PrefilterDenoise"
+        static let upscalingModeIndex = "MacForceNow.Stream.UpscalingModeIndex"
+        static let upscalingTargetIndex = "MacForceNow.Stream.UpscalingTargetIndex"
+        static let upscalingSharpness = "MacForceNow.Stream.UpscalingSharpness"
+        static let upscalingDenoise = "MacForceNow.Stream.UpscalingDenoise"
+        static let recordingVideoBitrateMbps = "MacForceNow.Stream.RecordingVideoBitrateMbps"
+        static let recordingAudioBitrateKbps = "MacForceNow.Stream.RecordingAudioBitrateKbps"
+        static let recordingEnhancedVideoEnabled = "MacForceNow.Stream.RecordingEnhancedVideoEnabled"
+        static let l4sEnabled = "MacForceNow.Stream.L4SEnabled"
+        static let powerSaverEnabled = "MacForceNow.Stream.PowerSaverEnabled"
+        static let suppressInputWhenInactive = "MacForceNow.Stream.SuppressInputWhenInactive"
+        static let directMouseInput = "MacForceNow.Stream.DirectMouseInput"
+        static let antiAFKMouseMovementEnabled = "MacForceNow.Stream.AntiAFKMouseMovementEnabled"
+        static let preventDisplaySleepWhileStreaming = "MacForceNow.Stream.PreventDisplaySleepWhileStreaming"
+        static let gameVolume = "MacForceNow.Stream.GameVolume"
+        static let microphoneVolume = "MacForceNow.Stream.MicrophoneVolume"
+        static let microphoneShortcutEnabled = "MacForceNow.Stream.MicrophoneShortcutEnabled"
+        static let microphoneMode = "MacForceNow.Stream.MicrophoneMode"
+        static let microphoneDeviceId = "MacForceNow.Stream.MicrophoneDeviceId"
+        static let microphonePushToTalkKeyCode = "MacForceNow.Stream.MicrophonePushToTalkKeyCode"
+        static let microphonePushToTalkModifierMask = "MacForceNow.Stream.MicrophonePushToTalkModifierMask"
+        static let selectedRegionUrl = "MacForceNow.Stream.RegionUrl"
+        static let cachedRegions = "MacForceNow.Stream.CachedRegions"
+        static let cachedCloudVariablesJSON = "MacForceNow.Stream.CloudVariablesJSON"
+        static let cachedCloudVariablesTimestamp = "MacForceNow.Stream.CloudVariablesTimestamp"
+        static let hdrEnabled = "MacForceNow.Stream.HDREnabled"
+        static let gameProfiles = "MacForceNow.Stream.GameProfiles"
         static let gameProfileEnabled = "enabled"
     }
 }

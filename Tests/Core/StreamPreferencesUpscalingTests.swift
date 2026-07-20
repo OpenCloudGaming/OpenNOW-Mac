@@ -1,13 +1,13 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Suite(.serialized) struct StreamPreferencesUpscalingTests {
-    private let preferenceDomain = "io.github.opencloudgaming.opennow"
-    private let upscalingModeIndexKey = "OpenNOW.Stream.UpscalingModeIndex"
-    private let upscalingSharpnessKey = "OpenNOW.Stream.UpscalingSharpness"
-    private let upscalingDenoiseKey = "OpenNOW.Stream.UpscalingDenoise"
-    private let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
+    private let preferenceDomain = "io.github.opencloudgaming.macforce-now"
+    private let upscalingModeIndexKey = "MacForceNow.Stream.UpscalingModeIndex"
+    private let upscalingSharpnessKey = "MacForceNow.Stream.UpscalingSharpness"
+    private let upscalingDenoiseKey = "MacForceNow.Stream.UpscalingDenoise"
+    private let gameProfilesKey = "MacForceNow.Stream.GameProfiles"
 
     @Test func exposesOnlyOffAndMetalFXUpscalingModes() {
         #expect(OPNStreamPreferences.upscalingModeOptions.map(\.label) == ["Off", "MetalFX"])
@@ -15,10 +15,10 @@ import Testing
     }
 
     @Test func defaultsSixteenTenResolutionToNineteenTwentyByTwelveHundred() {
-        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", "OpenNOW.Stream.StreamingQualityProfileIndex"]) {
-            removePreferenceValue("OpenNOW.Stream.AspectIndex")
-            removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
-            removePreferenceValue("OpenNOW.Stream.StreamingQualityProfileIndex")
+        withPreservedPreferences(["MacForceNow.Stream.AspectIndex", "MacForceNow.Stream.ResolutionIndex", "MacForceNow.Stream.StreamingQualityProfileIndex"]) {
+            removePreferenceValue("MacForceNow.Stream.AspectIndex")
+            removePreferenceValue("MacForceNow.Stream.ResolutionIndex")
+            removePreferenceValue("MacForceNow.Stream.StreamingQualityProfileIndex")
 
             let profile = OPNStreamPreferences.loadProfile()
 
@@ -31,9 +31,9 @@ import Testing
     }
 
     @Test func launchProfileKeepsSelectedResolutionWhenStaleGameProfileExists() {
-        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", gameProfilesKey]) {
-            removePreferenceValue("OpenNOW.Stream.AspectIndex")
-            removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+        withPreservedPreferences(["MacForceNow.Stream.AspectIndex", "MacForceNow.Stream.ResolutionIndex", gameProfilesKey]) {
+            removePreferenceValue("MacForceNow.Stream.AspectIndex")
+            removePreferenceValue("MacForceNow.Stream.ResolutionIndex")
             removePreferenceValue(gameProfilesKey)
             OPNStreamPreferences.saveAspectIndex(1)
             OPNStreamPreferences.saveResolutionIndex(5)
@@ -241,22 +241,22 @@ import Testing
 
     private var streamingProfileKeys: [String] {
         [
-            "OpenNOW.Stream.AspectIndex",
-            "OpenNOW.Stream.ResolutionIndex",
-            "OpenNOW.Stream.FpsIndex",
-            "OpenNOW.Stream.CodecIndex",
-            "OpenNOW.Stream.BitrateIndex",
-            "OpenNOW.Stream.ColorQualityIndex",
-            "OpenNOW.Stream.TransportModeIndex",
-            "OpenNOW.Stream.StreamingQualityProfileIndex",
-            "OpenNOW.Stream.CloudGsyncEnabled",
-            "OpenNOW.Stream.FallbackToLogicalResolution",
-            "OpenNOW.Stream.HudStreamingModeIndex",
-            "OpenNOW.Stream.SDRColorSpaceIndex",
-            "OpenNOW.Stream.HDRColorSpaceIndex",
-            "OpenNOW.Stream.L4SEnabled",
-            "OpenNOW.Stream.HDREnabled",
-            "OpenNOW.Stream.PowerSaverEnabled",
+            "MacForceNow.Stream.AspectIndex",
+            "MacForceNow.Stream.ResolutionIndex",
+            "MacForceNow.Stream.FpsIndex",
+            "MacForceNow.Stream.CodecIndex",
+            "MacForceNow.Stream.BitrateIndex",
+            "MacForceNow.Stream.ColorQualityIndex",
+            "MacForceNow.Stream.TransportModeIndex",
+            "MacForceNow.Stream.StreamingQualityProfileIndex",
+            "MacForceNow.Stream.CloudGsyncEnabled",
+            "MacForceNow.Stream.FallbackToLogicalResolution",
+            "MacForceNow.Stream.HudStreamingModeIndex",
+            "MacForceNow.Stream.SDRColorSpaceIndex",
+            "MacForceNow.Stream.HDRColorSpaceIndex",
+            "MacForceNow.Stream.L4SEnabled",
+            "MacForceNow.Stream.HDREnabled",
+            "MacForceNow.Stream.PowerSaverEnabled",
         ]
     }
 

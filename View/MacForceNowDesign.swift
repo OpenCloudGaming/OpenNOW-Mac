@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum OpenNOWDesign {
+enum MacForceNowDesign {
     enum Surface {
         static let app = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
         static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)

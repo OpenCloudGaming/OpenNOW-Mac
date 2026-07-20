@@ -11,8 +11,8 @@ private enum SettingsVendorLayout {
 }
 
 private extension Font {
-    static func settingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func settingsNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
@@ -78,7 +78,7 @@ private enum SettingsAppMetadata {
     static var displayName: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        ?? "OpenNOW Mac"
+        ?? "MacForce Now Mac"
     }
 
     static var version: String {
@@ -150,7 +150,7 @@ private struct SettingsSidebar: View {
                     .font(.settingsNvidia(size: 11, weight: .bold))
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.5)
-                Text("OpenNOW")
+                Text("MacForce Now")
                     .font(.settingsNvidia(size: 22, weight: .bold))
                     .foregroundStyle(.white)
             }
@@ -276,7 +276,7 @@ private struct SettingsContent: View {
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
         case .resolutionUpscaling: return "Control MetalFX presentation, clarity, and noise reduction for Apple Silicon."
         case .system: return "Review decoder, display, network, and device capability state."
-        case .about: return "OpenNOW Mac runtime and service identifiers."
+        case .about: return "MacForce Now Mac runtime and service identifiers."
         }
     }
 }
@@ -368,7 +368,7 @@ private struct AccountSettingsPage: View {
 
             SettingsCard(title: "Playtime Statistics") {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
-                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next OpenNOW session ends.")
+                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "MacForce Now will track local playtime after your next MacForce Now session ends.")
                 } else {
                     SettingsFlowLayout(spacing: 10) {
                         SettingsStatisticTile(label: "Total Playtime", value: durationText(viewModel.playtimeStatistics.totalSeconds), emphasized: true)
@@ -649,7 +649,7 @@ private struct SettingsStatisticTile: View {
 
 private struct InterfaceSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var inputRouter = ControllerInputRouter()
 
     var body: some View {
@@ -763,7 +763,7 @@ private struct ConnectionsSettingsPage: View {
         let stores = connectionStores
         SettingsCard(title: "Store Connections") {
             if stores.isEmpty {
-                AccountEmptyState(title: "No store providers available.", subtitle: "OpenNOW did not return any account providers for this session.")
+                AccountEmptyState(title: "No store providers available.", subtitle: "MacForce Now did not return any account providers for this session.")
             } else {
                 StoreConnectionsOverview(connectedCount: connectedStoreCount(in: stores), totalCount: stores.count)
                 SettingsDivider()
@@ -1395,7 +1395,7 @@ private struct GameplaySettingsPage: View {
                 SettingsDivider()
                 SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, action: viewModel.setAntiAFKMouseMovementEnabled)
                 SettingsDivider()
-                SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
+                SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while MacForce Now is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
             }
 
             if viewModel.remoteCoOpPreferences.isAlphaOptedIn {
@@ -1431,7 +1431,7 @@ private struct GameplaySettingsPage: View {
                 SettingsDivider()
                 SettingsOptionRow(title: "Microphone Mode", subtitle: "Controls how voice input is sent to the stream.", options: OPNStreamPreferences.microphoneModeOptions.map(\.label), selectedIndex: selectedMicrophoneModeIndex, action: { viewModel.setMicrophoneMode(OPNStreamPreferences.microphoneModeOptions[$0].value) })
                 SettingsDivider()
-                SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for OpenNOW streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
+                SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for MacForce Now streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
             }
 
             SettingsCard(title: "Profile Maintenance") {
@@ -1516,7 +1516,7 @@ private struct GameplayProfileOverview: View {
                     Text("Active streaming profile")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("These values are sent to OpenNOW when a new stream starts.")
+                    Text("These values are sent to MacForce Now when a new stream starts.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -1574,7 +1574,7 @@ private struct ServerLocationSettingsPage: View {
                     Text("Cloudmatch Region")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Automatic chooses the best measured OpenNOW route.")
+                    Text("Automatic chooses the best measured MacForce Now route.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -1849,7 +1849,7 @@ private struct AboutSettingsPage: View {
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
-    @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @AppStorage(MacForceNowUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = MacForceNowUpdatePreferences.defaultAutomaticUpdateChecksEnabled
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
@@ -1880,7 +1880,7 @@ private struct AboutSettingsPage: View {
                                 .frame(height: 20)
                                 .background(Color.openNowGreen)
                         }
-                        Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
+                        Text("A macOS runtime for launching and streaming MacForce Now sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
@@ -1904,14 +1904,14 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
                 SettingsDivider()
                 SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled) { enabled in
-                    OpenNOWAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+                    MacForceNowAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
                 }
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: "CHECK FOR UPDATES") {
-                        OpenNOWAppDelegate.requestApplicationUpdateCheck()
+                        MacForceNowAppDelegate.requestApplicationUpdateCheck()
                     }
-                    Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
+                    Text("Checks GitHub releases and installs a newer signed MacForce Now build when available.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                 }
@@ -1989,13 +1989,13 @@ private struct AboutSettingsPage: View {
     }
 
     private var automaticUpdateChecksSubtitle: String {
-        if OpenNOWUpdatePreferences.updateChecksAreSuspendedForDebugging {
+        if MacForceNowUpdatePreferences.updateChecksAreSuspendedForDebugging {
             return "Paused while running a debug build or attached debugger. Manual checks remain available."
         }
         if automaticUpdateChecksEnabled {
-            return "Checks GitHub releases on launch and hourly while OpenNOW is running."
+            return "Checks GitHub releases on launch and hourly while MacForce Now is running."
         }
-        return "OpenNOW will not check for new releases automatically. Manual checks remain available."
+        return "MacForce Now will not check for new releases automatically. Manual checks remain available."
     }
 
     private var diagnosticsText: String {
@@ -2004,7 +2004,7 @@ private struct AboutSettingsPage: View {
 
     private func diagnosticsText(logURL: URL?, uploadError: String) -> String {
         var lines = [
-            "OpenNOW Mac Diagnostics",
+            "MacForce Now Mac Diagnostics",
             "Version: \(SettingsAppMetadata.versionWithBuild)",
             "Bundle: \(bundleIdentifier)",
             "macOS: \(operatingSystemVersion)",
@@ -2093,7 +2093,7 @@ private struct DiagnosticsUploadConfirmationDialog: View {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
+                        Text("MacForce Now will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)

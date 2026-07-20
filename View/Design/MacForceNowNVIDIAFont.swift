@@ -2,7 +2,7 @@ import AppKit
 @preconcurrency import CoreText
 import SwiftUI
 
-public enum OpenNOWNVIDIAFont {
+public enum MacForceNowNVIDIAFont {
     public enum Weight: Hashable, Sendable {
         case regular
         case medium
@@ -48,7 +48,7 @@ public enum OpenNOWNVIDIAFont {
 }
 
 public extension Font {
-    static func openNOWNVIDIA(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func openNOWNVIDIA(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }

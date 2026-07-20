@@ -82,7 +82,7 @@ public struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
 }
 
 public enum TwitchPreferencesStore {
-    private static let key = "OpenNOW.Twitch.BroadcastPreferences"
+    private static let key = "MacForceNow.Twitch.BroadcastPreferences"
 
     public static func load() -> TwitchBroadcastPreferences {
         guard let data = UserDefaults.standard.data(forKey: key) else { return .defaultValue }

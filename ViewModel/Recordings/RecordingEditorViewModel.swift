@@ -6,8 +6,8 @@ enum RecordingEditorDragPayload: Equatable {
     case recording(UUID)
     case segment(UUID)
 
-    private static let recordingPrefix = "opennow-recording:"
-    private static let segmentPrefix = "opennow-segment:"
+    private static let recordingPrefix = "macforce-now-recording:"
+    private static let segmentPrefix = "macforce-now-segment:"
 
     var stringValue: String {
         switch self {

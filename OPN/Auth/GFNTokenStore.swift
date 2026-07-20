@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 public enum GFNTokenStore {
-    private static let service = "OpenNOW.GFN"
+    private static let service = "MacForceNow.GFN"
     private static let tokenKeyPrefix = "tokens."
 
     public struct Tokens: Codable, Sendable, Equatable {

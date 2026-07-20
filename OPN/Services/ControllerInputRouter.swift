@@ -1,4 +1,4 @@
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by OpenAI on 7/6/26.
 //

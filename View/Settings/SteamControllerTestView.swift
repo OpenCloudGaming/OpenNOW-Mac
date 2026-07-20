@@ -38,7 +38,7 @@ struct SteamControllerTestView: View {
                 .font(.system(size: 18))
                 .foregroundStyle(Color.openNowGreen)
             Text("STEAM CONTROLLER TEST")
-                .font(OpenNOWNVIDIAFont.font(size: 15, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 15, weight: .bold))
                 .tracking(1.2)
                 .foregroundStyle(.white.opacity(0.78))
             Spacer()
@@ -65,12 +65,12 @@ struct SteamControllerTestView: View {
                 .frame(width: 8, height: 8)
                 .shadow(color: (model.isConnected ? Color.openNowGreen : Color.red).opacity(0.5), radius: 3)
             Text(model.isConnected ? "Connected" : "No controller detected")
-                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.7))
             if model.isConnected {
                 Spacer()
                 Text(model.deviceID)
-                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
+                    .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.3))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -84,10 +84,10 @@ struct SteamControllerTestView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.white.opacity(0.15))
             Text("Connect a Steam Controller to begin testing")
-                .font(OpenNOWNVIDIAFont.font(size: 14, weight: .medium))
+                .font(MacForceNowNVIDIAFont.font(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.4))
             Text("Make sure Steam Controller Support is enabled in Experimental Features")
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
+                .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.25))
         }
         .frame(maxWidth: .infinity)
@@ -101,7 +101,7 @@ struct SteamControllerTestView: View {
             shoulderRow
             controllerBody
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .medium))
+                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .medium))
                 .tracking(0.5)
                 .foregroundStyle(.white.opacity(0.2))
         }
@@ -210,10 +210,10 @@ struct SteamControllerTestView: View {
             shape.stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             HStack(spacing: 4) {
                 Text(label)
-                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+                    .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
                     .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.5))
                 Text("\(Int(value * 100))%")
-                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
+                    .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
                     .foregroundStyle(pressed ? Color.openNowGreen.opacity(0.8) : .white.opacity(0.3))
                     .monospacedDigit()
             }
@@ -229,7 +229,7 @@ struct SteamControllerTestView: View {
                         .stroke(pressed ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
                 )
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
                 .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.5))
         }
     }
@@ -263,7 +263,7 @@ struct SteamControllerTestView: View {
                 .offset(x: CGFloat(x) * 30, y: CGFloat(-y) * 30)
 
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 8, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 8, weight: .bold))
                 .foregroundStyle(.white.opacity(0.2))
                 .offset(y: 54)
         }
@@ -288,7 +288,7 @@ struct SteamControllerTestView: View {
                 .shadow(color: pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 6)
                 .offset(x: x, y: y)
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
                 .foregroundStyle(pressed ? .black : .white.opacity(0.35))
                 .offset(x: x, y: y)
         }
@@ -316,7 +316,7 @@ struct SteamControllerTestView: View {
                 .offset(y: -16)
                 .rotationEffect(.degrees(rotation))
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
                 .foregroundStyle(isActive ? .black : .white.opacity(0.25))
                 .offset(y: -16)
                 .rotationEffect(.degrees(rotation))
@@ -426,7 +426,7 @@ struct SteamControllerTestView: View {
                     style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                 )
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
                 .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.4))
         }
         .frame(width: 42, height: 20)
@@ -437,7 +437,7 @@ struct SteamControllerTestView: View {
     private var rawValuesPanel: some View {
         VStack(spacing: 16) {
             Text("RAW INPUT VALUES")
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
                 .tracking(1.0)
                 .foregroundStyle(.white.opacity(0.35))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -473,7 +473,7 @@ struct SteamControllerTestView: View {
         let displayValue = raw ?? value
         return HStack(spacing: 8) {
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 10, weight: .bold))
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 28, alignment: .leading)
             GeometryReader { geo in
@@ -542,7 +542,7 @@ struct SteamControllerTestView: View {
     private func buttonStateRow(_ label: String, active: Bool) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
+                .font(MacForceNowNVIDIAFont.font(size: 10, weight: .bold))
                 .foregroundStyle(active ? Color.openNowGreen : .white.opacity(0.35))
                 .frame(width: 28, alignment: .leading)
             Text(active ? "ON" : "OFF")

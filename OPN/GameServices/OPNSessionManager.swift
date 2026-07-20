@@ -10,7 +10,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private var adStatesBySessionId: [String: [String: Any]] = [:]
 
     private static let defaultBaseUrl = CloudMatch.productionBaseURLString
-    private static let persistedActiveSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
+    private static let persistedActiveSessionIdKey = "MacForceNow.Stream.ActiveSessionId"
 
     func setAccessToken(_ token: String) {
         lock.withLock { accessToken = token }

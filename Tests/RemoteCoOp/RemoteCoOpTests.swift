@@ -3,16 +3,16 @@ import AudioUnit
 import Foundation
 import CoreVideo
 @preconcurrency import WebRTC
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Suite("Remote Co-Op", .serialized)
 struct RemoteCoOpTests {
-    private let preferenceDomain = "io.github.opencloudgaming.opennow"
-    private let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
-    private let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
-    private let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
-    private let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
-    private let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
+    private let preferenceDomain = "io.github.opencloudgaming.macforce-now"
+    private let alphaOptInKey = "MacForceNow.RemoteCoOp.AlphaOptIn"
+    private let enabledKey = "MacForceNow.RemoteCoOp.Enabled"
+    private let reservedGuestSlotsKey = "MacForceNow.RemoteCoOp.ReservedGuestSlots"
+    private let latencyModeKey = "MacForceNow.RemoteCoOp.LatencyMode"
+    private let lowLatencyDefaultMigrationVersionKey = "MacForceNow.RemoteCoOp.LowLatencyDefaultMigrationVersion"
 
     @Test("preferences clamp guest slots")
     func preferencesClampGuestSlots() {

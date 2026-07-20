@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.opennow.remote-coop.panel</string>
+  <string>com.macforce-now.remote-coop.panel</string>
   <key>ProgramArguments</key>
   <array>
     <string>__NODE__</string>
@@ -15,27 +15,27 @@
   <string>__SERVICE_USER__</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>OPENNOW_REMOTE_COOP_PANEL_BIND_HOST</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PANEL_BIND_HOST</key>
     <string>0.0.0.0</string>
-    <key>OPENNOW_REMOTE_COOP_PANEL_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PANEL_PORT</key>
     <string>__PANEL_PORT__</string>
-    <key>OPENNOW_REMOTE_COOP_PUBLIC_HOST</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST</key>
     <string>198.12.95.48</string>
-    <key>OPENNOW_REMOTE_COOP_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PORT</key>
     <string>__BROKER_PORT__</string>
-    <key>OPENNOW_REMOTE_COOP_PORT_ALTERNATES</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES</key>
     <string>__BROKER_ALTERNATES__</string>
-    <key>OPENNOW_REMOTE_COOP_TURN_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_TURN_PORT</key>
     <string>__TURN_PORT__</string>
-    <key>OPENNOW_REMOTE_COOP_TURN_TLS_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT</key>
     <string>32443</string>
-    <key>OPENNOW_REMOTE_COOP_TURN_MIN_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_TURN_MIN_PORT</key>
     <string>__TURN_MIN_PORT__</string>
-    <key>OPENNOW_REMOTE_COOP_TURN_MAX_PORT</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_TURN_MAX_PORT</key>
     <string>__TURN_MAX_PORT__</string>
-    <key>OPENNOW_REMOTE_COOP_AUTOSTART</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_AUTOSTART</key>
     <string>1</string>
-    <key>OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC</key>
+    <key>MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC</key>
     <string>1</string>
   </dict>
   <key>KeepAlive</key>
@@ -43,8 +43,8 @@
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/var/log/opennow-remote-coop-panel.log</string>
+  <string>/var/log/macforce-now-remote-coop-panel.log</string>
   <key>StandardErrorPath</key>
-  <string>/var/log/opennow-remote-coop-panel.err.log</string>
+  <string>/var/log/macforce-now-remote-coop-panel.err.log</string>
 </dict>
 </plist>

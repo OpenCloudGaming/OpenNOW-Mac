@@ -19,6 +19,77 @@ Execute every task in this order:
 - If generated SwiftPM files exceed the warning threshold or duplicate `artifacts/sentry-cocoa` directories appear, run `scripts/clean-spm-builds.sh`, then rerun builds/tests with `--scratch-path .build/shared`.
 - Never commit generated build artifacts.
 
+# Upstream Sync
+
+This repository is a fork of `OpenCloudGaming/OpenNOW-Mac`. The `sync-fork.yml` workflow runs weekly (Monday 06:00 UTC) and opens a PR labeled `upstream-sync` from `upstream/main` into `main`. The fork was renamed from OpenNOW to MacForce Now, so upstream syncs require manual conflict resolution on renamed files and re-application of identifier renames on merged lines.
+
+## Renamed File Mapping
+
+When a `upstream-sync` PR conflicts on any of these paths, the upstream change applies to the old path (left); resolve onto the new path (right):
+
+| Upstream path (old) | Fork path (new) |
+|---|---|
+| `OpenNOWApp.swift` | `MacForceNowApp.swift` |
+| `OpenNOW-Info.plist` | `MacForceNow-Info.plist` |
+| `OpenNOW.entitlements` | `MacForceNow.entitlements` |
+| `OpenNOW.xcodeproj/project.pbxproj` | `MacForceNow.xcodeproj/project.pbxproj` |
+| `OPN/Services/OpenNOWLog.swift` | `OPN/Services/MacForceNowLog.swift` |
+| `OPN/Services/OpenNOWGitHubUpdater.swift` | `OPN/Services/MacForceNowGitHubUpdater.swift` |
+| `OPN/Services/OpenNOWInterfacePreferences.swift` | `OPN/Services/MacForceNowInterfacePreferences.swift` |
+| `OPN/Services/OpenNOWWebRTCMediaTelemetrySink.swift` | `OPN/Services/MacForceNowWebRTCMediaTelemetrySink.swift` |
+| `OPN/GameServices/OpenNOWStreamSessionCoordinator.swift` | `OPN/GameServices/MacForceNowStreamSessionCoordinator.swift` |
+| `OPN/Core/OpenNOWNotifications.swift` | `OPN/Core/MacForceNowNotifications.swift` |
+| `View/OpenNOWDesign.swift` | `View/MacForceNowDesign.swift` |
+| `View/Design/OpenNOWNVIDIAFont.swift` | `View/Design/MacForceNowNVIDIAFont.swift` |
+| `View/Startup/OpenNOWStartupLoadingView.swift` | `View/Startup/MacForceNowStartupLoadingView.swift` |
+| `Tests/Games/OpenNOWGameServicesTests.swift` | `Tests/Games/MacForceNowGameServicesTests.swift` |
+| `Tests/Twitch/OpenNOWTwitchTests.swift` | `Tests/Twitch/MacForceNowTwitchTests.swift` |
+| `Resources/OpenNOW/` | `Resources/MacForceNow/` |
+| `RemoteCoOp/service/macos/com.opennow.remote-coop.panel.plist` | `RemoteCoOp/service/macos/com.macforce-now.remote-coop.panel.plist` |
+| `RemoteCoOp/service/linux/opennow-remote-coop-panel.service` | `RemoteCoOp/service/linux/macforce-now-remote-coop-panel.service` |
+| `RemoteCoOp/service/opennow-remote-coop-panel.env.example` | `RemoteCoOp/service/macforce-now-remote-coop-panel.env.example` |
+| `RemoteCoOp/panel/auth/opennow-remote-coop.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.pam.example` |
+| `RemoteCoOp/panel/auth/opennow-remote-coop.macos.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.macos.pam.example` |
+
+## Identifier Re-Application
+
+Upstream commits may reintroduce `OpenNOW`/`opennow`/`OPENNOW_` identifiers on merged lines. After resolving file-level conflicts, run this sweep on the merge result to re-apply the fork's rename:
+
+```sh
+files=$(rg -l 'OpenNOW|opennow|OPENNOW_' \
+  --glob '!**/.build/**' --glob '!**/.git/**' --glob '!**/WebRTC.framework/**' \
+  --glob '!**/vendor/**' --glob '!**/Package.resolved' --glob '!**/.playwright-mcp/**' \
+  --glob '!**/.claude/**' --glob '!**/.opencode/**' --glob '!**/.agents/**' \
+  --glob '!README.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md')
+echo "$files" | xargs sed -i '' 's/OpenNOW /MacForce Now /g; s/OpenNOW/MacForceNow/g; s/opennow/macforce-now/g; s/OPENNOW_/MACFORCE_NOW_/g'
+```
+
+Then fix display-name occurrences that should contain a space, and preserve the GitHub repo name:
+
+```sh
+sed -i '' 's/repository: "macforce-now-mac"/repository: "opennow-mac"/' MacForceNowApp.swift
+sed -i '' 's/Window("MacForceNow"/Window("MacForce Now"/' MacForceNowApp.swift
+sed -i '' 's/INFOPLIST_KEY_CFBundleDisplayName = MacForceNow;/INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";/' MacForceNow.xcodeproj/project.pbxproj
+sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/release.yml .github/workflows/unit-tests.yml
+```
+
+## Sync Procedure
+
+1. Fetch the `upstream-sync` PR locally and merge `upstream/main` into a working branch off `main`.
+2. Resolve file-level conflicts using the mapping table above: apply upstream content changes onto the new fork paths, not the old ones.
+3. Run the identifier re-application sweep on the full working tree.
+4. Verify the only remaining `opennow` hits are `README.md` (upstream attribution), `MacForceNowApp.swift` (GitHub repo name `opennow-mac`), `CHANGELOG.md` (history), and `.github/workflows/sync-fork.yml` (upstream URL):
+   ```sh
+   rg -n 'OpenNOW|opennow|OPENNOW_' --glob '!**/.build/**' --glob '!**/.git/**' \
+     --glob '!**/WebRTC.framework/**' --glob '!**/vendor/**' --glob '!**/Package.resolved' \
+     --glob '!**/.playwright-mcp/**' --glob '!**/.claude/**' --glob '!**/.opencode/**' \
+     --glob '!**/.agents/**' --glob '!README.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md'
+   ```
+   Expect zero output.
+5. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`.
+6. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
+7. Commit the merge with `chore: sync upstream` and push.
+
 # Coding Standards
 
 ## General

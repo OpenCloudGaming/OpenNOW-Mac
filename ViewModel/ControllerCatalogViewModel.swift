@@ -1,6 +1,6 @@
 //
 //  ControllerCatalogViewModel.swift
-//  OpenNOW
+//  MacForceNow
 //
 
 import Combine

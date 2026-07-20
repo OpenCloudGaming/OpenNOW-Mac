@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]

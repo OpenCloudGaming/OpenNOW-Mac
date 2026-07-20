@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     struct credentials credentials = { .password = password };
     struct pam_conv conv = { .conv = conversation, .appdata_ptr = &credentials };
     pam_handle_t *handle = NULL;
-    int status = pam_start("opennow-remote-coop", argv[1], &conv, &handle);
+    int status = pam_start("macforce-now-remote-coop", argv[1], &conv, &handle);
     if (status == PAM_SUCCESS) status = pam_authenticate(handle, 0);
     if (status == PAM_SUCCESS) status = pam_acct_mgmt(handle, 0);
     if (handle != NULL) pam_end(handle, status);

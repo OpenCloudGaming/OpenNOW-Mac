@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-enum OpenNOWLog {
+enum MacForceNowLog {
     enum Category: String {
         case app = "App"
         case auth = "Auth"
@@ -11,7 +11,7 @@ enum OpenNOWLog {
         case shortcut = "GFNShortcut"
     }
 
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.OpenNOW"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.MacForceNow"
 
     static func debug(_ category: Category, _ message: String) {
         let sanitized = OPNSentry.sanitizedLogMessage(message)
@@ -49,8 +49,8 @@ enum OpenNOWLog {
 }
 
 @MainActor
-final class OpenNOWFileOpenCoordinator {
-    static let shared = OpenNOWFileOpenCoordinator()
+final class MacForceNowFileOpenCoordinator {
+    static let shared = MacForceNowFileOpenCoordinator()
 
     private var pendingFileURLs: [URL] = []
 
@@ -58,7 +58,7 @@ final class OpenNOWFileOpenCoordinator {
 
     func enqueue(_ url: URL) {
         pendingFileURLs.append(url)
-        OpenNOWLog.info(.shortcut, "Queued opened file: \(url.path)")
+        MacForceNowLog.info(.shortcut, "Queued opened file: \(url.path)")
         NotificationCenter.default.post(name: .openNOWDidOpenFile, object: url)
     }
 
@@ -66,7 +66,7 @@ final class OpenNOWFileOpenCoordinator {
         let urls = pendingFileURLs
         pendingFileURLs.removeAll()
         if !urls.isEmpty {
-            OpenNOWLog.info(.shortcut, "Draining \(urls.count) pending opened file(s)")
+            MacForceNowLog.info(.shortcut, "Draining \(urls.count) pending opened file(s)")
         }
         return urls
     }

@@ -52,7 +52,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         self.qualityPreset = qualityPreset
         self.latencyMode = latencyMode
         self.callbacks = callbacks
-        self.videoQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.video.\(participantID.uuidString)")
+        self.videoQueue = DispatchQueue(label: "io.github.opencloudgaming.macforce-now.remote-coop.video.\(participantID.uuidString)")
         super.init()
     }
 

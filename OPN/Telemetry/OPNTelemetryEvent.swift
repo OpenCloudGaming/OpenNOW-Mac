@@ -64,7 +64,7 @@ public struct OPNTelemetryCommonData: Equatable, Sendable {
     public let locale: String
     public let sessionId: String
 
-    public init(appId: String = "opennow", clientVersion: String = "", deviceId: String = "", locale: String = "", sessionId: String = "") {
+    public init(appId: String = "macforce-now", clientVersion: String = "", deviceId: String = "", locale: String = "", sessionId: String = "") {
         self.appId = appId
         self.clientVersion = clientVersion
         self.deviceId = deviceId
@@ -118,22 +118,22 @@ public enum OPNTelemetryRecorder {
     public static func record(_ event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData = OPNTelemetryCommonData()) -> Bool {
         guard OPNSentry.isTelemetryEnabled() else { return false }
         let attributes = sentryAttributes(event: event, commonData: commonData)
-        _ = OPNSentry.recordCounterMetric(key: "opennow.telemetry.events.count", value: 1, attributes: attributes)
+        _ = OPNSentry.recordCounterMetric(key: "macforce-now.telemetry.events.count", value: 1, attributes: attributes)
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Telemetry", message: logMessage(event: event, commonData: commonData)))
         return true
     }
 
     static func sentryAttributes(event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData) -> [String: Any] {
         var attributes: [String: Any] = [
-            "opennow.event": event.name.rawValue,
-            "opennow.privacy_level": event.privacyLevel.rawValue,
-            "opennow.personalization": event.personalization.rawValue,
+            "macforce-now.event": event.name.rawValue,
+            "macforce-now.privacy_level": event.privacyLevel.rawValue,
+            "macforce-now.personalization": event.personalization.rawValue,
         ]
         for (key, value) in commonData.dictionary {
-            attributes["opennow.common.\(key)"] = sanitizedTelemetryValue(key: key, value: value)
+            attributes["macforce-now.common.\(key)"] = sanitizedTelemetryValue(key: key, value: value)
         }
         for (key, value) in event.parameters where !key.isEmpty {
-            attributes["opennow.parameter.\(OPNSentry.sanitizedLogMessage(key))"] = sanitizedTelemetryValue(key: key, value: value)
+            attributes["macforce-now.parameter.\(OPNSentry.sanitizedLogMessage(key))"] = sanitizedTelemetryValue(key: key, value: value)
         }
         return attributes.filter { !$0.key.isEmpty }
     }

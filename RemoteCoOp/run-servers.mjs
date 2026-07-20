@@ -35,38 +35,38 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 function buildConfig() {
-  const publicHost = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || productionHost;
-  const generatedSecret = !stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
-  const sharedSecret = generatedSecret ? randomBytes(32).toString("base64url") : stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
-  const turnPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 32189);
-  const turnTLSPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 32443);
-  const turnCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "");
-  const turnKeyPath = stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "");
+  const publicHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || productionHost;
+  const generatedSecret = !stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
+  const sharedSecret = generatedSecret ? randomBytes(32).toString("base64url") : stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
+  const turnPort = integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PORT", 32189);
+  const turnTLSPort = integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT", 32443);
+  const turnCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
+  const turnKeyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "");
   const tlsEnabled = Boolean(turnCertificatePath && turnKeyPath);
-  const brokerCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_CERT", "") || turnCertificatePath;
-  const brokerKeyPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_KEY", "") || turnKeyPath;
+  const brokerCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || turnCertificatePath;
+  const brokerKeyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || turnKeyPath;
   const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
-  const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 32188);
-  const brokerPortCandidates = portCandidates(brokerPort, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
-  const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", publicHost);
-  const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost);
-  const turnURLs = stringEnv("OPENNOW_REMOTE_COOP_TURN_URLS", buildTurnURLs(publicHost, turnPort, turnTLSPort, tlsEnabled));
+  const brokerPort = integerEnv("MACFORCE_NOW_REMOTE_COOP_PORT", 32188);
+  const brokerPortCandidates = portCandidates(brokerPort, process.env.MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES);
+  const brokerBindHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_BIND_HOST", publicHost);
+  const turnListeningIP = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost);
+  const turnURLs = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_URLS", buildTurnURLs(publicHost, turnPort, turnTLSPort, tlsEnabled));
   const env = {
     ...process.env,
-    OPENNOW_REMOTE_COOP_BIND_HOST: brokerBindHost,
-    OPENNOW_REMOTE_COOP_PORT: String(brokerPort),
-    OPENNOW_REMOTE_COOP_PORT_ALTERNATES: brokerPortCandidates.filter(candidate => candidate !== brokerPort).join(","),
-    OPENNOW_REMOTE_COOP_TURN_LISTENING_IP: turnListeningIP,
-    OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST: stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", publicHost),
-    OPENNOW_REMOTE_COOP_TURN_REALM: stringEnv("OPENNOW_REMOTE_COOP_TURN_REALM", publicHost),
-    OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: sharedSecret,
-    OPENNOW_REMOTE_COOP_TURN_URLS: turnURLs,
-    OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: stringEnv("OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS", "3600"),
-    OPENNOW_REMOTE_COOP_BROKER_CERT: brokerCertificatePath,
-    OPENNOW_REMOTE_COOP_BROKER_KEY: brokerKeyPath
+    MACFORCE_NOW_REMOTE_COOP_BIND_HOST: brokerBindHost,
+    MACFORCE_NOW_REMOTE_COOP_PORT: String(brokerPort),
+    MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES: brokerPortCandidates.filter(candidate => candidate !== brokerPort).join(","),
+    MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP: turnListeningIP,
+    MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST", publicHost),
+    MACFORCE_NOW_REMOTE_COOP_TURN_REALM: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_REALM", publicHost),
+    MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: sharedSecret,
+    MACFORCE_NOW_REMOTE_COOP_TURN_URLS: turnURLs,
+    MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS", "3600"),
+    MACFORCE_NOW_REMOTE_COOP_BROKER_CERT: brokerCertificatePath,
+    MACFORCE_NOW_REMOTE_COOP_BROKER_KEY: brokerKeyPath
   };
-  if (isLoopbackHost(env.OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST) && !process.env.OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK) {
-    env.OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK = "1";
+  if (isLoopbackHost(env.MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST) && !process.env.MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK) {
+    env.MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK = "1";
   }
   return { publicHost, generatedSecret, sharedSecret, turnURLs, brokerBindHost, brokerPort, brokerPortCandidates, brokerTLSEnabled, turnListeningIP, env };
 }
@@ -144,7 +144,7 @@ function prefixStream(label, stream, output) {
 }
 
 function printSummary(config) {
-  console.log("OpenNOW Remote Co-Op all-server runner");
+  console.log("MacForce Now Remote Co-Op all-server runner");
   console.log(`  broker bind: ${config.brokerBindHost}:${config.brokerPort}${alternatePortSummary(config.brokerPortCandidates)}`);
   console.log(`  broker TLS: ${config.brokerTLSEnabled ? "enabled" : "disabled"}`);
   console.log(`  turn listen: ${config.turnListeningIP}`);
@@ -211,29 +211,29 @@ function printHelp() {
 
 Starts all Remote Co-Op server-side Node processes and binds them to the
 production public IP by default:
-  - broker: OPENNOW_REMOTE_COOP_BIND_HOST=198.12.95.48
-  - TURN:   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=198.12.95.48
+  - broker: MACFORCE_NOW_REMOTE_COOP_BIND_HOST=198.12.95.48
+  - TURN:   MACFORCE_NOW_REMOTE_COOP_TURN_LISTENING_IP=198.12.95.48
 
 The runner defaults to 198.12.95.48 for production URLs. Override it with
-OPENNOW_REMOTE_COOP_PUBLIC_HOST for LAN deployments, or set the lower level
-OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST and OPENNOW_REMOTE_COOP_TURN_URLS variables
+MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST for LAN deployments, or set the lower level
+MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST and MACFORCE_NOW_REMOTE_COOP_TURN_URLS variables
 directly.
 
 Useful environment:
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default 198.12.95.48
-  OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 32188
-  OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
-  OPENNOW_REMOTE_COOP_BROKER_CERT          HTTPS certificate for broker; defaults to TURN cert
-  OPENNOW_REMOTE_COOP_BROKER_KEY           HTTPS private key for broker; defaults to TURN key
-  OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET   Shared TURN REST secret; generated if omitted
-  OPENNOW_REMOTE_COOP_TURN_CERT            Enables turns: URL and broker HTTPS fallback when paired with key
-  OPENNOW_REMOTE_COOP_TURN_KEY             Enables turns: URL and broker HTTPS fallback when paired with cert
-  OPENNOW_REMOTE_COOP_TURNSERVER_BIN       Path/name of coturn turnserver binary
+  MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default 198.12.95.48
+  MACFORCE_NOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 32188
+  MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
+  MACFORCE_NOW_REMOTE_COOP_BROKER_CERT          HTTPS certificate for broker; defaults to TURN cert
+  MACFORCE_NOW_REMOTE_COOP_BROKER_KEY           HTTPS private key for broker; defaults to TURN key
+  MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET   Shared TURN REST secret; generated if omitted
+  MACFORCE_NOW_REMOTE_COOP_TURN_CERT            Enables turns: URL and broker HTTPS fallback when paired with key
+  MACFORCE_NOW_REMOTE_COOP_TURN_KEY             Enables turns: URL and broker HTTPS fallback when paired with cert
+  MACFORCE_NOW_REMOTE_COOP_TURNSERVER_BIN       Path/name of coturn turnserver binary
 
 Examples:
   node RemoteCoOp/run-servers.mjs --dry-run
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 node RemoteCoOp/run-servers.mjs
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48 \
-  OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
+  MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 node RemoteCoOp/run-servers.mjs
+  MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48 \
+  MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
   node RemoteCoOp/run-servers.mjs`);
 }

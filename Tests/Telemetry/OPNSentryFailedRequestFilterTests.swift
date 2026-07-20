@@ -1,5 +1,5 @@
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 struct OPNSentryFailedRequestFilterTests {
     @Test func dropsAutoCapturedCloudMatchSessionServerErrors() {

@@ -13,11 +13,11 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 const brokerURLArg = argValue("--broker-url");
-const verbose = envFlag("OPENNOW_REMOTE_COOP_SMOKE_VERBOSE", false);
-const smokeSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET || "opennow-remote-coop-smoke-secret";
-const smokeTurnURLs = process.env.OPENNOW_REMOTE_COOP_TURN_URLS || "turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp";
-const smokeStunURLs = process.env.OPENNOW_REMOTE_COOP_STUN_URLS || "stun:stun.l.google.com:19302";
-const smokeTTLSeconds = process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS || "3600";
+const verbose = envFlag("MACFORCE_NOW_REMOTE_COOP_SMOKE_VERBOSE", false);
+const smokeSecret = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET || "macforce-now-remote-coop-smoke-secret";
+const smokeTurnURLs = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_URLS || "turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp";
+const smokeStunURLs = process.env.MACFORCE_NOW_REMOTE_COOP_STUN_URLS || "stun:stun.l.google.com:19302";
+const smokeTTLSeconds = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS || "3600";
 
 let brokerProcess = null;
 let brokerStopping = false;
@@ -42,12 +42,12 @@ async function startBroker() {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      OPENNOW_REMOTE_COOP_PORT: String(port),
-      OPENNOW_REMOTE_COOP_BIND_HOST: "127.0.0.1",
-      OPENNOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
-      OPENNOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
-      OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
-      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      MACFORCE_NOW_REMOTE_COOP_PORT: String(port),
+      MACFORCE_NOW_REMOTE_COOP_BIND_HOST: "127.0.0.1",
+      MACFORCE_NOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
+      MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
+      MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
+      MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
       ...httpBrokerEnvironment()
     }
   });
@@ -80,7 +80,7 @@ async function assertRelayOnly(brokerURL) {
   assert(turnServer.urls.every(url => url.startsWith("turn:") || url.startsWith("turns:")), "relayOnly emitted a non-TURN ICE URL");
   assert(typeof turnServer.username === "string" && turnServer.username.endsWith(`:${roomID}`), "TURN username does not include the room ID");
   assert(typeof turnServer.credential === "string" && turnServer.credential.length > 0, "TURN credential is missing");
-  if (!brokerURLArg || process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET) {
+  if (!brokerURLArg || process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET) {
     const expected = createHmac("sha1", smokeSecret).update(turnServer.username).digest("base64");
     assert(turnServer.credential === expected, "TURN credential HMAC does not match the shared secret");
   }
@@ -93,8 +93,8 @@ async function assertAutomatic(brokerURL) {
   assert(config.transportMode === "automatic", "automatic transportMode was not preserved");
   assert(config.iceTransportPolicy === "all", "automatic should use all ICE candidates");
   const urls = config.iceServers.flatMap(server => server.urls ?? []);
-  if (!brokerURLArg || process.env.OPENNOW_REMOTE_COOP_STUN_URLS) assert(urls.some(url => url.startsWith("stun:")), "automatic should include STUN URLs");
-  if (!brokerURLArg || process.env.OPENNOW_REMOTE_COOP_TURN_URLS) assert(urls.some(url => url.startsWith("turn:")), "automatic should include TURN URLs when configured");
+  if (!brokerURLArg || process.env.MACFORCE_NOW_REMOTE_COOP_STUN_URLS) assert(urls.some(url => url.startsWith("stun:")), "automatic should include STUN URLs");
+  if (!brokerURLArg || process.env.MACFORCE_NOW_REMOTE_COOP_TURN_URLS) assert(urls.some(url => url.startsWith("turn:")), "automatic should include TURN URLs when configured");
 }
 
 async function assertDirectOnly(brokerURL) {
@@ -147,13 +147,13 @@ async function assertPortFallback() {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      OPENNOW_REMOTE_COOP_PORT: String(blockedPort),
-      OPENNOW_REMOTE_COOP_PORT_ALTERNATES: String(alternatePort),
-      OPENNOW_REMOTE_COOP_BIND_HOST: "127.0.0.1",
-      OPENNOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
-      OPENNOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
-      OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
-      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      MACFORCE_NOW_REMOTE_COOP_PORT: String(blockedPort),
+      MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES: String(alternatePort),
+      MACFORCE_NOW_REMOTE_COOP_BIND_HOST: "127.0.0.1",
+      MACFORCE_NOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
+      MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
+      MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
+      MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
       ...httpBrokerEnvironment()
     }
   });
@@ -344,12 +344,12 @@ function envFlag(name, fallback) {
 
 function httpBrokerEnvironment() {
   return {
-    OPENNOW_REMOTE_COOP_BROKER_CERT: "",
-    OPENNOW_REMOTE_COOP_BROKER_KEY: "",
-    OPENNOW_REMOTE_COOP_TLS_CERT: "",
-    OPENNOW_REMOTE_COOP_TLS_KEY: "",
-    OPENNOW_REMOTE_COOP_TURN_CERT: "",
-    OPENNOW_REMOTE_COOP_TURN_KEY: ""
+    MACFORCE_NOW_REMOTE_COOP_BROKER_CERT: "",
+    MACFORCE_NOW_REMOTE_COOP_BROKER_KEY: "",
+    MACFORCE_NOW_REMOTE_COOP_TLS_CERT: "",
+    MACFORCE_NOW_REMOTE_COOP_TLS_KEY: "",
+    MACFORCE_NOW_REMOTE_COOP_TURN_CERT: "",
+    MACFORCE_NOW_REMOTE_COOP_TURN_KEY: ""
   };
 }
 
@@ -360,6 +360,6 @@ By default this starts a temporary local broker with test STUN/TURN settings and
 verifies Automatic, Relay Only, and Direct Only ICE network config responses.
 
 Use --broker-url to target an already running broker. When targeting a running
-broker, set OPENNOW_REMOTE_COOP_TURN_URLS and OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET
+broker, set MACFORCE_NOW_REMOTE_COOP_TURN_URLS and MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET
 in this process if you want the smoke check to verify TURN HMAC credentials.`);
 }

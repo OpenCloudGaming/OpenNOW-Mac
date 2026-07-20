@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 private struct PerformanceAuditMeasurement: Encodable {
     let package: String
@@ -25,7 +25,7 @@ private struct AuditCatalogSectionModel {
 }
 
 @Test func catalogModelPerformanceAudit() throws {
-    guard ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT"] == "1" else { return }
+    guard ProcessInfo.processInfo.environment["MACFORCE_NOW_PERF_AUDIT"] == "1" else { return }
 
     let sizes = [96, 500, 1_500, 3_000]
     var measurements: [PerformanceAuditMeasurement] = []
@@ -57,21 +57,21 @@ private struct AuditCatalogSectionModel {
         })
 
         let panelObjects = panels.map(OPNCatalogPanelObject.init)
-        measurements.append(measureAuditOperation(package: "OpenNOW", operation: "CatalogViewModel.catalogSections equivalent", modelCount: size, iterations: 500) {
+        measurements.append(measureAuditOperation(package: "MacForceNow", operation: "CatalogViewModel.catalogSections equivalent", modelCount: size, iterations: 500) {
             _ = deriveAuditCatalogSections(from: panelObjects)
         })
 
-        measurements.append(measureAuditOperation(package: "OpenNOW", operation: "CatalogViewModel.marqueeGames equivalent", modelCount: size, iterations: 500) {
+        measurements.append(measureAuditOperation(package: "MacForceNow", operation: "CatalogViewModel.marqueeGames equivalent", modelCount: size, iterations: 500) {
             _ = deriveAuditMarqueeGames(from: panelObjects)
         })
 
         let sections = deriveAuditCatalogSections(from: panelObjects)
         let selected = sections.last?.games.last ?? objects.last
-        measurements.append(measureAuditOperation(package: "OpenNOW", operation: "selected detail section scan equivalent", modelCount: size, iterations: 2_000) {
+        measurements.append(measureAuditOperation(package: "MacForceNow", operation: "selected detail section scan equivalent", modelCount: size, iterations: 2_000) {
             _ = firstAuditDetailSectionIndex(for: selected, sections: sections)
         })
 
-        measurements.append(measureAuditOperation(package: "OpenNOW", operation: "best image URL derivation equivalent", modelCount: size, iterations: 500) {
+        measurements.append(measureAuditOperation(package: "MacForceNow", operation: "best image URL derivation equivalent", modelCount: size, iterations: 500) {
             _ = objects.map(bestAuditImageURLs)
         })
     }
@@ -80,7 +80,7 @@ private struct AuditCatalogSectionModel {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(output)
-    if let outputPath = ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT_OUTPUT"], !outputPath.isEmpty {
+    if let outputPath = ProcessInfo.processInfo.environment["MACFORCE_NOW_PERF_AUDIT_OUTPUT"], !outputPath.isEmpty {
         try data.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
     }
     print(String(decoding: data, as: UTF8.self))

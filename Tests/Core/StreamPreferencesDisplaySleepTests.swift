@@ -1,8 +1,8 @@
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func displaySleepPreventionDefaultsOnAndPersists() {
-    let key = "OpenNOW.Stream.PreventDisplaySleepWhileStreaming"
+    let key = "MacForceNow.Stream.PreventDisplaySleepWhileStreaming"
     let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
     defer {
         if let previous {

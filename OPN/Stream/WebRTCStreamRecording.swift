@@ -108,7 +108,7 @@ public enum WebRTCStreamRecordingLibrary {
 
     private static func ensureWritableDirectory(at directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let probe = directory.appendingPathComponent(".opennow-write-test", isDirectory: false)
+        let probe = directory.appendingPathComponent(".macforce-now-write-test", isDirectory: false)
         try Data().write(to: probe, options: .atomic)
         try? FileManager.default.removeItem(at: probe)
     }
@@ -167,8 +167,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         case enhanced
     }
 
-    private let queue = DispatchQueue(label: "io.opencg.opennow.recording.writer")
-    private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.recording.conversion", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "io.opencg.macforce-now.recording.writer")
+    private let conversionQueue = DispatchQueue(label: "io.opencg.macforce-now.recording.conversion", qos: .userInitiated)
     private let frameLock = NSLock()
     private let firstFrameTimeout: DispatchTimeInterval
     private let maxQueuedEnhancedVideoFrames = 4

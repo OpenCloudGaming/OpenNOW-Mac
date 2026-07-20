@@ -1,6 +1,6 @@
 //
 //  ControllerCatalogView.swift
-//  OpenNOW
+//  MacForceNow
 //
 
 import AppKit

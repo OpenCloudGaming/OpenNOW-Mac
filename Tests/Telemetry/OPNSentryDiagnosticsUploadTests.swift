@@ -1,9 +1,9 @@
 import Foundation
 import Testing
-@testable import OpenNOW
+@testable import MacForceNow
 
 @Test func telemetryDisabledPreferenceRoundTrips() throws {
-    let suiteName = "OpenNOWTelemetryTests.telemetryDisabled.\(UUID().uuidString)"
+    let suiteName = "MacForceNowTelemetryTests.telemetryDisabled.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
 

@@ -6,19 +6,19 @@ import Foundation
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 
 let package = Package(
-    name: "OpenNOW",
+    name: "MacForceNow",
     platforms: [
         .macOS(.v15)
     ],
     products: [
-        .library(name: "OpenNOW", targets: ["OpenNOW"])
+        .library(name: "MacForceNow", targets: ["MacForceNow"])
     ],
     dependencies: [
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0")
     ],
     targets: [
         .target(
-            name: "OpenNOW",
+            name: "MacForceNow",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa")
             ],
@@ -27,9 +27,9 @@ let package = Package(
                 "AGENTS.md",
                 "LICENSE",
                 "README.md",
-                "OpenNOWApp.swift",
+                "MacForceNowApp.swift",
                 "OPN/Stream/WebRTCMediaStreamSurface.swift",
-                "OpenNOW.xcodeproj",
+                "MacForceNow.xcodeproj",
                 "Resources",
                 "Tests",
                 "View",
@@ -53,8 +53,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "OpenNOWTests",
-            dependencies: ["OpenNOW"],
+            name: "MacForceNowTests",
+            dependencies: ["MacForceNow"],
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])

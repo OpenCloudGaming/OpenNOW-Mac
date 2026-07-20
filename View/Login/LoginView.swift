@@ -1,6 +1,6 @@
 //
 //  LoginView.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //

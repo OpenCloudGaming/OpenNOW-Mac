@@ -11,7 +11,7 @@
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
-		A00000000000000000000003 /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OpenNOWApp.swift */; };
+		A00000000000000000000003 /* MacForceNowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* MacForceNowApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 /* End PBXBuildFile section */
 
@@ -30,11 +30,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7729CE762FDEDAB300D5C9D5 /* MacForceNow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacForceNow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
-		A00000000000000000000004 /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenNOWApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000004 /* MacForceNowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacForceNowApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -88,7 +88,7 @@
 				7729CE782FDEDAB300D5C9D5 /* OPN */,
 				B00000000000000000000104 /* GFN */,
 				A00000000000000000000002 /* Resources */,
-				A00000000000000000000004 /* OpenNOWApp.swift */,
+				A00000000000000000000004 /* MacForceNowApp.swift */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
@@ -98,7 +98,7 @@
 		7729CE772FDEDAB300D5C9D5 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */,
+				7729CE762FDEDAB300D5C9D5 /* MacForceNow.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -106,9 +106,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		7729CE752FDEDAB300D5C9D5 /* OpenNOW */ = {
+		7729CE752FDEDAB300D5C9D5 /* MacForceNow */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 7729CE832FDEDAB500D5C9D5 /* Build configuration list for PBXNativeTarget "OpenNOW" */;
+			buildConfigurationList = 7729CE832FDEDAB500D5C9D5 /* Build configuration list for PBXNativeTarget "MacForceNow" */;
 			buildPhases = (
 				7729CE722FDEDAB300D5C9D5 /* Sources */,
 				7729CE732FDEDAB300D5C9D5 /* Frameworks */,
@@ -126,12 +126,12 @@
 				B00000000000000000000104 /* GFN */,
 				B00000000000000000000110 /* ViewModel */,
 			);
-			name = OpenNOW;
+			name = MacForceNow;
 			packageProductDependencies = (
 				A00000000000000000000403 /* Sentry */,
 			);
-			productName = OpenNOW;
-			productReference = 7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */;
+			productName = MacForceNow;
+			productReference = 7729CE762FDEDAB300D5C9D5 /* MacForceNow.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -149,7 +149,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 7729CE712FDEDAB300D5C9D5 /* Build configuration list for PBXProject "OpenNOW" */;
+			buildConfigurationList = 7729CE712FDEDAB300D5C9D5 /* Build configuration list for PBXProject "MacForceNow" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -166,7 +166,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				7729CE752FDEDAB300D5C9D5 /* OpenNOW */,
+				7729CE752FDEDAB300D5C9D5 /* MacForceNow */,
 			);
 		};
 /* End PBXProject section */
@@ -187,7 +187,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000003 /* OpenNOWApp.swift in Sources */,
+				A00000000000000000000003 /* MacForceNowApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -323,7 +323,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = OpenNOW.entitlements;
+				CODE_SIGN_ENTITLEMENTS = MacForceNow.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -338,8 +338,8 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "OpenNOW-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_FILE = "MacForceNow-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -347,8 +347,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.necorico.opennow;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -364,7 +364,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = OpenNOW.entitlements;
+				CODE_SIGN_ENTITLEMENTS = MacForceNow.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -379,8 +379,8 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "OpenNOW-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_FILE = "MacForceNow-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -388,8 +388,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.necorico.opennow;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -403,7 +403,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		7729CE712FDEDAB300D5C9D5 /* Build configuration list for PBXProject "OpenNOW" */ = {
+		7729CE712FDEDAB300D5C9D5 /* Build configuration list for PBXProject "MacForceNow" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7729CE812FDEDAB500D5C9D5 /* Debug */,
@@ -412,7 +412,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		7729CE832FDEDAB500D5C9D5 /* Build configuration list for PBXNativeTarget "OpenNOW" */ = {
+		7729CE832FDEDAB500D5C9D5 /* Build configuration list for PBXNativeTarget "MacForceNow" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7729CE842FDEDAB500D5C9D5 /* Debug */,

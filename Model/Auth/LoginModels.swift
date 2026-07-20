@@ -1,6 +1,6 @@
 //
 //  LoginModels.swift
-//  OpenNOW
+//  MacForceNow
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -173,7 +173,7 @@ final class LoginDeviceRegistration {
         self.id = id
         self.deviceId = deviceId
         let hostName = ProcessInfo.processInfo.hostName
-        self.displayName = displayName ?? (!hostName.isEmpty ? hostName : "OpenNOW Mac")
+        self.displayName = displayName ?? (!hostName.isEmpty ? hostName : "MacForce Now Mac")
         self.pendingOAuthState = pendingOAuthState
         self.pendingOAuthCodeVerifier = pendingOAuthCodeVerifier
         self.pendingOAuthProviderIdpId = pendingOAuthProviderIdpId

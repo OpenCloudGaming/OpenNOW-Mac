@@ -64,7 +64,7 @@ jobs:
           rm -rf DerivedData
         shell: bash
 
-      - name: Build OpenNOW
+      - name: Build MacForceNow
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
@@ -72,8 +72,8 @@ jobs:
           set -euo pipefail
           KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
           xcodebuild build \
-            -project OpenNOW.xcodeproj \
-            -scheme OpenNOW \
+            -project MacForceNow.xcodeproj \
+            -scheme MacForceNow \
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath DerivedData \
@@ -86,35 +86,35 @@ jobs:
 
       - name: Verify code signature
         run: |
-          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
+          APP_PATH="DerivedData/Build/Products/Release/MacForceNow.app"
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
         shell: bash
 
       - name: Create DMG
         run: |
           set -euo pipefail
-          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
-          DMG_PATH="OpenNOW.dmg"
+          APP_PATH="DerivedData/Build/Products/Release/MacForceNow.app"
+          DMG_PATH="MacForceNow.dmg"
 
           echo "Stripping get-task-allow entitlement..."
-          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/MacForceNow.entitlements" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/${PRODUCT_BUNDLE_IDENTIFIER}.entitlements" 2>/dev/null || true
 
           echo "Re-signing with stripped entitlements..."
           codesign --force --deep --options runtime \
-            --entitlements "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" \
+            --entitlements "${APP_PATH}/Contents/Resources/MacForceNow.entitlements" \
             --sign "${CODE_SIGN_IDENTITY}" \
             --timestamp \
             --keychain "${RUNNER_TEMP}/build.keychain-db" \
             "${APP_PATH}"
 
           echo "Creating DMG..."
-          hdiutil create -volname OpenNOW -srcfolder "${APP_PATH}" -ov -format UDZO "${DMG_PATH}"
+          hdiutil create -volname "MacForce Now" -srcfolder "${APP_PATH}" -ov -format UDZO "${DMG_PATH}"
           codesign --force --keychain "${RUNNER_TEMP}/build.keychain-db" \
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:
           CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
-          PRODUCT_BUNDLE_IDENTIFIER: com.necorico.opennow
+          PRODUCT_BUNDLE_IDENTIFIER: com.necorico.macforce-now
         shell: bash
 
       - name: Notarize DMG
@@ -127,7 +127,7 @@ jobs:
           set -euo pipefail
           echo "${NOTARY_KEY}" | base64 -d > notary.p8
 
-          xcrun notarytool submit OpenNOW.dmg \
+          xcrun notarytool submit MacForceNow.dmg \
             --key notary.p8 \
             --key-id "${NOTARY_KEY_ID}" \
             --issuer "${NOTARY_ISSUER_ID}" \
@@ -159,16 +159,16 @@ jobs:
             exit 1
           fi
 
-          xcrun stapler staple OpenNOW.dmg
+          xcrun stapler staple MacForceNow.dmg
           rm -f notary.p8 notarytool-output.txt
         shell: bash
 
       - name: Create update zip
         run: |
           set -euo pipefail
-          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
+          APP_PATH="DerivedData/Build/Products/Release/MacForceNow.app"
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist")
-          ZIP_NAME="OpenNOW-${VERSION}-macOS.zip"
+          ZIP_NAME="MacForceNow-${VERSION}-macOS.zip"
           cd "$(dirname "${APP_PATH}")"
           ditto -c -k --keepParent "$(basename "${APP_PATH}")" "${GITHUB_WORKSPACE}/${ZIP_NAME}"
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
@@ -179,9 +179,9 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenNOW
+          name: MacForceNow
           path: |
-            OpenNOW.dmg
+            MacForceNow.dmg
             ${{ env.ZIP_NAME }}
 
       - name: Upload release artifacts
@@ -189,5 +189,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            OpenNOW.dmg
+            MacForceNow.dmg
             ${{ env.ZIP_NAME }}

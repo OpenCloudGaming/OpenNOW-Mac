@@ -103,7 +103,7 @@ public enum TwitchIngestService {
 }
 
 public enum TwitchIngestServerStore {
-    private static let key = "OpenNOW.Twitch.DefaultIngestRTMPURL"
+    private static let key = "MacForceNow.Twitch.DefaultIngestRTMPURL"
 
     public static func defaultRTMPURL() -> String? {
         UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -178,7 +178,7 @@ public enum TwitchOAuthService {
         let preferences = TwitchPreferencesStore.load()
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
-        let gameTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "OpenNOW Live"
+        let gameTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "MacForce Now Live"
         let broadcastTitle = preferences.autoTitleFromGame ? gameTitle : nil
         let category = try? await client.game(named: gameTitle)
         try await client.updateChannel(broadcasterID: user.id, title: broadcastTitle, gameID: category?.id)
@@ -351,7 +351,7 @@ public enum TwitchOAuthService {
     }
 
     private static func readableTwitchError(_ message: String) -> String {
-        if message == "invalid client" { return "Twitch rejected OpenNOW's built-in Client ID. Make sure the Twitch Developer app is enabled." }
+        if message == "invalid client" { return "Twitch rejected MacForce Now's built-in Client ID. Make sure the Twitch Developer app is enabled." }
         return message
     }
 
@@ -387,7 +387,7 @@ public enum TwitchOAuthService {
 }
 
 public enum TwitchTokenStore {
-    private static let service = "OpenNOW.Twitch"
+    private static let service = "MacForceNow.Twitch"
     private static let account = "OAuthToken"
 
     public static func save(_ token: TwitchOAuthToken) throws {
@@ -426,7 +426,7 @@ public enum TwitchTokenStore {
 }
 
 public enum TwitchStreamKeyStore {
-    private static let service = "OpenNOW.Twitch"
+    private static let service = "MacForceNow.Twitch"
     private static let account = "StreamKey"
 
     public static func save(_ streamKey: String) throws {
