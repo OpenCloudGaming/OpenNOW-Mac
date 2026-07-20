@@ -163,15 +163,32 @@ jobs:
           rm -f notary.p8 notarytool-output.txt
         shell: bash
 
+      - name: Create update zip
+        run: |
+          set -euo pipefail
+          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist")
+          ZIP_NAME="OpenNOW-${VERSION}-macOS.zip"
+          cd "$(dirname "${APP_PATH}")"
+          ditto -c -k --keepParent "$(basename "${APP_PATH}")" "${GITHUB_WORKSPACE}/${ZIP_NAME}"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "Created ${ZIP_NAME}"
+          ls -lh "${GITHUB_WORKSPACE}/${ZIP_NAME}"
+        shell: bash
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenNOW
-          path: OpenNOW.dmg
+          path: |
+            OpenNOW.dmg
+            ${{ env.ZIP_NAME }}
 
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: OpenNOW.dmg
+          files: |
+            OpenNOW.dmg
+            ${{ env.ZIP_NAME }}
           generate_release_notes: true

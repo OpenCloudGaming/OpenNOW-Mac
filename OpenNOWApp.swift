@@ -146,7 +146,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
 
-    private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
+    private let githubUpdater = OpenNOWGitHubUpdater(owner: "anderson-oki", repository: "opennow-mac")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
