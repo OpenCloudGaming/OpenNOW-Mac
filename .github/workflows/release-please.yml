@@ -20,8 +20,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-type: simple
-          extra-files: |
-            OpenNOW.xcodeproj/project.pbxproj
 
       - name: Trigger build and sign workflow
         if: steps.release-please.outputs.releases_created == 'true'
