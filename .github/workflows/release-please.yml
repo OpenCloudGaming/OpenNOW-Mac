@@ -1,21 +1,47 @@
 name: Release Please
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release-please:
-    name: Open Release PR
+    name: Release Please
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release-please
         with:
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger build and sign workflow
+        if: steps.release-please.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release-please.outputs.tag_name }}"
+          echo "Release ${TAG} created — triggering release.yml..."
+          sleep 5
+          gh workflow run release.yml --ref "${TAG}"
+          sleep 5
+          RUN_ID=$(gh run list --workflow=release.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+          echo "Release workflow started: run ${RUN_ID}"
+          echo "View: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+
+      - name: Summary
+        if: steps.release-please.outputs.releases_created == 'true'
+        run: |
+          {
+            echo "### Release Created"
+            echo ""
+            echo "- **Tag:** \`${{ steps.release-please.outputs.tag_name }}\`"
+            echo "- **Release URL:** ${{ steps.release-please.outputs.release_html_url }}"
+            echo ""
+            echo "The [Release workflow](../release.yml) has been triggered to build, sign, and notarize."
+          } >> "$GITHUB_STEP_SUMMARY"
