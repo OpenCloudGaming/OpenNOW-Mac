@@ -67,7 +67,7 @@ echo "$files" | xargs sed -i '' 's/OpenNOW /MacForce Now /g; s/OpenNOW/MacForceN
 Then fix display-name occurrences that should contain a space, and preserve the GitHub repo name:
 
 ```sh
-sed -i '' 's/repository: "macforce-now-mac"/repository: "opennow-mac"/' MacForceNowApp.swift
+sed -i '' 's/repository: "opennow-mac"/repository: "macforce-now"/' MacForceNowApp.swift
 sed -i '' 's/Window("MacForceNow"/Window("MacForce Now"/' MacForceNowApp.swift
 sed -i '' 's/INFOPLIST_KEY_CFBundleDisplayName = MacForceNow;/INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";/' MacForceNow.xcodeproj/project.pbxproj
 sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/release.yml .github/workflows/unit-tests.yml
@@ -78,7 +78,7 @@ sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/rele
 1. Fetch the `upstream-sync` PR locally and merge `upstream/main` into a working branch off `main`.
 2. Resolve file-level conflicts using the mapping table above: apply upstream content changes onto the new fork paths, not the old ones.
 3. Run the identifier re-application sweep on the full working tree.
-4. Verify the only remaining `opennow` hits are `README.md` (upstream attribution), `MacForceNowApp.swift` (GitHub repo name `opennow-mac`), `CHANGELOG.md` (history), and `.github/workflows/sync-fork.yml` (upstream URL):
+4. Verify the only remaining `opennow` hits are `README.md` (upstream attribution), `CHANGELOG.md` (history), and `.github/workflows/sync-fork.yml` (upstream URL):
    ```sh
    rg -n 'OpenNOW|opennow|OPENNOW_' --glob '!**/.build/**' --glob '!**/.git/**' \
      --glob '!**/WebRTC.framework/**' --glob '!**/vendor/**' --glob '!**/Package.resolved' \
