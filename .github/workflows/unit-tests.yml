@@ -39,9 +39,9 @@ jobs:
             .build
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
+          key: ${{ runner.os }}-swiftpm-${{ github.event.repository.name }}-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swiftpm-
+            ${{ runner.os }}-swiftpm-${{ github.event.repository.name }}-
 
       - name: Build package workspace
         run: |
