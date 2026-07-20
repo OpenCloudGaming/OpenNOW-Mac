@@ -148,9 +148,12 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     public func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {}
 
     public func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
-        guard !closed,
-              let packet = OPNRemoteCoOpHostPeerInputDecoder.decode(buffer.data as Data, expectedParticipantID: participantID) else { return }
-        Task { await callbacks.receiveInput(packet) }
+        guard !closed else { return }
+        let packets = OPNRemoteCoOpHostPeerInputDecoder.decodePackets(buffer.data as Data, expectedParticipantID: participantID)
+        guard !packets.isEmpty else { return }
+        Task {
+            for packet in packets { await callbacks.receiveInput(packet) }
+        }
     }
 
     public func renderVideoFrame(_ frame: RTCVideoFrame) {
