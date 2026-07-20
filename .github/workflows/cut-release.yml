@@ -24,22 +24,10 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Detect token type
-        id: token-type
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          if [ -n "${GH_PAT}" ]; then
-            echo "using_pat=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "using_pat=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GH_PAT not found — tag push will use GITHUB_TOKEN and release.yml will be triggered manually."
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
           ref: ${{ inputs.commitish }}
 
@@ -84,19 +72,6 @@ jobs:
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
 
-      - name: Trigger Release workflow manually
-        if: steps.token-type.outputs.using_pat == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Tag pushed with GITHUB_TOKEN — triggering release.yml on ref ${TAG}..."
-          sleep 3
-          gh workflow run release.yml --ref "${TAG}"
-          sleep 5
-          RUN_ID=$(gh run list --workflow=release.yml --limit=1 --json databaseId --jq '.[0].databaseId')
-          echo "Release workflow started: run ${RUN_ID}"
-          echo "View: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
-
       - name: Summary
         run: |
           {
@@ -105,9 +80,5 @@ jobs:
             echo "- **Tag:** \`${TAG}\`"
             echo "- **Target:** \`${{ inputs.commitish }}\`"
             echo ""
-            if [ "${{ steps.token-type.outputs.using_pat }}" = "true" ]; then
-              echo "The [Release workflow](../release.yml) was triggered automatically by the tag push."
-            else
-              echo "The [Release workflow](../release.yml) was triggered manually (GITHUB_TOKEN fallback)."
-            fi
+            echo "The [Release workflow](../release.yml) was triggered automatically by the tag push."
           } >> "$GITHUB_STEP_SUMMARY"
