@@ -651,6 +651,15 @@ private struct InterfaceSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var inputRouter = ControllerInputRouter()
+    @StateObject private var steamNavigator = GamepadUINavigator()
+
+    private var isAnyControllerConnected: Bool {
+        inputRouter.isControllerConnected || steamNavigator.isSteamControllerConnected
+    }
+
+    private var activeGlyphs: ControllerInputGlyphSet {
+        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -669,7 +678,7 @@ private struct InterfaceSettingsPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    SettingsStatusPill(title: "INPUT", value: inputRouter.glyphs.deviceName, positive: inputRouter.isControllerConnected)
+                    SettingsStatusPill(title: "INPUT", value: activeGlyphs.deviceName, positive: isAnyControllerConnected)
                 }
                 SettingsDivider()
                 SettingsToggleRow(title: "Controller Mode", subtitle: "Use a clean Netflix-style catalog with large focus targets, controller shortcuts, and dynamic input glyphs.", isOn: controllerModeEnabled) { enabled in
@@ -679,26 +688,26 @@ private struct InterfaceSettingsPage: View {
 
             SettingsCard(title: "Controls") {
                 SettingsFlowLayout(spacing: 10) {
-                    InterfaceInputLegend(title: "Move", glyphs: [inputRouter.glyphs.left, inputRouter.glyphs.up, inputRouter.glyphs.down, inputRouter.glyphs.right])
-                    InterfaceInputLegend(title: "Select", glyphs: [inputRouter.glyphs.confirm])
-                    InterfaceInputLegend(title: "Back", glyphs: [inputRouter.glyphs.back])
-                    InterfaceInputLegend(title: "Search", glyphs: [inputRouter.glyphs.search])
-                    InterfaceInputLegend(title: "Actions", glyphs: [inputRouter.glyphs.actions])
-                    InterfaceInputLegend(title: "Rail", glyphs: [inputRouter.glyphs.pageLeft, inputRouter.glyphs.pageRight])
+                    InterfaceInputLegend(title: "Move", glyphs: [activeGlyphs.left, activeGlyphs.up, activeGlyphs.down, activeGlyphs.right])
+                    InterfaceInputLegend(title: "Select", glyphs: [activeGlyphs.confirm])
+                    InterfaceInputLegend(title: "Back", glyphs: [activeGlyphs.back])
+                    InterfaceInputLegend(title: "Search", glyphs: [activeGlyphs.search])
+                    InterfaceInputLegend(title: "Actions", glyphs: [activeGlyphs.actions])
+                    InterfaceInputLegend(title: "Rail", glyphs: [activeGlyphs.pageLeft, activeGlyphs.pageRight])
                 }
                 SettingsDivider()
                 HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: inputRouter.isControllerConnected ? "gamecontroller.fill" : "keyboard")
+                    Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
                         .font(.settingsNvidia(size: 18, weight: .bold))
                         .foregroundStyle(Color.openNowGreen)
                         .frame(width: 34, height: 34)
                         .background(Color.openNowGreen.opacity(0.12))
                         .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(inputRouter.isControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
+                        Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
                             .font(.settingsNvidia(size: 14, weight: .bold))
                             .foregroundStyle(.white.opacity(0.92))
-                        Text(inputRouter.isControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
+                        Text(isAnyControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
                             .font(.settingsNvidia(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.58))
                             .fixedSize(horizontal: false, vertical: true)
@@ -707,6 +716,8 @@ private struct InterfaceSettingsPage: View {
                 }
             }
         }
+        .onAppear { steamNavigator.start() }
+        .onDisappear { steamNavigator.stop() }
     }
 }
 
@@ -1273,6 +1284,20 @@ private struct ExperimentalFeaturesSettingsPage: View {
                                 .disabled(permissionResetInFlight)
                                 .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
                             }
+                        } else {
+                            Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
+                                resetInputMonitoringPermission()
+                            }
+                            .font(.settingsNvidia(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(height: 28)
+                            .background(Color.black.opacity(0.35))
+                            .overlay { Rectangle().stroke(Color.red.opacity(0.85), lineWidth: 1) }
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .buttonStyle(.plain)
+                            .disabled(permissionResetInFlight)
+                            .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
                         }
                     }
 

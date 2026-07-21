@@ -136,7 +136,12 @@ struct ControllerCatalogView: View {
     let onForget: (LoginAccount) -> Void
 
     @StateObject private var inputRouter = ControllerInputRouter()
+    @StateObject private var steamNavigator = GamepadUINavigator()
     @StateObject private var controllerViewModel = ControllerCatalogViewModel()
+
+    private var activeGlyphs: ControllerInputGlyphSet {
+        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
+    }
 
     private var navigationItems: [ControllerNavigationItem] { controllerViewModel.navigationItems }
 
@@ -147,7 +152,7 @@ struct ControllerCatalogView: View {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
                 VStack(spacing: 0) {
-                    ControllerHeader(viewModel: viewModel, glyphs: inputRouter.glyphs, layout: layout)
+                    ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout)
                     ControllerNavigationBar(
                         items: navigationItems,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
@@ -157,7 +162,7 @@ struct ControllerCatalogView: View {
                         select: selectNavigationItem
                     )
                     controllerPage(layout: layout)
-                    ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
+                    ControllerHintBar(hints: hints, glyphs: activeGlyphs, layout: layout)
                 }
                 .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
                 .padding(.leading, layout.leadingInset)
@@ -168,7 +173,7 @@ struct ControllerCatalogView: View {
                 if controllerViewModel.isSearchVisible {
                     ControllerSearchOverlay(
                         viewModel: viewModel,
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         rowIndex: controllerViewModel.searchRowIndex,
                         filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                         resultIndex: controllerViewModel.searchResultIndex,
@@ -190,7 +195,7 @@ struct ControllerCatalogView: View {
                         game: game,
                         selectedActionIndex: controllerViewModel.detailActionIndex,
                         actions: detailActions(for: game),
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         layout: layout,
                         perform: executeDetailAction,
                         close: closeDetails
@@ -205,7 +210,7 @@ struct ControllerCatalogView: View {
                         section: showAllSection,
                         selectedIndex: controllerViewModel.showAllIndex,
                         columnCount: $controllerViewModel.showAllColumnCount,
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         layout: layout,
                         select: { game in openDetails(game, sectionId: showAllSection.id) },
                         close: closeShowAll
@@ -218,7 +223,7 @@ struct ControllerCatalogView: View {
                     ControllerActionMenuOverlay(
                         items: actionMenuItems,
                         selectedIndex: controllerViewModel.actionMenuIndex,
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         layout: layout,
                         isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
                         perform: executeActionMenuItem,
@@ -234,9 +239,15 @@ struct ControllerCatalogView: View {
         .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
         .onAppear {
             inputRouter.onCommand = handleInput
+            steamNavigator.onCommand = handleInput
+            steamNavigator.start()
             synchronizeNavigationSelection()
         }
-        .onDisappear { inputRouter.onCommand = nil }
+        .onDisappear {
+            inputRouter.onCommand = nil
+            steamNavigator.onCommand = nil
+            steamNavigator.stop()
+        }
         .onChange(of: viewModel.selectedMainPage) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.selectedCatalogDestination) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in clampRailSelection() }
