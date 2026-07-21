@@ -2,6 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
   "extra-files": [
-    "MacForceNow.xcodeproj/project.pbxproj"
+    {
+      "path": "MacForceNow.xcodeproj/project.pbxproj",
+      "type": "xcode"
+    }
   ]
 }
