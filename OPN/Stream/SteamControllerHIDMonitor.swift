@@ -13,6 +13,21 @@ public enum SteamControllerPreference {
     }
 }
 
+public enum SteamControllerPermissionError: Error, LocalizedError {
+    case missingBundleIdentifier
+    case tccutilFailed(exitCode: Int, stderr: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingBundleIdentifier:
+            return "MacForce Now bundle identifier is unavailable."
+        case let .tccutilFailed(exitCode, stderr):
+            let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "tccutil reset failed (exit \(exitCode)).\(trimmed.isEmpty ? "" : " " + trimmed)"
+        }
+    }
+}
+
 @MainActor
 public final class SteamControllerHIDMonitor: ObservableObject {
     public static let shared = SteamControllerHIDMonitor()
@@ -138,6 +153,68 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         inputMonitoringPermissionGranted = (status == kIOReturnSuccess)
         if status == kIOReturnSuccess {
             IOHIDManagerClose(testManager, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+    }
+
+    public func resetInputMonitoringPermission(thenRelaunch: Bool) throws {
+        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
+            throw SteamControllerPermissionError.missingBundleIdentifier
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "All", bundleID]
+        let stderr = Pipe()
+        process.standardError = stderr
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            let data = stderr.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8) ?? "Unknown tccutil error."
+            throw SteamControllerPermissionError.tccutilFailed(exitCode: Int(process.terminationStatus), stderr: message)
+        }
+        WebRTCMediaTelemetry.capture(
+            "webrtc.input.steamcontroller.input_monitoring.reset",
+            level: .info,
+            message: "Input Monitoring permissions reset via tccutil.",
+            attributes: ["bundleID": bundleID, "relaunch": String(thenRelaunch)]
+        )
+        guard thenRelaunch else { return }
+        let appURL = Bundle.main.bundleURL
+        DispatchQueue.main.async {
+            let relaunch = Process()
+            relaunch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            relaunch.arguments = ["-n", appURL.path]
+            try? relaunch.run()
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func captureDeviceOpenFailure(interface: String, context: DeviceContext, status: Int32) {
+        let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
+        let baseAttributes: [String: String] = [
+            "interface": interface,
+            "bundleID": bundleID,
+            "model": String(describing: context.model),
+            "controllerID": String(format: "%016X", context.controllerID)
+        ]
+        if status == kIOReturnNotPermitted {
+            var attributes = baseAttributes
+            attributes["remediation"] = "open_experimental_steam_controller_support_reset_permission"
+            WebRTCMediaTelemetry.capture(
+                "webrtc.input.steamcontroller.device.open.permission_denied",
+                level: .warning,
+                message: "Input Monitoring permission denied while opening Steam Controller \(interface) interface. Use Settings → Experimental Features → Steam Controller Support → Reset Permission, then grant access on next launch.",
+                attributes: attributes
+            )
+        } else {
+            var attributes = baseAttributes
+            attributes["status"] = String(status)
+            WebRTCMediaTelemetry.capture(
+                "webrtc.input.steamcontroller.device.open.failed",
+                level: .warning,
+                message: "Unable to open Steam Controller \(interface) interface.",
+                attributes: attributes
+            )
         }
     }
 
@@ -321,7 +398,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         }
 
         guard finalDeviceOpenStatus == kIOReturnSuccess else {
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.open.failed", level: .warning, message: "Unable to open Steam Controller vendor interface.", attributes: ["status": String(finalDeviceOpenStatus)])
+            captureDeviceOpenFailure(interface: "vendor", context: context, status: finalDeviceOpenStatus)
             return
         }
 
@@ -348,7 +425,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             openStatus = IOHIDDeviceOpen(gamepadDevice, IOOptionBits(kIOHIDOptionsTypeNone))
         }
         guard openStatus == kIOReturnSuccess else {
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.open.failed", level: .warning, message: "Unable to open Steam Controller gamepad interface.", attributes: ["status": String(openStatus)])
+            captureDeviceOpenFailure(interface: "gamepad", context: context, status: openStatus)
             return
         }
 

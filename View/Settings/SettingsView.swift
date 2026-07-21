@@ -1179,6 +1179,8 @@ private struct ExperimentalFeaturesSettingsPage: View {
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
     @State private var showingControllerTest = false
+    @State private var permissionResetInFlight = false
+    @State private var permissionResetError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1244,17 +1246,33 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         Spacer()
 
                         if !hidMonitor.inputMonitoringPermissionGranted {
-                            Button("Grant Permission") {
-                                hidMonitor.requestInputMonitoringPermission()
+                            HStack(spacing: 8) {
+                                Button("Grant Permission") {
+                                    hidMonitor.requestInputMonitoringPermission()
+                                }
+                                .font(.settingsNvidia(size: 12, weight: .bold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 14)
+                                .frame(height: 28)
+                                .background(Color.openNowGreen)
+                                .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .buttonStyle(.plain)
+
+                                Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
+                                    resetInputMonitoringPermission()
+                                }
+                                .font(.settingsNvidia(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .frame(height: 28)
+                                .background(Color.black.opacity(0.35))
+                                .overlay { Rectangle().stroke(Color.red.opacity(0.85), lineWidth: 1) }
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .buttonStyle(.plain)
+                                .disabled(permissionResetInFlight)
+                                .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
                             }
-                            .font(.settingsNvidia(size: 12, weight: .bold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 14)
-                            .frame(height: 28)
-                            .background(Color.openNowGreen)
-                            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .buttonStyle(.plain)
                         }
                     }
 
@@ -1324,6 +1342,17 @@ private struct ExperimentalFeaturesSettingsPage: View {
         .sheet(isPresented: $showingControllerTest) {
             SteamControllerTestView()
         }
+        .alert(
+            "Reset Failed",
+            isPresented: Binding(
+                get: { permissionResetError != nil },
+                set: { presented in if !presented { permissionResetError = nil } }
+            )
+        ) {
+            Button("OK") { permissionResetError = nil }
+        } message: {
+            Text(permissionResetError ?? "")
+        }
     }
 
     private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
@@ -1333,6 +1362,21 @@ private struct ExperimentalFeaturesSettingsPage: View {
     private func setSteamControllerSupportEnabled(_ enabled: Bool) {
         steamControllerSupportEnabled = enabled
         SteamControllerHIDMonitor.shared.setEnabled(enabled)
+    }
+
+    private func resetInputMonitoringPermission() {
+        guard !permissionResetInFlight else { return }
+        permissionResetInFlight = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try SteamControllerHIDMonitor.shared.resetInputMonitoringPermission(thenRelaunch: true)
+            } catch {
+                DispatchQueue.main.async {
+                    permissionResetInFlight = false
+                    permissionResetError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
+            }
+        }
     }
 }
 
