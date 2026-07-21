@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/anderson-oki/macforce-now/compare/v0.2.0...v0.2.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* derive marketing version from tag at build time ([cfff413](https://github.com/anderson-oki/macforce-now/commit/cfff4136c2e0eaa16e8c24d093fad68711b5e730))
+* switch release-please to xcode release-type for pbxproj ([08b4d9e](https://github.com/anderson-oki/macforce-now/commit/08b4d9e10b12f84fc0a7357374ee0d60ba0236ca))
+* sync marketing version to 0.2.0 and pin xcode updater ([10c01e1](https://github.com/anderson-oki/macforce-now/commit/10c01e18ede7bb5148123f437ad47f7e145ea6ba))
+
 ## [0.2.0](https://github.com/anderson-oki/macforce-now/compare/v0.1.0...v0.2.0) (2026-07-21)
 
 
