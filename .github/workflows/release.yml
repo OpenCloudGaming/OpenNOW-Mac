@@ -193,10 +193,12 @@ jobs:
             MacForceNow.dmg
             ${{ env.ZIP_NAME }}
 
-      - name: Upload release artifacts
+      - name: Upload release assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            MacForceNow.dmg
-            ${{ env.ZIP_NAME }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "${TAG}" MacForceNow.dmg "${ZIP_NAME}" --clobber
+        shell: bash
