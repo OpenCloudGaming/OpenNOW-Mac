@@ -121,12 +121,12 @@ struct SettingsView: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
-        HStack(spacing: 0) {
-            SettingsSidebar(viewModel: viewModel)
+        NavigationSplitView {
+            SettingsSidebarList(viewModel: viewModel)
+        } detail: {
             SettingsContent(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SettingsSurfaceBackground())
     }
 }
 
@@ -140,64 +140,37 @@ private struct SettingsSurfaceBackground: View {
     }
 }
 
-private struct SettingsSidebar: View {
+private struct SettingsSidebarList: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SETTINGS")
-                    .font(.settingsNvidia(size: 11, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen)
-                    .tracking(1.5)
-                Text("MacForce Now")
-                    .font(.settingsNvidia(size: 22, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 24)
-
-            ForEach(CatalogSettingsPage.allCases) { page in
-                Button { viewModel.selectedSettingsPage = page } label: {
-                    HStack(spacing: 12) {
-                        Rectangle()
-                            .fill(viewModel.selectedSettingsPage == page ? Color.openNowGreen : .clear)
-                            .frame(width: 4, height: 34)
-                        Image(systemName: icon(for: page))
-                            .font(.settingsNvidia(size: 13, weight: .bold))
-                            .foregroundStyle(viewModel.selectedSettingsPage == page ? Color.openNowGreen : .white.opacity(0.52))
-                            .frame(width: 18)
-                        Text(page.title)
-                            .font(.settingsNvidia(size: 14, weight: viewModel.selectedSettingsPage == page ? .bold : .medium))
-                            .foregroundStyle(viewModel.selectedSettingsPage == page ? .white : .white.opacity(0.68))
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 48)
-                    .background(viewModel.selectedSettingsPage == page ? Color.white.opacity(0.065) : .clear)
-                    .contentShape(Rectangle())
+        List(selection: $viewModel.selectedSettingsPage) {
+            Section {
+                ForEach(CatalogSettingsPage.allCases) { page in
+                    SettingsSidebarRow(
+                        title: page.title,
+                        icon: icon(for: page),
+                        isSelected: viewModel.selectedSettingsPage == page
+                    )
+                    .tag(page)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-                .buttonStyle(.plain)
+            } header: {
+                SettingsSidebarHeader()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
-
-            Spacer()
-            Button { viewModel.showGames() } label: {
-                Text("BACK TO GAMES")
-                    .font(.settingsNvidia(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .tracking(0.9)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(Color.white.opacity(0.055))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 22)
         }
-        .frame(width: 256)
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .background(SettingsVendorLayout.sidebar)
-        .overlay(alignment: .trailing) { Rectangle().fill(Color.black.opacity(0.38)).frame(width: 1) }
+        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SettingsSidebarBackButton { viewModel.showGames() }
+        }
     }
 
     private func icon(for page: CatalogSettingsPage) -> String {
@@ -216,6 +189,73 @@ private struct SettingsSidebar: View {
     }
 }
 
+private struct SettingsSidebarHeader: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SETTINGS")
+                .font(.settingsNvidia(size: 11, weight: .bold))
+                .foregroundStyle(Color.openNowGreen)
+                .tracking(1.5)
+                .textCase(nil)
+            Text("MacForce Now")
+                .font(.settingsNvidia(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+                .textCase(nil)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+        .padding(.bottom, 14)
+    }
+}
+
+private struct SettingsSidebarRow: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(isSelected ? Color.openNowGreen : .clear)
+                .frame(width: 4, height: 34)
+            Image(systemName: icon)
+                .font(.settingsNvidia(size: 13, weight: .bold))
+                .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(0.52))
+                .frame(width: 18)
+            Text(title)
+                .font(.settingsNvidia(size: 14, weight: isSelected ? .bold : .medium))
+                .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 44)
+        .background(isSelected ? Color.white.opacity(0.065) : .clear)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SettingsSidebarBackButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("BACK TO GAMES")
+                .font(.settingsNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .tracking(0.9)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(Color.white.opacity(0.055))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 18)
+        .padding(.top, 10)
+    }
+}
+
 private struct SettingsContent: View {
     @ObservedObject var viewModel: CatalogViewModel
 
@@ -231,10 +271,10 @@ private struct SettingsContent: View {
                 }
                 page
             }
-            .padding(.horizontal, 52)
-            .padding(.top, 38)
-            .padding(.bottom, 54)
-            .frame(maxWidth: 1220, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 28)
+            .padding(.bottom, 48)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SettingsSurfaceBackground())
