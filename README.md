@@ -4,7 +4,7 @@ MacForce Now is a native macOS cloud gaming client for browsing, launching, stre
 
 > **MacForce Now is an independent community project and is not affiliated with, endorsed by, or sponsored by NVIDIA.** NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
 
-> **This is a fork of [OpenNOW-Mac](https://github.com/opennow/opennow-mac) that adds support for the Steam Controller 2026 ("Triton")** — including wired, Bluetooth LE, and 2.4 GHz dongle variants, with full HID input parsing and gamepad forwarding to GeForce NOW streams.
+> **This is a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac) that adds support for the Steam Controller 2026 ("Triton")** — including wired, Bluetooth LE, and 2.4 GHz dongle variants, with full HID input parsing and gamepad forwarding to GeForce NOW streams.
 
 > **Why the rename?** This fork was renamed from OpenNOW to MacForce Now so it can be installed alongside the upstream OpenNOW app on the same Mac without conflicts. The bundle identifier, URL scheme, keychain services, UserDefaults domain, and preference keys are all distinct from upstream, so both apps coexist without overwriting each other's credentials, preferences, or OAuth state.
 
