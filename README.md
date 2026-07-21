@@ -8,6 +8,12 @@ MacForce Now is a native macOS cloud gaming client for browsing, launching, stre
 
 > **Why the rename?** This fork was renamed from OpenNOW to MacForce Now so it can be installed alongside the upstream OpenNOW app on the same Mac without conflicts. The bundle identifier, URL scheme, keychain services, UserDefaults domain, and preference keys are all distinct from upstream, so both apps coexist without overwriting each other's credentials, preferences, or OAuth state.
 
+## Installation
+
+Download the latest signed `MacForceNow.dmg` from the [Releases](../../releases) page, open it, and drag **MacForce Now** into your Applications folder. Launch the app from Launchpad or Spotlight — on first run, right-click the app in Finder and choose **Open** if macOS blocks it as an unidentified developer.
+
+To build from source instead, see [Building](#building).
+
 ## Current State
 
 The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and a root Swift package for tests. The visible frontend lives under `View` and includes:
