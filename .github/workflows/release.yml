@@ -71,12 +71,21 @@ jobs:
         run: |
           set -euo pipefail
           KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            echo "Overriding MARKETING_VERSION from tag: ${TAG_VERSION}"
+            VERSION_OVERRIDES=(MARKETING_VERSION="${TAG_VERSION}")
+          else
+            echo "Not a tag push — using MARKETING_VERSION from project.pbxproj"
+            VERSION_OVERRIDES=()
+          fi
           xcodebuild build \
             -project MacForceNow.xcodeproj \
             -scheme MacForceNow \
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath DerivedData \
+            "${VERSION_OVERRIDES[@]}" \
             DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
             CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY}" \
             CODE_SIGN_STYLE=Manual \

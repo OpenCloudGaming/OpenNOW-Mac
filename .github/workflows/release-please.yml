@@ -19,7 +19,7 @@ jobs:
         id: release-please
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          release-type: xcode
+          release-type: simple
 
       - name: Trigger build and sign workflow
         if: steps.release-please.outputs.releases_created == 'true'
