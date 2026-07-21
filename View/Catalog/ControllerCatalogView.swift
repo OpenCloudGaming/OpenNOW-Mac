@@ -1348,28 +1348,26 @@ private struct ControllerGameDetailOverlay: View {
                         .lineLimit(5)
                         .frame(maxWidth: 720, alignment: .leading)
                     detailRows
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
-                                Button { perform(action) } label: {
-                                    HStack(spacing: 9) {
-                                        Image(systemName: action.icon)
-                                            .font(.nvidia(size: 14, weight: .bold))
-                                        Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
-                                            .font(.nvidia(size: 12, weight: .bold))
-                                            .tracking(0.8)
-                                    }
-                                    .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
-                                    .padding(.horizontal, 15)
-                                    .frame(height: 44)
-                                    .background(index == selectedActionIndex ? Color.openNowGreen : Color.white.opacity(0.09))
-                                    .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
+                    FlowLayout(spacing: 12) {
+                        ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                            Button { perform(action) } label: {
+                                HStack(spacing: 9) {
+                                    Image(systemName: action.icon)
+                                        .font(.nvidia(size: 14, weight: .bold))
+                                    Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
+                                        .font(.nvidia(size: 12, weight: .bold))
+                                        .tracking(0.8)
                                 }
-                                .buttonStyle(.plain)
+                                .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
+                                .padding(.horizontal, 15)
+                                .frame(height: 44)
+                                .background(index == selectedActionIndex ? Color.openNowGreen : Color.white.opacity(0.09))
+                                .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.vertical, 8)
                     }
+                    .padding(.vertical, 8)
                 }
                 .frame(width: panelWidth, alignment: .leading)
                 .padding(.leading, layout.leadingInset)

@@ -118,7 +118,7 @@ struct MacForceNowApp: App {
                 .environmentObject(twitchRealtime)
                 .onAppear { twitchRealtime.start() }
         }
-        .defaultSize(width: 1100, height: 720)
+        .defaultSize(width: 1100, height: 680)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}

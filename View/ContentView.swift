@@ -35,8 +35,8 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
-            .frame(minWidth: 980, minHeight: 660)
-            .frame(idealWidth: 1200, idealHeight: 760)
+            .frame(minWidth: 980, minHeight: 600)
+            .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: windowTitle))
             .task {
@@ -151,6 +151,9 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if #available(macOS 11.0, *) {
                 window.titlebarSeparatorStyle = .none
             }
+            if let fitted = MacForceNowWindowFitting.fittedFrame(for: window) {
+                window.setFrame(fitted, display: true)
+            }
         }
     }
 
@@ -161,6 +164,30 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             super.viewDidMoveToWindow()
             onWindowChanged?(window)
         }
+    }
+}
+
+enum MacForceNowWindowFitting {
+    static let targetFillRatio: CGFloat = 0.85
+
+    static func fittedFrame(for window: NSWindow) -> CGRect? {
+        let screen = window.screen ?? NSScreen.main
+        guard let screen else { return nil }
+        let visible = screen.visibleFrame
+        let allowedWidth = visible.width * targetFillRatio
+        let allowedHeight = visible.height * targetFillRatio
+        let current = window.frame
+        let widthScale = allowedWidth / current.width
+        let heightScale = allowedHeight / current.height
+        guard widthScale < 1 || heightScale < 1 else { return nil }
+        let scale = min(widthScale, heightScale)
+        guard scale < 1 else { return nil }
+        let newSize = CGSize(width: floor(current.width * scale), height: floor(current.height * scale))
+        let origin = CGPoint(
+            x: visible.midX - newSize.width / 2,
+            y: visible.midY - newSize.height / 2
+        )
+        return CGRect(origin: origin, size: newSize)
     }
 }
 
