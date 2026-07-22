@@ -9,6 +9,9 @@ const productionHost = "198.12.95.48";
 const port = integerEnv("MACFORCE_NOW_REMOTE_COOP_PORT", 32188);
 const portAlternates = portCandidates(port, process.env.MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES);
 const bindHost = process.env.MACFORCE_NOW_REMOTE_COOP_BIND_HOST ?? productionHost;
+const MAX_FRAME_SIZE = 1024 * 1024;
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+const MAX_DISPLAY_NAME_LENGTH = 64;
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
 const brokerCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
 const brokerKeyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "");
@@ -179,6 +182,11 @@ function attachSocket(socket) {
   logNetwork("socket.open", socketLogFields(state));
   socket.on("data", chunk => {
     state.bytesIn += chunk.length;
+    if (state.buffer.length + chunk.length > MAX_BUFFERED_BYTES) {
+      logNetwork("socket.buffer_overflow", { ...socketLogFields(state), bufferedBytes: state.buffer.length + chunk.length });
+      state.socket.destroy();
+      return;
+    }
     state.buffer = Buffer.concat([state.buffer, chunk]);
     parseFrames(state);
   });
@@ -226,6 +234,11 @@ function parseFrames(state) {
       const low = state.buffer.readUInt32BE(offset + 4);
       length = high * 2 ** 32 + low;
       offset += 8;
+    }
+    if (length > MAX_FRAME_SIZE) {
+      logNetwork("socket.frame_too_large", { ...socketLogFields(state), frameSize: length, maxSize: MAX_FRAME_SIZE });
+      state.socket.destroy();
+      return;
     }
     const maskOffset = offset;
     if (masked) offset += 4;
@@ -374,7 +387,8 @@ function registerGuest(state, message) {
   state.roomID = roomID;
   state.participantID = participantID;
   state.inviteToken = inviteToken;
-  state.displayName = stringValue(message.displayName) || "Guest";
+  const rawDisplayName = stringValue(message.displayName) || "Guest";
+  state.displayName = rawDisplayName.length > MAX_DISPLAY_NAME_LENGTH ? rawDisplayName.slice(0, MAX_DISPLAY_NAME_LENGTH) : rawDisplayName;
   room.guests.set(participantKey(participantID), state);
   room.maxGuests = Math.max(room.maxGuests, room.guests.size);
   if (!room.invite && payload) room.networkConfiguration = networkConfigurationFor(payload, roomID);
@@ -392,6 +406,11 @@ function relayGuestEvent(state, message) {
     send(state, { kind: "guestRejected", roomID: state.roomID, participantID: state.participantID, reason: "Guest is not joined" });
     return;
   }
+  const allowedGuestKinds = ["guestInput", "guestDisconnected", "peerSignal"];
+  if (!allowedGuestKinds.includes(message.kind)) {
+    logNetwork("guest.event.rejected", { ...socketLogFields(state), kind: message.kind ?? "unknown", reason: "disallowed_message_kind" });
+    return;
+  }
   logNetwork("guest.event.relayed", { ...socketLogFields(state), kind: message.kind ?? "unknown" });
   send(room.host, sanitizeMessage({ ...message, roomID: state.roomID, participantID: state.participantID }));
 }
@@ -402,6 +421,11 @@ function relayHostCommand(state, message) {
   if (state.role !== "host" || !room || room.host !== state) {
     logNetwork("host.command.rejected", { ...socketLogFields(state), kind: message.kind ?? "unknown", roomID: roomID ?? "none", reason: "host_not_registered" });
     send(state, { kind: "error", reason: "Host is not registered" });
+    return;
+  }
+  const allowedHostKinds = ["participantUpdated", "participantRemoved", "guestRejected", "inputRejected", "inviteEnded", "peerSignal"];
+  if (!allowedHostKinds.includes(message.kind)) {
+    logNetwork("host.command.rejected", { ...socketLogFields(state), kind: message.kind ?? "unknown", reason: "disallowed_message_kind" });
     return;
   }
   const outbound = sanitizeMessage({ ...message, roomID });
