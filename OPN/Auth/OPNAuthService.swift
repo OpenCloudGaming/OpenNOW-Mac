@@ -226,13 +226,11 @@ public final class OPNAuthService: @unchecked Sendable {
         }
         if let legacy = defaults.string(forKey: legacyKey), !legacy.isEmpty {
             defaults.set(legacy, forKey: key)
-            defaults.synchronize()
             cachedUUID = legacy
             return legacy
         }
         let uuid = UUID().uuidString
         defaults.set(uuid, forKey: key)
-        defaults.synchronize()
         cachedUUID = uuid
         return uuid
     }
@@ -261,7 +259,6 @@ public final class OPNAuthService: @unchecked Sendable {
         let defaults = Self.authUserDefaults()
         defaults.set(true, forKey: "OPN_HasSavedSession")
         defaults.set(identity, forKey: "OPN_ActiveUserId")
-        defaults.synchronize()
     }
 
     func saveUserInfo(_ userInfo: JarvisUserInfo) {
@@ -313,7 +310,6 @@ public final class OPNAuthService: @unchecked Sendable {
                 defaults.set(identity, forKey: "OPN_ActiveUserId")
             }
             defaults.set(true, forKey: "OPN_HasSavedSession")
-            defaults.synchronize()
             return session
         }
 
@@ -353,7 +349,6 @@ public final class OPNAuthService: @unchecked Sendable {
         let defaults = Self.authUserDefaults()
         defaults.set(userId, forKey: "OPN_ActiveUserId")
         defaults.set(true, forKey: "OPN_HasSavedSession")
-        defaults.synchronize()
     }
 
     func removeSavedSession(userId: String) {
@@ -377,7 +372,6 @@ public final class OPNAuthService: @unchecked Sendable {
             defaults.removeObject(forKey: "OPN_ActiveUserId")
             defaults.removeObject(forKey: "OPN_HasSavedSession")
         }
-        defaults.synchronize()
     }
 
     func clearSession() {
@@ -397,7 +391,6 @@ public final class OPNAuthService: @unchecked Sendable {
         defaults.removeObject(forKey: "OPN_HasSavedSession")
         defaults.removeObject(forKey: "GFN_HasSavedSession")
         defaults.removeObject(forKey: "OPN_ActiveUserId")
-        defaults.synchronize()
         Task { [jarvisAuthService, starfleetService] in
             await jarvisAuthService.clearSession()
             await starfleetService.clearSession()
@@ -414,7 +407,6 @@ public final class OPNAuthService: @unchecked Sendable {
     func setStayLoggedIn(_ value: Bool) {
         let defaults = Self.authUserDefaults()
         defaults.set(value, forKey: "OPN_StayLoggedIn")
-        defaults.synchronize()
     }
 
     static func parseOAuthSession(json: NSDictionary) -> OPNAuthSession {

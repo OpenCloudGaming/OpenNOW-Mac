@@ -72,7 +72,7 @@ struct CatalogView: View {
 
     @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
-    @StateObject private var viewModel: CatalogViewModel
+    @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var streamWindowTopInset: CGFloat = 0
 
@@ -94,7 +94,7 @@ struct CatalogView: View {
         self.onRefreshAuth = onRefreshAuth
         self.onWindowTitleChange = onWindowTitleChange
         _pendingGameShortcut = pendingGameShortcut
-        _viewModel = StateObject(wrappedValue: CatalogViewModel(account: account, session: session, onRefreshAuth: onRefreshAuth))
+        _viewModel = State(initialValue: CatalogViewModel(account: account, session: session, onRefreshAuth: onRefreshAuth))
     }
 
     var body: some View {
@@ -109,28 +109,18 @@ struct CatalogView: View {
                             .frame(height: topInset)
                         ZStack {
                             Color.black
-                            ZStack {
-                                WebRTCMediaStreamView(
-                                    configuration: streamConfiguration,
-                                    onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
-                                    onEnd: { success, message, report in
-                                        viewModel.finishActiveStream(success: success, message: message, report: report)
-                                    }
-                                )
-                                .id(streamConfiguration.id)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-
-                                if viewModel.isStreamLaunchLoadingVisible {
-                                    VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
-                                        .transition(.opacity)
-                                        .zIndex(10)
-                                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                            WebRTCMediaStreamView(
+                                configuration: streamConfiguration,
+                                onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                                onEnd: { success, message, report in
+                                    viewModel.finishActiveStream(success: success, message: message, report: report)
                                 }
-                            }
-                            .frame(width: streamSize.width, height: streamSize.height)
+                            )
+                            .id(streamConfiguration.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                         }
-                        .frame(width: proxy.size.width, height: contentHeight)
+                        .frame(width: streamSize.width, height: streamSize.height)
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                 }
@@ -179,10 +169,20 @@ struct CatalogView: View {
                         .zIndex(18)
                 }
             }
+
+            if viewModel.isStreamLaunchLoadingVisible {
+                VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+                    .zIndex(10)
+                    .ignoresSafeArea()
+            }
         }
+        .ignoresSafeArea(edges: .all)
         .background(Color.gfnBackgroundGreen)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
         .task { @MainActor in
+            viewModel.start()
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
             updateWindowTitleForActiveStream()
@@ -229,7 +229,7 @@ struct CatalogView: View {
 }
 
 private struct VendorLaunchFlowOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         ZStack {
@@ -553,7 +553,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
 }
 
 private struct VendorActiveSessionCard: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         VendorLaunchPanel(title: "Active Session", subtitle: viewModel.activeLaunchSession?.title ?? "Current Stream") {
@@ -589,7 +589,7 @@ private struct VendorActiveSessionCard: View {
 }
 
 private struct VendorLaunchProgressCard: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
@@ -624,99 +624,95 @@ private struct VendorLaunchProgressCard: View {
 }
 
 private struct VendorStreamLaunchLoadingOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
-        GeometryReader { proxy in
-            let progress = viewModel.activeStreamProgress
-            let steps = progress?.steps ?? []
-            let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
-            let message = progress?.message ?? "Starting GeForce NOW stream..."
-            ZStack {
-                Color.black
+        let progress = viewModel.activeStreamProgress
+        let steps = progress?.steps ?? []
+        let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
+        let message = progress?.message ?? "Starting GeForce NOW stream..."
+        ZStack {
+            Color.black
 
-                if let screenshotURL = loadingScreenshotURL {
-                    AsyncImage(url: screenshotURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            EmptyView()
-                        }
-                    }
-                    .transition(.opacity)
-                }
-
-                Rectangle()
-                    .fill(.black.opacity(0.42))
-
-                RadialGradient(
-                    stops: [
-                        .init(color: .white.opacity(0.18), location: 0.00),
-                        .init(color: .white.opacity(0.05), location: 0.46),
-                        .init(color: .clear, location: 1.00)
-                    ],
-                    center: .top,
-                    startRadius: 0,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
-                )
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.80), location: 0.00),
-                        .init(color: .black.opacity(0.34), location: 0.24),
-                        .init(color: .black.opacity(0.18), location: 0.50),
-                        .init(color: .black.opacity(0.34), location: 0.76),
-                        .init(color: .black.opacity(0.80), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-
-                VStack(spacing: 24) {
-                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                        .scaledToFit()
-                        .frame(width: 174, height: 131)
-
-                    VStack(spacing: 10) {
-                        Text(title)
-                            .font(.nvidia(size: 22, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Text(message)
-                            .font(.nvidia(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    VendorIndeterminateProgressBar()
-                        .frame(width: 320, height: 4)
-
-                    Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                        .accessibilityLabel("Cancel stream launch")
-
-                    if !steps.isEmpty {
-                        VStack(alignment: .leading, spacing: 9) {
-                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                                VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
-                            }
-                        }
-                        .frame(width: 320, alignment: .leading)
+            if let screenshotURL = loadingScreenshotURL {
+                AsyncImage(url: screenshotURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    default:
+                        Color.black
                     }
                 }
-                .padding(.horizontal, 28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .transition(.opacity)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+
+            Rectangle()
+                .fill(.black.opacity(0.42))
+
+            RadialGradient(
+                stops: [
+                    .init(color: .white.opacity(0.18), location: 0.00),
+                    .init(color: .white.opacity(0.05), location: 0.46),
+                    .init(color: .clear, location: 1.00)
+                ],
+                center: .top,
+                startRadius: 0,
+                endRadius: 800
+            )
+
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.80), location: 0.00),
+                    .init(color: .black.opacity(0.34), location: 0.24),
+                    .init(color: .black.opacity(0.18), location: 0.50),
+                    .init(color: .black.opacity(0.34), location: 0.76),
+                    .init(color: .black.opacity(0.80), location: 1.00)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            VStack(spacing: 24) {
+                VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                    .scaledToFit()
+                    .frame(width: 174, height: 131)
+
+                VStack(spacing: 10) {
+                    Text(title)
+                        .font(.nvidia(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(message)
+                        .font(.nvidia(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+
+                VendorIndeterminateProgressBar()
+                    .frame(width: 320, height: 4)
+
+                Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
+                    .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    .accessibilityLabel("Cancel stream launch")
+
+                if !steps.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                            VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
+                        }
+                    }
+                    .frame(width: 320, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 28)
         }
-        .background(.black)
+        .ignoresSafeArea()
     }
 
     private var loadingScreenshotURL: URL? {
@@ -916,7 +912,7 @@ private struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
 }
 
 private struct CatalogTopBar: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    @Bindable var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
     @Binding var showsMainMenu: Bool
     let onSwitch: (LoginAccount) -> Void
@@ -1095,7 +1091,7 @@ private struct CatalogHamburgerLabel: View {
 }
 
 private struct CatalogMainMenuOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let onSignOut: () -> Void
 
@@ -1116,7 +1112,7 @@ private struct CatalogMainMenuOverlay: View {
 }
 
 private struct CatalogMainMenuPanel: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let onSignOut: () -> Void
     let availableHeight: CGFloat
@@ -1407,7 +1403,7 @@ private struct CatalogMainMenuRow: View {
 }
 
 private struct CatalogStorePickerOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         if let game = viewModel.selectedGame {
@@ -1715,7 +1711,7 @@ private struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct CatalogStorePickerPoster: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
 
     var body: some View {
@@ -1822,7 +1818,7 @@ private struct CatalogStoreIconImage: View {
 }
 
 private struct CatalogContentView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
@@ -1835,15 +1831,21 @@ private struct CatalogContentView: View {
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
         let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
+        GeometryReader { viewport in
         ScrollViewReader { proxy in
             ZStack {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 26) {
+                    // Plain VStack on purpose: content is bounded (hero + max 10 fixed-height
+                    // rails of max 18 fixed-size tiles + detail panel) and SwiftUI's lazy
+                    // layout machinery (LazySubviewPlacements / AllItemsPhaseMutation) is what
+                    // livelocks the main thread on macOS 26 — every hang sample loops there.
+                    VStack(alignment: .leading, spacing: 26) {
                         if hero != nil && !isGridDestination {
                             CatalogHeroView(
                                 viewModel: viewModel,
                                 games: heroes,
                                 activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
+                                availableWidth: viewport.size.width,
                                 onSelectSlide: { index in
                                     heroAutoScrollEnabled = false
                                     heroIndex = index
@@ -1881,7 +1883,10 @@ private struct CatalogContentView: View {
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         } else {
-                            ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                            // Stable identity: offset-based IDs shift every rail below an
+                            // insertion (detail panel, late-loading section), forcing SwiftUI
+                            // to tear down and rebuild all of them inside the lazy stack.
+                            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                                 let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
                                 if showsDetail, let railAnchor = selectedRailScrollAnchor {
                                     Color.clear
@@ -1943,6 +1948,7 @@ private struct CatalogContentView: View {
             .onChange(of: viewModel.selectedGameRevealRequest) { _, _ in
                 scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
             }
+        }
         }
         .background(Color.gfnBackgroundGreen)
         .onReceive(heroTimer) { _ in
@@ -2028,14 +2034,19 @@ private struct CatalogContentView: View {
 }
 
 private struct CatalogHeroView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let games: [OPNCatalogGameObject]
     let activeIndex: Int
+    // Width comes from the scroll viewport, measured OUTSIDE the scroll content.
+    // Never derive this view's frame height from state written inside its own
+    // GeometryReader: at window widths below ~1548pt heroHeight() varies with
+    // width, and the width -> @State -> height -> layout -> width round-trip
+    // livelocks the main thread (state writes during the transaction flush).
+    let availableWidth: CGFloat
     let onSelectSlide: (Int) -> Void
     let onPreviousSlide: () -> Void
     let onNextSlide: () -> Void
     @State private var scrimColor = CatalogMarqueeScrimColor.black
-    @State private var containerWidth: CGFloat = 0
 
     private var game: OPNCatalogGameObject? {
         games.indices.contains(activeIndex) ? games[activeIndex] : games.first
@@ -2112,17 +2123,15 @@ private struct CatalogHeroView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 34)
                 }
-                .onAppear { containerWidth = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, width in containerWidth = width }
             }
-            .frame(height: CatalogVendorLayout.heroHeight(for: containerWidth))
+            .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth))
             .clipShape(Rectangle())
         }
     }
 }
 
 private struct CatalogHeroTitleView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
     let scrimColor: CatalogMarqueeScrimColor
 
@@ -2161,7 +2170,7 @@ private struct CatalogMarqueeArrow: View {
 }
 
 private struct CatalogBrowseControlsView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2255,7 +2264,7 @@ private struct CatalogBrowseControlsView: View {
 }
 
 struct CatalogEmptyDestinationView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let destination: CatalogDestination
 
     var body: some View {
@@ -2335,14 +2344,10 @@ struct CatalogEmptyDestinationView: View {
 }
 
 private struct CatalogRailView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
-    @State private var tileFrames: [String: CGRect] = [:]
-    @State private var viewportWidth: CGFloat = 0
-
-    private var coordinateSpaceName: String { "catalog-rail-\(section.id)" }
 
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
@@ -2376,9 +2381,12 @@ private struct CatalogRailView: View {
             ScrollViewReader { proxy in
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 0) {
-                            ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                                CatalogGameTile(
+                        // Plain HStack on purpose: rails cap at 18 fixed-size tiles, and a
+                        // LazyHStack nested inside the sections LazyVStack livelocks SwiftUI's
+                        // lazy layout (AllItemsPhaseMutation churn) on macOS 26.
+                        HStack(alignment: .top, spacing: 0) {
+                            ForEach(games, id: \.catalogIdentity) { game in
+                                EquatableView(content: CatalogGameTile(
                                     game: game,
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
@@ -2387,28 +2395,16 @@ private struct CatalogRailView: View {
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
-                                )
+                                ))
                                     .id(game.catalogIdentity)
-                                    .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
                             }
                             if canShowAll {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
+                        .frame(height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin)
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
                         .padding(.bottom, 4)
-                    }
-                    .coordinateSpace(name: coordinateSpaceName)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear
-                                .onAppear { viewportWidth = proxy.size.width }
-                                .onChange(of: proxy.size.width) { _, width in viewportWidth = width }
-                        }
-                    )
-                    .onPreferenceChange(CatalogRailTileFramePreferenceKey.self) { frames in
-                        tileFrames = frames
-                        revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest)
                     }
                     if games.count > 3 {
                         HStack {
@@ -2425,7 +2421,6 @@ private struct CatalogRailView: View {
                 }
                 .onAppear { revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
                 .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
-                .onChange(of: viewportWidth) { _, _ in revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
             }
         }
         .onAppear { prefetchNearVisibleImages() }
@@ -2468,49 +2463,14 @@ private struct CatalogRailView: View {
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
         guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
         guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
-        revealSelectedGameIfNeeded(proxy: proxy, identity: request.gameIdentity, remainingDeferredPasses: 3)
-    }
-
-    private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, identity: String, remainingDeferredPasses: Int) {
-        DispatchQueue.main.async {
-            guard games.contains(where: { $0.catalogIdentity == identity }) else { return }
-            guard !isTileFullyVisible(identity) else { return }
-            withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(identity, anchor: .center)
-            }
-            if remainingDeferredPasses > 0 {
-                revealSelectedGameIfNeeded(proxy: proxy, identity: identity, remainingDeferredPasses: remainingDeferredPasses - 1)
-            }
+        withAnimation(.easeInOut(duration: 0.24)) {
+            proxy.scrollTo(request.gameIdentity, anchor: .center)
         }
-    }
-
-    private func isTileFullyVisible(_ identity: String) -> Bool {
-        guard viewportWidth > 0, let frame = tileFrames[identity] else { return false }
-        return frame.minX >= 0 && frame.maxX <= viewportWidth
-    }
-}
-
-private struct CatalogRailTileFrameReader: View {
-    let identity: String
-    let coordinateSpaceName: String
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: CatalogRailTileFramePreferenceKey.self, value: [identity: proxy.frame(in: .named(coordinateSpaceName))])
-        }
-    }
-}
-
-private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
     }
 }
 
 private struct CatalogDestinationGridView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
 
     private var columns: [GridItem] {
@@ -2626,7 +2586,7 @@ private struct CatalogSeeMoreTile: View {
 }
 
 private struct CatalogShowAllOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     let onDismiss: () -> Void
     let onSelect: (OPNCatalogGameObject) -> Void
@@ -3074,7 +3034,7 @@ private enum CatalogSearchQueryParser {
     }
 }
 
-private struct CatalogGameTile: View {
+private struct CatalogGameTile: View, Equatable {
     let game: OPNCatalogGameObject
     let imageURL: URL?
     let isSelected: Bool
@@ -3084,7 +3044,13 @@ private struct CatalogGameTile: View {
     let onPlay: () -> Void
     let onQueueForPatching: () -> Void
     @State private var isHovering = false
-    @FocusState private var isFocused: Bool
+
+    static func == (lhs: CatalogGameTile, rhs: CatalogGameTile) -> Bool {
+        lhs.game.catalogIdentity == rhs.game.catalogIdentity &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isSelectionActive == rhs.isSelectionActive &&
+        lhs.isQueuedForPatching == rhs.isQueuedForPatching
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -3092,7 +3058,6 @@ private struct CatalogGameTile: View {
                 tileContent
             }
             .buttonStyle(.plain)
-            .focused($isFocused)
             .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
             .accessibilityAddTraits(.isButton)
             .accessibilityValue(isSelected ? "Details open" : "")
@@ -3109,7 +3074,6 @@ private struct CatalogGameTile: View {
             }
         }
         .onHover { isHovering = $0 }
-        .openNowFocusRing(isFocused)
         .animation(.easeOut(duration: 0.16), value: isHovering)
     }
 
@@ -3137,7 +3101,7 @@ private struct CatalogGameTile: View {
     private var tileContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                let isActive = isHovering || isSelected || isFocused
+                let isActive = isHovering || isSelected
                 CatalogRemoteImage(url: imageURL, contentMode: .fill)
                     .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                     .clipped()
@@ -3281,7 +3245,7 @@ private struct MallRibbonShape: Shape {
 }
 
 private struct GameDetailPanel: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var activeImageIndex = 0
     @State private var isDescriptionExpanded = false
     @State private var isHovering = false
@@ -3301,7 +3265,6 @@ private struct GameDetailPanel: View {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
                         .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                         .id(imageURL)
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
@@ -3966,11 +3929,6 @@ private struct CatalogHeroRemoteImage: View {
                 CatalogImageFallback()
             } else {
                 CatalogImageFallback()
-                    .overlay {
-                        if isLoading {
-                            ProgressView().controlSize(.small)
-                        }
-                    }
             }
         }
         .task(id: url) { await loadImage() }
@@ -4218,7 +4176,10 @@ struct CatalogRemoteImage: View {
     let contentMode: ContentMode
 
     var body: some View {
-        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback().overlay { ProgressView().controlSize(.small) }, failure: CatalogImageFallback())
+        // No ProgressView here: every spinner is an AppKit-hosted NSProgressIndicator whose
+        // animation keeps the SwiftUI graph busy; dozens of them during a scroll starve the
+        // main actor so image loads never finish -> permanent livelock (see hang-sample1/7/8).
+        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback(), failure: CatalogImageFallback())
     }
 }
 
@@ -4430,7 +4391,12 @@ struct FlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 320
+        // Must never return a non-finite size: SwiftUI probes with nil/0/.infinity
+        // proposals, and returning .infinity poisons downstream geometry into NaN,
+        // which never compares equal to itself — the layout graph then re-evaluates
+        // forever (main-thread livelock whenever this layout is on screen).
+        let proposedWidth = proposal.width
+        let width: CGFloat = (proposedWidth?.isFinite == true && proposedWidth! > 0) ? proposedWidth! : 320
         var size = CGSize(width: width, height: 0)
         var lineWidth: CGFloat = 0
         var lineHeight: CGFloat = 0

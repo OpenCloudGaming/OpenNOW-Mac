@@ -170,6 +170,7 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
 enum MacForceNowWindowFitting {
     static let targetFillRatio: CGFloat = 0.85
 
+    @MainActor
     static func fittedFrame(for window: NSWindow) -> CGRect? {
         let screen = window.screen ?? NSScreen.main
         guard let screen else { return nil }

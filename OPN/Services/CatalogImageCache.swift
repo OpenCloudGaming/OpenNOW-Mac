@@ -4,7 +4,9 @@
 //
 
 import AppKit
+import CoreGraphics
 import Foundation
+import ImageIO
 import SwiftData
 
 struct CatalogCachedImageData: @unchecked Sendable {
@@ -26,6 +28,10 @@ actor CatalogImageCache {
     private var prefetchTask: Task<Void, Never>?
     private var prefetchQueue: [URL] = []
     private var queuedPrefetchURLs: Set<URL> = []
+    private var pendingAccessHits: [String: Int] = [:]
+    private var metadataFlushTask: Task<Void, Never>?
+
+    private let metadataFlushInterval: TimeInterval = 30
 
     private let maximumCacheAge: TimeInterval = 14 * 24 * 60 * 60
     private let maximumStoredBytes = 512 * 1024 * 1024
@@ -46,7 +52,7 @@ actor CatalogImageCache {
         }
     }
 
-    func image(for url: URL) async -> CatalogCachedImageData? {
+    func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2) async -> CatalogCachedImageData? {
         if let cached = memoryCache.object(forKey: url as NSURL) {
             return cached.value
         }
@@ -57,7 +63,7 @@ actor CatalogImageCache {
 
         let task = Task<CatalogCachedImageData?, Never> { [weak self] in
             guard let self else { return nil }
-            return await self.loadImage(for: url)
+            return await self.loadImage(for: url, maxPixelSize: maxPixelSize)
         }
         inFlightLoads[url] = task
         let result = await task.value
@@ -128,40 +134,71 @@ actor CatalogImageCache {
         startPrefetchTaskIfNeeded()
     }
 
-    private func loadImage(for url: URL) async -> CatalogCachedImageData? {
-        if let stored = loadStoredImage(for: url) {
+    private func loadImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
+        if let stored = loadStoredImage(for: url, maxPixelSize: maxPixelSize) {
             if stored.isFresh {
                 return stored.imageData
             }
-            refreshStoredImage(for: url, eTag: stored.eTag, lastModified: stored.lastModified)
+            refreshStoredImage(for: url, eTag: stored.eTag, lastModified: stored.lastModified, maxPixelSize: maxPixelSize)
             return stored.imageData
         }
-        return await downloadAndStoreImage(for: url, eTag: "", lastModified: "")
+        return await downloadAndStoreImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize)
     }
 
-    private func loadStoredImage(for url: URL) -> StoredImage? {
+    private func loadStoredImage(for url: URL, maxPixelSize: CGFloat) -> StoredImage? {
         guard let context = makeContext() else { return nil }
         let key = url.absoluteString
         var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
         descriptor.fetchLimit = 1
         guard let entry = try? context.fetch(descriptor).first,
-              let image = NSImage(data: entry.data) else { return nil }
-        entry.lastAccessedAt = Date()
-        entry.hitCount += 1
-        try? context.save()
+              let image = Self.downsampledImage(from: entry.data, maxPixelSize: maxPixelSize) else { return nil }
+        deferAccessMetadataUpdate(for: url)
         let imageData = CatalogCachedImageData(data: entry.data, image: image)
         memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: entry.byteCount)
         return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(entry.updatedAt) < maximumCacheAge, eTag: entry.eTag, lastModified: entry.lastModified)
     }
 
-    private func refreshStoredImage(for url: URL, eTag: String, lastModified: String) {
-        Task(priority: .background) { [weak self] in
-            guard let self else { return }
-            _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified)
+    // Access metadata is batched: a save per image access floods the store with
+    // write transactions while the catalog scrolls, which is expensive and (before
+    // the cache got its own container) invalidated every SwiftData-observing view.
+    private func deferAccessMetadataUpdate(for url: URL) {
+        pendingAccessHits[url.absoluteString, default: 0] += 1
+        scheduleMetadataFlush()
+    }
+
+    private func scheduleMetadataFlush() {
+        guard metadataFlushTask == nil else { return }
+        metadataFlushTask = Task(priority: .background) { [weak self, metadataFlushInterval] in
+            try? await Task.sleep(nanoseconds: UInt64(metadataFlushInterval * 1_000_000_000))
+            await self?.flushAccessMetadata()
         }
     }
 
-    private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String) async -> CatalogCachedImageData? {
+    private func flushAccessMetadata() {
+        metadataFlushTask = nil
+        guard !pendingAccessHits.isEmpty else { return }
+        let hits = pendingAccessHits
+        pendingAccessHits.removeAll()
+        guard let context = makeContext() else { return }
+        let keys = Array(hits.keys)
+        let descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { keys.contains($0.url) })
+        guard let entries = try? context.fetch(descriptor) else { return }
+        let now = Date()
+        for entry in entries {
+            entry.lastAccessedAt = now
+            entry.hitCount += hits[entry.url] ?? 0
+        }
+        try? context.save()
+    }
+
+    private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) {
+        Task(priority: .background) { [weak self] in
+            guard let self else { return }
+            _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize)
+        }
+    }
+
+    private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
@@ -178,13 +215,13 @@ actor CatalogImageCache {
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
                 await MainActor.run { MacForceNowLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
-                return loadStoredImage(for: url)?.imageData
+                return loadStoredImage(for: url, maxPixelSize: maxPixelSize)?.imageData
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
                 await MainActor.run { MacForceNowLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
                 return nil
             }
-            guard let image = NSImage(data: data) else {
+            guard let image = Self.downsampledImage(from: data, maxPixelSize: maxPixelSize) else {
                 await MainActor.run { MacForceNowLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
                 return nil
             }
@@ -258,6 +295,22 @@ actor CatalogImageCache {
     private func makeContext() -> ModelContext? {
         guard let modelContainer = containerStore.container() else { return nil }
         return ModelContext(modelContainer)
+    }
+
+    private static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return nil
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
     private struct StoredImage {

@@ -1333,31 +1333,27 @@ public enum OPNStreamPreferences {
         }
         let state = RegionMeasurementState(regions)
         let orderedIndices = prioritizedRegionMeasurementIndices(regions)
-        let group = DispatchGroup()
-        let queue = OperationQueue()
-        queue.name = "com.macforce-now.stream.region-measurements"
-        queue.qualityOfService = .utility
-        queue.maxConcurrentOperationCount = maxConcurrentRegionMeasurements
-        for index in orderedIndices {
-            group.enter()
-            queue.addOperation {
-                let semaphore = DispatchSemaphore(value: 0)
-                measureRegion(state: state, index: index, token: token, attempt: 0, bestLatencyMs: -1) {
-                    semaphore.signal()
+        Task.detached(priority: .utility) {
+            let indexBox = RegionIndexBox(indices: orderedIndices)
+            await withTaskGroup(of: Void.self) { group in
+                for _ in 0..<min(maxConcurrentRegionMeasurements, orderedIndices.count) {
+                    group.addTask {
+                        while let index = indexBox.next() {
+                            await measureRegionAsync(state: state, index: index, token: token, attempt: 0, bestLatencyMs: -1)
+                        }
+                    }
                 }
-                semaphore.wait()
-                group.leave()
             }
-        }
-        group.notify(queue: .main) {
-            let sorted = state.values.sorted {
-                if $0.latencyMs >= 0, $1.latencyMs >= 0, $0.latencyMs != $1.latencyMs { return $0.latencyMs < $1.latencyMs }
-                if $0.latencyMs >= 0, $1.latencyMs < 0 { return true }
-                if $0.latencyMs < 0, $1.latencyMs >= 0 { return false }
-                return $0.name < $1.name
+            await MainActor.run {
+                let sorted = state.values.sorted {
+                    if $0.latencyMs >= 0, $1.latencyMs >= 0, $0.latencyMs != $1.latencyMs { return $0.latencyMs < $1.latencyMs }
+                    if $0.latencyMs >= 0, $1.latencyMs < 0 { return true }
+                    if $0.latencyMs < 0, $1.latencyMs >= 0 { return false }
+                    return $0.name < $1.name
+                }
+                saveCachedRegions(sorted)
+                completion(sorted)
             }
-            saveCachedRegions(sorted)
-            completion(sorted)
         }
     }
 
@@ -1403,6 +1399,30 @@ public enum OPNStreamPreferences {
             }
             completion()
         }.resume()
+    }
+
+    private static func measureRegionAsync(state: RegionMeasurementState, index: Int, token: String, attempt: Int, bestLatencyMs: Int) async {
+        let start = Date()
+        let region = state.region(at: index)
+        var request = serverInfoRequest(baseUrl: region.url, token: token)
+        request.timeoutInterval = 4
+        let networkStart = OPNNetworkLog.start(&request, operation: "stream.measureRegion")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            OPNNetworkLog.finish(request, operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: nil)
+            var updatedBest = bestLatencyMs
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status >= 200, status < 500 {
+                let measured = Int(Date().timeIntervalSince(start) * 1000.0)
+                updatedBest = updatedBest < 0 ? measured : min(updatedBest, measured)
+                state.setLatency(updatedBest, at: index)
+            }
+            if updatedBest >= 0, attempt + 1 < 2 {
+                await measureRegionAsync(state: state, index: index, token: token, attempt: attempt + 1, bestLatencyMs: updatedBest)
+            }
+        } catch {
+            OPNNetworkLog.finish(request, operation: "stream.measureRegion", startedAt: networkStart, data: nil, response: nil, error: error)
+        }
     }
 
     private static func currentNetworkType() -> String {
@@ -1753,6 +1773,25 @@ public final class OPNStreamViewPreferences: NSObject {
 private extension OPNStreamResolutionOption {
     init(_ tuple: (Int, Int)) {
         self.init(width: tuple.0, height: tuple.1)
+    }
+}
+
+private final class RegionIndexBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var indices: [Int]
+    private var cursor = 0
+
+    init(indices: [Int]) {
+        self.indices = indices
+    }
+
+    func next() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard cursor < indices.count else { return nil }
+        let value = indices[cursor]
+        cursor += 1
+        return value
     }
 }
 

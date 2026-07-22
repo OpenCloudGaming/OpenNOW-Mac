@@ -4,12 +4,9 @@ import GameController
 @MainActor
 public final class NativeWebRTCGamepadMonitor {
     public var onInputEvent: ((UserInputEvent) -> Void)?
-    nonisolated(unsafe) private var timer: Timer?
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
-    private var controllerSlots: [ObjectIdentifier: Int] = [:]
-    private var steamControllerSlots: [InputDeviceID: Int] = [:]
-    private var cachedControllers: [GCController] = []
-    private var lastStates: [ObjectIdentifier: GamepadControlSnapshot] = [:]
+    nonisolated(unsafe) private var pollState = GamepadPollState()
+    private let pollingQueue = DispatchQueue(label: "com.macforce-now.gamepad-poll", qos: .userInteractive)
     private var pollingAllowed = false
 
     public init() {
@@ -25,7 +22,7 @@ public final class NativeWebRTCGamepadMonitor {
     }
 
     deinit {
-        timer?.invalidate()
+        pollingQueue.sync { pollState.stopPolling() }
         observerTokens.forEach(NotificationCenter.default.removeObserver)
         let consumerKey = ObjectIdentifier(self)
         Task { @MainActor in
@@ -58,56 +55,70 @@ public final class NativeWebRTCGamepadMonitor {
     }
 
     private func refreshControllerSlots() {
-        let previousSteamSlots = steamControllerSlots
-        let previousOccupiedSlots = Set(controllerSlots.values).union(steamControllerSlots.values)
-        controllerSlots.removeAll()
-        steamControllerSlots.removeAll()
-        cachedControllers = Array(GCController.controllers().filter { $0.extendedGamepad != nil }.prefix(4))
-        lastStates.removeAll()
+        let previousSteamSlots = pollState.steamControllerSlots
+        let previousOccupiedSlots = Set(pollState.controllerSlots.values).union(pollState.steamControllerSlots.values)
+        let cachedControllers = Array(GCController.controllers().filter { $0.extendedGamepad != nil }.prefix(4))
+        var newControllerSlots: [ObjectIdentifier: Int] = [:]
         for (index, controller) in cachedControllers.enumerated() {
-            controllerSlots[ObjectIdentifier(controller)] = index
+            newControllerSlots[ObjectIdentifier(controller)] = index
         }
+        var newSteamSlots: [InputDeviceID: Int] = [:]
         var nextSlot = cachedControllers.count
         for deviceID in SteamControllerHIDMonitor.shared.activeDeviceIDs where nextSlot < 4 {
-            steamControllerSlots[deviceID] = nextSlot
+            newSteamSlots[deviceID] = nextSlot
             nextSlot += 1
+        }
+        pollingQueue.sync {
+            pollState.controllerSlots = newControllerSlots
+            pollState.steamControllerSlots = newSteamSlots
+            pollState.cachedControllers = cachedControllers
+            pollState.lastStates.removeAll()
         }
         if pollingAllowed {
             emitSlotTransitions(previousSteamSlots: previousSteamSlots, previousOccupiedSlots: previousOccupiedSlots)
-            controllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
+            newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
         }
-        let totalSlots = controllerSlots.count + steamControllerSlots.count
-        WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(steamControllerSlots.count)])
+        let totalSlots = newControllerSlots.count + newSteamSlots.count
+        WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
 
     private func emitSlotTransitions(previousSteamSlots: [InputDeviceID: Int], previousOccupiedSlots: Set<Int>) {
-        for (deviceID, slot) in steamControllerSlots where previousSteamSlots[deviceID] != slot {
+        let currentSteamSlots = pollState.steamControllerSlots
+        let currentControllerSlots = pollState.controllerSlots
+        for (deviceID, slot) in currentSteamSlots where previousSteamSlots[deviceID] != slot {
             guard let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID),
                   snapshot != SteamControllerInputSnapshot() else { continue }
             emitSteamState(deviceID: deviceID, playerIndex: slot, snapshot: snapshot)
         }
-        let occupiedSlots = Set(controllerSlots.values).union(steamControllerSlots.values)
+        let occupiedSlots = Set(currentControllerSlots.values).union(currentSteamSlots.values)
         for slot in previousOccupiedSlots.subtracting(occupiedSlots) {
             emitSteamState(deviceID: InputDeviceID("released-controller-\(slot)"), playerIndex: slot, snapshot: SteamControllerInputSnapshot())
         }
     }
 
     private func startPollingTimer() {
-        guard timer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pollControllers() }
+        pollingQueue.async { [weak self] in
+            guard let self else { return }
+            self.pollState.startPolling(on: self.pollingQueue) { [weak self] events in
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    for event in events {
+                        self.onInputEvent?(event)
+                    }
+                }
+            }
         }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func stopPollingTimer() {
-        timer?.invalidate()
-        timer = nil
+        pollingQueue.sync {
+            pollState.stopPolling()
+        }
     }
 
     private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot) {
-        guard pollingAllowed, let playerIndex = steamControllerSlots[deviceID] else { return }
+        guard pollingAllowed, let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
         emitSteamState(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot)
     }
 
@@ -126,40 +137,7 @@ public final class NativeWebRTCGamepadMonitor {
         )))
     }
 
-    private func pollControllers() {
-        if Self.connectedGamepadCount() != controllerSlots.count + steamControllerSlots.count { refreshControllerSlots() }
-        for controller in cachedControllers {
-            guard let gamepad = controller.extendedGamepad,
-                  let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
-            let buttons = buttons(from: gamepad)
-            let snapshot = GamepadControlSnapshot(
-                buttons: buttons,
-                leftTrigger: gamepad.leftTrigger.value,
-                rightTrigger: gamepad.rightTrigger.value,
-                leftStickX: gamepad.leftThumbstick.xAxis.value,
-                leftStickY: gamepad.leftThumbstick.yAxis.value,
-                rightStickX: gamepad.rightThumbstick.xAxis.value,
-                rightStickY: gamepad.rightThumbstick.yAxis.value
-            )
-            let identifier = ObjectIdentifier(controller)
-            guard lastStates[identifier] != snapshot else { continue }
-            lastStates[identifier] = snapshot
-            onInputEvent?(.gamepad(GamepadState(
-                deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
-                playerIndex: playerIndex,
-                buttons: buttons,
-                leftTrigger: gamepad.leftTrigger.value,
-                rightTrigger: gamepad.rightTrigger.value,
-                leftStickX: gamepad.leftThumbstick.xAxis.value,
-                leftStickY: gamepad.leftThumbstick.yAxis.value,
-                rightStickX: gamepad.rightThumbstick.xAxis.value,
-                rightStickY: gamepad.rightThumbstick.yAxis.value,
-                timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
-            )))
-        }
-    }
-
-    private func buttons(from gamepad: GCExtendedGamepad) -> GamepadButtons {
+    nonisolated static func buttons(from gamepad: GCExtendedGamepad) -> GamepadButtons {
         var buttons: GamepadButtons = []
         if gamepad.buttonA.isPressed { buttons.insert(.south) }
         if gamepad.buttonB.isPressed { buttons.insert(.east) }
@@ -176,6 +154,69 @@ public final class NativeWebRTCGamepadMonitor {
         if gamepad.buttonOptions?.isPressed == true { buttons.insert(.select) }
         if gamepad.buttonMenu.isPressed { buttons.insert(.start) }
         return buttons
+    }
+}
+
+private final class GamepadPollState {
+    var controllerSlots: [ObjectIdentifier: Int] = [:]
+    var steamControllerSlots: [InputDeviceID: Int] = [:]
+    var cachedControllers: [GCController] = []
+    var lastStates: [ObjectIdentifier: GamepadControlSnapshot] = [:]
+    private var timer: DispatchSourceTimer?
+
+    func startPolling(on queue: DispatchQueue, onEvents: @escaping @Sendable ([UserInputEvent]) -> Void) {
+        guard timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: 1.0 / 60.0, leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in
+            self?.pollAndEmit(onEvents: onEvents)
+        }
+        self.timer = timer
+        timer.resume()
+    }
+
+    func stopPolling() {
+        timer?.cancel()
+        timer = nil
+    }
+
+    private func pollAndEmit(onEvents: @escaping @Sendable ([UserInputEvent]) -> Void) {
+        if NativeWebRTCGamepadMonitor.connectedGamepadCount() != controllerSlots.count + steamControllerSlots.count {
+            return
+        }
+        var events: [UserInputEvent] = []
+        for controller in cachedControllers {
+            guard let gamepad = controller.extendedGamepad,
+                  let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
+            let buttons = NativeWebRTCGamepadMonitor.buttons(from: gamepad)
+            let snapshot = GamepadControlSnapshot(
+                buttons: buttons,
+                leftTrigger: gamepad.leftTrigger.value,
+                rightTrigger: gamepad.rightTrigger.value,
+                leftStickX: gamepad.leftThumbstick.xAxis.value,
+                leftStickY: gamepad.leftThumbstick.yAxis.value,
+                rightStickX: gamepad.rightThumbstick.xAxis.value,
+                rightStickY: gamepad.rightThumbstick.yAxis.value
+            )
+            let identifier = ObjectIdentifier(controller)
+            guard lastStates[identifier] != snapshot else { continue }
+            lastStates[identifier] = snapshot
+            events.append(.gamepad(GamepadState(
+                deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
+                playerIndex: playerIndex,
+                buttons: buttons,
+                leftTrigger: gamepad.leftTrigger.value,
+                rightTrigger: gamepad.rightTrigger.value,
+                leftStickX: gamepad.leftThumbstick.xAxis.value,
+                leftStickY: gamepad.leftThumbstick.yAxis.value,
+                rightStickX: gamepad.rightThumbstick.xAxis.value,
+                rightStickY: gamepad.rightThumbstick.yAxis.value,
+                timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+            )))
+        }
+        if !events.isEmpty {
+            onEvents(events)
+        }
     }
 }
 

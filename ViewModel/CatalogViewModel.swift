@@ -5,8 +5,8 @@
 //
 
 import AppKit
-import Combine
 import Foundation
+import Observation
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
@@ -118,67 +118,70 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-final class CatalogViewModel: ObservableObject {
-    @Published var selectedMainPage = CatalogMainPage.games
-    @Published var selectedCatalogDestination = CatalogDestination.home
-    @Published var selectedSettingsPage = CatalogSettingsPage.account
-    @Published var searchQuery = ""
-    @Published var selectedSortId = "a_to_z"
-    @Published var selectedFilterIds: [String] = []
-    @Published var isLoading = false
-    @Published var isLoadingPanels = false
-    @Published var errorMessage = ""
-    @Published var launchMessage = ""
-    @Published var actionMessage = ""
-    @Published var marqueePanels: [OPNCatalogPanelObject] = []
-    @Published var mainPanels: [OPNCatalogPanelObject] = []
-    @Published var catalogGames: [OPNCatalogGameObject] = []
-    @Published var libraryGames: [OPNCatalogGameObject] = []
-    @Published private var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
-    @Published private var loadingFullSectionIds: Set<String> = []
-    @Published var filterGroups: [OPNCatalogFilterGroupObject] = []
-    @Published var sortOptions: [OPNCatalogSortOptionObject] = []
-    @Published var totalCatalogCount = 0
-    @Published var supportedCatalogCount = 0
-    @Published var hasMoreCatalogResults = false
-    @Published var expandedSectionIds: Set<String> = []
-    @Published var accountStores: [CatalogStoreAccount] = []
-    @Published var storeDefinitions: [CatalogStoreDefinition] = []
-    @Published var selectedGame: OPNCatalogGameObject?
-    @Published var selectedSectionId = ""
-    @Published var selectedVariantIndex = -1
-    @Published var activeStreamConfiguration: StreamLaunchConfiguration?
-    @Published var activeStreamProgress: StreamProgress?
-    @Published var isActiveStreamLaunchOverlayVisible = false
-    @Published var launchFlowState = CatalogLaunchFlowState.idle
-    @Published var launchFlowTitle = ""
-    @Published var launchFlowMessage = ""
-    @Published var launchFlowError = ""
-    @Published var activeLaunchSession: OPNActiveStreamSessionDescriptor?
-    @Published var streamProfile = OPNStreamPreferenceProfile()
-    @Published var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-    @Published var streamCapabilities = OPNStreamDeviceCapabilities()
-    @Published var settingsRegionOptions: [OPNStreamRegionOption] = []
-    @Published var selectedSettingsRegionUrl = ""
-    @Published var unavailableSettingsRegionUrl = ""
-    @Published var isRefreshingSettingsRegions = false
-    @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
-    @Published var previousGameSession = CatalogPreviousGameSession.load()
-    @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
-    @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
-    @Published var favoriteGameIdentities: Set<String> = []
-    @Published var favoriteGames: [OPNCatalogGameObject] = []
-    @Published var selectedGameRevealRequest: CatalogGameRevealRequest?
-    @Published var catalogImageCacheSummary = "Calculating"
-    @Published var isStorePickerVisible = false
-    @Published var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
-    @Published var ownershipFlowMessage = ""
-    @Published var twitchPreferences = TwitchPreferencesStore.load()
-    @Published var twitchAccountStatus = TwitchAccountStatus()
-    @Published var twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
-    @Published var isConnectingTwitch = false
-    @Published var catalogBroadcastStatus = WebRTCLiveBroadcastStatus.idle
-    @Published var queuedPatchingLaunchGameTitle = ""
+@Observable
+final class CatalogViewModel {
+    var selectedMainPage = CatalogMainPage.games
+    var selectedCatalogDestination = CatalogDestination.home
+    var selectedSettingsPage = CatalogSettingsPage.account
+    var searchQuery = "" {
+        didSet { scheduleSearchDebounce() }
+    }
+    var selectedSortId = "a_to_z"
+    var selectedFilterIds: [String] = []
+    var isLoading = false
+    var isLoadingPanels = false
+    var errorMessage = ""
+    var launchMessage = ""
+    var actionMessage = ""
+    var marqueePanels: [OPNCatalogPanelObject] = []
+    var mainPanels: [OPNCatalogPanelObject] = []
+    var catalogGames: [OPNCatalogGameObject] = []
+    var libraryGames: [OPNCatalogGameObject] = []
+    private var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
+    private var loadingFullSectionIds: Set<String> = []
+    var filterGroups: [OPNCatalogFilterGroupObject] = []
+    var sortOptions: [OPNCatalogSortOptionObject] = []
+    var totalCatalogCount = 0
+    var supportedCatalogCount = 0
+    var hasMoreCatalogResults = false
+    var expandedSectionIds: Set<String> = []
+    var accountStores: [CatalogStoreAccount] = []
+    var storeDefinitions: [CatalogStoreDefinition] = []
+    var selectedGame: OPNCatalogGameObject?
+    var selectedSectionId = ""
+    var selectedVariantIndex = -1
+    var activeStreamConfiguration: StreamLaunchConfiguration?
+    var activeStreamProgress: StreamProgress?
+    var isActiveStreamLaunchOverlayVisible = false
+    var launchFlowState = CatalogLaunchFlowState.idle
+    var launchFlowTitle = ""
+    var launchFlowMessage = ""
+    var launchFlowError = ""
+    var activeLaunchSession: OPNActiveStreamSessionDescriptor?
+    var streamProfile = OPNStreamPreferenceProfile()
+    var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
+    var streamCapabilities = OPNStreamDeviceCapabilities()
+    var settingsRegionOptions: [OPNStreamRegionOption] = []
+    var selectedSettingsRegionUrl = ""
+    var unavailableSettingsRegionUrl = ""
+    var isRefreshingSettingsRegions = false
+    var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
+    var previousGameSession = CatalogPreviousGameSession.load()
+    var playtimeStatistics = CatalogPlaytimeStatistics.empty
+    var subscriptionStatus = CatalogSubscriptionStatus.unavailable
+    var favoriteGameIdentities: Set<String> = []
+    var favoriteGames: [OPNCatalogGameObject] = []
+    var selectedGameRevealRequest: CatalogGameRevealRequest?
+    var catalogImageCacheSummary = "Calculating"
+    var isStorePickerVisible = false
+    var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
+    var ownershipFlowMessage = ""
+    var twitchPreferences = TwitchPreferencesStore.load()
+    var twitchAccountStatus = TwitchAccountStatus()
+    var twitchPrimaryStreamKeySaved = false
+    var isConnectingTwitch = false
+    var catalogBroadcastStatus = WebRTCLiveBroadcastStatus.idle
+    var queuedPatchingLaunchGameTitle = ""
 
     let account: LoginAccount
     let session: LoginSession
@@ -187,7 +190,7 @@ final class CatalogViewModel: ObservableObject {
     private var hasLoaded = false
     private var browseGeneration = 0
     private var authRefreshInFlight = false
-    private var cancellables = Set<AnyCancellable>()
+    private var searchDebounceTask: Task<Void, Never>?
     private var pendingLaunchGame: OPNCatalogGameObject?
     private var pendingLaunchVariantIndex = -1
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
@@ -197,39 +200,53 @@ final class CatalogViewModel: ObservableObject {
     private var isCatalogBroadcastPreparing = false
     private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
-    private var patchingPollTask: Task<Void, Never>?
     private var patchingPollInFlight = false
     private var queuedPatchingLaunchIdentity = ""
     private var queuedPatchingLaunchVariantIndex = -1
     private let catalogBroadcastController = WebRTCLiveBroadcastController.shared
-    private var catalogBroadcastObserverID: UUID?
+    private let deinitHandle = CatalogViewModelDeinitHandle()
 
+    private var hasStarted = false
+
+    // init must stay cheap and side-effect free: SwiftUI re-runs CatalogView.init on
+    // every parent re-render, and the State(initialValue:) pattern constructs (and
+    // discards) a fresh view model each time. All real work happens in start(),
+    // which the view calls once from .task.
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
+    }
+
+    func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
         if twitchPrimaryStreamKeySaved {
             twitchAccountStatus.streamKeyAvailable = true
         }
-        catalogBroadcastObserverID = catalogBroadcastController.addStatusObserver { [weak self] status in
+        deinitHandle.broadcastObserverID = catalogBroadcastController.addStatusObserver { [weak self] status in
             self?.handleCatalogBroadcastStatus(status)
         }
         Task { await TwitchIngestService.refreshDefaultServer() }
         refreshTwitchAccountStatus()
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
-        $searchQuery
-            .dropFirst()
-            .removeDuplicates()
-            .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.browseCatalog() }
-            .store(in: &cancellables)
+    }
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, let self else { return }
+            self.browseCatalog()
+        }
     }
 
     deinit {
-        patchingPollTask?.cancel()
-        if let catalogBroadcastObserverID {
-            catalogBroadcastController.removeStatusObserver(catalogBroadcastObserverID)
+        deinitHandle.patchingPollTask?.cancel()
+        if let broadcastObserverID = deinitHandle.broadcastObserverID {
+            catalogBroadcastController.removeStatusObserver(broadcastObserverID)
         }
     }
 
@@ -267,18 +284,24 @@ final class CatalogViewModel: ObservableObject {
 
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
+        var seenIds = Set<String>()
         let remoteFavoriteGames = favoriteGames
         if !isBrowseMode, !remoteFavoriteGames.isEmpty {
             sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .panel))
             seenTitles.insert("My Favorites")
+            seenIds.insert("remote-favorites")
         }
         for panel in mainPanels {
             for section in panel.sections where !section.games.isEmpty {
                 let title = section.title.isEmpty ? panel.title : section.title
                 let resolvedTitle = title.isEmpty ? "Featured Games" : title
                 guard !seenTitles.contains(resolvedTitle) else { continue }
-                seenTitles.insert(resolvedTitle)
                 let sectionId = section.sectionIdentity(fallbackPanelId: panel.id)
+                // Section rails are identified by id in the catalog list ForEach;
+                // a duplicate id would render duplicated rails.
+                guard !seenIds.contains(sectionId) else { continue }
+                seenTitles.insert(resolvedTitle)
+                seenIds.insert(sectionId)
                 sections.append(CatalogSectionModel(
                     id: sectionId,
                     title: resolvedTitle,
@@ -1840,17 +1863,17 @@ final class CatalogViewModel: ObservableObject {
     private func schedulePatchingPollIfNeeded(immediate: Bool = false) {
         let patchingAppIds = patchingPollAppIds()
         guard !patchingAppIds.isEmpty else {
-            patchingPollTask?.cancel()
-            patchingPollTask = nil
+            deinitHandle.patchingPollTask?.cancel()
+            deinitHandle.patchingPollTask = nil
             return
         }
-        guard patchingPollTask == nil else {
+        guard deinitHandle.patchingPollTask == nil else {
             if immediate {
                 Task { @MainActor [weak self] in await self?.refreshPatchingStatuses() }
             }
             return
         }
-        patchingPollTask = Task { @MainActor [weak self] in
+        deinitHandle.patchingPollTask = Task { @MainActor [weak self] in
             if immediate { await self?.refreshPatchingStatuses() }
             while let self, !Task.isCancelled {
                 let delaySeconds = UInt64(Int.random(in: 30...60))
@@ -1858,7 +1881,7 @@ final class CatalogViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 await self.refreshPatchingStatuses()
                 if self.patchingPollAppIds().isEmpty {
-                    self.patchingPollTask = nil
+                    self.deinitHandle.patchingPollTask = nil
                     return
                 }
             }
@@ -2422,4 +2445,9 @@ private extension OPNCatalogGameObject {
     var primaryStoreURL: URL? {
         variants.compactMap { URL(string: $0.storeUrl) }.first
     }
+}
+
+private final class CatalogViewModelDeinitHandle: @unchecked Sendable {
+    var patchingPollTask: Task<Void, Never>?
+    var broadcastObserverID: UUID?
 }

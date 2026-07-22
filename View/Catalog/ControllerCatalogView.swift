@@ -129,7 +129,7 @@ private struct ControllerLayoutMetrics {
 }
 
 struct ControllerCatalogView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
@@ -752,7 +752,7 @@ struct ControllerCatalogView: View {
 }
 
 private struct ControllerHeader: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
 
@@ -851,7 +851,7 @@ private struct ControllerNavigationBar: View {
 }
 
 private struct ControllerGamesPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let focusArea: ControllerCatalogFocusArea
     let selectedRailIndex: Int
     @Binding var selectedGameIndices: [String: Int]
@@ -934,7 +934,7 @@ private struct ControllerGamesPage: View {
 }
 
 private struct ControllerHeroBillboard: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
     let height: CGFloat
 
@@ -991,7 +991,7 @@ private struct ControllerHeroBillboard: View {
 }
 
 private struct ControllerBrowseSummary: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1016,7 +1016,7 @@ private struct ControllerBrowseSummary: View {
 }
 
 private struct ControllerGameRail: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     @Binding var selectedIndex: Int
     let isFocused: Bool
@@ -1190,7 +1190,7 @@ private struct ControllerEmbeddedPage<Content: View>: View {
 }
 
 private struct ControllerSearchOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    @Bindable var viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let rowIndex: Int
     let filterOptionIndices: [String: Int]
@@ -1316,7 +1316,7 @@ private struct ControllerSearchOverlay: View {
 }
 
 private struct ControllerGameDetailOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
     let selectedActionIndex: Int
     let actions: [ControllerDetailAction]
@@ -1424,7 +1424,7 @@ private struct ControllerGameDetailOverlay: View {
 }
 
 private struct ControllerShowAllOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     let selectedIndex: Int
     @Binding var columnCount: Int
@@ -1585,7 +1585,7 @@ private struct ControllerOverlayHeader: View {
 }
 
 private struct ControllerCompactGameCard: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
     let isFocused: Bool
     let action: () -> Void
@@ -1817,7 +1817,7 @@ private struct ControllerKeyboardMovePill: View {
 }
 
 private struct ControllerCatalogBackground: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
 
     var body: some View {

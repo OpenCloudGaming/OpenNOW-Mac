@@ -118,7 +118,7 @@ private enum SettingsFormat {
 }
 
 struct SettingsView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         NavigationSplitView {
@@ -141,7 +141,7 @@ private struct SettingsSurfaceBackground: View {
 }
 
 private struct SettingsSidebarList: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    @Bindable var viewModel: CatalogViewModel
 
     var body: some View {
         List(selection: $viewModel.selectedSettingsPage) {
@@ -257,7 +257,7 @@ private struct SettingsSidebarBackButton: View {
 }
 
 private struct SettingsContent: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         ScrollView {
@@ -351,7 +351,7 @@ private struct SettingsHeader: View {
 }
 
 private struct AccountSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var revealSensitive = false
     @State private var copiedKey = ""
 
@@ -688,7 +688,7 @@ private struct SettingsStatisticTile: View {
 }
 
 private struct InterfaceSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var inputRouter = ControllerInputRouter()
     @StateObject private var steamNavigator = GamepadUINavigator()
@@ -808,7 +808,7 @@ private struct InterfaceGlyphPill: View {
 }
 
 private struct ConnectionsSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         let stores = connectionStores
@@ -873,7 +873,7 @@ private struct ConnectionsSettingsPage: View {
 }
 
 private struct TwitchSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var primaryStreamKeyDraft = ""
 
     var body: some View {
@@ -1025,7 +1025,7 @@ private struct StoreConnectionsOverview: View {
 }
 
 private struct StoreConnectionRow: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let store: String
 
     var body: some View {
@@ -1225,7 +1225,7 @@ private enum StoreIconAsset: CaseIterable {
 }
 
 private struct ExperimentalFeaturesSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
@@ -1446,7 +1446,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
 }
 
 private struct GameplaySettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
@@ -1672,7 +1672,7 @@ private struct GameplayProfileMetricTile: View {
 }
 
 private struct ServerLocationSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     private let regionColumns = [GridItem(.adaptive(minimum: 138, maximum: 220), spacing: 10)]
 
     var body: some View {
@@ -1751,7 +1751,7 @@ private struct UnavailableRegionPrompt: View {
 }
 
 private struct ResolutionUpscalingSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1777,7 +1777,7 @@ private struct ResolutionUpscalingSettingsPage: View {
 }
 
 private struct SystemSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var revealSensitive = false
     @State private var copiedKey = ""
 
@@ -1954,7 +1954,7 @@ private struct SystemCapabilityRow: View {
 }
 
 private struct AboutSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
@@ -2800,7 +2800,11 @@ private struct SettingsFlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 320
+        // Must never return a non-finite size (see FlowLayout in CatalogView.swift):
+        // an .infinity proposal would otherwise propagate NaN into the layout graph
+        // and livelock the main thread.
+        let proposedWidth = proposal.width
+        let width: CGFloat = (proposedWidth?.isFinite == true && proposedWidth! > 0) ? proposedWidth! : 320
         var size = CGSize(width: width, height: 0)
         var lineWidth: CGFloat = 0
         var lineHeight: CGFloat = 0

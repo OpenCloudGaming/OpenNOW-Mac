@@ -546,7 +546,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         guard microphoneLevelTimer == nil else { return }
         self.sessionImpl = sessionImpl
         let timer = DispatchSource.makeTimerSource(queue: statsQueue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(100), leeway: .milliseconds(20))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(250), leeway: .milliseconds(50))
         timer.setEventHandler { [weak self, weak sessionImpl] in
             guard let self else { return }
             guard let peerConnection = sessionImpl?.peerConnection, let microphoneTrack = sessionImpl?.localMicrophoneTrack else { return }

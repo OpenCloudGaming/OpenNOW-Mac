@@ -89,7 +89,9 @@ struct MacForceNowApp: App {
         MacForceNowLog.info(.app, "MacForce Now application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container
-        CatalogImageCache.shared.configure(container: container)
+        if let imageCacheContainer = Self.makeImageCacheContainer() {
+            CatalogImageCache.shared.configure(container: imageCacheContainer)
+        }
         MacForceNowLog.info(.app, "MacForce Now application initialization completed")
     }
 
@@ -98,7 +100,6 @@ struct MacForceNowApp: App {
             LoginAccount.self,
             LoginSession.self,
             LoginDeviceRegistration.self,
-            CatalogImageCacheEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -109,6 +110,22 @@ struct MacForceNowApp: App {
         } catch {
             MacForceNowLog.fatal(.app, "Could not create SwiftData model container: \(error.localizedDescription)")
             fatalError("Could not create ModelContainer: \(error)")
+        }
+    }
+
+    // The image cache writes access metadata continuously; it must live in its own
+    // container so those saves never invalidate the auth @Query views (ContentView).
+    private static func makeImageCacheContainer() -> ModelContainer? {
+        let schema = Schema([CatalogImageCacheEntry.self])
+        let storeURL = URL.applicationSupportDirectory.appending(path: "CatalogImageCache.store")
+        let configuration = ModelConfiguration(schema: schema, url: storeURL)
+        do {
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            MacForceNowLog.info(.app, "Catalog image cache container created")
+            return container
+        } catch {
+            MacForceNowLog.warning(.app, "Could not create catalog image cache container, image caching disabled: \(error.localizedDescription)")
+            return nil
         }
     }
 
