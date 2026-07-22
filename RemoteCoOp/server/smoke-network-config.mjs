@@ -15,6 +15,7 @@ if (args.includes("--help") || args.includes("-h")) {
 const brokerURLArg = argValue("--broker-url");
 const verbose = envFlag("MACFORCE_NOW_REMOTE_COOP_SMOKE_VERBOSE", false);
 const smokeSecret = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET || "macforce-now-remote-coop-smoke-secret";
+const smokeInviteSecret = process.env.MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET || "macforce-now-remote-coop-smoke-invite-secret";
 const smokeTurnURLs = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_URLS || "turn:127.0.0.1:32189?transport=udp,turn:127.0.0.1:32189?transport=tcp";
 const smokeStunURLs = process.env.MACFORCE_NOW_REMOTE_COOP_STUN_URLS || "stun:stun.l.google.com:19302";
 const smokeTTLSeconds = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS || "3600";
@@ -48,6 +49,7 @@ async function startBroker() {
       MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
       MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret,
       ...httpBrokerEnvironment()
     }
   });
@@ -154,6 +156,7 @@ async function assertPortFallback() {
       MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
       MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret,
       ...httpBrokerEnvironment()
     }
   });
@@ -180,8 +183,12 @@ async function fetchNetworkConfiguration(brokerURL, invite) {
 }
 
 function inviteToken(payload) {
-  const encoded = Buffer.from(JSON.stringify({ expiresAtEpochSeconds: Math.floor(Date.now() / 1_000) + 600, ...payload }), "utf8").toString("base64url");
-  return `${encoded}.smoke-signature`;
+  const payloadJSON = { expiresAtEpochSeconds: Math.floor(Date.now() / 1_000) + 600, ...payload };
+  const payloadBuffer = Buffer.from(JSON.stringify(payloadJSON), "utf8");
+  const signature = createHmac("sha256", smokeInviteSecret).update(payloadBuffer).digest();
+  const encodedPayload = payloadBuffer.toString("base64url");
+  const encodedSignature = signature.toString("base64url");
+  return `${encodedPayload}.${encodedSignature}`;
 }
 
 async function waitForBroker(brokerURL) {

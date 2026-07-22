@@ -1,6 +1,6 @@
 import { createServer as createHTTPServer } from "node:http";
 import { createServer as createHTTPSServer } from "node:https";
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ const turnUsername = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_USERNAME ?? "";
 const turnCredential = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
 const turnSharedSecret = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
 const turnCredentialTTLSeconds = Number.parseInt(process.env.MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
+const inviteSharedSecret = process.env.MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET ?? "";
 const networkLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_NETWORK", true);
 const messageFlowLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_MESSAGES", false);
 const rooms = new Map();
@@ -55,12 +56,12 @@ const server = await makeBrokerServer(async (request, response) => {
     }));
     if (url.pathname === "/remote-coop/network-config") {
       const inviteParameter = url.searchParams.get("invite") ?? "";
-      const payload = decodeInvitePayload(inviteParameter);
+      const payload = verifyInviteToken(inviteParameter);
       const roomID = stringValue(payload?.inviteID) ?? roomIDForInviteCode(inviteParameter);
       const room = roomID ? rooms.get(roomID) : null;
       if (!payload && !room) {
         logNetwork("network-config.rejected", { remote, reason: "invalid_invite" });
-        response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: "invalid_invite" }));
+        response.writeHead(403, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: "invalid_invite" }));
         return;
       }
       const networkConfiguration = room?.networkConfiguration ?? networkConfigurationFor(payload, roomID ?? "");
@@ -305,8 +306,18 @@ function registerHost(state, message) {
     send(state, { kind: "error", reason: "Missing room ID" });
     return;
   }
+  const payload = verifyInviteToken(message.invite?.token);
+  if (!payload) {
+    logNetwork("host.rejected", { ...socketLogFields(state), reason: "invalid_invite_signature" });
+    send(state, { kind: "error", reason: "Invalid or expired invite token" });
+    return;
+  }
   const room = roomFor(roomID);
-  const payload = decodeInvitePayload(message.invite?.token);
+  if (room.host && !room.host.detached) {
+    logNetwork("host.rejected", { ...socketLogFields(state), reason: "host_already_registered" });
+    send(state, { kind: "error", reason: "Host already registered for this room" });
+    return;
+  }
   room.host = state;
   if (room.hostRegisteredAtMs <= 0) {
     room.hostRegisteredAtMs = Date.now();
@@ -346,7 +357,12 @@ function registerGuest(state, message) {
     send(state, { kind: "guestRejected", participantID, reason: "Missing invite token" });
     return;
   }
-  const payload = decodeInvitePayload(inviteToken);
+  const payload = verifyInviteToken(inviteToken);
+  if (!payload) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "invalid_invite_signature" });
+    send(state, { kind: "guestRejected", participantID, reason: "Invalid or expired invite token" });
+    return;
+  }
   const roomID = stringValue(message.roomID) ?? stringValue(payload?.inviteID) ?? roomIDForInviteCode(inviteToken);
   if (!roomID) {
     logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "room_not_found" });
@@ -560,9 +576,32 @@ function turnAuthSummary() {
 }
 
 function inviteExpiryMilliseconds(token) {
-  const payload = decodeInvitePayload(token);
+  const payload = verifyInviteToken(token);
   const expiresAt = Number(payload?.expiresAtEpochSeconds ?? 0);
   return Number.isFinite(expiresAt) && expiresAt > 0 ? Math.round(expiresAt * 1_000) : 0;
+}
+
+function verifyInviteToken(token) {
+  if (typeof token !== "string" || !inviteSharedSecret) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [payloadSegment, signatureSegment] = parts;
+  if (!payloadSegment || !signatureSegment) return null;
+  const payloadBuffer = Buffer.from(base64URLToBase64(payloadSegment), "base64");
+  if (payloadBuffer.length === 0) return null;
+  const signatureBuffer = Buffer.from(base64URLToBase64(signatureSegment), "base64");
+  if (signatureBuffer.length === 0) return null;
+  const expectedSignature = createHmac("sha256", inviteSharedSecret).update(payloadBuffer).digest();
+  if (expectedSignature.length !== signatureBuffer.length) return null;
+  if (!timingSafeEqual(expectedSignature, signatureBuffer)) return null;
+  try {
+    const payload = JSON.parse(payloadBuffer.toString("utf8"));
+    const expiresAt = Number(payload?.expiresAtEpochSeconds ?? 0);
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt * 1_000 < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 function decodeInvitePayload(token) {

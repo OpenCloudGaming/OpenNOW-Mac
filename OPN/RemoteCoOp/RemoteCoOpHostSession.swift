@@ -50,7 +50,7 @@ public actor OPNRemoteCoOpHostSession {
     private let inviteSigner: OPNRemoteCoOpInviteTokenSigner
     private let inputRouter = OPNRemoteCoOpInputRouter()
 
-    public init(preferences: OPNRemoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load(), inviteSigner: OPNRemoteCoOpInviteTokenSigner = OPNRemoteCoOpInviteTokenSigner()) {
+    public init(preferences: OPNRemoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load(), inviteSigner: OPNRemoteCoOpInviteTokenSigner = OPNRemoteCoOpInviteTokenSigner.fromEnvironment()) {
         self.preferences = preferences
         self.inviteSigner = inviteSigner
     }

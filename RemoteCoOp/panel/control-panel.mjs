@@ -38,6 +38,7 @@ mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
 
 const sessionSecret = readOrCreateSecret("session-secret");
 const generatedTurnSecret = readOrCreateSecret("turn-shared-secret");
+const generatedInviteSecret = readOrCreateSecret("invite-secret");
 const tls = readOrCreateTLSMaterial();
 const sessions = new Map();
 const loginFailures = new Map();
@@ -402,7 +403,8 @@ function childEnvironment() {
     ...process.env,
     MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST: publicHost,
     MACFORCE_NOW_REMOTE_COOP_PORT: stringEnv("MACFORCE_NOW_REMOTE_COOP_PORT", "32188"),
-    MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", generatedTurnSecret)
+    MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", generatedTurnSecret),
+    MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: stringEnv("MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET", generatedInviteSecret)
   };
   return env;
 }

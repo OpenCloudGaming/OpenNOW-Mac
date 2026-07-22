@@ -162,8 +162,11 @@ if [ ! -f /etc/pam.d/macforce-now-remote-coop ]; then
   $SUDO install -o root -g wheel -m 0644 "$REPO_ROOT/RemoteCoOp/panel/auth/macforce-now-remote-coop.macos.pam.example" /etc/pam.d/macforce-now-remote-coop
 fi
 
+TURN_SHARED_SECRET=$($NODE_BIN -e 'console.log(require("crypto").randomBytes(48).toString("base64url"))')
+INVITE_SECRET=$($NODE_BIN -e 'console.log(require("crypto").randomBytes(32).toString("base64url"))')
+
 TMP_PLIST=/tmp/com.macforce-now.remote-coop.panel.plist
-sed "s#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__PANEL_PORT__#$PANEL_PORT#g; s#__BROKER_PORT__#$BROKER_PORT#g; s#__BROKER_ALTERNATES__#$((BROKER_PORT + 1)),$((BROKER_PORT + 2))#g; s#__TURN_PORT__#$TURN_PORT#g; s#__TURN_MIN_PORT__#$TURN_MIN_PORT#g; s#__TURN_MAX_PORT__#$TURN_MAX_PORT#g" "$REPO_ROOT/RemoteCoOp/service/macos/com.macforce-now.remote-coop.panel.plist" > "$TMP_PLIST"
+sed "s#__REPO_ROOT__#$REPO_ROOT#g; s#__NODE__#$NODE_BIN#g; s#__SERVICE_USER__#$SERVICE_USER#g; s#__PANEL_PORT__#$PANEL_PORT#g; s#__BROKER_PORT__#$BROKER_PORT#g; s#__BROKER_ALTERNATES__#$((BROKER_PORT + 1)),$((BROKER_PORT + 2))#g; s#__TURN_PORT__#$TURN_PORT#g; s#__TURN_MIN_PORT__#$TURN_MIN_PORT#g; s#__TURN_MAX_PORT__#$TURN_MAX_PORT#g; s#__TURN_SHARED_SECRET__#$TURN_SHARED_SECRET#g; s#__INVITE_SECRET__#$INVITE_SECRET#g" "$REPO_ROOT/RemoteCoOp/service/macos/com.macforce-now.remote-coop.panel.plist" > "$TMP_PLIST"
 $SUDO install -o root -g wheel -m 0644 "$TMP_PLIST" "$PLIST"
 rm -f "$TMP_PLIST"
 

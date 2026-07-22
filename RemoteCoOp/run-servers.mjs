@@ -38,6 +38,8 @@ function buildConfig() {
   const publicHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || productionHost;
   const generatedSecret = !stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
   const sharedSecret = generatedSecret ? randomBytes(32).toString("base64url") : stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
+  const generatedInviteSecret = !stringEnv("MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET", "");
+  const inviteSecret = generatedInviteSecret ? randomBytes(32).toString("base64url") : stringEnv("MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET", "");
   const turnPort = integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_PORT", 32189);
   const turnTLSPort = integerEnv("MACFORCE_NOW_REMOTE_COOP_TURN_TLS_PORT", 32443);
   const turnCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
@@ -62,13 +64,14 @@ function buildConfig() {
     MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: sharedSecret,
     MACFORCE_NOW_REMOTE_COOP_TURN_URLS: turnURLs,
     MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS", "3600"),
+    MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: inviteSecret,
     MACFORCE_NOW_REMOTE_COOP_BROKER_CERT: brokerCertificatePath,
     MACFORCE_NOW_REMOTE_COOP_BROKER_KEY: brokerKeyPath
   };
   if (isLoopbackHost(env.MACFORCE_NOW_REMOTE_COOP_TURN_PUBLIC_HOST) && !process.env.MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK) {
     env.MACFORCE_NOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK = "1";
   }
-  return { publicHost, generatedSecret, sharedSecret, turnURLs, brokerBindHost, brokerPort, brokerPortCandidates, brokerTLSEnabled, turnListeningIP, env };
+  return { publicHost, generatedSecret, sharedSecret, generatedInviteSecret, inviteSecret, turnURLs, brokerBindHost, brokerPort, brokerPortCandidates, brokerTLSEnabled, turnListeningIP, env };
 }
 
 function startChild(label, scriptArgs, options = {}) {
@@ -151,6 +154,7 @@ function printSummary(config) {
   console.log(`  public host: ${config.publicHost}`);
   console.log(`  TURN URLs: ${config.turnURLs}`);
   console.log(`  TURN shared secret: ${config.generatedSecret ? "generated for this run" : "provided by environment"}`);
+  console.log(`  invite secret: ${config.generatedInviteSecret ? "generated for this run" : "provided by environment"}`);
   console.log("  production: defaults use HTTP/WS on the public IP. Configure broker HTTPS/WSS only when explicitly needed.");
 }
 

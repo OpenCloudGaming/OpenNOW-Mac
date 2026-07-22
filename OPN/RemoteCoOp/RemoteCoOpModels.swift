@@ -432,6 +432,16 @@ public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
         self.secret = secret.isEmpty ? Self.randomSecret() : secret
     }
 
+    public static func fromEnvironment() -> OPNRemoteCoOpInviteTokenSigner {
+        guard let raw = ProcessInfo.processInfo.environment["MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET"],
+              !raw.isEmpty,
+              let data = Self.base64URLDecoded(raw),
+              !data.isEmpty else {
+            return OPNRemoteCoOpInviteTokenSigner()
+        }
+        return OPNRemoteCoOpInviteTokenSigner(secret: data)
+    }
+
     public func token(for payload: OPNRemoteCoOpInviteTokenPayload) throws -> String {
         let payloadData = try Self.encoder().encode(payload)
         let signature = HMAC<SHA256>.authenticationCode(for: payloadData, using: SymmetricKey(data: secret))
