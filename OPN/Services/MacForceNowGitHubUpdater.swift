@@ -1,5 +1,7 @@
 import Foundation
 
+private let macForceNowTeamID = "MPZW7ERR2D"
+
 struct MacForceNowGitHubRelease: Sendable {
     let version: String
     let tagName: String
@@ -136,8 +138,8 @@ actor MacForceNowGitHubUpdater {
         guard let newBundleURL = findAppBundle(in: extractURL) else {
             throw UpdateError.validationFailed("The update archive did not contain an app bundle.")
         }
-        clearQuarantine(for: newBundleURL)
         try validateCandidateBundle(newBundleURL, expectedVersion: release.version, currentBundleURL: currentBundleURL)
+        clearQuarantine(for: newBundleURL)
 
         let installTargetURL = try writableInstallTarget(for: currentBundleURL)
         let scriptURL = stagingURL.appendingPathComponent("install-macforce-now-update.sh", isDirectory: false)
@@ -295,7 +297,7 @@ actor MacForceNowGitHubUpdater {
     private func verifyCodeSignature(for bundleURL: URL) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["--verify", "--deep", "--strict", bundleURL.path]
+        process.arguments = ["--verify", "--deep", "--strict", "-R", "anchor apple generic and certificate leaf[subject.OU] = \"\(macForceNowTeamID)\"", bundleURL.path]
         do {
             try process.run()
             process.waitUntilExit()
