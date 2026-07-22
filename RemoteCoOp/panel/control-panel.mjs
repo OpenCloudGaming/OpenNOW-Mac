@@ -22,11 +22,12 @@ const loginWindowMs = 5 * 60_000;
 const maxLoginFailures = 8;
 const childAutostart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_AUTOSTART", true);
 const childAutoRestart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_CHILD_AUTORESTART", false);
-const automaticUpdates = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC", true);
+const automaticUpdates = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC", false);
 const updateIntervalMs = Math.max(60, integerEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_INTERVAL_SECONDS", 300)) * 1_000;
 const updateBranch = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_BRANCH", "");
 const updateValidationCommand = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_VALIDATE", "node RemoteCoOp/run-servers.mjs --dry-run");
 const updateAutoRestart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTO_RESTART", true);
+const updateRequireSignedCommits = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_REQUIRE_SIGNED", true);
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -354,7 +355,7 @@ async function runGitUpdate(username, mode) {
   try {
     audit(username, `update_${mode}_started`);
     if (childWasRunning) await manager.stop("git_update");
-    const result = await applyGitUpdate(repoRoot, { branch: updateBranch, validationCommand: updateValidationCommand });
+    const result = await applyGitUpdate(repoRoot, { branch: updateBranch, validationCommand: updateValidationCommand, requireSignedCommits: updateRequireSignedCommits });
     lastUpdateResult = { ...result, at: new Date().toISOString(), mode };
     writeJSONState("last-update.json", lastUpdateResult);
     if (result.applied) audit(username, `update_${mode}_applied`);

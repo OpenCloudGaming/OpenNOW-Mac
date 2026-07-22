@@ -56,6 +56,14 @@ export async function applyGitUpdate(repoRoot, options = {}) {
   if (beforeStatus.blockedReason) return { applied: false, beforeStatus, blockedReason: beforeStatus.blockedReason };
   if (!beforeStatus.updateAvailable) return { applied: false, beforeStatus, blockedReason: "already up to date" };
 
+  const requireSignedCommits = options.requireSignedCommits !== false;
+  if (requireSignedCommits) {
+    const signatureCheck = await verifyCommitSignatures(repoRoot, beforeStatus.upstream);
+    if (!signatureCheck.verified) {
+      return { applied: false, beforeStatus, blockedReason: signatureCheck.reason, signatureCheck };
+    }
+  }
+
   const changedFilesBeforePull = await git(repoRoot, ["diff", "--name-only", "HEAD", beforeStatus.upstream]);
   const candidateChangedFiles = changedFilesBeforePull.stdout.trim() ? changedFilesBeforePull.stdout.trim().split("\n") : [];
   await git(repoRoot, ["pull", "--ff-only"]);
@@ -74,6 +82,26 @@ export async function applyGitUpdate(repoRoot, options = {}) {
     changedPanelFiles,
     blockedReason: validation.code === 0 ? "" : "validation failed"
   };
+}
+
+async function verifyCommitSignatures(repoRoot, upstreamRef) {
+  const commitListResult = await git(repoRoot, ["rev-list", "HEAD.." + upstreamRef], { allowFailure: true });
+  if (commitListResult.code !== 0) {
+    return { verified: false, reason: "failed to list commits" };
+  }
+  const commitHashes = commitListResult.stdout.trim().split("\n").filter(Boolean);
+  if (commitHashes.length === 0) {
+    return { verified: true, reason: "no commits to verify" };
+  }
+
+  for (const hash of commitHashes) {
+    const verifyResult = await git(repoRoot, ["verify-commit", "--quiet", hash], { allowFailure: true });
+    if (verifyResult.code !== 0) {
+      return { verified: false, reason: `commit ${hash.slice(0, 8)} is not signed or signature is invalid`, commit: hash };
+    }
+  }
+
+  return { verified: true, reason: `verified ${commitHashes.length} signed commit(s)`, commitCount: commitHashes.length };
 }
 
 async function git(cwd, args, options = {}) {
