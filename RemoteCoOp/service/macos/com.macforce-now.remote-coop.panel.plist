@@ -16,7 +16,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>MACFORCE_NOW_REMOTE_COOP_PANEL_BIND_HOST</key>
-    <string>0.0.0.0</string>
+    <string>127.0.0.1</string>
     <key>MACFORCE_NOW_REMOTE_COOP_PANEL_PORT</key>
     <string>__PANEL_PORT__</string>
     <key>MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST</key>
