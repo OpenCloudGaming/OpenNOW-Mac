@@ -151,7 +151,7 @@ function brokerEnvironment(config) {
   return {
     MACFORCE_NOW_REMOTE_COOP_TURN_URLS: urls.join(","),
     MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: config.sharedSecret,
-    MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: "3600"
+    MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: "600"
   };
 }
 
