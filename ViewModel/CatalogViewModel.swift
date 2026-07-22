@@ -267,10 +267,7 @@ final class CatalogViewModel {
     }
 
     var heroRotationGames: [OPNCatalogGameObject] {
-        var games: [OPNCatalogGameObject] = []
-        var seen = Set<String>()
-        Self.appendUniqueHeroGames(from: marqueeGames, into: &games, seen: &seen)
-        return games
+        Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
     }
 
     var catalogSections: [CatalogSectionModel] {
@@ -1992,14 +1989,36 @@ final class CatalogViewModel {
         errorMessage = ""
     }
 
-    private static func appendUniqueHeroGames(from source: [OPNCatalogGameObject], into games: inout [OPNCatalogGameObject], seen: inout Set<String>) {
-        for game in source {
-            guard hasMarqueeHeroArtwork(game) else { continue }
-            let identity = identity(for: game)
-            guard !identity.isEmpty, !seen.contains(identity) else { continue }
-            seen.insert(identity)
-            games.append(game)
+    // The catalog delivers the same game as separate entries per store SKU
+    // (distinct ids, same title and artwork), so id-based dedup still shows
+    // visual duplicates. Group by normalized title, keeping the SKU already
+    // in the library, then the one with the richest variant list.
+    nonisolated static func titleGroupingKey(for game: OPNCatalogGameObject) -> String {
+        let normalized = game.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? identity(for: game) : normalized
+    }
+
+    nonisolated static func dedupedByTitleGrouping(_ games: [OPNCatalogGameObject]) -> [OPNCatalogGameObject] {
+        var indexByKey: [String: Int] = [:]
+        var result: [OPNCatalogGameObject] = []
+        result.reserveCapacity(games.count)
+        for game in games {
+            let key = titleGroupingKey(for: game)
+            if let existingIndex = indexByKey[key] {
+                if preferredSKU(game, over: result[existingIndex]) {
+                    result[existingIndex] = game
+                }
+            } else {
+                indexByKey[key] = result.count
+                result.append(game)
+            }
         }
+        return result
+    }
+
+    nonisolated private static func preferredSKU(_ candidate: OPNCatalogGameObject, over current: OPNCatalogGameObject) -> Bool {
+        if candidate.isInLibrary != current.isInLibrary { return candidate.isInLibrary }
+        return candidate.variants.count > current.variants.count
     }
 
     private static func isPatching(_ game: OPNCatalogGameObject) -> Bool {
@@ -2262,6 +2281,28 @@ struct CatalogSectionModel: Identifiable, Equatable {
     var seeMoreSortId = ""
     var seeMoreTitle = ""
     var isLoadingFullList = false
+
+    init(
+        id: String,
+        title: String,
+        games: [OPNCatalogGameObject],
+        kind: Kind,
+        seeMoreFilterIds: [String] = [],
+        seeMoreSortId: String = "",
+        seeMoreTitle: String = "",
+        isLoadingFullList: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        // Tiles are keyed by catalogIdentity in ForEach; per-store SKU twins
+        // (same title, distinct ids) would render as duplicate tiles.
+        self.games = CatalogViewModel.dedupedByTitleGrouping(games)
+        self.kind = kind
+        self.seeMoreFilterIds = seeMoreFilterIds
+        self.seeMoreSortId = seeMoreSortId
+        self.seeMoreTitle = seeMoreTitle
+        self.isLoadingFullList = isLoadingFullList
+    }
 
     var canLoadFullList: Bool {
         !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty

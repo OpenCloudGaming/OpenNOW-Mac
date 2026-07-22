@@ -3047,6 +3047,7 @@ private struct CatalogGameTile: View, Equatable {
 
     static func == (lhs: CatalogGameTile, rhs: CatalogGameTile) -> Bool {
         lhs.game.catalogIdentity == rhs.game.catalogIdentity &&
+        lhs.imageURL == rhs.imageURL &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isSelectionActive == rhs.isSelectionActive &&
         lhs.isQueuedForPatching == rhs.isQueuedForPatching
@@ -4559,8 +4560,13 @@ extension OPNCatalogGameObject {
         var seen = Set<String>()
 
         func append(_ value: String) {
-            guard !value.isEmpty, !seen.contains(value) else { return }
-            seen.insert(value)
+            guard !value.isEmpty else { return }
+            // The same asset is stored at several optimize widths (";f=webp;w=N"
+            // suffixes added by optimizeImageURL), so dedupe by the base URL or
+            // every screenshot shows twice in the carousel.
+            let key = String(value.prefix(while: { $0 != ";" }))
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
             values.append(value)
         }
 
@@ -4569,11 +4575,11 @@ extension OPNCatalogGameObject {
             for value in imageUrlsByType[key.lowercased()] ?? [] { append(value) }
         }
 
+        append(bestDetailImageURL)
+        append(heroImageUrl)
         appendValues(forKey: "SCREENSHOTS")
         for value in screenshotUrls { append(value) }
-        append(heroImageUrl)
         append(imageUrl)
-        append(bestDetailImageURL)
         return values
     }
 

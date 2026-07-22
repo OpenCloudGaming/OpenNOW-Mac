@@ -9,6 +9,11 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     private static let catalogCacheVersion = 9
     private static let catalogDefinitionsCacheVersion = "v2"
 
+    // Catalog snapshots are ~60 MB each and keyed per query/filter/vpc, so
+    // without pruning the directory grows unbounded (observed at 6.9 GB).
+    private static let catalogPruneMaxAgeSeconds: TimeInterval = 7 * 24 * 60 * 60
+    private static let catalogPruneMaxTotalBytes = 512 * 1024 * 1024
+
     private let rootPath: String
     private let catalogPath: String
     private let catalogDefinitionsPath: String
@@ -26,6 +31,38 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         createCacheDirectory(catalogPath)
         createCacheDirectory(catalogDefinitionsPath)
         createCacheDirectory(imagePath)
+        ioQueue.async { [catalogPath] in
+            Self.pruneCatalogCache(directory: catalogPath)
+        }
+    }
+
+    private static func pruneCatalogCache(directory: String) {
+        let fileManager = FileManager.default
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory) else { return }
+        var entries: [(path: String, modified: Date, size: Int)] = []
+        for name in names {
+            let path = (directory as NSString).appendingPathComponent(name)
+            guard let attributes = try? fileManager.attributesOfItem(atPath: path) else { continue }
+            let modified = attributes[.modificationDate] as? Date ?? .distantPast
+            let size = (attributes[.size] as? NSNumber)?.intValue ?? 0
+            entries.append((path, modified, size))
+        }
+        let cutoff = Date().addingTimeInterval(-catalogPruneMaxAgeSeconds)
+        var kept: [(path: String, modified: Date, size: Int)] = []
+        for entry in entries {
+            if entry.modified < cutoff {
+                try? fileManager.removeItem(atPath: entry.path)
+            } else {
+                kept.append(entry)
+            }
+        }
+        var totalBytes = kept.reduce(0) { $0 + $1.size }
+        guard totalBytes > catalogPruneMaxTotalBytes else { return }
+        for entry in kept.sorted(by: { $0.modified < $1.modified }) {
+            try? fileManager.removeItem(atPath: entry.path)
+            totalBytes -= entry.size
+            if totalBytes <= catalogPruneMaxTotalBytes { break }
+        }
     }
 
     func catalogKey(
