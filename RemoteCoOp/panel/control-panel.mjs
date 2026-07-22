@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from "node:https";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
@@ -408,7 +408,7 @@ function childEnvironment() {
 }
 
 function authenticatedSession(request) {
-  const cookie = parseCookies(request.headers.cookie ?? "").macforce-now_coop_panel;
+  const cookie = parseCookies(request.headers.cookie ?? "")["macforce-now_coop_panel"];
   const sessionID = verifySessionCookie(cookie);
   if (!sessionID) return null;
   const session = sessions.get(sessionID);
@@ -435,11 +435,20 @@ function verifySessionCookie(value) {
   if (typeof value !== "string") return "";
   const [sessionID, signature] = value.split(".");
   if (!sessionID || !signature) return "";
-  return hmac(sessionID, sessionSecret) === signature ? sessionID : "";
+  const expected = hmac(sessionID, sessionSecret);
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const signatureBuffer = Buffer.from(signature, "utf8");
+  if (expectedBuffer.length !== signatureBuffer.length) return "";
+  return timingSafeEqual(expectedBuffer, signatureBuffer) ? sessionID : "";
 }
 
 function validCSRF(request, session) {
-  return request.headers["x-csrf-token"] === session.csrfToken;
+  const provided = request.headers["x-csrf-token"];
+  if (typeof provided !== "string" || typeof session.csrfToken !== "string") return false;
+  const providedBuffer = Buffer.from(provided, "utf8");
+  const expectedBuffer = Buffer.from(session.csrfToken, "utf8");
+  if (providedBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 function hmac(value, secret) {

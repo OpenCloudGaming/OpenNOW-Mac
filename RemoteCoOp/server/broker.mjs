@@ -2,7 +2,7 @@ import { createServer as createHTTPServer } from "node:http";
 import { createServer as createHTTPSServer } from "node:https";
 import { createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const productionHost = "198.12.95.48";
@@ -70,7 +70,7 @@ const server = await makeBrokerServer(async (request, response) => {
     }
     const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
     const file = normalize(join(root, pathname));
-    if (!file.startsWith(root)) {
+    if (file !== root && !file.startsWith(root + sep)) {
       response.writeHead(403).end("Forbidden");
       return;
     }

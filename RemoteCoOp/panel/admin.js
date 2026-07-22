@@ -138,9 +138,9 @@ function renderCoOpStats(stats = {}) {
   elements.recentSessions.innerHTML = recent.map(session => `
     <div class="session-row">
       <strong>${escapeHTML(localTime(session.endedAt, "Unknown time"))}</strong>
-      <span>${duration(Number(session.durationSeconds) || 0)}</span>
-      <span>${numberText(session.maxGuests)} max guests</span>
-      <span>${reasonText(session.reason)}</span>
+      <span>${escapeHTML(duration(Number(session.durationSeconds) || 0))}</span>
+      <span>${escapeHTML(numberText(session.maxGuests))} max guests</span>
+      <span>${escapeHTML(reasonText(session.reason))}</span>
     </div>
   `).join("");
 }
