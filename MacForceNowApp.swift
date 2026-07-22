@@ -139,6 +139,13 @@ struct MacForceNowApp: App {
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button {
+                    MacForceNowAppDelegate.requestApplicationUpdateCheck()
+                } label: {
+                    Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                }
+            }
             CommandMenu("Stream") {
                 Button("Toggle Microphone") {
                     _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
