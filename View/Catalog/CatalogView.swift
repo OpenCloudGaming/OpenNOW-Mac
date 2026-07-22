@@ -3261,8 +3261,16 @@ private struct GameDetailPanel: View {
                 let panelWidth = max(1, proxy.size.width)
                 let contentWidth = min(panelWidth * 0.43, 820)
                 let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
+                // The left edge of the image frame sits under the text gradient; the media only
+                // reads as starting at contentWidth + 54 (where the page dots center), so shift
+                // the loading/failure icon to center it within that visible region.
+                let hiddenImageLeading = max(0, contentWidth + 54 - (panelWidth - imageWidth))
                 ZStack(alignment: .topTrailing) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
+                    CatalogRemoteImage(
+                        url: viewModel.optimizedImageURL(imageURL, width: 1600),
+                        contentMode: .fill,
+                        fallbackIconOffsetX: hiddenImageLeading / 2
+                    )
                         .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
                         .id(imageURL)
@@ -4174,12 +4182,13 @@ private enum CatalogHeroImageMetadata {
 struct CatalogRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
+    var fallbackIconOffsetX: CGFloat = 0
 
     var body: some View {
         // No ProgressView here: every spinner is an AppKit-hosted NSProgressIndicator whose
         // animation keeps the SwiftUI graph busy; dozens of them during a scroll starve the
         // main actor so image loads never finish -> permanent livelock (see hang-sample1/7/8).
-        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback(), failure: CatalogImageFallback())
+        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
     }
 }
 
@@ -4225,12 +4234,15 @@ private struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
 }
 
 struct CatalogImageFallback: View {
+    var iconOffsetX: CGFloat = 0
+
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
             Image(systemName: "play.rectangle.fill")
                 .font(.nvidia(size: 34, weight: .bold))
                 .foregroundStyle(Color.openNowGreen.opacity(0.78))
+                .offset(x: iconOffsetX)
         }
     }
 }
