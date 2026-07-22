@@ -166,15 +166,16 @@ function panelAssetPath(pathname) {
 
 async function handleLogin(request, response) {
   const remote = request.socket.remoteAddress ?? "unknown";
-  if (isRateLimited(remote)) {
-    sendHTML(response, 429, loginPage("Too many failed attempts. Try again later."));
-    return;
-  }
-
   const body = await readBody(request, 16_384);
   const form = new URLSearchParams(body);
   const username = normalizeUsername(form.get("username") ?? "");
   const password = form.get("password") ?? "";
+
+  if (isRateLimited(remote, username)) {
+    sendHTML(response, 429, loginPage("Too many failed attempts. Try again later."));
+    return;
+  }
+
   let authenticated = false;
   try {
     authenticated = await authenticateSystemUser(username, password);
@@ -184,13 +185,14 @@ async function handleLogin(request, response) {
   }
 
   if (!authenticated) {
-    recordFailure(remote);
+    recordFailure(remote, username);
     audit(username || remote, "login_failed");
     sendHTML(response, 401, loginPage("Invalid username, password, or panel access group."));
     return;
   }
 
   loginFailures.delete(remote);
+  if (username) loginFailures.delete(username);
   const session = createSession(username);
   setCookie(response, "macforce-now_coop_panel", signSessionID(session.id), { maxAge: Math.floor(sessionTimeoutMs / 1_000) });
   audit(username, "login");
@@ -458,20 +460,35 @@ function hmac(value, secret) {
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
 
-function isRateLimited(remote) {
+function isRateLimited(remote, username) {
   const now = Date.now();
-  const record = loginFailures.get(remote);
-  if (!record) return false;
-  record.failures = record.failures.filter(at => now - at < loginWindowMs);
-  return record.failures.length >= maxLoginFailures;
+  const remoteRecord = loginFailures.get(remote);
+  if (remoteRecord) {
+    remoteRecord.failures = remoteRecord.failures.filter(at => now - at < loginWindowMs);
+    if (remoteRecord.failures.length >= maxLoginFailures) return true;
+  }
+  if (username) {
+    const usernameRecord = loginFailures.get(username);
+    if (usernameRecord) {
+      usernameRecord.failures = usernameRecord.failures.filter(at => now - at < loginWindowMs);
+      if (usernameRecord.failures.length >= maxLoginFailures) return true;
+    }
+  }
+  return false;
 }
 
-function recordFailure(remote) {
+function recordFailure(remote, username) {
   const now = Date.now();
-  const record = loginFailures.get(remote) ?? { failures: [] };
-  record.failures = record.failures.filter(at => now - at < loginWindowMs);
-  record.failures.push(now);
-  loginFailures.set(remote, record);
+  const remoteRecord = loginFailures.get(remote) ?? { failures: [] };
+  remoteRecord.failures = remoteRecord.failures.filter(at => now - at < loginWindowMs);
+  remoteRecord.failures.push(now);
+  loginFailures.set(remote, remoteRecord);
+  if (username) {
+    const usernameRecord = loginFailures.get(username) ?? { failures: [] };
+    usernameRecord.failures = usernameRecord.failures.filter(at => now - at < loginWindowMs);
+    usernameRecord.failures.push(now);
+    loginFailures.set(username, usernameRecord);
+  }
 }
 
 function readOrCreateSecret(name) {

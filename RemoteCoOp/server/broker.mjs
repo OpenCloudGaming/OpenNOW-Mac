@@ -55,7 +55,7 @@ const server = await makeBrokerServer(async (request, response) => {
       status: response.statusCode,
       durationMs: Date.now() - startedAt,
       remote,
-      forwardedFor: request.headers["x-forwarded-for"]
+      forwardedFor: redactForwardedFor(request.headers["x-forwarded-for"])
     }));
     if (url.pathname === "/remote-coop/network-config") {
       const inviteParameter = url.searchParams.get("invite") ?? "";
@@ -111,7 +111,7 @@ server.on("upgrade", (request, socket) => {
     "",
     ""
   ].join("\r\n"));
-  logNetwork("ws.upgrade.accepted", { remote: socketAddress(socket), path: url.pathname, forwardedFor: request.headers["x-forwarded-for"] });
+  logNetwork("ws.upgrade.accepted", { remote: socketAddress(socket), path: url.pathname, forwardedFor: redactForwardedFor(request.headers["x-forwarded-for"]) });
   attachSocket(socket);
 });
 
@@ -690,7 +690,25 @@ function socketLogFields(state) {
 }
 
 function socketAddress(socket) {
-  return `${socket.remoteAddress ?? "unknown"}:${socket.remotePort ?? "unknown"}`;
+  const address = socket.remoteAddress ?? "unknown";
+  const port = socket.remotePort ?? "unknown";
+  const redactedAddress = redactIP(address);
+  return `${redactedAddress}:${port}`;
+}
+
+function redactIP(address) {
+  if (address === "unknown" || !address) return "unknown";
+  const ipv4Match = address.match(/^(\d+\.\d+\.\d+)\.\d+/);
+  if (ipv4Match) return `${ipv4Match[1]}.0/24`;
+  const ipv6Match = address.match(/^([0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){2})/);
+  if (ipv6Match) return `${ipv6Match[1]}::/48`;
+  return address.replace(/[:.]\d+$/, ":0");
+}
+
+function redactForwardedFor(header) {
+  if (!header) return undefined;
+  const addresses = header.split(",").map(addr => addr.trim());
+  return addresses.map(addr => redactIP(addr)).join(", ");
 }
 
 function logValue(value) {
