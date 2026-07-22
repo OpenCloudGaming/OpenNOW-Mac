@@ -456,10 +456,19 @@ public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
               let payloadData = Self.base64URLDecoded(String(parts[0])),
               let signatureData = Self.base64URLDecoded(String(parts[1])) else { throw OPNRemoteCoOpInviteTokenError.malformed }
         let expected = Data(HMAC<SHA256>.authenticationCode(for: payloadData, using: SymmetricKey(data: secret)))
-        guard expected == signatureData else { throw OPNRemoteCoOpInviteTokenError.invalidSignature }
+        guard Self.constantTimeEqual(expected, signatureData) else { throw OPNRemoteCoOpInviteTokenError.invalidSignature }
         let payload = try JSONDecoder().decode(OPNRemoteCoOpInviteTokenPayload.self, from: payloadData)
         guard payload.expiresAt > now else { throw OPNRemoteCoOpInviteTokenError.expired }
         return payload
+    }
+
+    private static func constantTimeEqual(_ a: Data, _ b: Data) -> Bool {
+        guard a.count == b.count else { return false }
+        var result: UInt8 = 0
+        for i in 0..<a.count {
+            result |= a[i] ^ b[i]
+        }
+        return result == 0
     }
 
     private static func encoder() -> JSONEncoder {

@@ -89,7 +89,22 @@ const server = await makeBrokerServer(async (request, response) => {
   }
 });
 
+const allowedOrigins = [
+  `${brokerHTTPProtocol}://${productionHost}:${port}`,
+  `${brokerHTTPProtocol}://${productionHost}`,
+  `${brokerHTTPProtocol}://localhost:${port}`,
+  `${brokerHTTPProtocol}://localhost`,
+  `${brokerHTTPProtocol}://127.0.0.1:${port}`,
+  `${brokerHTTPProtocol}://127.0.0.1`
+];
+
 server.on("upgrade", (request, socket) => {
+  const origin = request.headers.origin;
+  if (origin && !allowedOrigins.includes(origin)) {
+    logNetwork("ws.upgrade.rejected", { remote: socketAddress(socket), origin, reason: "invalid_origin" });
+    socket.destroy();
+    return;
+  }
   const url = new URL(request.url ?? "/", `${brokerHTTPProtocol}://${request.headers.host ?? "localhost"}`);
   if (url.pathname !== "/remote-coop") {
     logNetwork("ws.upgrade.rejected", { remote: socketAddress(socket), path: url.pathname, reason: "invalid_path" });
@@ -313,16 +328,22 @@ function handleMessage(state, message) {
 }
 
 function registerHost(state, message) {
-  const roomID = stringValue(message.roomID ?? message.invite?.id);
+  const payload = verifyInviteToken(message.invite?.token);
+  if (!payload) {
+    logNetwork("host.rejected", { ...socketLogFields(state), reason: "invalid_invite_signature" });
+    send(state, { kind: "error", reason: "Invalid or expired invite token" });
+    return;
+  }
+  const roomID = stringValue(payload.inviteID) ?? stringValue(message.invite?.id);
   if (!roomID) {
     logNetwork("host.rejected", { ...socketLogFields(state), reason: "missing_room" });
     send(state, { kind: "error", reason: "Missing room ID" });
     return;
   }
-  const payload = verifyInviteToken(message.invite?.token);
-  if (!payload) {
-    logNetwork("host.rejected", { ...socketLogFields(state), reason: "invalid_invite_signature" });
-    send(state, { kind: "error", reason: "Invalid or expired invite token" });
+  const claimedRoomID = stringValue(message.roomID);
+  if (claimedRoomID && claimedRoomID !== roomID) {
+    logNetwork("host.rejected", { ...socketLogFields(state), reason: "room_mismatch", claimed: claimedRoomID, expected: roomID });
+    send(state, { kind: "error", reason: "Invite token does not match requested room" });
     return;
   }
   const room = roomFor(roomID);
@@ -376,7 +397,13 @@ function registerGuest(state, message) {
     send(state, { kind: "guestRejected", participantID, reason: "Invalid or expired invite token" });
     return;
   }
-  const roomID = stringValue(message.roomID) ?? stringValue(payload?.inviteID) ?? roomIDForInviteCode(inviteToken);
+  const roomID = stringValue(payload.inviteID) ?? roomIDForInviteCode(inviteToken);
+  const claimedRoomID = stringValue(message.roomID);
+  if (claimedRoomID && roomID && claimedRoomID !== roomID) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "room_mismatch", claimed: claimedRoomID, expected: roomID });
+    send(state, { kind: "guestRejected", participantID, reason: "Invite token does not match requested room" });
+    return;
+  }
   if (!roomID) {
     logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "room_not_found" });
     send(state, { kind: "guestRejected", participantID, reason: "Host room not found" });

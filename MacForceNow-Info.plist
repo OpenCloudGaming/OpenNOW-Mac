@@ -59,7 +59,19 @@
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
-		<true/>
+		<false/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>198.12.95.48</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<false/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>MacForce Now writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>

@@ -84,7 +84,7 @@ export async function applyGitUpdate(repoRoot, options = {}) {
   };
 }
 
-async function verifyCommitSignatures(repoRoot, upstreamRef) {
+async function verifyCommitSignatures(repoRoot, upstreamRef, options = {}) {
   const commitListResult = await git(repoRoot, ["rev-list", "HEAD.." + upstreamRef], { allowFailure: true });
   if (commitListResult.code !== 0) {
     return { verified: false, reason: "failed to list commits" };
@@ -94,14 +94,31 @@ async function verifyCommitSignatures(repoRoot, upstreamRef) {
     return { verified: true, reason: "no commits to verify" };
   }
 
+  const allowedFingerprints = Array.isArray(options.allowedSignerFingerprints) ? options.allowedSignerFingerprints : [];
+
   for (const hash of commitHashes) {
     const verifyResult = await git(repoRoot, ["verify-commit", "--quiet", hash], { allowFailure: true });
     if (verifyResult.code !== 0) {
       return { verified: false, reason: `commit ${hash.slice(0, 8)} is not signed or signature is invalid`, commit: hash };
     }
+    if (allowedFingerprints.length > 0) {
+      const fingerprintResult = await getCommitSignerFingerprint(repoRoot, hash);
+      if (!fingerprintResult.fingerprint) {
+        return { verified: false, reason: `commit ${hash.slice(0, 8)} has no signer fingerprint`, commit: hash };
+      }
+      if (!allowedFingerprints.includes(fingerprintResult.fingerprint)) {
+        return { verified: false, reason: `commit ${hash.slice(0, 8)} signed by untrusted key ${fingerprintResult.fingerprint.slice(-16)}`, commit: hash, fingerprint: fingerprintResult.fingerprint };
+      }
+    }
   }
 
   return { verified: true, reason: `verified ${commitHashes.length} signed commit(s)`, commitCount: commitHashes.length };
+}
+
+async function getCommitSignerFingerprint(repoRoot, commitHash) {
+  const result = await git(repoRoot, ["log", "-1", "--format=%GF", commitHash], { allowFailure: true });
+  const fingerprint = result.stdout.trim();
+  return { fingerprint: fingerprint || null };
 }
 
 async function git(cwd, args, options = {}) {
