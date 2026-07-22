@@ -5,6 +5,8 @@ import { request as httpsRequest } from "node:https";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
@@ -37,7 +39,7 @@ try {
 
 async function startBroker() {
   const port = 18_780 + Math.floor(Math.random() * 1_000);
-  const brokerURL = new URL(`http://127.0.0.1:${port}`);
+  const brokerURL = new URL(`https://127.0.0.1:${port}`);
   const brokerScript = fileURLToPath(new URL("./broker.mjs", import.meta.url));
   brokerProcess = spawn(process.execPath, [brokerScript], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -49,8 +51,7 @@ async function startBroker() {
       MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
       MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
-      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret,
-      ...httpBrokerEnvironment()
+      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret
     }
   });
   if (verbose) {
@@ -143,7 +144,7 @@ async function assertPortFallback() {
   await listen(blocker, 0, "127.0.0.1");
   const blockedPort = serverPort(blocker);
   const alternatePort = await reserveAvailablePort();
-  const brokerURL = new URL(`http://127.0.0.1:${alternatePort}`);
+  const brokerURL = new URL(`https://127.0.0.1:${alternatePort}`);
   const brokerScript = fileURLToPath(new URL("./broker.mjs", import.meta.url));
   const child = spawn(process.execPath, [brokerScript], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -156,8 +157,7 @@ async function assertPortFallback() {
       MACFORCE_NOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
       MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
-      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret,
-      ...httpBrokerEnvironment()
+      MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: smokeInviteSecret
     }
   });
   if (verbose) {
@@ -208,7 +208,9 @@ async function waitForBroker(brokerURL) {
 
 function getJSON(url, timeoutMilliseconds = 2_000) {
   return new Promise((resolve, reject) => {
-    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, { timeout: timeoutMilliseconds }, response => {
+    const options = { timeout: timeoutMilliseconds };
+    if (url.protocol === "https:") options.rejectUnauthorized = false;
+    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, options, response => {
       const chunks = [];
       response.on("data", chunk => chunks.push(chunk));
       response.on("end", () => {
@@ -347,17 +349,6 @@ function envFlag(name, fallback) {
   const value = process.env[name];
   if (typeof value !== "string") return fallback;
   return !["0", "false", "no", "off", ""].includes(value.trim().toLowerCase());
-}
-
-function httpBrokerEnvironment() {
-  return {
-    MACFORCE_NOW_REMOTE_COOP_BROKER_CERT: "",
-    MACFORCE_NOW_REMOTE_COOP_BROKER_KEY: "",
-    MACFORCE_NOW_REMOTE_COOP_TLS_CERT: "",
-    MACFORCE_NOW_REMOTE_COOP_TLS_KEY: "",
-    MACFORCE_NOW_REMOTE_COOP_TURN_CERT: "",
-    MACFORCE_NOW_REMOTE_COOP_TURN_KEY: ""
-  };
 }
 
 function printHelp() {

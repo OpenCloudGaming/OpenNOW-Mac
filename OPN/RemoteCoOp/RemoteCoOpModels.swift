@@ -210,8 +210,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
     public static let launchMetadataHideGuestInviteDetailsKey = "remoteCoOpHideGuestInviteDetails"
 
-    public static let defaultSignalingServerURL = "ws://198.12.95.48:32188/remote-coop"
-    public static let defaultGuestJoinBaseURL = "http://198.12.95.48:32188/"
+    public static let defaultSignalingServerURL = "wss://198.12.95.48:32188/remote-coop"
+    public static let defaultGuestJoinBaseURL = "https://198.12.95.48:32188/"
 
     public var isAlphaOptedIn: Bool
     public var isEnabled: Bool
@@ -315,7 +315,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         "ws://jayian.dev:8788/remote-coop",
         "ws://relay.jayian.dev:8788/remote-coop",
         "wss://relay.jayian.dev:8788/remote-coop",
-        "ws://198.12.95.48:8788/remote-coop"
+        "ws://198.12.95.48:8788/remote-coop",
+        "ws://198.12.95.48:32188/remote-coop"
     ]
 
     private static let legacyGuestJoinBaseURLs: Set<String> = [
@@ -324,7 +325,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         "http://jayian.dev:8788",
         "http://relay.jayian.dev:8788",
         "https://relay.jayian.dev:8788",
-        "http://198.12.95.48:8788"
+        "http://198.12.95.48:8788",
+        "http://198.12.95.48:32188"
     ]
 
     private static func normalizedURLKey(_ value: String) -> String {

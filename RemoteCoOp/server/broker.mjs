@@ -1,9 +1,11 @@
 import { createServer as createHTTPServer } from "node:http";
 import { createServer as createHTTPSServer } from "node:https";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const productionHost = "198.12.95.48";
 const port = integerEnv("MACFORCE_NOW_REMOTE_COOP_PORT", 32188);
@@ -13,11 +15,14 @@ const MAX_FRAME_SIZE = 1024 * 1024;
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_DISPLAY_NAME_LENGTH = 64;
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
-const brokerCertificatePath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "");
-const brokerKeyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "");
-const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
-const brokerHTTPProtocol = brokerTLSEnabled ? "https" : "http";
-const brokerWebSocketProtocol = brokerTLSEnabled ? "wss" : "ws";
+const stateRoot = join(fileURLToPath(new URL(".", import.meta.url)), "../state");
+
+const tls = readOrCreateTLSMaterial();
+const brokerCertificatePath = tls.certPath;
+const brokerKeyPath = tls.keyPath;
+const brokerTLSEnabled = true;
+const brokerHTTPProtocol = "https";
+const brokerWebSocketProtocol = "wss";
 const stunURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
 const turnURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:32189?transport=udp,turn:${productionHost}:32189?transport=tcp`);
 const turnUsername = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_USERNAME ?? "";
@@ -38,11 +43,6 @@ const contentTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"]
 ]);
-
-if (Boolean(brokerCertificatePath) !== Boolean(brokerKeyPath)) {
-  console.error("MacForce Now Remote Co-Op broker HTTPS requires both MACFORCE_NOW_REMOTE_COOP_BROKER_CERT and MACFORCE_NOW_REMOTE_COOP_BROKER_KEY, or matching TLS/TURN cert and key environment variables.");
-  process.exit(1);
-}
 
 const server = await makeBrokerServer(async (request, response) => {
   const startedAt = Date.now();
@@ -709,6 +709,22 @@ function redactForwardedFor(header) {
   if (!header) return undefined;
   const addresses = header.split(",").map(addr => addr.trim());
   return addresses.map(addr => redactIP(addr)).join(", ");
+}
+
+function readOrCreateTLSMaterial() {
+  const certPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "") || join(stateRoot, "broker-cert.pem");
+  const keyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "") || join(stateRoot, "broker-key.pem");
+  if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath, generated: false };
+
+  mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+  const host = stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", productionHost);
+  const configPath = join(stateRoot, "broker-openssl.cnf");
+  const altName = /^\d+\.\d+\.\d+\.\d+$/.test(host) ? `IP.1 = ${host}` : `DNS.1 = ${host}`;
+  writeFileSync(configPath, `[req]\ndefault_bits = 2048\nprompt = no\ndefault_md = sha256\ndistinguished_name = dn\nx509_extensions = v3_req\n[dn]\nCN = ${host}\n[v3_req]\nsubjectAltName = @alt_names\n[alt_names]\n${altName}\n`, { mode: 0o600 });
+  const result = spawnSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "825", "-keyout", keyPath, "-out", certPath, "-config", configPath], { stdio: "pipe" });
+  if (result.status !== 0) throw new Error(`failed to generate broker TLS certificate with openssl: ${result.stderr.toString("utf8")}`);
+  console.log(`[broker] generated self-signed TLS certificate for ${host}`);
+  return { certPath, keyPath, generated: true };
 }
 
 function logValue(value) {
