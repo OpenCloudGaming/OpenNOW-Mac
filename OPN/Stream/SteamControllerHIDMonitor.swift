@@ -143,51 +143,74 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     }
 
     public func requestInputMonitoringPermission() {
-        IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-        checkInputMonitoringPermission()
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+        schedulePermissionCheckOnActivation()
+    }
+    
+    private func schedulePermissionCheckOnActivation() {
+        guard permissionRetryObserver == nil else { return }
+        permissionRetryObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkInputMonitoringPermission()
+                self?.removeActivationRetryObserver()
+            }
+        }
     }
 
     public func checkInputMonitoringPermission() {
-        let testManager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        let status = IOHIDManagerOpen(testManager, IOOptionBits(kIOHIDOptionsTypeNone))
-        inputMonitoringPermissionGranted = (status == kIOReturnSuccess)
-        if status == kIOReturnSuccess {
+        if #available(macOS 10.15, *) {
+            let preflightStatus = CGPreflightListenEventAccess()
+            inputMonitoringPermissionGranted = preflightStatus
+        } else {
+            let testManager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+            IOHIDManagerSetDeviceMatching(testManager, [
+                kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
+                kIOHIDDeviceUsageKey: kHIDUsage_GD_GamePad,
+            ] as CFDictionary)
+            let status = IOHIDManagerOpen(testManager, IOOptionBits(kIOHIDOptionsTypeNone))
             IOHIDManagerClose(testManager, IOOptionBits(kIOHIDOptionsTypeNone))
+            inputMonitoringPermissionGranted = (status == kIOReturnSuccess)
         }
     }
 
-    public func resetInputMonitoringPermission(thenRelaunch: Bool) throws {
-        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
-            throw SteamControllerPermissionError.missingBundleIdentifier
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-        process.arguments = ["reset", "All", bundleID]
-        let stderr = Pipe()
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-        if process.terminationStatus != 0 {
-            let data = stderr.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8) ?? "Unknown tccutil error."
-            throw SteamControllerPermissionError.tccutilFailed(exitCode: Int(process.terminationStatus), stderr: message)
-        }
-        WebRTCMediaTelemetry.capture(
-            "webrtc.input.steamcontroller.input_monitoring.reset",
-            level: .info,
-            message: "Input Monitoring permissions reset via tccutil.",
-            attributes: ["bundleID": bundleID, "relaunch": String(thenRelaunch)]
-        )
-        guard thenRelaunch else { return }
-        let appURL = Bundle.main.bundleURL
-        DispatchQueue.main.async {
-            let relaunch = Process()
-            relaunch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            relaunch.arguments = ["-n", appURL.path]
-            try? relaunch.run()
-            NSApp.terminate(nil)
-        }
+public nonisolated func resetInputMonitoringPermission(thenRelaunch: Bool) throws {
+    try Self.resetInputMonitoringPermissionViaTccUtil(thenRelaunch: thenRelaunch)
+}
+
+public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRelaunch: Bool) throws {
+    guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
+        throw SteamControllerPermissionError.missingBundleIdentifier
     }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+    process.arguments = ["reset", "All", bundleID]
+    let stderr = Pipe()
+    process.standardError = stderr
+    try process.run()
+    process.waitUntilExit()
+    if process.terminationStatus != 0 {
+        let data = stderr.fileHandleForReading.readDataToEndOfFile()
+        let message = String(data: data, encoding: .utf8) ?? "Unknown tccutil error."
+        throw SteamControllerPermissionError.tccutilFailed(exitCode: Int(process.terminationStatus), stderr: message)
+    }
+    WebRTCMediaTelemetry.capture(
+        "webrtc.input.steamcontroller.input_monitoring.reset",
+        level: .info,
+        message: "Input Monitoring permissions reset via tccutil.",
+        attributes: ["bundleID": bundleID, "relaunch": String(thenRelaunch)]
+    )
+    guard thenRelaunch else { return }
+    let appURL = Bundle.main.bundleURL
+    DispatchQueue.main.async {
+        let relaunch = Process()
+        relaunch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        relaunch.arguments = ["-n", appURL.path]
+        try? relaunch.run()
+        NSApp.terminate(nil)
+    }
+}
 
     private func captureDeviceOpenFailure(interface: String, context: DeviceContext, status: Int32) {
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
@@ -264,7 +287,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         inputMonitoringPermissionGranted = true
         isMonitorActive = true
         self.manager = manager
-        removeActivationRetryObserver()
+        scheduleActivationRetryAfterPermissionChange()
         print("[SteamController] monitor activated")
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.enabled", level: .info, message: "Steam Controller support enabled.")
     }
@@ -302,15 +325,23 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     }
 
     private func retryActivationAfterPermissionChange() {
+        checkInputMonitoringPermission()
+        if !inputMonitoringPermissionGranted, isMonitorActive {
+            deactivate()
+        }
         guard manager == nil else {
-            removeActivationRetryObserver()
+            if !SteamControllerPreference.isEnabled {
+                removeActivationRetryObserver()
+            }
             return
         }
         guard SteamControllerPreference.isEnabled else {
             removeActivationRetryObserver()
             return
         }
-        activate()
+        if inputMonitoringPermissionGranted {
+            activate()
+        }
     }
 
     private func removeActivationRetryObserver() {

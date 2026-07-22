@@ -1432,11 +1432,11 @@ private struct ExperimentalFeaturesSettingsPage: View {
     private func resetInputMonitoringPermission() {
         guard !permissionResetInFlight else { return }
         permissionResetInFlight = true
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task.detached {
             do {
-                try SteamControllerHIDMonitor.shared.resetInputMonitoringPermission(thenRelaunch: true)
+                try SteamControllerHIDMonitor.resetInputMonitoringPermissionViaTccUtil(thenRelaunch: true)
             } catch {
-                DispatchQueue.main.async {
+                await MainActor.run {
                     permissionResetInFlight = false
                     permissionResetError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
