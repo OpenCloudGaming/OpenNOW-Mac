@@ -1,6 +1,5 @@
 import Foundation
-
-private let macForceNowTeamID = "MPZW7ERR2D"
+import Security
 
 struct MacForceNowGitHubRelease: Sendable {
     let version: String
@@ -295,9 +294,14 @@ actor MacForceNowGitHubUpdater {
     }
 
     private func verifyCodeSignature(for bundleURL: URL) -> Bool {
+        guard let teamID = currentTeamID() else {
+            logInfo("Update verification failed: could not determine signing identity of running app.")
+            return false
+        }
+        let requirement = "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\""
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["--verify", "--deep", "--strict", "-R", "anchor apple generic and certificate leaf[subject.OU] = \"\(macForceNowTeamID)\"", bundleURL.path]
+        process.arguments = ["--verify", "--deep", "--strict", "-R", requirement, bundleURL.path]
         do {
             try process.run()
             process.waitUntilExit()
@@ -305,6 +309,18 @@ actor MacForceNowGitHubUpdater {
         } catch {
             return false
         }
+    }
+
+    private func currentTeamID() -> String? {
+        var code: SecStaticCode?
+        let bundleURL = Bundle.main.bundleURL as CFURL
+        guard SecStaticCodeCreateWithPath(bundleURL, [], &code) == errSecSuccess, let code else { return nil }
+        var signingInfo: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &signingInfo) == errSecSuccess,
+              let info = signingInfo as? [String: Any],
+              let teamID = info[kSecCodeInfoTeamIdentifier as String] as? String,
+              !teamID.isEmpty else { return nil }
+        return teamID
     }
 
     private func clearQuarantine(for bundleURL: URL) {
