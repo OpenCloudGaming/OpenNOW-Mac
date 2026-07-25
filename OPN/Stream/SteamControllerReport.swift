@@ -112,7 +112,9 @@ public enum SteamControllerReport {
     private static let connectionDetailConnected: UInt8 = 0x02
 
     private static let clearDigitalMappingsCommand: UInt8 = 0x81
+    private static let defaultDigitalMappingsCommand: UInt8 = 0x85
     private static let setSettingsCommand: UInt8 = 0x87
+    private static let defaultSettingsCommand: UInt8 = 0x8e
     private static let rightPadModeRegister: UInt8 = 0x08
     private static let rightPadModeOff: UInt8 = 0x07
     private static let rightPadMarginRegister: UInt8 = 0x18
@@ -127,6 +129,7 @@ public enum SteamControllerReport {
     private static let tritonFeatureReportID = 1
     private static let tritonLizardModeSetting: UInt8 = 0x09
     private static let tritonLizardModeOff: UInt8 = 0x00
+    private static let tritonLizardModeOn: UInt8 = 0x01
     public static let deckStateReportID: UInt8 = 0x09
 
     private enum LegacyButtonMask {
@@ -238,6 +241,21 @@ public enum SteamControllerReport {
         switch model {
         case .legacy: legacyFeatureReport([clearDigitalMappingsCommand, 0x00])
         case .triton: tritonLizardModeDisableReport()
+        }
+    }
+
+    public static func lizardModeEnableReports(model: SteamControllerModel) -> [SteamControllerFeatureReport] {
+        switch model {
+        case .legacy:
+            [
+                legacyFeatureReport([defaultDigitalMappingsCommand, 0x00]),
+                legacyFeatureReport([defaultSettingsCommand, 0x00]),
+            ]
+        case .triton:
+            [
+                tritonCommandReport(defaultDigitalMappingsCommand),
+                tritonLizardModeSettingReport(tritonLizardModeOn),
+            ]
         }
     }
 
@@ -459,20 +477,28 @@ public enum SteamControllerReport {
     }
 
     private static func tritonClearDigitalMappingsReport() -> SteamControllerFeatureReport {
+        tritonCommandReport(clearDigitalMappingsCommand)
+    }
+
+    private static func tritonCommandReport(_ command: UInt8) -> SteamControllerFeatureReport {
         var buffer = [UInt8](repeating: 0, count: reportLength)
         buffer[0] = UInt8(tritonFeatureReportID)
-        buffer[1] = clearDigitalMappingsCommand
+        buffer[1] = command
         buffer[2] = 0x00
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }
 
     private static func tritonLizardModeDisableReport() -> SteamControllerFeatureReport {
+        tritonLizardModeSettingReport(tritonLizardModeOff)
+    }
+
+    private static func tritonLizardModeSettingReport(_ value: UInt8) -> SteamControllerFeatureReport {
         var buffer = [UInt8](repeating: 0, count: reportLength)
         buffer[0] = UInt8(tritonFeatureReportID)
         buffer[1] = setSettingsCommand
         buffer[2] = 0x03
         buffer[3] = tritonLizardModeSetting
-        buffer[4] = tritonLizardModeOff
+        buffer[4] = value
         buffer[5] = 0x00
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }

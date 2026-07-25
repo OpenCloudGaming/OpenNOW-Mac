@@ -27,6 +27,7 @@ public final class NativeWebRTCGamepadMonitor {
         let consumerKey = ObjectIdentifier(self)
         Task { @MainActor in
             SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
+            SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
         }
     }
 
@@ -38,6 +39,7 @@ public final class NativeWebRTCGamepadMonitor {
     public func start() {
         pollingAllowed = true
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        SteamControllerHIDMonitor.shared.beginInputCapture(self)
         SteamControllerHIDMonitor.shared.register(
             self,
             onControllersChanged: { [weak self] in self?.refreshControllerSlots() },
@@ -50,6 +52,7 @@ public final class NativeWebRTCGamepadMonitor {
     public func stop() {
         pollingAllowed = false
         SteamControllerHIDMonitor.shared.unregister(self)
+        SteamControllerHIDMonitor.shared.endInputCapture(self)
         stopPollingTimer()
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }

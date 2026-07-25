@@ -148,6 +148,15 @@ private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapsh
         #expect(heartbeat.bytes.count == SteamControllerReport.reportLength)
         #expect(heartbeat.bytes[0] == 0x81)
     }
+
+    @Test func lizardModeEnableReportsAreWellFormed() {
+        let reports = SteamControllerReport.lizardModeEnableReports(model: .legacy)
+        #expect(reports.count == 2)
+        #expect(reports.allSatisfy { $0.bytes.count == SteamControllerReport.reportLength })
+        #expect(reports.allSatisfy { $0.reportID == 0 })
+        #expect(reports[0].bytes[0] == 0x85)
+        #expect(reports[1].bytes[0] == 0x8e)
+    }
 }
 
 private func tritonReport(reportID: UInt8 = 0x42,
@@ -322,6 +331,17 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(reports[1].bytes.count == SteamControllerReport.reportLength)
         #expect(Array(reports[1].bytes[0...5]) == [0x01, 0x87, 0x03, 0x09, 0x00, 0x00])
         #expect(SteamControllerReport.lizardModeHeartbeatReport(model: .triton) == reports[1])
+    }
+
+    @Test func lizardModeEnableReportUsesFeatureReportOne() {
+        let reports = SteamControllerReport.lizardModeEnableReports(model: .triton)
+        #expect(reports.count == 2)
+        #expect(reports[0].reportID == 1)
+        #expect(reports[0].bytes.count == SteamControllerReport.reportLength)
+        #expect(Array(reports[0].bytes[0...2]) == [0x01, 0x85, 0x00])
+        #expect(reports[1].reportID == 1)
+        #expect(reports[1].bytes.count == SteamControllerReport.reportLength)
+        #expect(Array(reports[1].bytes[0...5]) == [0x01, 0x87, 0x03, 0x09, 0x01, 0x00])
     }
 }
 

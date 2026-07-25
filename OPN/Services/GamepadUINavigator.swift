@@ -83,6 +83,14 @@ final class GamepadUINavigator: ObservableObject {
             return
         }
 
+        // While input capture is off, the controller's firmware emulates a keyboard
+        // and mouse (lizard mode); emitting commands from raw reports too would
+        // double every d-pad press and button tap.
+        guard SteamControllerHIDMonitor.shared.isInputCaptureActive else {
+            thumbstickRepeatState.removeAll()
+            return
+        }
+
         let previous = lastButtons[deviceID] ?? snapshot.buttons
         let newlyPressed = snapshot.buttons.subtracting(previous)
         for button in Self.navigableButtons where newlyPressed.contains(button) {

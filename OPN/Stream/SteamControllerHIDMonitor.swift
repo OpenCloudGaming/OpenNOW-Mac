@@ -35,6 +35,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     @Published public private(set) var inputMonitoringPermissionGranted = false
     @Published public private(set) var isMonitorActive = false
     @Published public private(set) var matchedDeviceCount = 0
+    @Published public private(set) var isInputCaptureActive = false
     
     public private(set) var allDevices: [DeviceInfo] = []
     
@@ -100,6 +101,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     private var gamepadDeviceContexts: [ObjectIdentifier: DeviceContext] = [:]
     private var pendingGamepadDevices: [UInt64: IOHIDDevice] = [:]
     private var consumers: [ObjectIdentifier: Consumer] = [:]
+    private var captureRequesters: Set<ObjectIdentifier> = []
     private var permissionRetryObserver: NSObjectProtocol?
     nonisolated(unsafe) private var heartbeatTimer: Timer?
 
@@ -140,6 +142,46 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     public func setEnabled(_ enabled: Bool) {
         enabled ? activate() : deactivate()
+    }
+
+    /// While at least one requester holds input capture, the controller's built-in
+    /// keyboard/mouse emulation (lizard mode) is suppressed so raw reports drive
+    /// gamepad input. When the last requester ends capture, emulation is restored
+    /// and the trackpads control the system cursor again.
+    public func beginInputCapture(_ requester: AnyObject) {
+        captureRequesters.insert(ObjectIdentifier(requester))
+        updateInputCaptureState()
+    }
+
+    public func endInputCapture(_ requester: AnyObject) {
+        endInputCapture(key: ObjectIdentifier(requester))
+    }
+
+    public func endInputCapture(key: ObjectIdentifier) {
+        captureRequesters.remove(key)
+        updateInputCaptureState()
+    }
+
+    private func updateInputCaptureState() {
+        let shouldCapture = !captureRequesters.isEmpty
+        guard shouldCapture != isInputCaptureActive else { return }
+        isInputCaptureActive = shouldCapture
+        print("[SteamController] input capture \(shouldCapture ? "began" : "ended")")
+        if shouldCapture {
+            for context in devices.values {
+                disableLizardMode(for: context)
+            }
+            if !devices.isEmpty {
+                startHeartbeatIfNeeded()
+            }
+        } else {
+            heartbeatTimer?.invalidate()
+            heartbeatTimer = nil
+            for context in devices.values {
+                enableLizardMode(for: context)
+            }
+        }
+        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.capture", level: .info, message: "Steam Controller input capture changed.", attributes: ["active": String(shouldCapture)])
     }
 
     public func requestInputMonitoringPermission() {
@@ -299,6 +341,9 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         heartbeatTimer = nil
         for context in devices.values {
             emitNeutralStateIfNeeded(for: context)
+            if isInputCaptureActive {
+                enableLizardMode(for: context)
+            }
             closeGamepadDevice(for: context)
             IOHIDDeviceRegisterInputReportCallback(context.device, context.reportBuffer, SteamControllerReport.reportLength, nil, nil)
             IOHIDDeviceClose(context.device, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -402,8 +447,10 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         }
 
         openVendorDevice(device, context: context)
-        disableLizardMode(for: context)
-        startHeartbeatIfNeeded()
+        if isInputCaptureActive {
+            disableLizardMode(for: context)
+            startHeartbeatIfNeeded()
+        }
         publishActiveCount()
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.matched", level: .info, message: "Steam Controller vendor interface matched.", attributes: ["wireless": String(isWirelessReceiver), "active": String(context.isActive)])
     }
@@ -531,7 +578,9 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         switch event {
         case .connected:
             setActive(true, for: context)
-            disableLizardMode(for: context)
+            if isInputCaptureActive {
+                disableLizardMode(for: context)
+            }
         case .disconnected:
             emitNeutralStateIfNeeded(for: context)
             setActive(false, for: context)
@@ -605,6 +654,13 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         }
     }
 
+    private func enableLizardMode(for context: DeviceContext) {
+        let attempts = context.isActive ? Self.featureReportAttempts : 1
+        for report in SteamControllerReport.lizardModeEnableReports(model: context.model) {
+            sendFeatureReport(report, to: context.device, attempts: attempts)
+        }
+    }
+
     private func startHeartbeatIfNeeded() {
         guard heartbeatTimer == nil else { return }
         let timer = Timer(timeInterval: Self.heartbeatInterval, repeats: true) { [weak self] _ in
@@ -615,6 +671,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     }
 
     private func sendHeartbeats() {
+        guard isInputCaptureActive else { return }
         for context in devices.values where context.isActive {
             sendFeatureReport(SteamControllerReport.lizardModeHeartbeatReport(model: context.model), to: context.device, attempts: 1)
         }

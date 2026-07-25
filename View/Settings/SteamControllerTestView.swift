@@ -593,6 +593,7 @@ final class SteamControllerTestModel: ObservableObject {
         }
 
         consumerKey = ObjectIdentifier(self)
+        SteamControllerHIDMonitor.shared.beginInputCapture(self)
         SteamControllerHIDMonitor.shared.register(
             self,
             onControllersChanged: { [weak self] in self?.refreshConnection() },
@@ -609,6 +610,7 @@ final class SteamControllerTestModel: ObservableObject {
     func stop() {
         if let consumerKey {
             SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
+            SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
         }
         consumerKey = nil
 
