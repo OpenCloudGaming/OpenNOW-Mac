@@ -18,7 +18,11 @@ import Testing
             onControllersChanged: {},
             onInputState: { _, _ in }
         )
-        defer { SteamControllerHIDMonitor.shared.unregister(key: navigatorKey) }
+        SteamControllerHIDMonitor.shared.beginInputCapture(navigator)
+        defer {
+            SteamControllerHIDMonitor.shared.unregister(key: navigatorKey)
+            SteamControllerHIDMonitor.shared.endInputCapture(navigator)
+        }
 
         for snapshot in snapshots {
             navigator.processSnapshot(deviceID: activeDeviceID, snapshot: snapshot, isActiveOverride: true)
