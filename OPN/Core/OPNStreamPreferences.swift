@@ -428,7 +428,7 @@ public enum OPNStreamPreferences {
         switch aspectIndex {
         case 0: return [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)].map(OPNStreamResolutionOption.init)
         case 1: return [(1280, 800), (1440, 900), (1680, 1050), (1920, 1200), (2560, 1600), (2880, 1800)].map(OPNStreamResolutionOption.init)
-        case 2: return [(2560, 1080), (3440, 1440), (3840, 1600)].map(OPNStreamResolutionOption.init)
+        case 2: return [(2560, 1080), (3440, 1440), (3840, 1600), (5120, 2160)].map(OPNStreamResolutionOption.init)
         case 3: return [(3840, 1080), (5120, 1440)].map(OPNStreamResolutionOption.init)
         default: return resolutionOptions(forAspect: 1)
         }
