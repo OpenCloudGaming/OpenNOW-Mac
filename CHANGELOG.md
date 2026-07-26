@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/anderson-oki/macforce-now/compare/v0.2.2...v0.3.0) (2026-07-26)
+
+
+### Features
+
+* add 5120x2160 ultrawide resolution to 21:9 options ([c7880c2](https://github.com/anderson-oki/macforce-now/commit/c7880c2b9cd0ac4a0d7d7b9f70c2e48b76a0db7f))
+* add check for updates menu button ([4b425f4](https://github.com/anderson-oki/macforce-now/commit/4b425f4d8164e94d54b36621122bde62e6ca40ea))
+* implement Steam Controller input capture to suppress lizard mode ([309deb9](https://github.com/anderson-oki/macforce-now/commit/309deb9cfcfb2bac37821d681410922ee5e713c4))
+
+
+### Bug Fixes
+
+* render client and native resolution ([89e9f54](https://github.com/anderson-oki/macforce-now/commit/89e9f54d48614a7a449ff98f24c513b039630e84))
+* **stream:** stream H265 over WebRTC instead of downscaled or AV1 ([558bd94](https://github.com/anderson-oki/macforce-now/commit/558bd940659170feeac31c1a4d7199900aa71adc))
+
 ## [0.2.2](https://github.com/anderson-oki/macforce-now/compare/v0.2.1...v0.2.2) (2026-07-22)
 
 
