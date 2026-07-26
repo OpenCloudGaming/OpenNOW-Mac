@@ -1,9 +1,18 @@
 @preconcurrency import Foundation
+import Combine
 import GameController
+
+public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let label: String
+    public let level: Int
+    public let charging: Bool
+}
 
 @MainActor
 public final class NativeWebRTCGamepadMonitor {
     public var onInputEvent: ((UserInputEvent) -> Void)?
+    @Published public private(set) var nativeBatteryLevels: [ControllerBatteryInfo] = []
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     nonisolated(unsafe) private var pollState = GamepadPollState()
     private let pollingQueue = DispatchQueue(label: "com.macforce-now.gamepad-poll", qos: .userInteractive)
@@ -43,7 +52,11 @@ public final class NativeWebRTCGamepadMonitor {
         SteamControllerHIDMonitor.shared.register(
             self,
             onControllersChanged: { [weak self] in self?.refreshControllerSlots() },
-            onInputState: { [weak self] deviceID, snapshot in self?.handleSteamControllerInput(deviceID, snapshot: snapshot) }
+            onInputState: { [weak self] deviceID, snapshot in self?.handleSteamControllerInput(deviceID, snapshot: snapshot) },
+            onBatteryLevel: { [weak self] deviceID, level in
+                let charging = SteamControllerHIDMonitor.shared.batteryCharging[deviceID] ?? false
+                self?.handleSteamControllerBattery(deviceID, level: level, charging: charging)
+            }
         )
         refreshControllerSlots()
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.start", level: .info, message: "Gamepad monitor started.", attributes: ["connected": String(Self.connectedGamepadCount())])
@@ -81,6 +94,8 @@ public final class NativeWebRTCGamepadMonitor {
             emitSlotTransitions(previousSteamSlots: previousSteamSlots, previousOccupiedSlots: previousOccupiedSlots)
             newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
         }
+        let validBatteryIDs = Set(pollState.cachedControllers.prefix(4).map { "native-\(ObjectIdentifier($0).hashValue)" }).union(Set(newSteamSlots.keys.map { $0.rawValue }))
+        nativeBatteryLevels.removeAll { !validBatteryIDs.contains($0.id) }
         let totalSlots = newControllerSlots.count + newSteamSlots.count
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
@@ -102,7 +117,7 @@ public final class NativeWebRTCGamepadMonitor {
     private func startPollingTimer() {
         pollingQueue.async { [weak self] in
             guard let self else { return }
-            self.pollState.startPolling(on: self.pollingQueue) { [weak self] events in
+            self.pollState.startPolling(on: self.pollingQueue, onEvents: { [weak self] events in
                 guard let self else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -110,7 +125,12 @@ public final class NativeWebRTCGamepadMonitor {
                         self.onInputEvent?(event)
                     }
                 }
-            }
+            }, onBatteryChange: { [weak self] changes in
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    self?.applyNativeBatteryChanges(changes)
+                }
+            })
         }
     }
 
@@ -118,11 +138,36 @@ public final class NativeWebRTCGamepadMonitor {
         pollingQueue.sync {
             pollState.stopPolling()
         }
+        nativeBatteryLevels.removeAll()
     }
 
     private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot) {
         guard pollingAllowed, let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
         emitSteamState(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot)
+    }
+
+    private func applyNativeBatteryChanges(_ changes: [ControllerBatteryInfo]) {
+        var updated = nativeBatteryLevels
+        for change in changes {
+            if let index = updated.firstIndex(where: { $0.id == change.id }) {
+                updated[index] = change
+            } else {
+                updated.append(change)
+            }
+        }
+        let currentNativeIDs = Set(pollState.cachedControllers.prefix(4).map { "native-\(ObjectIdentifier($0).hashValue)" })
+        updated.removeAll { !currentNativeIDs.contains($0.id) }
+        nativeBatteryLevels = updated
+    }
+
+    private func handleSteamControllerBattery(_ deviceID: InputDeviceID, level: UInt8, charging: Bool) {
+        guard let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
+        let info = ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(playerIndex + 1)", level: Int(level), charging: charging)
+        if let index = nativeBatteryLevels.firstIndex(where: { $0.id == deviceID.rawValue }) {
+            nativeBatteryLevels[index] = info
+        } else {
+            nativeBatteryLevels.append(info)
+        }
     }
 
     private func emitSteamState(deviceID: InputDeviceID, playerIndex: Int, snapshot: SteamControllerInputSnapshot) {
@@ -165,14 +210,15 @@ private final class GamepadPollState {
     var steamControllerSlots: [InputDeviceID: Int] = [:]
     var cachedControllers: [GCController] = []
     var lastStates: [ObjectIdentifier: GamepadControlSnapshot] = [:]
+    var lastBatteryLevels: [ObjectIdentifier: Int] = [:]
     private var timer: DispatchSourceTimer?
 
-    func startPolling(on queue: DispatchQueue, onEvents: @escaping @Sendable ([UserInputEvent]) -> Void) {
+    func startPolling(on queue: DispatchQueue, onEvents: @escaping @Sendable ([UserInputEvent]) -> Void, onBatteryChange: @escaping @Sendable ([ControllerBatteryInfo]) -> Void) {
         guard timer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: 1.0 / 60.0, leeway: .milliseconds(1))
         timer.setEventHandler { [weak self] in
-            self?.pollAndEmit(onEvents: onEvents)
+            self?.pollAndEmit(onEvents: onEvents, onBatteryChange: onBatteryChange)
         }
         self.timer = timer
         timer.resume()
@@ -183,14 +229,16 @@ private final class GamepadPollState {
         timer = nil
     }
 
-    private func pollAndEmit(onEvents: @escaping @Sendable ([UserInputEvent]) -> Void) {
+    private func pollAndEmit(onEvents: @escaping @Sendable ([UserInputEvent]) -> Void, onBatteryChange: @escaping @Sendable ([ControllerBatteryInfo]) -> Void) {
         if NativeWebRTCGamepadMonitor.connectedGamepadCount() != controllerSlots.count + steamControllerSlots.count {
             return
         }
         var events: [UserInputEvent] = []
+        var batteryChanges: [ControllerBatteryInfo] = []
         for controller in cachedControllers {
             guard let gamepad = controller.extendedGamepad,
                   let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
+            let identifier = ObjectIdentifier(controller)
             let buttons = NativeWebRTCGamepadMonitor.buttons(from: gamepad)
             let snapshot = GamepadControlSnapshot(
                 buttons: buttons,
@@ -201,24 +249,41 @@ private final class GamepadPollState {
                 rightStickX: gamepad.rightThumbstick.xAxis.value,
                 rightStickY: gamepad.rightThumbstick.yAxis.value
             )
-            let identifier = ObjectIdentifier(controller)
-            guard lastStates[identifier] != snapshot else { continue }
-            lastStates[identifier] = snapshot
-            events.append(.gamepad(GamepadState(
-                deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
-                playerIndex: playerIndex,
-                buttons: buttons,
-                leftTrigger: gamepad.leftTrigger.value,
-                rightTrigger: gamepad.rightTrigger.value,
-                leftStickX: gamepad.leftThumbstick.xAxis.value,
-                leftStickY: gamepad.leftThumbstick.yAxis.value,
-                rightStickX: gamepad.rightThumbstick.xAxis.value,
-                rightStickY: gamepad.rightThumbstick.yAxis.value,
-                timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
-            )))
+            if lastStates[identifier] != snapshot {
+                lastStates[identifier] = snapshot
+                events.append(.gamepad(GamepadState(
+                    deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
+                    playerIndex: playerIndex,
+                    buttons: buttons,
+                    leftTrigger: gamepad.leftTrigger.value,
+                    rightTrigger: gamepad.rightTrigger.value,
+                    leftStickX: gamepad.leftThumbstick.xAxis.value,
+                    leftStickY: gamepad.leftThumbstick.yAxis.value,
+                    rightStickX: gamepad.rightThumbstick.xAxis.value,
+                    rightStickY: gamepad.rightThumbstick.yAxis.value,
+                    timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+                )))
+            }
+            if let battery = controller.battery {
+                let percent = Int((battery.batteryLevel * 100).rounded())
+                let bucketedLevel = (percent / 5) * 5
+                if lastBatteryLevels[identifier] != bucketedLevel {
+                    lastBatteryLevels[identifier] = bucketedLevel
+                    let label = "P\(playerIndex + 1)"
+                    batteryChanges.append(ControllerBatteryInfo(id: "native-\(identifier.hashValue)", label: label, level: percent, charging: battery.batteryState == .charging))
+                }
+            }
+        }
+        let currentIDs = Set(cachedControllers.prefix(4).map { ObjectIdentifier($0) })
+        let staleIDs = lastBatteryLevels.keys.filter { !currentIDs.contains($0) }
+        for staleID in staleIDs {
+            lastBatteryLevels.removeValue(forKey: staleID)
         }
         if !events.isEmpty {
             onEvents(events)
+        }
+        if !batteryChanges.isEmpty {
+            onBatteryChange(batteryChanges)
         }
     }
 }

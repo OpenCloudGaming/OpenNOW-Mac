@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import GameController
 import Foundation
 import SwiftUI
 
@@ -228,6 +230,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
+    @State private var controllerBatteries: [ControllerBatteryInfo] = []
+    @State private var batteryAlertThresholds: [String: Set<Int>] = [:]
+    private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -285,9 +290,11 @@ public struct WebRTCMediaStreamSurface: View {
         .onAppear {
             registerStreamLifecycle()
             refreshRemoteCoOpState()
+            refreshControllerBatteries()
         }
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
+        .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
     }
 
     private var statsHUD: some View {
@@ -409,6 +416,46 @@ public struct WebRTCMediaStreamSurface: View {
             if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
                 hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
             }
+            ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
+                hudBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+            }
+        }
+    }
+
+    private func hudBatteryCard(label: String, level: Int, charging: Bool) -> some View {
+        let displayValue = level >= 0 ? "\(level)%" : "—"
+        let isLow = level >= 0 && level <= 20
+        let iconName = charging ? "bolt.fill" : batteryIconName(for: level)
+        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(iconColor)
+                Text(label.uppercased())
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(displayValue)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+
+    private func batteryIconName(for level: Int) -> String {
+        switch level {
+        case 90...: return "battery.100percent"
+        case 60..<90: return "battery.75percent"
+        case 30..<60: return "battery.50percent"
+        case 15..<30: return "battery.25percent"
+        default: return "battery.0percent"
         }
     }
 
@@ -1815,6 +1862,54 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func refreshControllerBatteries() {
+        var batteries: [ControllerBatteryInfo] = []
+        let steamLevels = SteamControllerHIDMonitor.shared.batteryLevels
+        let steamCharging = SteamControllerHIDMonitor.shared.batteryCharging
+        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
+        for (index, deviceID) in activeIDs.enumerated() {
+            let level = steamLevels[deviceID].map { Int($0) } ?? -1
+            let charging = steamCharging[deviceID] ?? false
+            batteries.append(ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(index + 1)", level: level, charging: charging))
+        }
+        let nativeControllers = GCController.controllers().filter { $0.extendedGamepad != nil }
+        let steamCount = activeIDs.count
+        for (index, controller) in nativeControllers.enumerated() {
+            let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
+            let charging = controller.battery?.batteryState == .charging
+            batteries.append(ControllerBatteryInfo(id: "native-\(ObjectIdentifier(controller).hashValue)", label: "P\(steamCount + index + 1)", level: percent, charging: charging))
+        }
+        let sorted = batteries.sorted { $0.label < $1.label }
+        let relabeled = sorted.enumerated().map { index, info in
+            ControllerBatteryInfo(id: info.id, label: "P\(index + 1)", level: info.level, charging: info.charging)
+        }
+        checkBatteryAlerts(relabeled)
+        controllerBatteries = relabeled
+    }
+
+    private func checkBatteryAlerts(_ batteries: [ControllerBatteryInfo]) {
+        let thresholds = [20, 10, 5]
+        var currentIDs = Set<String>()
+        for battery in batteries {
+            currentIDs.insert(battery.id)
+            let level = battery.level
+            guard level >= 0 else { continue }
+            var fired = batteryAlertThresholds[battery.id] ?? []
+            for threshold in thresholds where level <= threshold && !fired.contains(threshold) {
+                fired.insert(threshold)
+                let severity = threshold <= 5 ? "critical" : "low"
+                showTransientStreamMessage("\(battery.label) \(severity) battery — \(level)%")
+            }
+            if level > 20 {
+                fired.removeAll()
+            }
+            batteryAlertThresholds[battery.id] = fired
+        }
+        for removedID in Set(batteryAlertThresholds.keys).subtracting(currentIDs) {
+            batteryAlertThresholds.removeValue(forKey: removedID)
+        }
+    }
+
     private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
         var x = Int16(Int.random(in: -5...5))
         let y = Int16(Int.random(in: -5...5))
@@ -1974,6 +2069,8 @@ public struct WebRTCMediaStreamSurface: View {
         transientStreamMessageTask?.cancel()
         transientStreamMessageTask = nil
         transientStreamMessage = ""
+        controllerBatteries.removeAll()
+        batteryAlertThresholds.removeAll()
         isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false

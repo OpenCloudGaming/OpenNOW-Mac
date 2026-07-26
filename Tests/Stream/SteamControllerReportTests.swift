@@ -315,8 +315,15 @@ private func tritonReport(reportID: UInt8 = 0x42,
         }
     }
 
-    @Test func ignoresBatteryAndUnknownReports() {
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0x50], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
+    @Test func parsesBatteryReport() {
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0xFF], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x00], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 0, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x5B], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x04, 0x5B], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: true))
+        #expect(SteamControllerReport.parse([0x43, 0x01], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
+    }
+
+    @Test func ignoresUnknownTritonReports() {
         #expect(SteamControllerReport.parse([], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
         #expect(SteamControllerReport.parse([0x42, 0x00], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
     }

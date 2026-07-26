@@ -69,12 +69,45 @@ struct SteamControllerTestView: View {
                 .foregroundStyle(.white.opacity(0.7))
             if model.isConnected {
                 Spacer()
+                if let battery = model.batteryLevel {
+                    HStack(spacing: 4) {
+                        Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(model.isCharging ? .yellow : batteryColor(for: battery))
+                        Text("\(Int(battery))%")
+                            .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.04))
+                    .clipShape(Capsule())
+                }
                 Text(model.deviceID)
                     .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.3))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+        }
+    }
+
+    private func batteryIconName(for level: UInt8) -> String {
+        switch level {
+        case 90...: return "battery.100percent"
+        case 60..<90: return "battery.75percent"
+        case 30..<60: return "battery.50percent"
+        case 15..<30: return "battery.25percent"
+        default: return "battery.0percent"
+        }
+    }
+
+    private func batteryColor(for level: UInt8) -> Color {
+        switch level {
+        case 20...: return .openNowGreen
+        case 10..<20: return .orange
+        default: return .red
         }
     }
 
@@ -582,6 +615,8 @@ final class SteamControllerTestModel: ObservableObject {
     @Published var snapshot = SteamControllerInputSnapshot()
     @Published var deviceID: String = ""
     @Published var isConnected = false
+    @Published var batteryLevel: UInt8?
+    @Published var isCharging: Bool = false
 
     private var consumerKey: ObjectIdentifier?
     private var monitorWasEnabled = false
@@ -602,6 +637,10 @@ final class SteamControllerTestModel: ObservableObject {
                 self.deviceID = deviceID.rawValue
                 self.snapshot = snapshot
                 if !self.isConnected { self.isConnected = true }
+            },
+            onBatteryLevel: { [weak self] _, level in
+                guard let self else { return }
+                self.batteryLevel = level
             }
         )
         refreshConnection()
@@ -624,12 +663,16 @@ final class SteamControllerTestModel: ObservableObject {
         if let first = ids.first {
             isConnected = true
             deviceID = first.rawValue
+            batteryLevel = SteamControllerHIDMonitor.shared.batteryLevels[first]
+            isCharging = SteamControllerHIDMonitor.shared.batteryCharging[first] ?? false
             if let snap = SteamControllerHIDMonitor.shared.snapshot(for: first) {
                 snapshot = snap
             }
         } else {
             isConnected = false
             deviceID = ""
+            batteryLevel = nil
+            isCharging = false
             snapshot = SteamControllerInputSnapshot()
         }
     }

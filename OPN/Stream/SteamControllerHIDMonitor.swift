@@ -36,6 +36,8 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     @Published public private(set) var isMonitorActive = false
     @Published public private(set) var matchedDeviceCount = 0
     @Published public private(set) var isInputCaptureActive = false
+    @Published public private(set) var batteryLevels: [InputDeviceID: UInt8] = [:]
+    @Published public private(set) var batteryCharging: [InputDeviceID: Bool] = [:]
     
     public private(set) var allDevices: [DeviceInfo] = []
     
@@ -65,6 +67,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     private struct Consumer {
         let controllersChanged: () -> Void
         let inputState: (InputDeviceID, SteamControllerInputSnapshot) -> Void
+        let batteryLevel: (InputDeviceID, UInt8) -> Void
     }
 
     private final class DeviceContext {
@@ -77,6 +80,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var deckSnapshot = SteamControllerInputSnapshot()
         var mergedSnapshot = SteamControllerInputSnapshot()
         var isActive: Bool
+        var batteryLevel: UInt8?
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
 
@@ -128,8 +132,9 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     public func register(_ consumer: AnyObject,
                          onControllersChanged: @escaping () -> Void,
-                         onInputState: @escaping (InputDeviceID, SteamControllerInputSnapshot) -> Void) {
-        consumers[ObjectIdentifier(consumer)] = Consumer(controllersChanged: onControllersChanged, inputState: onInputState)
+                         onInputState: @escaping (InputDeviceID, SteamControllerInputSnapshot) -> Void,
+                         onBatteryLevel: @escaping (InputDeviceID, UInt8) -> Void = { _, _ in }) {
+        consumers[ObjectIdentifier(consumer)] = Consumer(controllersChanged: onControllersChanged, inputState: onInputState, batteryLevel: onBatteryLevel)
     }
 
     public func unregister(_ consumer: AnyObject) {
@@ -358,6 +363,8 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         self.manager = nil
         isMonitorActive = false
         matchedDeviceCount = 0
+        batteryLevels.removeAll()
+        batteryCharging.removeAll()
         publishActiveCount()
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.disabled", level: .info, message: "Steam Controller support disabled.")
     }
@@ -532,6 +539,8 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             matchedDeviceCount = devices.count
             updateAllDevices()
             emitNeutralStateIfNeeded(for: context)
+            batteryLevels.removeValue(forKey: context.deviceID)
+            batteryCharging.removeValue(forKey: context.deviceID)
             closeGamepadDevice(for: context)
             IOHIDDeviceRegisterInputReportCallback(device, context.reportBuffer, SteamControllerReport.reportLength, nil, nil)
             IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -606,6 +615,11 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             }
             context.mergedSnapshot = merged
             notifyInputState(context.deviceID, merged)
+        case .battery(let level, let charging):
+            context.batteryLevel = level
+            batteryLevels[context.deviceID] = level
+            batteryCharging[context.deviceID] = charging
+            notifyBatteryLevel(context.deviceID, level)
         case .ignored:
             break
         }
@@ -629,6 +643,12 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     private func notifyInputState(_ deviceID: InputDeviceID, _ snapshot: SteamControllerInputSnapshot) {
         for consumer in consumers.values {
             consumer.inputState(deviceID, snapshot)
+        }
+    }
+
+    private func notifyBatteryLevel(_ deviceID: InputDeviceID, _ level: UInt8) {
+        for consumer in consumers.values {
+            consumer.batteryLevel(deviceID, level)
         }
     }
 

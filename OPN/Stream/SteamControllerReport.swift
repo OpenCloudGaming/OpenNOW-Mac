@@ -56,6 +56,7 @@ public enum SteamControllerReportEvent: Equatable, Sendable {
     case state(SteamControllerInputSnapshot)
     case connected
     case disconnected
+    case battery(level: UInt8, charging: Bool)
     case ignored
 }
 
@@ -286,7 +287,11 @@ public enum SteamControllerReport {
             guard report.count >= 2 else { return .ignored }
             return connectionEvent(detail: report[1])
         case tritonBatteryReportID:
-            return .ignored
+            guard report.count >= 3 else { return .ignored }
+            let rawLevel = report[2]
+            let percent = min(100, UInt16(rawLevel) * 100 / 255)
+            let charging = report[1] == 0x04
+            return .battery(level: UInt8(percent), charging: charging)
         case 0x7B:
             return .ignored
         default:
