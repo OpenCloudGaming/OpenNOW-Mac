@@ -122,7 +122,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
         let impl = OPNLibWebRTCSessionImpl(owner: self)
         let encoderFactory = RTCDefaultVideoEncoderFactory()
-        let decoderFactory = RTCDefaultVideoDecoderFactory()
+        // Advertises H265 with real fmtp params so libwebrtc negotiates HEVC instead of dropping it
+        // and falling back to AV1 (undecodable before Apple M3 → black screen). See OPNVideoDecoderFactory.
+        let decoderFactory = OPNVideoDecoderFactory()
         let audioDevice = OPNCoreAudioRTCDevice(owner: self)
         impl.audioDevice = audioDevice
         impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)

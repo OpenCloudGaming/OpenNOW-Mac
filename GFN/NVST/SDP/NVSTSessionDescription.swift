@@ -484,6 +484,25 @@ public enum NVSTSessionDescriptionBuilder {
             ("video.prefilterParams.prefilterModel", String(prefilterModel)),
             ("video.prefilterParams.sharpnessLevel", String(prefilterSharpness)),
             ("video.prefilterParams.denoiseLevel", String(prefilterDenoise)),
+            // Force GeForce NOW's dynamic resolution control fully OFF so the requested resolution
+            // actually streams. GFN's offered NVST SDP enables the resolution controllers, which
+            // downscale 5120x2160 to ~2560x1080. Disabling drc/dfc/cpmRtc alone is NOT enough: the
+            // server also sends `vqos.resControl.enable:1` and `vqos.resControl.dfc.adjustResAndFps:1`
+            // (with maxResLevels:5), so the resControl-scoped DFC controller keeps stepping resolution
+            // down. Every downscale switch inherited from the server offer must be overridden here.
+            // Confirmed on hardware: with these off, the stream holds true 5120x2160 H265 @ 120fps.
+            ("vqos.dynamicStreamingMode", "0"),
+            ("vqos.drc.enable", "0"),
+            ("vqos.dfc.enable", "0"),
+            ("vqos.dfc.adjustResAndFps", "0"),
+            ("vqos.grc.enable", "0"),
+            ("vqos.resControl.enable", "0"),
+            ("vqos.resControl.dfc.adjustResAndFps", "0"),
+            ("vqos.resControl.dfc.maxResLevels", "0"),
+            ("vqos.resControl.cpmRtc.featureMask", "0"),
+            ("vqos.resControl.cpmRtc.enable", "0"),
+            ("vqos.resControl.cpmRtc.minResolutionPercent", "100"),
+            ("vqos.resControl.cpmRtc.resolutionChangeHoldonMs", "999999"),
         ]
         for (key, value) in videoAttributes {
             description.setMediaAttribute(mediaKind: "video", defaultMediaLine: videoLine, key: key, value: value)

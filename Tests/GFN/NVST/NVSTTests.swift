@@ -252,6 +252,42 @@ import Testing
     #expect(!answer.contains("serverPwd"))
 }
 
+@Test func nvstForcesServerResolutionControllersOffInAnswer() throws {
+    // GFN's offered NVST SDP turns the resolution controllers ON. Inheriting them (server-based
+    // build) downscaled 5120x2160 to 2560x1080 even with drc/cpmRtc disabled, because the
+    // resControl-scoped DFC controller stayed live. The answer must force every one to 0.
+    let remoteNVSTSdp = """
+    v=0
+    o=- 0 0 IN IP4 127.0.0.1
+    s=-
+    t=0 0
+    a=general.icePassword:serverPwd
+    m=video 0 RTP/AVP
+    a=msid:fbc-video-0
+    a=video.clientViewportWd:1152
+    a=video.clientViewportHt:720
+    a=vqos.resControl.enable:1
+    a=vqos.resControl.dfc.adjustResAndFps:1
+    a=vqos.resControl.dfc.maxResLevels:5
+    a=vqos.drc.enable:1
+    m=application 0 RTP/AVP
+    a=msid:input_1
+    """
+    let settings = NVSTSessionDescriptionSettings(resolution: "5120x2160", fps: 120, maxBitrateMbps: 100, codec: "H265")
+    let credentials = NVSTIceCredentials(usernameFragment: "u", password: "p", fingerprint: "sha-256 AA:BB")
+
+    let answer = NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: settings, credentials: credentials, remoteNVSTSdp: remoteNVSTSdp)
+    let video = try #require(NVSTSessionDescription(sdp: answer).mediaSections.first { $0.mediaKind == "video" })
+
+    #expect(video.attributesByKey["video.clientViewportWd"] == "5120")
+    #expect(video.attributesByKey["video.clientViewportHt"] == "2160")
+    #expect(video.attributesByKey["vqos.resControl.enable"] == "0")
+    #expect(video.attributesByKey["vqos.resControl.dfc.adjustResAndFps"] == "0")
+    #expect(video.attributesByKey["vqos.resControl.dfc.maxResLevels"] == "0")
+    #expect(video.attributesByKey["vqos.drc.enable"] == "0")
+    #expect(video.attributesByKey["vqos.resControl.cpmRtc.minResolutionPercent"] == "100")
+}
+
 @Test func nvstBuildsAnswerExtensionFromRemoteVendorExtension() throws {
     let remoteNVSTSdp = """
     v=0
