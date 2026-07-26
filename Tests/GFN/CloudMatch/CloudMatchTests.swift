@@ -53,9 +53,11 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(create.value(forHTTPHeaderField: "Origin") == nil)
     #expect(create.httpBody == Data("{}".utf8))
 
+    // WebRTC sessions must identify as the native GFN-PC client — a BROWSER identity makes GeForce
+    // NOW cap the server desktop at the web-client resolution (~2560), downscaling 5K requests.
     let webRTCCreate = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession(transportMode: "webrtc")))
-    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
-    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
 
     let poll = try #require(CloudMatchRequestFactory.pollSessionRequest(baseURLString: "cloudmatch.example.test", sessionId: "session/with slash", accessToken: "access", deviceId: "device"))
     #expect(poll.url?.absoluteString == "https://cloudmatch.example.test/v2/session/session%2Fwith%20slash")

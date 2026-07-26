@@ -136,7 +136,14 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
     }
 
     public static func streamSession(transportMode: String) -> CloudMatchClientHeaders {
-        transportMode.caseInsensitiveCompare("nvst") == .orderedSame ? nativeGFNPC : browserWebRTC()
+        // Identify as the native GFN-PC client on BOTH transports. GeForce NOW caps BROWSER clients
+        // (nv-client-type: BROWSER / nv-client-streamer: WEBRTC) at the web-client resolution
+        // (~2560-class), which silently downscaled the server desktop for 5K requests. The actual
+        // transport is selected by the GSStreamerType metadata, NOT these headers — so a native
+        // identity is compatible with WebRTC. The working reference client (OpenNOW) sends
+        // NATIVE / NVIDIA-CLASSIC even over WebRTC and gets the full 5120x2160 desktop.
+        _ = transportMode
+        return nativeGFNPC
     }
 
     public func apply(to request: inout URLRequest, accessToken: String, deviceId: String = "", includeOrigin: Bool = false, accept: String = "application/json", contentType: String? = "application/json") {
