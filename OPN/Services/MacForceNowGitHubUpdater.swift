@@ -299,14 +299,26 @@ actor MacForceNowGitHubUpdater {
             return false
         }
         let requirement = "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\""
+        let outputPipe = Pipe()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["--verify", "--deep", "--strict", "-R", requirement, bundleURL.path]
+        process.arguments = ["--verify", "--deep", "--strict", "-R=\(requirement)", bundleURL.path]
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
         do {
             try process.run()
             process.waitUntilExit()
-            return process.terminationStatus == 0
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let success = process.terminationStatus == 0
+            if success {
+                logInfo("Update bundle signature verified teamID=\(teamID) path=\(bundleURL.path)")
+            } else {
+                logError("Update bundle signature verification failed teamID=\(teamID) status=\(process.terminationStatus) output=\(output)")
+            }
+            return success
         } catch {
+            logError("Update bundle signature verification failed to run error=\(error.localizedDescription)")
             return false
         }
     }
