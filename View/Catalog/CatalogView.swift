@@ -28,6 +28,7 @@ private enum CatalogVendorLayout {
     static let heroFallbackHeight: CGFloat = 500
     static let detailPanelHeight: CGFloat = 500
     static let mainMenuWidth: CGFloat = 344
+    static let accountMenuWidth: CGFloat = 260
 
     static func heroHeight(for width: CGFloat) -> CGFloat {
         width > 0 ? min(width * heroAspectRatio, heroFallbackHeight) : heroFallbackHeight
@@ -74,6 +75,7 @@ struct CatalogView: View {
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
+    @State private var showsAccountMenu = false
     @State private var streamWindowTopInset: CGFloat = 0
 
     init(
@@ -134,7 +136,7 @@ struct CatalogView: View {
                         .transition(.opacity)
                 } else {
                     VStack(spacing: 0) {
-                        CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                        CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                         if viewModel.selectedMainPage == .settings {
                             SettingsView(viewModel: viewModel)
                         } else if viewModel.selectedMainPage == .recordings {
@@ -150,6 +152,12 @@ struct CatalogView: View {
                         CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
                             .transition(.opacity)
                             .zIndex(12)
+                    }
+
+                    if showsAccountMenu {
+                        CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            .transition(.opacity)
+                            .zIndex(13)
                     }
                 }
 
@@ -913,8 +921,8 @@ private struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
 
 private struct CatalogTopBar: View {
     @Bindable var viewModel: CatalogViewModel
-    let accounts: [LoginAccount]
     @Binding var showsMainMenu: Bool
+    @Binding var showsAccountMenu: Bool
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
@@ -923,7 +931,10 @@ private struct CatalogTopBar: View {
         GeometryReader { proxy in
             ZStack(alignment: .center) {
                 HStack(alignment: .center, spacing: 14) {
-                    Button { showsMainMenu.toggle() } label: {
+                    Button {
+                        showsMainMenu.toggle()
+                        showsAccountMenu = false
+                    } label: {
                         CatalogHamburgerLabel(isOpen: showsMainMenu)
                     }
                     .frame(width: 44, height: 40)
@@ -951,15 +962,9 @@ private struct CatalogTopBar: View {
 
                 HStack(spacing: 24) {
                     Spacer()
-                    Menu {
-                        ForEach(accounts) { account in
-                            Button(account.displayName) { onSwitch(account) }
-                        }
-                        Divider()
-                        Button("Sign Out", action: onSignOut)
-                        ForEach(accounts) { account in
-                            Button("Forget \(account.displayName)", role: .destructive) { onForget(account) }
-                        }
+                    Button {
+                        showsAccountMenu.toggle()
+                        showsMainMenu = false
                     } label: {
                         HStack(spacing: 12) {
                             CatalogAccountAvatar(account: viewModel.account, size: 32)
@@ -975,9 +980,11 @@ private struct CatalogTopBar: View {
                             Image(systemName: "chevron.down")
                                 .font(.nvidia(size: 10, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.88))
+                                .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open account menu")
                 }
                 .frame(height: CatalogVendorLayout.appBarHeight, alignment: .center)
                 .padding(.trailing, 22)
@@ -1253,6 +1260,203 @@ private struct CatalogMainMenuPanel: View {
         case .library: return "Games synced from connected stores"
         case .favorites: return "Saved games for quick access"
         }
+    }
+}
+
+private struct CatalogAccountDropdownOverlay: View {
+    let viewModel: CatalogViewModel
+    let accounts: [LoginAccount]
+    @Binding var isPresented: Bool
+    let onSwitch: (LoginAccount) -> Void
+    let onSignOut: () -> Void
+    let onForget: (LoginAccount) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topTrailing) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { isPresented = false }
+
+                CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, isPresented: $isPresented, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    .padding(.top, CatalogVendorLayout.appBarHeight + CatalogVendorLayout.windowTopInset)
+                    .padding(.trailing, 22)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .onExitCommand { isPresented = false }
+    }
+}
+
+private struct CatalogAccountDropdownPanel: View {
+    let viewModel: CatalogViewModel
+    let accounts: [LoginAccount]
+    @Binding var isPresented: Bool
+    let onSwitch: (LoginAccount) -> Void
+    let onSignOut: () -> Void
+    let onForget: (LoginAccount) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                CatalogAccountAvatar(account: viewModel.account, size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(viewModel.account.displayName)
+                        .font(.nvidia(size: 15, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(viewModel.subscriptionStatus.membershipTier.uppercased())
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.black.opacity(0.86))
+                        .padding(.horizontal, 8)
+                        .frame(height: 18)
+                        .background(Color.openNowGreen)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ACCOUNTS")
+                    .font(.nvidia(size: 10, weight: .bold))
+                    .tracking(1.1)
+                    .foregroundStyle(.white.opacity(0.42))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                ForEach(accounts) { account in
+                    let isActive = account === viewModel.account
+                    CatalogAccountDropdownRow(
+                        title: account.displayName,
+                        subtitle: nil,
+                        systemImage: isActive ? "checkmark" : "person",
+                        isActive: isActive,
+                        role: nil
+                    ) {
+                        isPresented = false
+                        if !isActive {
+                            onSwitch(account)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                CatalogAccountDropdownRow(
+                    title: "Sign Out",
+                    subtitle: nil,
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    isActive: false,
+                    role: nil
+                ) {
+                    isPresented = false
+                    onSignOut()
+                }
+                ForEach(accounts) { account in
+                    CatalogAccountDropdownRow(
+                        title: "Forget \(account.displayName)",
+                        subtitle: nil,
+                        systemImage: "xmark.circle",
+                        isActive: false,
+                        role: .destructive
+                    ) {
+                        isPresented = false
+                        onForget(account)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 12)
+        }
+        .frame(width: CatalogVendorLayout.accountMenuWidth, alignment: .topLeading)
+        .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.openNowGreen)
+                .frame(height: 2)
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(width: 1)
+        }
+        .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+    }
+}
+
+private struct CatalogAccountDropdownRow: View {
+    let title: String
+    let subtitle: String?
+    let systemImage: String?
+    let isActive: Bool
+    let role: ButtonRole?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                if let systemImage {
+                    ZStack {
+                        Rectangle()
+                            .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                        Image(systemName: systemImage)
+                            .font(.nvidia(size: 13, weight: .bold))
+                            .foregroundStyle(iconColor)
+                    }
+                    .frame(width: 30, height: 30)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.nvidia(size: 14, weight: .bold))
+                        .foregroundStyle(titleColor)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.nvidia(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.52))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 42)
+            .background(rowBackground)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(title)
+    }
+
+    private var rowBackground: Color {
+        if isActive { return Color.openNowGreen.opacity(0.095) }
+        return Color.white.opacity(isHovering ? 0.085 : 0)
+    }
+
+    private var titleColor: Color {
+        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+    }
+
+    private var iconColor: Color {
+        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        return isActive ? .black : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 }
 
