@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/anderson-oki/macforce-now/compare/v0.3.0...v0.4.0) (2026-07-27)
+
+
+### Features
+
+* add controller battery display ([3c53569](https://github.com/anderson-oki/macforce-now/commit/3c53569b3b97024971e44785aae4669ba6706f57))
+* add custom profile context menu ([9b8e09b](https://github.com/anderson-oki/macforce-now/commit/9b8e09b444c6e50ada8818d9a53923bd831f18a0))
+* ui improvements ([b599f2d](https://github.com/anderson-oki/macforce-now/commit/b599f2d1238ed67eb784e9a3eb7adb199ad0055a))
+
 ## [0.3.0](https://github.com/anderson-oki/macforce-now/compare/v0.2.2...v0.3.0) (2026-07-26)
 
 
