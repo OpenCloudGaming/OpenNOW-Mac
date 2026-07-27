@@ -507,7 +507,7 @@ struct ControllerCatalogView: View {
             viewModel.showRecordings()
             controllerViewModel.focusArea = .navigation
         case .settings:
-            viewModel.showSettings(.interface)
+            viewModel.showSettings(.general)
             controllerViewModel.focusArea = .navigation
         case .actions:
             openActionMenu()
@@ -710,7 +710,7 @@ struct ControllerCatalogView: View {
         case .recordings:
             viewModel.showRecordings()
         case .settings:
-            viewModel.showSettings(.interface)
+            viewModel.showSettings(.general)
         case .switchAccount(let account):
             onSwitch(account)
         case .signOut:
@@ -783,7 +783,7 @@ private struct ControllerHeader: View {
         switch viewModel.selectedMainPage {
         case .games: return viewModel.selectedCatalogDestination.title
         case .recordings: return "Recordings"
-        case .settings: return viewModel.selectedSettingsPage.title
+        case .settings: return viewModel.selectedSettingsGroup.title
         }
     }
 }

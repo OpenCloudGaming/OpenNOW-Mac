@@ -118,12 +118,11 @@ private enum SettingsFormat {
 }
 
 struct SettingsView: View {
-    let viewModel: CatalogViewModel
+    @Bindable var viewModel: CatalogViewModel
 
     var body: some View {
-        NavigationSplitView {
-            SettingsSidebarList(viewModel: viewModel)
-        } detail: {
+        VStack(spacing: 0) {
+            SettingsTabBar(selection: $viewModel.selectedSettingsGroup)
             SettingsContent(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -140,119 +139,70 @@ private struct SettingsSurfaceBackground: View {
     }
 }
 
-private struct SettingsSidebarList: View {
-    @Bindable var viewModel: CatalogViewModel
+private struct SettingsTabBar: View {
+    @Binding var selection: CatalogSettingsGroup
 
     var body: some View {
-        List(selection: $viewModel.selectedSettingsPage) {
-            Section {
-                ForEach(CatalogSettingsPage.allCases) { page in
-                    SettingsSidebarRow(
-                        title: page.title,
-                        icon: icon(for: page),
-                        isSelected: viewModel.selectedSettingsPage == page
-                    )
-                    .tag(page)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    ForEach(CatalogSettingsGroup.allCases) { group in
+                        SettingsTabItem(
+                            title: group.title,
+                            icon: group.icon,
+                            isSelected: selection == group
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selection = group
+                            }
+                        }
+                    }
                 }
-            } header: {
-                SettingsSidebarHeader()
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                .padding(.horizontal, 16)
             }
+            Spacer(minLength: 0)
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .frame(height: 52)
         .background(SettingsVendorLayout.sidebar)
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            SettingsSidebarBackButton { viewModel.showGames() }
-        }
-    }
-
-    private func icon(for page: CatalogSettingsPage) -> String {
-        switch page {
-        case .account: return "person.crop.circle.fill"
-        case .interface: return "gamecontroller.fill"
-        case .connections: return "link"
-        case .twitch: return "dot.radiowaves.left.and.right"
-        case .gameplay: return "slider.horizontal.3"
-        case .experimentalFeatures: return "testtube.2"
-        case .serverLocation: return "network"
-        case .resolutionUpscaling: return "sparkles.tv.fill"
-        case .system: return "desktopcomputer"
-        case .about: return "info.circle.fill"
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
         }
     }
 }
 
-private struct SettingsSidebarHeader: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("SETTINGS")
-                .font(.settingsNvidia(size: 11, weight: .bold))
-                .foregroundStyle(Color.openNowGreen)
-                .tracking(1.5)
-                .textCase(nil)
-            Text("MacForce Now")
-                .font(.settingsNvidia(size: 20, weight: .bold))
-                .foregroundStyle(.white)
-                .textCase(nil)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 22)
-        .padding(.top, 22)
-        .padding(.bottom, 14)
-    }
-}
-
-private struct SettingsSidebarRow: View {
+private struct SettingsTabItem: View {
     let title: String
     let icon: String
     let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Rectangle()
-                .fill(isSelected ? Color.openNowGreen : .clear)
-                .frame(width: 4, height: 34)
-            Image(systemName: icon)
-                .font(.settingsNvidia(size: 13, weight: .bold))
-                .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(0.52))
-                .frame(width: 18)
-            Text(title)
-                .font(.settingsNvidia(size: 14, weight: isSelected ? .bold : .medium))
-                .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 44)
-        .background(isSelected ? Color.white.opacity(0.065) : .clear)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct SettingsSidebarBackButton: View {
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text("BACK TO GAMES")
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.86))
-                .tracking(0.9)
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(Color.white.opacity(0.055))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(0.52))
+                    .frame(width: 18, height: 18)
+                Text(title)
+                    .font(.settingsNvidia(size: 12, weight: isSelected ? .bold : .medium))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(0.58))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(width: 150, height: 44)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(isSelected ? Color.openNowGreen : .clear)
+                    .frame(width: 150, height: 3)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 22)
-        .padding(.bottom, 18)
-        .padding(.top, 10)
     }
 }
 
@@ -262,7 +212,10 @@ private struct SettingsContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                SettingsHeader(title: viewModel.selectedSettingsPage.title, subtitle: subtitle)
+                SettingsHeader(
+                    title: viewModel.selectedSettingsGroup.title,
+                    subtitle: viewModel.selectedSettingsGroup.subtitle
+                )
                 if !viewModel.errorMessage.isEmpty {
                     SettingsMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
                 }
@@ -281,42 +234,17 @@ private struct SettingsContent: View {
     }
 
     @ViewBuilder private var page: some View {
-        switch viewModel.selectedSettingsPage {
+        switch viewModel.selectedSettingsGroup {
         case .account:
             AccountSettingsPage(viewModel: viewModel)
-        case .interface:
-            InterfaceSettingsPage(viewModel: viewModel)
+        case .streaming:
+            StreamingSettingsGroup(viewModel: viewModel)
         case .connections:
-            ConnectionsSettingsPage(viewModel: viewModel)
-        case .twitch:
-            TwitchSettingsPage(viewModel: viewModel)
-        case .gameplay:
-            GameplaySettingsPage(viewModel: viewModel)
-        case .experimentalFeatures:
-            ExperimentalFeaturesSettingsPage(viewModel: viewModel)
-        case .serverLocation:
-            ServerLocationSettingsPage(viewModel: viewModel)
-        case .resolutionUpscaling:
-            ResolutionUpscalingSettingsPage(viewModel: viewModel)
-        case .system:
-            SystemSettingsPage(viewModel: viewModel)
+            ConnectionsSettingsGroup(viewModel: viewModel)
+        case .general:
+            GeneralSettingsGroup(viewModel: viewModel)
         case .about:
             AboutSettingsPage(viewModel: viewModel)
-        }
-    }
-
-    private var subtitle: String {
-        switch viewModel.selectedSettingsPage {
-        case .account: return "Membership, profile, and current NVIDIA session details."
-        case .interface: return "Choose the desktop catalog or controller-first TV interface."
-        case .connections: return "Manage store accounts used for library sync and ownership detection."
-        case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
-        case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
-        case .experimentalFeatures: return "Opt in to alpha, beta, and test features before they appear elsewhere."
-        case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
-        case .resolutionUpscaling: return "Control MetalFX presentation, clarity, and noise reduction for Apple Silicon."
-        case .system: return "Review decoder, display, network, and device capability state."
-        case .about: return "MacForce Now Mac runtime and service identifiers."
         }
     }
 }
@@ -341,11 +269,42 @@ private struct SettingsHeader: View {
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 Spacer(minLength: 24)
-                Rectangle()
-                    .fill(Color.openNowGreen.opacity(0.42))
-                    .frame(width: 120, height: 2)
-                    .padding(.bottom, 9)
             }
+        }
+    }
+}
+
+private struct StreamingSettingsGroup: View {
+    let viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GameplaySettingsPage(viewModel: viewModel)
+            ServerLocationSettingsPage(viewModel: viewModel)
+            ResolutionUpscalingSettingsPage(viewModel: viewModel)
+        }
+    }
+}
+
+private struct ConnectionsSettingsGroup: View {
+    let viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ConnectionsSettingsPage(viewModel: viewModel)
+            TwitchSettingsPage(viewModel: viewModel)
+        }
+    }
+}
+
+private struct GeneralSettingsGroup: View {
+    let viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            InterfaceSettingsPage(viewModel: viewModel)
+            SystemSettingsPage(viewModel: viewModel)
+            ExperimentalFeaturesSettingsPage(viewModel: viewModel)
         }
     }
 }

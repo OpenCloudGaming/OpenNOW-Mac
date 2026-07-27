@@ -11,7 +11,7 @@ import ImageIO
 import SwiftUI
 
 private enum CatalogVendorLayout {
-    static let windowTopInset: CGFloat = 42
+    static let windowTopInset: CGFloat = 32
     static let appBarHeight: CGFloat = 56
     static let appBarBackground = MacForceNowDesign.Surface.appBar
     static let mallSurface = MacForceNowDesign.Surface.app
@@ -942,7 +942,7 @@ private struct CatalogTopBar: View {
                     catalogSearchField
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
                 } else {
-                    Text(viewModel.selectedMainPage == .recordings ? "Saved gameplay videos" : viewModel.selectedSettingsPage.title)
+                    Text(viewModel.selectedMainPage == .recordings ? "Saved gameplay videos" : viewModel.selectedSettingsGroup.title)
                         .font(.nvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white.opacity(0.70))
                         .tracking(1.1)
@@ -988,7 +988,6 @@ private struct CatalogTopBar: View {
             CatalogVendorLayout.appBarBackground
             WindowDragArea()
         }
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.42)).frame(height: 1) }
     }
 
     private var mainPageTitle: String {
@@ -1098,7 +1097,7 @@ private struct CatalogMainMenuOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.001)
+                Color.black.opacity(0.6)
                     .ignoresSafeArea()
                     .onTapGesture { isPresented = false }
 
@@ -1217,21 +1216,6 @@ private struct CatalogMainMenuPanel: View {
                 .frame(height: 2)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-    }
-
-    private func settingsIcon(for page: CatalogSettingsPage) -> String {
-        switch page {
-        case .account: return "person.crop.circle.fill"
-        case .interface: return "gamecontroller.fill"
-        case .connections: return "link"
-        case .twitch: return "dot.radiowaves.left.and.right"
-        case .gameplay: return "slider.horizontal.3"
-        case .experimentalFeatures: return "testtube.2"
-        case .serverLocation: return "network"
-        case .resolutionUpscaling: return "sparkles.tv.fill"
-        case .system: return "desktopcomputer"
-        case .about: return "info.circle.fill"
-        }
     }
 
     private var catalogBroadcastMenuTitle: String {
@@ -2479,7 +2463,7 @@ private struct CatalogDestinationGridView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .lastTextBaseline, spacing: 14) {
+            HStack(alignment: .lastTextBaseline, spacing: 20) {
                 Text(section.title)
                     .font(.nvidia(size: 24, weight: .bold))
                     .foregroundStyle(.white.opacity(0.96))
@@ -2491,6 +2475,7 @@ private struct CatalogDestinationGridView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+            .padding(.top, 24)
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in

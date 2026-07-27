@@ -87,16 +87,11 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-enum CatalogSettingsPage: String, CaseIterable, Identifiable {
+enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
-    case interface
+    case streaming
     case connections
-    case twitch
-    case gameplay
-    case experimentalFeatures
-    case serverLocation
-    case resolutionUpscaling
-    case system
+    case general
     case about
 
     var id: String { rawValue }
@@ -104,15 +99,30 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .account: return "Account"
-        case .interface: return "Interface"
+        case .streaming: return "Streaming"
         case .connections: return "Connections"
-        case .twitch: return "Twitch"
-        case .gameplay: return "Gameplay"
-        case .experimentalFeatures: return "Experimental Features"
-        case .serverLocation: return "Server Location"
-        case .resolutionUpscaling: return "MetalFX Upscaling"
-        case .system: return "System"
+        case .general: return "General"
         case .about: return "About"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .account: return "Membership, profile, and current NVIDIA session details."
+        case .streaming: return "Tune streaming quality, server location, and MetalFX upscaling."
+        case .connections: return "Manage store accounts and Twitch broadcast settings."
+        case .general: return "Interface mode, system capability, and experimental features."
+        case .about: return "MacForce Now Mac runtime and service identifiers."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .account: return "person.crop.circle.fill"
+        case .streaming: return "play.tv.fill"
+        case .connections: return "link"
+        case .general: return "gearshape.2.fill"
+        case .about: return "info.circle.fill"
         }
     }
 }
@@ -122,7 +132,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
 final class CatalogViewModel {
     var selectedMainPage = CatalogMainPage.games
     var selectedCatalogDestination = CatalogDestination.home
-    var selectedSettingsPage = CatalogSettingsPage.account
+    var selectedSettingsGroup = CatalogSettingsGroup.account
     var searchQuery = "" {
         didSet { scheduleSearchDebounce() }
     }
@@ -407,9 +417,9 @@ final class CatalogViewModel {
         selectedSectionId = ""
     }
 
-    func showSettings(_ page: CatalogSettingsPage = .account) {
+    func showSettings(_ group: CatalogSettingsGroup = .account) {
         selectedMainPage = .settings
-        selectedSettingsPage = page
+        selectedSettingsGroup = group
         loadSettingsPreferences()
     }
 
