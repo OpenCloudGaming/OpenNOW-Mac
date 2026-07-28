@@ -118,7 +118,7 @@ jobs:
             "${APP_PATH}"
 
           echo "Creating DMG..."
-          hdiutil create -volname "MacForce Now" -srcfolder "${APP_PATH}" -ov -format UDZO "${DMG_PATH}"
+          ./scripts/create-dmg.sh "${APP_PATH}" "${DMG_PATH}"
           codesign --force --keychain "${RUNNER_TEMP}/build.keychain-db" \
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:

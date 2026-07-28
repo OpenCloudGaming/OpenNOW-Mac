@@ -1,0 +1,16 @@
+<svg width="800" height="500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <path d="M 240 250 L 560 250 L 545 235 M 560 250 L 545 265"
+        stroke="#475569" stroke-width="4" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="400" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="24" font-weight="500" text-anchor="middle" fill="#1e293b">
+    Drag MacForce Now to Applications
+  </text>
+</svg>
