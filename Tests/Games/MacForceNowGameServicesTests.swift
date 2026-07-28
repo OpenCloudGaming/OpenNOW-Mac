@@ -491,14 +491,14 @@ import Foundation
 
         #expect(result.0 == true)
         #expect(result.4.isEmpty)
-        #expect(result.1 == 45)
-        #expect(result.2 == 45)
+        #expect(result.1 == 40)
+        #expect(result.2 == 40)
         #expect(result.3 == 45)
         let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
             ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
         }
-        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == ["", "cursor-40"])
-        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["sortString"] as? String } == ["sortName:ASC", "sortName:ASC"])
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == [""])
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["sortString"] as? String } == ["sortName:ASC"])
     }
 }
 

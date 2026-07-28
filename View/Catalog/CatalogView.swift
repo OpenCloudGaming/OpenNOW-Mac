@@ -39,7 +39,7 @@ private enum CatalogVendorLayout {
     }
 
     static func searchWidth(for width: CGFloat) -> CGFloat {
-        MacForceNowDesign.clamped(width * 0.42, minimum: 280, maximum: 540)
+        MacForceNowDesign.clamped(width * 0.46, minimum: 280, maximum: 640)
     }
 
     static func launchPanelWidth(for width: CGFloat) -> CGFloat {
@@ -1006,15 +1006,23 @@ private struct CatalogTopBar: View {
     }
 
     private var catalogSearchField: some View {
-        HStack(spacing: 14) {
+        let placeholder = viewModel.selectedShowAllSection != nil
+            ? "Search titles, genres, publishers, stores, controls, ratings, or tags"
+            : "Search games, stores, or genres"
+        return HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
-                .font(.nvidia(size: 15, weight: .medium))
+                .font(.nvidia(size: 18, weight: .medium))
                 .foregroundStyle(.white.opacity(0.76))
-            TextField("Search games, stores, or genres", text: $viewModel.searchQuery)
+            TextField(placeholder, text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .font(.nvidia(size: 15, weight: .medium))
+                .font(.nvidia(size: 16, weight: .medium))
                 .foregroundStyle(.white)
                 .onSubmit { viewModel.browseCatalog() }
+                .onChange(of: viewModel.searchQuery) { _, newValue in
+                    if !newValue.trimmed.isEmpty, viewModel.selectedShowAllSection == nil {
+                        viewModel.openBrowseFromSearch()
+                    }
+                }
             if !viewModel.searchQuery.isEmpty {
                 Button { viewModel.searchQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -1023,8 +1031,8 @@ private struct CatalogTopBar: View {
                 .foregroundStyle(.white.opacity(0.52))
             }
         }
-        .padding(.horizontal, 15)
-        .frame(height: 40)
+        .padding(.horizontal, 18)
+        .frame(height: 46)
         .background(Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255))
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
     }
@@ -2010,158 +2018,130 @@ private struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
-    @State private var showAllSectionId: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         let heroes = heroGames
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
-        let sections = viewModel.catalogSections
-        let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
         GeometryReader { viewport in
-        ScrollViewReader { proxy in
-            ZStack {
-                ScrollView {
-                    // Plain VStack on purpose: content is bounded (hero + max 10 fixed-height
-                    // rails of max 18 fixed-size tiles + detail panel) and SwiftUI's lazy
-                    // layout machinery (LazySubviewPlacements / AllItemsPhaseMutation) is what
-                    // livelocks the main thread on macOS 26 — every hang sample loops there.
-                    VStack(alignment: .leading, spacing: 26) {
-                        if hero != nil && !isGridDestination {
-                            CatalogHeroView(
-                                viewModel: viewModel,
-                                games: heroes,
-                                activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
-                                availableWidth: viewport.size.width,
-                                onSelectSlide: { index in
-                                    heroAutoScrollEnabled = false
-                                    heroIndex = index
-                                },
-                                onPreviousSlide: {
-                                    guard !heroes.isEmpty else { return }
-                                    heroAutoScrollEnabled = false
-                                    heroIndex = max(heroIndex - 1, 0)
-                                },
-                                onNextSlide: {
-                                    guard !heroes.isEmpty else { return }
-                                    heroAutoScrollEnabled = false
-                                    heroIndex = min(heroIndex + 1, heroes.count - 1)
+            if viewModel.selectedShowAllSection != nil {
+                CatalogShowAllPage(viewModel: viewModel, onBack: { viewModel.closeShowAll() })
+            } else {
+                let sections = viewModel.catalogSections
+                let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
+                ScrollViewReader { proxy in
+                    ZStack {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 26) {
+                                if hero != nil && !isGridDestination {
+                                    CatalogHeroView(
+                                        viewModel: viewModel,
+                                        games: heroes,
+                                        activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
+                                        availableWidth: viewport.size.width,
+                                        onSelectSlide: { index in
+                                            heroAutoScrollEnabled = false
+                                            heroIndex = index
+                                        },
+                                        onPreviousSlide: {
+                                            guard !heroes.isEmpty else { return }
+                                            heroAutoScrollEnabled = false
+                                            heroIndex = max(heroIndex - 1, 0)
+                                        },
+                                        onNextSlide: {
+                                            guard !heroes.isEmpty else { return }
+                                            heroAutoScrollEnabled = false
+                                            heroIndex = min(heroIndex + 1, heroes.count - 1)
+                                        }
+                                    )
                                 }
-                            )
-                        }
 
-                        if !viewModel.errorMessage.isEmpty {
-                            CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                        }
-                        if viewModel.isBrowseMode {
-                            CatalogBrowseControlsView(viewModel: viewModel)
-                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                        }
-                        if isGridDestination, let section = sections.first {
-                            CatalogDestinationGridView(viewModel: viewModel, section: section)
-                            if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
-                                GameDetailPanel(viewModel: viewModel)
-                                    .padding(.top, -10)
-                                    .padding(.bottom, 22)
-                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                                    .onHover { isPointerInsideDetailPanel = $0 }
-                                    .id(detailAnchor)
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            }
-                        } else {
-                            // Stable identity: offset-based IDs shift every rail below an
-                            // insertion (detail panel, late-loading section), forcing SwiftUI
-                            // to tear down and rebuild all of them inside the lazy stack.
-                            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                                let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
-                                if showsDetail, let railAnchor = selectedRailScrollAnchor {
-                                    Color.clear
-                                        .frame(height: 0)
-                                        .id(railAnchor)
+                                if !viewModel.errorMessage.isEmpty {
+                                    CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                 }
-                                CatalogRailView(viewModel: viewModel, section: section, onShowAll: { openShowAll(section) })
-                                if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
-                                    GameDetailPanel(viewModel: viewModel)
-                                        .padding(.top, -8)
-                                        .padding(.bottom, 22)
-                                        .onHover { isPointerInsideDetailPanel = $0 }
-                                        .id(detailAnchor)
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                if viewModel.isBrowseMode {
+                                    CatalogBrowseControlsView(viewModel: viewModel)
+                                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                 }
-                            }
-                        }
+                                if isGridDestination, let section = sections.first {
+                                    CatalogDestinationGridView(viewModel: viewModel, section: section)
+                                    if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
+                                        GameDetailPanel(viewModel: viewModel)
+                                            .padding(.top, -10)
+                                            .padding(.bottom, 22)
+                                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                                            .onHover { isPointerInsideDetailPanel = $0 }
+                                            .id(detailAnchor)
+                                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    }
+                                } else {
+                                    ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                                        let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
+                                        if showsDetail, let railAnchor = selectedRailScrollAnchor {
+                                            Color.clear
+                                                .frame(height: 0)
+                                                .id(railAnchor)
+                                        }
+                                        CatalogRailView(viewModel: viewModel, section: section, onShowAll: { viewModel.openShowAll(section) })
+                                        if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
+                                            GameDetailPanel(viewModel: viewModel)
+                                                .padding(.top, -8)
+                                                .padding(.bottom, 22)
+                                                .onHover { isPointerInsideDetailPanel = $0 }
+                                                .id(detailAnchor)
+                                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                        }
+                                    }
+                                }
 
-                        if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
-                            CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
-                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                                .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
+                                if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
+                                    CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
+                                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                                        .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
+                                }
+                            }
+                            .padding(.bottom, 44)
+                        }
+                        .background(
+                            Color.gfnBackgroundGreen
+                                .contentShape(Rectangle())
+                                .onTapGesture { viewModel.closeGameDetailsFromBackground() }
+                        )
+                        .simultaneousGesture(TapGesture().onEnded {
+                            guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
+                            viewModel.closeGameDetailsFromBackground()
+                        })
+
+                        if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
+                            VendorSplashLoadingView()
+                                .transition(.opacity)
                         }
                     }
-                    .padding(.bottom, 44)
+                    .onChange(of: selectedRailScrollAnchor) { _, anchor in
+                        scrollToSelectedRail(anchor, proxy: proxy)
+                    }
+                    .onChange(of: viewModel.selectedGameRevealRequest) { _, _ in
+                        scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
+                    }
                 }
-                .background(
-                    Color.gfnBackgroundGreen
-                        .contentShape(Rectangle())
-                        .onTapGesture { viewModel.closeGameDetailsFromBackground() }
-                )
-                .simultaneousGesture(TapGesture().onEnded {
-                    guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
-                    viewModel.closeGameDetailsFromBackground()
-                })
-
-                if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
-                    VendorSplashLoadingView()
-                        .transition(.opacity)
+                .background(Color.gfnBackgroundGreen)
+                .onReceive(heroTimer) { _ in
+                    guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        heroIndex = (heroIndex + 1) % heroes.count
+                    }
                 }
-
-                if let showAllSection {
-                    CatalogShowAllOverlay(
-                        viewModel: viewModel,
-                        section: showAllSection,
-                        onDismiss: { self.showAllSectionId = nil },
-                        onSelect: { game in
-                            viewModel.selectGame(game, inSection: showAllSection.id)
-                            self.showAllSectionId = nil
-                        }
-                    )
-                    .transition(.opacity)
-                    .zIndex(30)
+                .onChange(of: heroIdentityList) { _, identities in
+                    guard !identities.isEmpty else {
+                        heroIndex = 0
+                        return
+                    }
+                    if heroIndex >= identities.count { heroIndex = 0 }
                 }
             }
-            .onChange(of: selectedRailScrollAnchor) { _, anchor in
-                scrollToSelectedRail(anchor, proxy: proxy)
-            }
-            .onChange(of: viewModel.selectedGameRevealRequest) { _, _ in
-                scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
-            }
         }
-        }
-        .background(Color.gfnBackgroundGreen)
-        .onReceive(heroTimer) { _ in
-            guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                heroIndex = (heroIndex + 1) % heroes.count
-            }
-        }
-        .onChange(of: heroIdentityList) { _, identities in
-            guard !identities.isEmpty else {
-                heroIndex = 0
-                return
-            }
-            if heroIndex >= identities.count { heroIndex = 0 }
-        }
-    }
-
-    private var showAllSection: CatalogSectionModel? {
-        guard let showAllSectionId else { return nil }
-        return viewModel.catalogSections.first { $0.id == showAllSectionId }
-    }
-
-    private func openShowAll(_ section: CatalogSectionModel) {
-        showAllSectionId = section.id
-        viewModel.loadFullSectionIfNeeded(section)
     }
 
     private var heroGames: [OPNCatalogGameObject] {
@@ -2225,11 +2205,6 @@ private struct CatalogHeroView: View {
     let viewModel: CatalogViewModel
     let games: [OPNCatalogGameObject]
     let activeIndex: Int
-    // Width comes from the scroll viewport, measured OUTSIDE the scroll content.
-    // Never derive this view's frame height from state written inside its own
-    // GeometryReader: at window widths below ~1548pt heroHeight() varies with
-    // width, and the width -> @State -> height -> layout -> width round-trip
-    // livelocks the main thread (state writes during the transaction flush).
     let availableWidth: CGFloat
     let onSelectSlide: (Int) -> Void
     let onPreviousSlide: () -> Void
@@ -2546,7 +2521,7 @@ private struct CatalogRailView: View {
         visibleGames.append(sectionGame)
         return visibleGames
     }
-    private var canShowAll: Bool { section.canLoadFullList || section.games.count > games.count }
+    private var canShowAll: Bool { section.canLoadFullList }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2569,9 +2544,6 @@ private struct CatalogRailView: View {
             ScrollViewReader { proxy in
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        // Plain HStack on purpose: rails cap at 18 fixed-size tiles, and a
-                        // LazyHStack nested inside the sections LazyVStack livelocks SwiftUI's
-                        // lazy layout (AllItemsPhaseMutation churn) on macOS 26.
                         HStack(alignment: .top, spacing: 0) {
                             ForEach(games, id: \.catalogIdentity) { game in
                                 EquatableView(content: CatalogGameTile(
@@ -2771,455 +2743,6 @@ private struct CatalogSeeMoreTile: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityLabel("See all")
-    }
-}
-
-private struct CatalogShowAllOverlay: View {
-    let viewModel: CatalogViewModel
-    let section: CatalogSectionModel
-    let onDismiss: () -> Void
-    let onSelect: (OPNCatalogGameObject) -> Void
-    @State private var searchQuery = ""
-    @State private var userSize: CGSize? = CatalogShowAllWindowPreferences.loadSize()
-    @State private var resizeStartSize: CGSize?
-    @State private var userOffset = CGSize.zero
-    @State private var resizeStartOffset = CGSize.zero
-
-    private let columns = [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2), spacing: 4, alignment: .top)]
-
-    var body: some View {
-        GeometryReader { proxy in
-            let panelSize = overlaySize(for: proxy.size)
-            let panelOffset = clampedOffset(userOffset, panelSize: panelSize, containerSize: proxy.size)
-            ZStack {
-                Color.black.opacity(0.50)
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: onDismiss)
-
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .top, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(section.title.uppercased())
-                                .font(.nvidia(size: 24, weight: .bold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Text(resultSummary)
-                                .font(.nvidia(size: 12, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.56))
-                        }
-                        Spacer(minLength: 0)
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark")
-                                .font(.nvidia(size: 15, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.78))
-                                .frame(width: 34, height: 34)
-                                .background(Color.white.opacity(0.08))
-                                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Close show all")
-                    }
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.nvidia(size: 14, weight: .bold))
-                            .foregroundStyle(Color.openNowGreen)
-                        TextField("Search titles, genres, publishers, stores, controls, ratings, tags", text: $searchQuery)
-                            .textFieldStyle(.plain)
-                            .font(.nvidia(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                        if !searchQuery.isEmpty {
-                            Button("CLEAR") { searchQuery = "" }
-                                .buttonStyle(.plain)
-                                .font(.nvidia(size: 11, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.64))
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .frame(height: 42)
-                    .background(Color.black.opacity(0.34))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-
-                    ScrollView {
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                            ForEach(Array(filteredGames.enumerated()), id: \.offset) { _, game in
-                                CatalogGameTile(
-                                    game: game,
-                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
-                                    isSelected: isSelected(game),
-                                    isSelectionActive: viewModel.selectedGame != nil,
-                                    isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                                    onSelect: { onSelect(game) },
-                                    onPlay: { viewModel.launch(game: game) },
-                                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
-                                )
-                            }
-                        }
-                        .padding(.bottom, 10)
-                    }
-                    .overlay {
-                        if filteredGames.isEmpty {
-                            CatalogShowAllEmptySearchView(query: searchQuery)
-                        }
-                    }
-                }
-                .padding(22)
-                .frame(width: panelSize.width, height: panelSize.height, alignment: .topLeading)
-                .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.96))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
-                .overlay { CatalogShowAllResizeZones(resizeAction: { edge in resizeGesture(edge: edge, containerSize: proxy.size, currentSize: panelSize) }) }
-                .offset(panelOffset)
-                .shadow(color: .black.opacity(0.46), radius: 28, x: 0, y: 18)
-            }
-        }
-    }
-
-    private var filteredGames: [OPNCatalogGameObject] {
-        let terms = CatalogSearchQueryParser.terms(from: searchQuery)
-        guard !terms.isEmpty else { return section.games }
-        return section.games.filter { game in
-            let searchableText = game.advancedSearchText
-            return terms.allSatisfy { searchableText.contains($0) }
-        }
-    }
-
-    private var resultSummary: String {
-        let count = filteredGames.count
-        let total = section.games.count
-        if section.isLoadingFullList, searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Loading full list... \(total) games loaded" }
-        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "\(total) games" }
-        return "\(count) of \(total) games"
-    }
-
-    private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
-        guard let selectedGame = viewModel.selectedGame else { return false }
-        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
-    }
-
-    private func overlaySize(for containerSize: CGSize) -> CGSize {
-        let fallback = CGSize(width: containerSize.width * 0.72, height: containerSize.height * 0.72)
-        let rawSize = userSize ?? fallback
-        return CGSize(
-            width: clamped(rawSize.width, minimum: minimumOverlayWidth(for: containerSize), maximum: maximumOverlayWidth(for: containerSize)),
-            height: clamped(rawSize.height, minimum: minimumOverlayHeight(for: containerSize), maximum: maximumOverlayHeight(for: containerSize))
-        )
-    }
-
-    private func resizeGesture(edge: CatalogShowAllResizeEdge, containerSize: CGSize, currentSize: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                let startSize = resizeStartSize ?? currentSize
-                let startOffset = resizeStartSize == nil ? userOffset : resizeStartOffset
-                resizeStartSize = startSize
-                resizeStartOffset = startOffset
-                let widthDelta = edge.horizontalDelta(from: value.translation.width)
-                let heightDelta = edge.verticalDelta(from: value.translation.height)
-                let nextSize = CGSize(
-                    width: clamped(startSize.width + widthDelta, minimum: minimumOverlayWidth(for: containerSize), maximum: maximumOverlayWidth(for: containerSize)),
-                    height: clamped(startSize.height + heightDelta, minimum: minimumOverlayHeight(for: containerSize), maximum: maximumOverlayHeight(for: containerSize))
-                )
-                let nextOffset = CGSize(
-                    width: startOffset.width + edge.horizontalOffsetDelta(sizeDelta: nextSize.width - startSize.width),
-                    height: startOffset.height + edge.verticalOffsetDelta(sizeDelta: nextSize.height - startSize.height)
-                )
-                userSize = nextSize
-                userOffset = clampedOffset(nextOffset, panelSize: nextSize, containerSize: containerSize)
-            }
-            .onEnded { _ in
-                if let userSize { CatalogShowAllWindowPreferences.saveSize(userSize) }
-                resizeStartSize = nil
-                resizeStartOffset = .zero
-            }
-    }
-
-    private func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
-        min(max(value, minimum), maximum)
-    }
-
-    private func clampedOffset(_ offset: CGSize, panelSize: CGSize, containerSize: CGSize) -> CGSize {
-        CGSize(
-            width: clamped(offset.width, minimum: -maximumOffsetX(panelSize: panelSize, containerSize: containerSize), maximum: maximumOffsetX(panelSize: panelSize, containerSize: containerSize)),
-            height: clamped(offset.height, minimum: -maximumOffsetY(panelSize: panelSize, containerSize: containerSize), maximum: maximumOffsetY(panelSize: panelSize, containerSize: containerSize))
-        )
-    }
-
-    private func maximumOffsetX(panelSize: CGSize, containerSize: CGSize) -> CGFloat {
-        max((containerSize.width - panelSize.width) / 2 - 32, 0)
-    }
-
-    private func maximumOffsetY(panelSize: CGSize, containerSize: CGSize) -> CGFloat {
-        max((containerSize.height - panelSize.height) / 2 - 32, 0)
-    }
-
-    private func minimumOverlayWidth(for size: CGSize) -> CGFloat {
-        min(max(size.width - 64, 360), 760)
-    }
-
-    private func maximumOverlayWidth(for size: CGSize) -> CGFloat {
-        max(size.width - 64, minimumOverlayWidth(for: size))
-    }
-
-    private func minimumOverlayHeight(for size: CGSize) -> CGFloat {
-        min(max(size.height - 64, 360), 520)
-    }
-
-    private func maximumOverlayHeight(for size: CGSize) -> CGFloat {
-        max(size.height - 64, minimumOverlayHeight(for: size))
-    }
-}
-
-private enum CatalogShowAllWindowPreferences {
-    private static let widthKey = "MacForceNow.catalog.showAllWindow.width"
-    private static let heightKey = "MacForceNow.catalog.showAllWindow.height"
-
-    static func loadSize() -> CGSize? {
-        let width = UserDefaults.standard.double(forKey: widthKey)
-        let height = UserDefaults.standard.double(forKey: heightKey)
-        guard width > 0, height > 0 else { return nil }
-        return CGSize(width: width, height: height)
-    }
-
-    static func saveSize(_ size: CGSize) {
-        UserDefaults.standard.set(Double(size.width), forKey: widthKey)
-        UserDefaults.standard.set(Double(size.height), forKey: heightKey)
-    }
-}
-
-private struct CatalogShowAllResizeZones<ResizeGesture: Gesture>: View {
-    let resizeAction: (CatalogShowAllResizeEdge) -> ResizeGesture
-
-    private let edgeThickness: CGFloat = 8
-    private let cornerSize: CGFloat = 28
-
-    var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                resizeZone(.top, height: edgeThickness)
-                Spacer(minLength: 0)
-                resizeZone(.bottom, height: edgeThickness)
-            }
-            HStack(spacing: 0) {
-                resizeZone(.left, width: edgeThickness)
-                Spacer(minLength: 0)
-                resizeZone(.right, width: edgeThickness)
-            }
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    resizeZone(.topLeft, width: cornerSize, height: cornerSize)
-                    Spacer(minLength: 0)
-                    resizeZone(.topRight, width: cornerSize, height: cornerSize)
-                }
-                Spacer(minLength: 0)
-                HStack(spacing: 0) {
-                    resizeZone(.bottomLeft, width: cornerSize, height: cornerSize)
-                    Spacer(minLength: 0)
-                    ZStack(alignment: .bottomTrailing) {
-                        resizeZone(.bottomRight, width: cornerSize, height: cornerSize)
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.28))
-                                .frame(width: 9, height: 1)
-                            Rectangle()
-                                .fill(Color.white.opacity(0.42))
-                                .frame(width: 15, height: 1)
-                            Rectangle()
-                                .fill(Color.openNowGreen.opacity(0.86))
-                                .frame(width: 21, height: 1)
-                        }
-                        .rotationEffect(.degrees(-45))
-                        .offset(x: -10, y: -10)
-                        .allowsHitTesting(false)
-                    }
-                }
-            }
-        }
-    }
-
-    private func resizeZone(_ edge: CatalogShowAllResizeEdge, width: CGFloat? = nil, height: CGFloat? = nil) -> some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: width, height: height)
-            .contentShape(Rectangle())
-            .gesture(resizeAction(edge))
-            .cursor(edge.cursor)
-            .accessibilityLabel(edge.accessibilityLabel)
-    }
-}
-
-private enum CatalogShowAllResizeEdge {
-    case top
-    case bottom
-    case left
-    case right
-    case topLeft
-    case topRight
-    case bottomLeft
-    case bottomRight
-
-    @MainActor var cursor: NSCursor {
-        switch self {
-        case .top, .bottom: return .resizeUpDown
-        case .left, .right: return .resizeLeftRight
-        case .topLeft, .bottomRight: return .catalogDiagonalResizeForward
-        case .topRight, .bottomLeft: return .catalogDiagonalResizeBackward
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .top: return "Resize show all window from top edge"
-        case .bottom: return "Resize show all window from bottom edge"
-        case .left: return "Resize show all window from left edge"
-        case .right: return "Resize show all window from right edge"
-        case .topLeft: return "Resize show all window from top left corner"
-        case .topRight: return "Resize show all window from top right corner"
-        case .bottomLeft: return "Resize show all window from bottom left corner"
-        case .bottomRight: return "Resize show all window from bottom right corner"
-        }
-    }
-
-    func horizontalDelta(from translation: CGFloat) -> CGFloat {
-        switch self {
-        case .left, .topLeft, .bottomLeft: return -translation
-        case .right, .topRight, .bottomRight: return translation
-        case .top, .bottom: return 0
-        }
-    }
-
-    func verticalDelta(from translation: CGFloat) -> CGFloat {
-        switch self {
-        case .top, .topLeft, .topRight: return -translation
-        case .bottom, .bottomLeft, .bottomRight: return translation
-        case .left, .right: return 0
-        }
-    }
-
-    func horizontalOffsetDelta(sizeDelta: CGFloat) -> CGFloat {
-        switch self {
-        case .left, .topLeft, .bottomLeft: return -sizeDelta / 2
-        case .right, .topRight, .bottomRight: return sizeDelta / 2
-        case .top, .bottom: return 0
-        }
-    }
-
-    func verticalOffsetDelta(sizeDelta: CGFloat) -> CGFloat {
-        switch self {
-        case .top, .topLeft, .topRight: return -sizeDelta / 2
-        case .bottom, .bottomLeft, .bottomRight: return sizeDelta / 2
-        case .left, .right: return 0
-        }
-    }
-}
-
-private extension View {
-    func cursor(_ cursor: NSCursor) -> some View {
-        modifier(CatalogCursorModifier(cursor: cursor))
-    }
-}
-
-private struct CatalogCursorModifier: ViewModifier {
-    let cursor: NSCursor
-    @State private var isHovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering, !isHovering {
-                    cursor.push()
-                    isHovering = true
-                } else if !hovering, isHovering {
-                    NSCursor.pop()
-                    isHovering = false
-                }
-            }
-            .onDisappear {
-                guard isHovering else { return }
-                NSCursor.pop()
-                isHovering = false
-            }
-    }
-}
-
-@MainActor private extension NSCursor {
-    static let catalogDiagonalResizeForward = NSCursor.catalogDiagonalResize(angle: 45)
-    static let catalogDiagonalResizeBackward = NSCursor.catalogDiagonalResize(angle: -45)
-
-    private static func catalogDiagonalResize(angle: CGFloat) -> NSCursor {
-        let size = CGSize(width: 18, height: 18)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        NSColor.clear.setFill()
-        NSRect(origin: .zero, size: size).fill()
-        let transform = NSAffineTransform()
-        transform.translateX(by: size.width / 2, yBy: size.height / 2)
-        transform.rotate(byDegrees: angle)
-        transform.translateX(by: -size.width / 2, yBy: -size.height / 2)
-        transform.concat()
-        let path = NSBezierPath()
-        path.move(to: CGPoint(x: 3, y: 9))
-        path.line(to: CGPoint(x: 15, y: 9))
-        path.move(to: CGPoint(x: 3, y: 9))
-        path.line(to: CGPoint(x: 7, y: 5))
-        path.move(to: CGPoint(x: 3, y: 9))
-        path.line(to: CGPoint(x: 7, y: 13))
-        path.move(to: CGPoint(x: 15, y: 9))
-        path.line(to: CGPoint(x: 11, y: 5))
-        path.move(to: CGPoint(x: 15, y: 9))
-        path.line(to: CGPoint(x: 11, y: 13))
-        path.lineWidth = 1.7
-        NSColor.white.setStroke()
-        path.stroke()
-        image.unlockFocus()
-        return NSCursor(image: image, hotSpot: CGPoint(x: size.width / 2, y: size.height / 2))
-    }
-}
-
-private struct CatalogShowAllEmptySearchView: View {
-    let query: String
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.nvidia(size: 34, weight: .bold))
-                .foregroundStyle(Color.openNowGreen.opacity(0.84))
-            Text("No matching games")
-                .font(.nvidia(size: 18, weight: .bold))
-                .foregroundStyle(.white.opacity(0.88))
-            Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Try searching by title, genre, store, publisher, input type, rating, or tag." : "No metadata matched \"\(query)\".")
-                .font(.nvidia(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.58))
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-        }
-        .padding(28)
-    }
-}
-
-private enum CatalogSearchQueryParser {
-    static func terms(from query: String) -> [String] {
-        var terms: [String] = []
-        var current = ""
-        var isQuoted = false
-        for character in query.lowercased() {
-            if character == "\"" {
-                append(current, to: &terms)
-                current = ""
-                isQuoted.toggle()
-            } else if character.isWhitespace && !isQuoted {
-                append(current, to: &terms)
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        append(current, to: &terms)
-        return terms
-    }
-
-    private static func append(_ value: String, to terms: inout [String]) {
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return }
-        terms.append(normalized)
     }
 }
 
@@ -3434,7 +2957,7 @@ private struct MallRibbonShape: Shape {
     }
 }
 
-private struct GameDetailPanel: View {
+struct GameDetailPanel: View {
     let viewModel: CatalogViewModel
     @State private var activeImageIndex = 0
     @State private var isDescriptionExpanded = false
@@ -3451,9 +2974,6 @@ private struct GameDetailPanel: View {
                 let panelWidth = max(1, proxy.size.width)
                 let contentWidth = min(panelWidth * 0.43, 820)
                 let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
-                // The left edge of the image frame sits under the text gradient; the media only
-                // reads as starting at contentWidth + 54 (where the page dots center), so shift
-                // the loading/failure icon to center it within that visible region.
                 let hiddenImageLeading = max(0, contentWidth + 54 - (panelWidth - imageWidth))
                 ZStack(alignment: .topTrailing) {
                     CatalogRemoteImage(
@@ -4373,18 +3893,17 @@ struct CatalogRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
     var fallbackIconOffsetX: CGFloat = 0
+    var maxPixelSize: CGFloat = 1920 * 2
 
     var body: some View {
-        // No ProgressView here: every spinner is an AppKit-hosted NSProgressIndicator whose
-        // animation keeps the SwiftUI graph busy; dozens of them during a scroll starve the
-        // main actor so image loads never finish -> permanent livelock (see hang-sample1/7/8).
-        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
+        CatalogCachedImageView(url: url, contentMode: contentMode, maxPixelSize: maxPixelSize, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
     }
 }
 
 private struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
     let url: URL?
     let contentMode: ContentMode
+    var maxPixelSize: CGFloat = 1920 * 2
     let placeholder: Placeholder
     let failure: Failure
 
@@ -4414,7 +3933,7 @@ private struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
             hasFailed = true
             return
         }
-        guard let cached = await CatalogImageCache.shared.image(for: url), !Task.isCancelled else {
+        guard let cached = await CatalogImageCache.shared.image(for: url, maxPixelSize: maxPixelSize), !Task.isCancelled else {
             hasFailed = !Task.isCancelled
             return
         }
@@ -4593,10 +4112,6 @@ struct FlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        // Must never return a non-finite size: SwiftUI probes with nil/0/.infinity
-        // proposals, and returning .infinity poisons downstream geometry into NaN,
-        // which never compares equal to itself — the layout graph then re-evaluates
-        // forever (main-thread livelock whenever this layout is on screen).
         let proposedWidth = proposal.width
         let width: CGFloat = (proposedWidth?.isFinite == true && proposedWidth! > 0) ? proposedWidth! : 320
         var size = CGSize(width: width, height: 0)
@@ -4750,9 +4265,6 @@ extension OPNCatalogGameObject {
 
         func append(_ value: String) {
             guard !value.isEmpty else { return }
-            // The same asset is stored at several optimize widths (";f=webp;w=N"
-            // suffixes added by optimizeImageURL), so dedupe by the base URL or
-            // every screenshot shows twice in the carousel.
             let key = String(value.prefix(while: { $0 != ";" }))
             guard !seen.contains(key) else { return }
             seen.insert(key)

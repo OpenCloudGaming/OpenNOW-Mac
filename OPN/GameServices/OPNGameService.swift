@@ -192,7 +192,7 @@ final class OPNGameService: @unchecked Sendable {
             definitionsMaxAgeSeconds: Self.catalogDefinitionsFreshSeconds
         ) { [weak self] freshCatalog, freshDefinitions in
             guard let self else { return }
-            if var fresh = freshCatalog, let definitions = freshDefinitions {
+            if var fresh = freshCatalog, let definitions = freshDefinitions, self.hasValidFilterGroups(definitions) {
                 _ = self.parseCatalogDefinitions(definitions, result: &fresh)
                 self.dispatchCatalogBrowse(completion, true, fresh, "")
                 return
@@ -208,7 +208,7 @@ final class OPNGameService: @unchecked Sendable {
             guard let self else { return }
             OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: parameters.locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
                 guard let self else { return }
-                if let cachedDefinitions {
+                if let cachedDefinitions, self.hasValidFilterGroups(cachedDefinitions) {
                     self.handleCatalogDefinitions(cachedDefinitions, "", parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
                     return
                 }
@@ -282,6 +282,7 @@ final class OPNGameService: @unchecked Sendable {
                 filters: filters as NSDictionary,
                 catalogCacheKey: parameters.catalogCacheKey,
                 deliveredCachedResult: deliveredCachedResult,
+                maxPages: 1,
                 completion: completion
             )
         }
@@ -327,7 +328,8 @@ final class OPNGameService: @unchecked Sendable {
                 searchString: "",
                 filters: Self.libraryCatalogFilter,
                 catalogCacheKey: catalogCacheKey,
-                deliveredCachedResult: AtomicFlag()
+                deliveredCachedResult: AtomicFlag(),
+                maxPages: Self.maxCatalogPages
             ) { [weak self] success, browseResult, error in
                 self?.dispatchCatalog(completion, success, browseResult.games, error)
             }
@@ -704,9 +706,7 @@ final class OPNGameService: @unchecked Sendable {
                     return
                 }
                 let panels = self.parsePanelResults(rawPanels)
-                self.enrichPanelResults(panels, vpcId: resolvedVpcId) { enrichedPanels in
-                    self.dispatchPanel(completion, true, enrichedPanels, "")
-                }
+                self.dispatchPanel(completion, true, panels, "")
             }
         }
     }
@@ -786,10 +786,11 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, completion: @escaping OPNCatalogBrowseCallback) {
+    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, maxPages: Int, completion: @escaping OPNCatalogBrowseCallback) {
         let state = CatalogPageState(result: baseResult)
         let filterBox = NSDictionaryBox(filters)
         let fetchPage = RecursiveCatalogPageFetcher()
+        let deliveredFirstPage = AtomicFlag()
         fetchPage.action = { [weak self, state, fetchPage] page, cursor in
             guard let self else { return }
             var variables: [String: Any] = ["vpcId": vpcId, "locale": locale, "sortString": sortString, "fetchCount": fetchCount, "cursor": cursor, "filters": filterBox.value]
@@ -815,18 +816,33 @@ final class OPNGameService: @unchecked Sendable {
                     state.result.totalCount = self.safeInt(pageInfo?["totalCount"])
                     state.result.hasNextPage = hasNextPage
                     if !endCursor.isEmpty { state.result.endCursor = endCursor }
-                    if hasNextPage, !endCursor.isEmpty, page + 1 < Self.maxCatalogPages {
+
+                    if maxPages == 1, page == 0, !deliveredCachedResult.value, !deliveredFirstPage.value {
+                        deliveredFirstPage.setTrue()
+                        let firstPageGames = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
+                        self.enrichGames(firstPageGames, vpcId: vpcId) { enriched in
+                            var firstPageResult = state.result
+                            firstPageResult.games = enriched
+                            firstPageResult.numberSupported = max(state.result.numberSupported, enriched.count)
+                            OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: firstPageResult)
+                            self.dispatchCatalogBrowse(completion, true, firstPageResult, "")
+                        }
+                    }
+
+                    if hasNextPage, !endCursor.isEmpty, page + 1 < maxPages {
                         fetchPage.action?(page + 1, endCursor)
                         return
                     }
-                    let games = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
-                    state.result.numberSupported = max(state.result.numberSupported, games.count)
-                    state.result.totalCount = max(state.result.totalCount, games.count)
-                    self.enrichGames(games, vpcId: vpcId) { enriched in
-                        var finalResult = state.result
-                        finalResult.games = enriched
-                        OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: finalResult)
-                        self.dispatchCatalogBrowse(completion, true, finalResult, "")
+                    if !deliveredFirstPage.value {
+                        let games = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
+                        self.enrichGames(games, vpcId: vpcId) { enriched in
+                            state.result.numberSupported = max(state.result.numberSupported, enriched.count)
+                            state.result.totalCount = max(state.result.totalCount, enriched.count)
+                            var finalResult = state.result
+                            finalResult.games = enriched
+                            OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: finalResult)
+                            self.dispatchCatalogBrowse(completion, true, finalResult, "")
+                        }
                     }
                 }
             }
@@ -1169,6 +1185,12 @@ final class OPNGameService: @unchecked Sendable {
             }
         }
         return filterPayloadById
+    }
+
+    private func hasValidFilterGroups(_ definitions: NSDictionary?) -> Bool {
+        guard let definitions else { return false }
+        let groups = definitions["filterGroupDefinitions"] as? [NSDictionary] ?? []
+        return !groups.isEmpty
     }
 
     private func parseUserAccountInfo(_ data: NSDictionary?) -> OPNUserAccountInfo {

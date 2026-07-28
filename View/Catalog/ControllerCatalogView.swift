@@ -170,18 +170,17 @@ struct ControllerCatalogView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
-                if controllerViewModel.isSearchVisible {
+                if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil {
                     ControllerSearchOverlay(
                         viewModel: viewModel,
                         glyphs: activeGlyphs,
                         rowIndex: controllerViewModel.searchRowIndex,
                         filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                         resultIndex: controllerViewModel.searchResultIndex,
-                        resultColumnCount: $controllerViewModel.searchResultColumnCount,
                         layout: layout,
                         selectSort: { index in setSort(at: index) },
                         selectFilter: { group, index in setFilterOption(group: group, index: index) },
-                        selectResult: { game in openDetails(game, sectionId: "catalog-results") },
+                        selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
                         close: { closeSearchOverlay() },
                         clear: { viewModel.clearSearchAndFilters() }
                     )
@@ -202,21 +201,6 @@ struct ControllerCatalogView: View {
                     )
                     .transition(.opacity)
                     .zIndex(28)
-                }
-
-                if let showAllSection = currentShowAllSection {
-                    ControllerShowAllOverlay(
-                        viewModel: viewModel,
-                        section: showAllSection,
-                        selectedIndex: controllerViewModel.showAllIndex,
-                        columnCount: $controllerViewModel.showAllColumnCount,
-                        glyphs: activeGlyphs,
-                        layout: layout,
-                        select: { game in openDetails(game, sectionId: showAllSection.id) },
-                        close: closeShowAll
-                    )
-                    .transition(.opacity)
-                    .zIndex(26)
                 }
 
                 if controllerViewModel.isActionMenuVisible {
@@ -280,7 +264,7 @@ struct ControllerCatalogView: View {
     }
 
     private var hasModalOverlay: Bool {
-        controllerViewModel.hasControllerOverlay || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
+        controllerViewModel.hasControllerOverlay || viewModel.selectedShowAllSection != nil || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
     }
 
     private var activeNavigationItem: ControllerNavigationItem {
@@ -306,9 +290,8 @@ struct ControllerCatalogView: View {
 
     private var hints: [ControllerHint] {
         if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
-        if controllerViewModel.isSearchVisible { return [.move, .select, .back, .clear] }
+        if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
-        if controllerViewModel.showAllSection != nil { return [.move, .select, .back] }
         if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
         return [.move, .select, .back, .search, .menu]
     }
@@ -328,8 +311,7 @@ struct ControllerCatalogView: View {
     private func handleInput(_ command: ControllerInputCommand) {
         if handleSharedOverlayInput(command) { return }
         if controllerViewModel.isActionMenuVisible { handleActionMenuInput(command); return }
-        if controllerViewModel.isSearchVisible { handleSearchInput(command); return }
-        if controllerViewModel.showAllSection != nil { handleShowAllInput(command); return }
+        if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { handleSearchInput(command); return }
         if controllerViewModel.isDetailVisible { handleDetailInput(command); return }
         handlePageInput(command)
     }
@@ -424,22 +406,6 @@ struct ControllerCatalogView: View {
         }
     }
 
-    private func handleShowAllInput(_ command: ControllerInputCommand) {
-        guard let section = currentShowAllSection else { return }
-        switch command {
-        case .move(.left): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - 1, 0)
-        case .move(.right): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + 1, max(section.games.count - 1, 0))
-        case .move(.up): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - controllerViewModel.showAllColumnCount, 0)
-        case .move(.down): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + controllerViewModel.showAllColumnCount, max(section.games.count - 1, 0))
-        case .confirm:
-            guard section.games.indices.contains(controllerViewModel.showAllIndex) else { return }
-            openDetails(section.games[controllerViewModel.showAllIndex], sectionId: section.id)
-        case .back, .actions, .menu: closeShowAll()
-        case .search: openSearchOverlay()
-        default: break
-        }
-    }
-
     private func handleDetailInput(_ command: ControllerInputCommand) {
         guard let game = viewModel.selectedGame else { return }
         let actions = detailActions(for: game)
@@ -520,11 +486,6 @@ struct ControllerCatalogView: View {
         return sections[controllerViewModel.selectedRailIndex]
     }
 
-    private var currentShowAllSection: CatalogSectionModel? {
-        guard let section = controllerViewModel.showAllSection else { return nil }
-        return viewModel.catalogSections.first { $0.id == section.id } ?? section
-    }
-
     private func moveRail(delta: Int) {
         let sections = viewModel.catalogSections
         guard !sections.isEmpty else { return }
@@ -548,7 +509,6 @@ struct ControllerCatalogView: View {
         controllerViewModel.detailActionIndex = 0
         controllerViewModel.isDetailVisible = true
         controllerViewModel.isSearchVisible = false
-        controllerViewModel.showAllSection = nil
     }
 
     private func closeDetails() {
@@ -564,6 +524,7 @@ struct ControllerCatalogView: View {
 
     private func closeSearchOverlay() {
         controllerViewModel.isSearchVisible = false
+        viewModel.closeShowAll()
     }
 
     private func openActionMenu() {
@@ -576,14 +537,17 @@ struct ControllerCatalogView: View {
     }
 
     private func openShowAll(_ section: CatalogSectionModel) {
-        controllerViewModel.showAllSection = section
-        controllerViewModel.showAllIndex = clampedSelectedGameIndex(for: section, gameCount: section.games.count)
-        viewModel.loadFullSectionIfNeeded(section)
-    }
-
-    private func closeShowAll() {
-        controllerViewModel.showAllSection = nil
-        controllerViewModel.showAllIndex = 0
+        viewModel.openShowAll(section)
+        controllerViewModel.isSearchVisible = true
+        controllerViewModel.searchRowIndex = 0
+        controllerViewModel.searchResultIndex = 0
+        for group in viewModel.visibleFilterGroups {
+            if let index = group.options.firstIndex(where: { viewModel.selectedFilterIds.contains($0.id) }) {
+                controllerViewModel.searchFilterOptionIndices[group.id] = index
+            } else {
+                controllerViewModel.searchFilterOptionIndices[group.id] = 0
+            }
+        }
     }
 
     private func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
@@ -1025,7 +989,7 @@ private struct ControllerGameRail: View {
     let showAll: () -> Void
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
-    private var canShowAll: Bool { section.canLoadFullList || section.games.count > games.count }
+    private var canShowAll: Bool { section.canLoadFullList }
     private var itemSpacing: CGFloat { 18 }
 
     var body: some View {
@@ -1195,7 +1159,6 @@ private struct ControllerSearchOverlay: View {
     let rowIndex: Int
     let filterOptionIndices: [String: Int]
     let resultIndex: Int
-    @Binding var resultColumnCount: Int
     let layout: ControllerLayoutMetrics
     let selectSort: (Int) -> Void
     let selectFilter: (OPNCatalogFilterGroupObject, Int) -> Void
@@ -1203,13 +1166,25 @@ private struct ControllerSearchOverlay: View {
     let close: () -> Void
     let clear: () -> Void
 
+    private var pageTitle: String {
+        viewModel.selectedShowAllSection?.title.uppercased() ?? "SEARCH CATALOG"
+    }
+
+    private var pageSubtitle: String {
+        if viewModel.selectedShowAllSection != nil {
+            let count = viewModel.totalCatalogCount > 0 ? viewModel.totalCatalogCount : viewModel.catalogGames.count
+            return count == 1 ? "1 game" : "\(count) games"
+        }
+        return "Search, sort, filter, and launch from the full catalog."
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250, spacing: 14)
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.90)
                 VStack(alignment: .leading, spacing: 18) {
-                    ControllerOverlayHeader(title: "Search Catalog", subtitle: "Search, sort, filter, and launch from the full catalog.", glyphs: glyphs, close: close)
+                    ControllerOverlayHeader(title: pageTitle, subtitle: pageSubtitle, glyphs: glyphs, close: close)
                     searchField
                     sortRow
                     filterRows
@@ -1223,8 +1198,6 @@ private struct ControllerSearchOverlay: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
-            .onAppear { resultColumnCount = columns }
-            .onChange(of: columns) { _, value in resultColumnCount = value }
         }
     }
 
@@ -1420,59 +1393,6 @@ private struct ControllerGameDetailOverlay: View {
         if game.maxOnlinePlayers > 1 { return "Online multiplayer" }
         if game.maxLocalPlayers > 1 { return "1-\(game.maxLocalPlayers) local players" }
         return "Single player"
-    }
-}
-
-private struct ControllerShowAllOverlay: View {
-    let viewModel: CatalogViewModel
-    let section: CatalogSectionModel
-    let selectedIndex: Int
-    @Binding var columnCount: Int
-    let glyphs: ControllerInputGlyphSet
-    let layout: ControllerLayoutMetrics
-    let select: (OPNCatalogGameObject) -> Void
-    let close: () -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 290, spacing: 16)
-            ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90)
-                VStack(alignment: .leading, spacing: 18) {
-                    ControllerOverlayHeader(title: section.title, subtitle: subtitle, glyphs: glyphs, close: close)
-                    ScrollViewReader { scrollProxy in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: columns), spacing: 16) {
-                                ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { index, game in
-                                    ControllerCompactGameCard(viewModel: viewModel, game: game, isFocused: selectedIndex == index, action: { select(game) })
-                                        .id(game.catalogIdentity)
-                                }
-                            }
-                            .padding(.bottom, 18)
-                        }
-                        .onChange(of: selectedIndex) { _, index in
-                            guard section.games.indices.contains(index) else { return }
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                scrollProxy.scrollTo(section.games[index].catalogIdentity, anchor: .center)
-                            }
-                        }
-                    }
-                }
-                .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.leading, layout.leadingInset)
-                .padding(.trailing, layout.trailingInset)
-                .padding(.top, 38)
-                .padding(.bottom, 32)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-            .clipped()
-            .onAppear { columnCount = columns }
-            .onChange(of: columns) { _, value in columnCount = value }
-        }
-    }
-
-    private var subtitle: String {
-        section.isLoadingFullList ? "Loading full list... \(section.games.count) games loaded" : "\(section.games.count) games"
     }
 }
 

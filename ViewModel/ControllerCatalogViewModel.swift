@@ -59,17 +59,13 @@ final class ControllerCatalogViewModel: ObservableObject {
     @Published var searchRowIndex = 0
     @Published var searchFilterOptionIndices: [String: Int] = [:]
     @Published var searchResultIndex = 0
-    @Published var searchResultColumnCount = 4
     @Published var isDetailVisible = false
     @Published var detailActionIndex = 0
-    @Published var showAllSection: CatalogSectionModel?
-    @Published var showAllIndex = 0
-    @Published var showAllColumnCount = 4
 
     let navigationItems = ControllerNavigationItem.allCases
 
     var hasControllerOverlay: Bool {
-        isActionMenuVisible || isSearchVisible || isDetailVisible || showAllSection != nil
+        isActionMenuVisible || isSearchVisible || isDetailVisible
     }
 
     func selectedGameIndex(for section: CatalogSectionModel, gameCount: Int) -> Int {

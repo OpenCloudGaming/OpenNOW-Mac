@@ -132,6 +132,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
 final class CatalogViewModel {
     var selectedMainPage = CatalogMainPage.games
     var selectedCatalogDestination = CatalogDestination.home
+    var selectedShowAllSection: CatalogSectionModel? = nil
     var selectedSettingsGroup = CatalogSettingsGroup.account
     var searchQuery = "" {
         didSet { scheduleSearchDebounce() }
@@ -147,14 +148,11 @@ final class CatalogViewModel {
     var mainPanels: [OPNCatalogPanelObject] = []
     var catalogGames: [OPNCatalogGameObject] = []
     var libraryGames: [OPNCatalogGameObject] = []
-    private var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
-    private var loadingFullSectionIds: Set<String> = []
     var filterGroups: [OPNCatalogFilterGroupObject] = []
     var sortOptions: [OPNCatalogSortOptionObject] = []
     var totalCatalogCount = 0
     var supportedCatalogCount = 0
     var hasMoreCatalogResults = false
-    var expandedSectionIds: Set<String> = []
     var accountStores: [CatalogStoreAccount] = []
     var storeDefinitions: [CatalogStoreDefinition] = []
     var selectedGame: OPNCatalogGameObject?
@@ -218,10 +216,6 @@ final class CatalogViewModel {
 
     private var hasStarted = false
 
-    // init must stay cheap and side-effect free: SwiftUI re-runs CatalogView.init on
-    // every parent re-render, and the State(initialValue:) pattern constructs (and
-    // discards) a fresh view model each time. All real work happens in start(),
-    // which the view calls once from .task.
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
         self.session = session
@@ -304,8 +298,6 @@ final class CatalogViewModel {
                 let resolvedTitle = title.isEmpty ? "Featured Games" : title
                 guard !seenTitles.contains(resolvedTitle) else { continue }
                 let sectionId = section.sectionIdentity(fallbackPanelId: panel.id)
-                // Section rails are identified by id in the catalog list ForEach;
-                // a duplicate id would render duplicated rails.
                 guard !seenIds.contains(sectionId) else { continue }
                 seenTitles.insert(resolvedTitle)
                 seenIds.insert(sectionId)
@@ -316,8 +308,7 @@ final class CatalogViewModel {
                     kind: .panel,
                     seeMoreFilterIds: section.seeMoreFilterIds,
                     seeMoreSortId: section.seeMoreSortId,
-                    seeMoreTitle: section.seeMoreTitle,
-                    isLoadingFullList: loadingFullSectionIds.contains(sectionId)
+                    seeMoreTitle: section.seeMoreTitle
                 ))
             }
         }
@@ -367,22 +358,22 @@ final class CatalogViewModel {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        Task { await loadCatalogDataAfterProviderConfiguration() }
+        loadCatalogDataAfterProviderConfiguration()
     }
 
     func refresh() {
-        Task { await loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true) }
+        loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true)
     }
 
-    private func loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: Bool = false) async {
+    private func loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: Bool = false) {
         configureCatalogService()
-        await configureCatalogProviderEndpoint()
+        Task { await configureCatalogProviderEndpoint() }
         loadPanels()
         loadLibrary()
         loadFavorites()
         loadAccountAndStores()
         loadSettingsPreferences()
-        browseCatalog(forceRefresh: forceCatalogRefresh)
+        if forceCatalogRefresh { browseCatalog(forceRefresh: true) }
     }
 
     private func configureCatalogProviderEndpoint() async {
@@ -415,6 +406,60 @@ final class CatalogViewModel {
         selectedCatalogDestination = destination
         selectedGame = nil
         selectedSectionId = ""
+        selectedShowAllSection = nil
+        searchQuery = ""
+        selectedFilterIds = []
+        selectedSortId = "a_to_z"
+        browseGeneration += 1
+        isLoading = false
+        if destination == .home {
+            catalogGames = []
+            totalCatalogCount = 0
+            hasMoreCatalogResults = false
+        }
+    }
+
+    func openBrowseFromSearch() {
+        guard selectedShowAllSection == nil else { return }
+        selectedShowAllSection = CatalogSectionModel(
+            id: "search-browse",
+            title: "Search Results",
+            games: [],
+            kind: .catalog,
+            seeMoreFilterIds: [],
+            seeMoreSortId: "relevance",
+            seeMoreTitle: ""
+        )
+        selectedGame = nil
+        selectedSectionId = ""
+        selectedSortId = "relevance"
+        selectedFilterIds = []
+        browseCatalog()
+    }
+
+    func openShowAll(_ section: CatalogSectionModel) {
+        MacForceNowLog.info(.catalog, "Show All opened section=\(section.id) title=\(section.title) games=\(section.games.count) canLoadFullList=\(section.canLoadFullList) seeMoreFilterIds=\(section.seeMoreFilterIds) seeMoreSortId=\(section.seeMoreSortId)")
+        guard section.kind != .library else { return }
+        selectedShowAllSection = section
+        selectedGame = nil
+        selectedSectionId = ""
+        selectedSortId = section.seeMoreSortId.isEmpty ? "a_to_z" : section.seeMoreSortId
+        selectedFilterIds = section.seeMoreFilterIds
+        searchQuery = ""
+        browseCatalog()
+    }
+
+    func closeShowAll() {
+        selectedShowAllSection = nil
+        selectedGame = nil
+        selectedSectionId = ""
+        searchQuery = ""
+        selectedFilterIds = []
+        selectedSortId = "a_to_z"
+        catalogGames = []
+        totalCatalogCount = 0
+        hasMoreCatalogResults = false
+        isLoading = false
     }
 
     func showSettings(_ group: CatalogSettingsGroup = .account) {
@@ -430,10 +475,12 @@ final class CatalogViewModel {
     private func browseCatalog(forceRefresh: Bool) {
         browseGeneration += 1
         let generation = browseGeneration
+        let browseStartTime = CFAbsoluteTimeGetCurrent()
         isLoading = true
         errorMessage = ""
         configureCatalogService()
         let query = searchQuery.trimmed
+        let resultCount = catalogGames.count
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(
             searchQuery: query,
@@ -446,18 +493,28 @@ final class CatalogViewModel {
             Task { @MainActor in
                 guard let self = selfBox.value, generation == self.browseGeneration else { return }
                 self.isLoading = false
+                let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - browseStartTime) * 1000)
                 guard success else {
+                    MacForceNowLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
                     if self.refreshAuthIfNeeded(error: error) { return }
                     self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
                     return
                 }
                 let browseResult = resultBox.value
+                let newCount = browseResult.games.count
+                let isPartialDelivery = newCount < browseResult.totalCount && browseResult.hasNextPage
+                if isPartialDelivery {
+                    MacForceNowLog.info(.catalog, "Show All first page delivered elapsed=\(elapsedMs)ms games=\(newCount) total=\(browseResult.totalCount) hasNext=\(browseResult.hasNextPage)")
+                } else {
+                    MacForceNowLog.info(.catalog, "Show All browse completed elapsed=\(elapsedMs)ms games=\(newCount) prevGames=\(resultCount) total=\(browseResult.totalCount)")
+                }
                 self.catalogGames = browseResult.games
                 self.totalCatalogCount = browseResult.totalCount
                 self.supportedCatalogCount = browseResult.numberSupported
                 self.hasMoreCatalogResults = browseResult.hasNextPage
                 self.filterGroups = browseResult.filterGroups
                 self.sortOptions = browseResult.sortOptions
+                MacForceNowLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
                 if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
                 self.selectedFilterIds = browseResult.selectedFilterIds
                 self.schedulePatchingPollIfNeeded()
@@ -466,39 +523,8 @@ final class CatalogViewModel {
     }
 
     private func games(for section: OPNCatalogPanelSectionObject, title: String, sectionId: String) -> [OPNCatalogGameObject] {
-        if let games = fullSectionGames[sectionId], !games.isEmpty { return games }
         guard isAllGamesPanelSection(section, title: title), !catalogGames.isEmpty else { return section.games }
         return catalogGames
-    }
-
-    func loadFullSectionIfNeeded(_ section: CatalogSectionModel) {
-        guard section.canLoadFullList, fullSectionGames[section.id] == nil, !loadingFullSectionIds.contains(section.id) else { return }
-        let sectionId = section.id
-        let sortId = section.seeMoreSortId.isEmpty ? selectedSortId : section.seeMoreSortId
-        let filterIds = section.seeMoreFilterIds
-        loadingFullSectionIds.insert(section.id)
-        configureCatalogService()
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.browseCatalogObject(
-            searchQuery: "",
-            sortId: sortId,
-            filterIds: filterIds,
-            fetchCount: 200,
-            forceRefresh: false
-        ) { success, result, error in
-            let resultBox = CatalogSendableValue(result)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                self.loadingFullSectionIds.remove(sectionId)
-                guard success else {
-                    if self.refreshAuthIfNeeded(error: error) { return }
-                    if self.errorMessage.isEmpty { self.errorMessage = error.isEmpty ? "Unable to load the full game list." : error }
-                    return
-                }
-                self.fullSectionGames[sectionId] = resultBox.value.games
-                self.schedulePatchingPollIfNeeded()
-            }
-        }
     }
 
     private func isAllGamesPanelSection(_ section: OPNCatalogPanelSectionObject, title: String) -> Bool {
@@ -536,14 +562,6 @@ final class CatalogViewModel {
         searchQuery = ""
         selectedFilterIds = []
         browseCatalog()
-    }
-
-    func toggleSectionExpansion(_ sectionId: String) {
-        if expandedSectionIds.contains(sectionId) {
-            expandedSectionIds.remove(sectionId)
-        } else {
-            expandedSectionIds.insert(sectionId)
-        }
     }
 
     func selectGame(_ game: OPNCatalogGameObject?) {
@@ -1709,12 +1727,15 @@ final class CatalogViewModel {
         isLoadingPanels = true
         errorMessage = ""
         configureCatalogService()
+        let panelStartTime = CFAbsoluteTimeGetCurrent()
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.fetchMarqueePanelObjects { success, panels, error in
             let panelBox = CatalogSendableValue(panels)
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 if success {
+                    let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
+                    MacForceNowLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panelBox.value.flatMap(\.sections).count)")
                     self.marqueePanels = panelBox.value
                     self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
@@ -1730,6 +1751,9 @@ final class CatalogViewModel {
                 guard let self = selfBox.value else { return }
                 self.isLoadingPanels = false
                 if success {
+                    let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
+                    let gameCount = panelBox.value.flatMap(\.sections).flatMap(\.games).count
+                    MacForceNowLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
                     self.mainPanels = panelBox.value
                     self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
@@ -1999,10 +2023,6 @@ final class CatalogViewModel {
         errorMessage = ""
     }
 
-    // The catalog delivers the same game as separate entries per store SKU
-    // (distinct ids, same title and artwork), so id-based dedup still shows
-    // visual duplicates. Group by normalized title, keeping the SKU already
-    // in the library, then the one with the richest variant list.
     nonisolated static func titleGroupingKey(for game: OPNCatalogGameObject) -> String {
         let normalized = game.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.isEmpty ? identity(for: game) : normalized
@@ -2290,7 +2310,6 @@ struct CatalogSectionModel: Identifiable, Equatable {
     var seeMoreFilterIds: [String] = []
     var seeMoreSortId = ""
     var seeMoreTitle = ""
-    var isLoadingFullList = false
 
     init(
         id: String,
@@ -2299,19 +2318,15 @@ struct CatalogSectionModel: Identifiable, Equatable {
         kind: Kind,
         seeMoreFilterIds: [String] = [],
         seeMoreSortId: String = "",
-        seeMoreTitle: String = "",
-        isLoadingFullList: Bool = false
+        seeMoreTitle: String = ""
     ) {
         self.id = id
         self.title = title
-        // Tiles are keyed by catalogIdentity in ForEach; per-store SKU twins
-        // (same title, distinct ids) would render as duplicate tiles.
         self.games = CatalogViewModel.dedupedByTitleGrouping(games)
         self.kind = kind
         self.seeMoreFilterIds = seeMoreFilterIds
         self.seeMoreSortId = seeMoreSortId
         self.seeMoreTitle = seeMoreTitle
-        self.isLoadingFullList = isLoadingFullList
     }
 
     var canLoadFullList: Bool {
