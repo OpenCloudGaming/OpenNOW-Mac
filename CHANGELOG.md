@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/anderson-oki/macforce-now/compare/v0.4.0...v0.5.0) (2026-07-28)
+
+
+### Features
+
+* improve catalog performance ([#15](https://github.com/anderson-oki/macforce-now/issues/15)) ([b3b942c](https://github.com/anderson-oki/macforce-now/commit/b3b942c9bcf44a4023947bc656e68328ea4b07b9))
+
+
+### Bug Fixes
+
+* app signature validation ([ca873c1](https://github.com/anderson-oki/macforce-now/commit/ca873c1f1fa9a750302989c8058015d262214c42))
+
 ## [0.4.0](https://github.com/anderson-oki/macforce-now/compare/v0.3.0...v0.4.0) (2026-07-27)
 
 
