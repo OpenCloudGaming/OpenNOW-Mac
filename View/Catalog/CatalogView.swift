@@ -10,7 +10,7 @@ import CryptoKit
 import ImageIO
 import SwiftUI
 
-private enum CatalogVendorLayout {
+enum CatalogVendorLayout {
     static let windowTopInset: CGFloat = 32
     static let appBarHeight: CGFloat = 56
     static let appBarBackground = MacForceNowDesign.Surface.appBar
@@ -2113,7 +2113,7 @@ private struct CatalogContentView: View {
                         })
 
                         if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
-                            VendorSplashLoadingView()
+                            CatalogHomeSkeletonView(availableWidth: viewport.size.width)
                                 .transition(.opacity)
                         }
                     }
@@ -3894,7 +3894,7 @@ struct CatalogRemoteImage: View {
     var maxPixelSize: CGFloat = 1920 * 2
 
     var body: some View {
-        CatalogCachedImageView(url: url, contentMode: contentMode, maxPixelSize: maxPixelSize, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
+        CatalogCachedImageView(url: url, contentMode: contentMode, maxPixelSize: maxPixelSize, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX, isLoading: true), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
     }
 }
 
@@ -3942,14 +3942,20 @@ private struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
 
 struct CatalogImageFallback: View {
     var iconOffsetX: CGFloat = 0
+    /// When true the placeholder shimmers to signal the image is still loading (vs. a hard failure).
+    var isLoading = false
 
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            Image(systemName: "play.rectangle.fill")
-                .font(.nvidia(size: 34, weight: .bold))
-                .foregroundStyle(Color.openNowGreen.opacity(0.78))
-                .offset(x: iconOffsetX)
+            if isLoading {
+                SkeletonBlock()
+            } else {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.nvidia(size: 34, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen.opacity(0.78))
+                    .offset(x: iconOffsetX)
+            }
         }
     }
 }

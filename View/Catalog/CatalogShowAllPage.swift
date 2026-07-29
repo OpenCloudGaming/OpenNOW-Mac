@@ -30,17 +30,23 @@ struct CatalogShowAllPage: View {
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
-            CatalogShowAllGridView(
-                viewModel: viewModel,
-                games: viewModel.catalogGames,
-                selectedGame: viewModel.selectedGame,
-                isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
-                imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
-                onSelect: { viewModel.selectGame($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
-                onPlay: { viewModel.launch(game: $0) },
-                onQueueForPatching: { viewModel.queuePatchingLaunch(game: $0) }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if viewModel.isLoading && viewModel.catalogGames.isEmpty {
+                CatalogGridSkeletonView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            } else {
+                CatalogShowAllGridView(
+                    viewModel: viewModel,
+                    games: viewModel.catalogGames,
+                    selectedGame: viewModel.selectedGame,
+                    isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
+                    imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
+                    onSelect: { viewModel.selectGame($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
+                    onPlay: { viewModel.launch(game: $0) },
+                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: $0) }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 

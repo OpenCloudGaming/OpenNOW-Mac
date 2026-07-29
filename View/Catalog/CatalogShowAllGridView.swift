@@ -37,6 +37,20 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         context.coordinator.collectionView = collectionView
+
+        // The column count is derived from the scroll view's width. SwiftUI may hand us our final
+        // width only after the first updateNSView (which happens synchronously for local collection
+        // Show All), so track the clip view's frame changes and re-lay out when the width settles or
+        // the window is resized. Without this the grid can get stuck at its initial narrow width.
+        let clipView = scrollView.contentView
+        clipView.postsFrameChangedNotifications = true
+        context.coordinator.frameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak coordinator = context.coordinator] _ in
+            MainActor.assumeIsolated { coordinator?.handleWidthChange() }
+        }
         return scrollView
     }
 
@@ -111,12 +125,34 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var gameIdentities: [String] = []
     var selectedIdentity: String?
     var lastWidth: CGFloat = 0
+    nonisolated(unsafe) var frameObserver: (any NSObjectProtocol)?
     private var gameCount = 0
     private var firstIdentity: String = ""
     private var lastIdentity: String = ""
 
     init(_ parent: CatalogShowAllGridView) {
         self.parent = parent
+    }
+
+    deinit {
+        if let frameObserver {
+            NotificationCenter.default.removeObserver(frameObserver)
+        }
+    }
+
+    /// Re-lays out the grid when the enclosing scroll view's width changes so the column count and
+    /// document width always match the available space.
+    func handleWidthChange() {
+        guard let collectionView,
+              let scrollView = collectionView.enclosingScrollView,
+              let layout = collectionView.collectionViewLayout as? CatalogShowAllGridLayout else { return }
+        let width = scrollView.contentView.bounds.width
+        guard width > 0, width != lastWidth else { return }
+        lastWidth = width
+        collectionView.frame.size.width = width
+        layout.invalidateLayout()
+        collectionView.layoutSubtreeIfNeeded()
+        collectionView.frame.size.height = layout.collectionViewContentSize.height
     }
 
     func needsIdentityUpdate(for games: [OPNCatalogGameObject]) -> Bool {
