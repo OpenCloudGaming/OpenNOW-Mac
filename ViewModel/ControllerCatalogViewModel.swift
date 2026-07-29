@@ -62,7 +62,9 @@ final class ControllerCatalogViewModel: ObservableObject {
     @Published var isDetailVisible = false
     @Published var detailActionIndex = 0
 
-    let navigationItems = ControllerNavigationItem.allCases
+    // Library and Favorites are no longer standalone destinations — they are reached from the
+    // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
+    let navigationItems: [ControllerNavigationItem] = [.home, .search, .recordings, .settings, .actions]
 
     var hasControllerOverlay: Bool {
         isActionMenuVisible || isSearchVisible || isDetailVisible

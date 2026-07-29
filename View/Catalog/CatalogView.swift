@@ -1162,16 +1162,14 @@ private struct CatalogMainMenuPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("NAVIGATION")
-                        ForEach(CatalogDestination.allCases) { destination in
-                            CatalogMainMenuRow(
-                                title: destination.title,
-                                subtitle: catalogDestinationSubtitle(destination),
-                                systemImage: catalogDestinationIcon(destination),
-                                isActive: viewModel.selectedMainPage == .games && viewModel.selectedCatalogDestination == destination
-                            ) {
-                                viewModel.showCatalogDestination(destination)
-                                isPresented = false
-                            }
+                        CatalogMainMenuRow(
+                            title: CatalogDestination.home.title,
+                            subtitle: catalogDestinationSubtitle(.home),
+                            systemImage: catalogDestinationIcon(.home),
+                            isActive: viewModel.selectedMainPage == .games && viewModel.selectedCatalogDestination == .home
+                        ) {
+                            viewModel.showCatalogDestination(.home)
+                            isPresented = false
                         }
                         CatalogMainMenuRow(title: "Recordings", subtitle: "Watch saved stream videos", systemImage: "play.rectangle.fill", isActive: viewModel.selectedMainPage == .recordings) {
                             viewModel.showRecordings()

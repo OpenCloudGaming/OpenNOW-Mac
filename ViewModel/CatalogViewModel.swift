@@ -86,6 +86,14 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
     }
 }
 
+/// A local, client-filtered game collection surfaced through the revamped Show All page.
+/// Library and Favorites are complete collections we already fetch (`libraryGames` / `favoriteGames`),
+/// so the Show All grid filters/sorts them in-memory instead of issuing a server browse.
+enum ShowAllCollection: String {
+    case library
+    case favorites
+}
+
 @MainActor
 enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
@@ -133,6 +141,9 @@ final class CatalogViewModel {
     var selectedMainPage = CatalogMainPage.games
     var selectedCatalogDestination = CatalogDestination.home
     var selectedShowAllSection: CatalogSectionModel? = nil
+    /// Non-nil while the Show All page is displaying a local collection (My Library / My Favorites)
+    /// rather than a server catalog browse. Routes filter/sort/search through in-memory recompute.
+    var showAllCollectionKind: ShowAllCollection? = nil
     var selectedSettingsGroup = CatalogSettingsGroup.account
     var searchQuery = "" {
         didSet { scheduleSearchDebounce() }
@@ -275,20 +286,12 @@ final class CatalogViewModel {
     }
 
     var catalogSections: [CatalogSectionModel] {
-        if selectedCatalogDestination == .library, !isBrowseMode {
-            return libraryGames.isEmpty ? [] : [CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library)]
-        }
-        if selectedCatalogDestination == .favorites, !isBrowseMode {
-            let games = favoriteGames
-            return games.isEmpty ? [] : [CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: games, kind: .panel)]
-        }
-
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
         var seenIds = Set<String>()
         let remoteFavoriteGames = favoriteGames
         if !isBrowseMode, !remoteFavoriteGames.isEmpty {
-            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .panel))
+            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .favorites))
             seenTitles.insert("My Favorites")
             seenIds.insert("remote-favorites")
         }
@@ -407,6 +410,7 @@ final class CatalogViewModel {
         selectedGame = nil
         selectedSectionId = ""
         selectedShowAllSection = nil
+        showAllCollectionKind = nil
         searchQuery = ""
         selectedFilterIds = []
         selectedSortId = "a_to_z"
@@ -421,6 +425,7 @@ final class CatalogViewModel {
 
     func openBrowseFromSearch() {
         guard selectedShowAllSection == nil else { return }
+        showAllCollectionKind = nil
         selectedShowAllSection = CatalogSectionModel(
             id: "search-browse",
             title: "Search Results",
@@ -439,7 +444,17 @@ final class CatalogViewModel {
 
     func openShowAll(_ section: CatalogSectionModel) {
         MacForceNowLog.info(.catalog, "Show All opened section=\(section.id) title=\(section.title) games=\(section.games.count) canLoadFullList=\(section.canLoadFullList) seeMoreFilterIds=\(section.seeMoreFilterIds) seeMoreSortId=\(section.seeMoreSortId)")
-        guard section.kind != .library else { return }
+        switch section.kind {
+        case .library:
+            openCollectionShowAll(.library, section: section)
+            return
+        case .favorites:
+            openCollectionShowAll(.favorites, section: section)
+            return
+        case .catalog, .panel:
+            break
+        }
+        showAllCollectionKind = nil
         selectedShowAllSection = section
         selectedGame = nil
         selectedSectionId = ""
@@ -449,8 +464,25 @@ final class CatalogViewModel {
         browseCatalog()
     }
 
+    /// Opens the Show All page for a local collection (My Library / My Favorites). Instead of a
+    /// server browse, the grid renders `libraryGames` / `favoriteGames` filtered in-memory, with a
+    /// client-derived filter panel (Collection / Genre / Store) and A-Z / Z-A sorting.
+    func openCollectionShowAll(_ kind: ShowAllCollection, section: CatalogSectionModel) {
+        showAllCollectionKind = kind
+        selectedShowAllSection = section
+        selectedGame = nil
+        selectedSectionId = ""
+        selectedSortId = "a_to_z"
+        selectedFilterIds = ["\(Self.collectionFilterGroupId):\(kind.rawValue)"]
+        searchQuery = ""
+        browseGeneration += 1
+        isLoading = false
+        recomputeCollectionShowAll()
+    }
+
     func closeShowAll() {
         selectedShowAllSection = nil
+        showAllCollectionKind = nil
         selectedGame = nil
         selectedSectionId = ""
         searchQuery = ""
@@ -473,6 +505,12 @@ final class CatalogViewModel {
     }
 
     private func browseCatalog(forceRefresh: Bool) {
+        // Local collection Show All (My Library / My Favorites) filters in-memory — never hits the
+        // server. All filter/sort/search entry points funnel through here, so intercept once.
+        if showAllCollectionKind != nil {
+            recomputeCollectionShowAll()
+            return
+        }
         browseGeneration += 1
         let generation = browseGeneration
         let browseStartTime = CFAbsoluteTimeGetCurrent()
@@ -559,9 +597,173 @@ final class CatalogViewModel {
     }
 
     func clearSearchAndFilters() {
+        if let kind = showAllCollectionKind {
+            // Keep the collection in scope; only clear the extra facets (genre/store) and search.
+            searchQuery = ""
+            selectedFilterIds = ["\(Self.collectionFilterGroupId):\(kind.rawValue)"]
+            recomputeCollectionShowAll()
+            return
+        }
         searchQuery = ""
         selectedFilterIds = []
         browseCatalog()
+    }
+
+    // MARK: - Collection Show All (client-side filtering of My Library / My Favorites)
+
+    static let collectionFilterGroupId = "opn-collection"
+    static let genreFilterGroupId = "opn-genre"
+    static let storeFilterGroupId = "opn-store"
+
+    private static var collectionSortOptions: [OPNCatalogSortOptionObject] {
+        [
+            OPNCatalogSortOption(id: "a_to_z", label: "A-Z", orderBy: ""),
+            OPNCatalogSortOption(id: "z_to_a", label: "Z-A", orderBy: ""),
+        ].map(OPNCatalogSortOptionObject.init(option:))
+    }
+
+    private static func normalizedStore(_ appStore: String) -> String {
+        let trimmed = appStore.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+        if trimmed.caseInsensitiveCompare("UNKNOWN") == .orderedSame { return "" }
+        if trimmed.caseInsensitiveCompare("NONE") == .orderedSame { return "" }
+        return trimmed
+    }
+
+    /// The set of raw values selected within a client filter group, e.g. `{"library"}` for the
+    /// collection group or `{"action"}` for the genre group.
+    private func selectedFilterValues(inGroup groupId: String) -> Set<String> {
+        let prefix = groupId + ":"
+        return Set(selectedFilterIds.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) })
+    }
+
+    /// Games in scope for the current collection selection (union of the checked collections),
+    /// before genre/store/search facets are applied.
+    private func collectionScopedGames() -> [OPNCatalogGameObject] {
+        let selected = selectedFilterValues(inGroup: Self.collectionFilterGroupId)
+        var kinds: [ShowAllCollection] = []
+        if selected.isEmpty {
+            if let kind = showAllCollectionKind { kinds.append(kind) }
+        } else {
+            if selected.contains(ShowAllCollection.library.rawValue) { kinds.append(.library) }
+            if selected.contains(ShowAllCollection.favorites.rawValue) { kinds.append(.favorites) }
+        }
+        var games: [OPNCatalogGameObject] = []
+        if kinds.contains(.library) { games += libraryGames }
+        if kinds.contains(.favorites) { games += favoriteGames }
+        return Self.dedupedByTitleGrouping(games)
+    }
+
+    private func sortedCollectionGames(_ games: [OPNCatalogGameObject], sortId: String) -> [OPNCatalogGameObject] {
+        switch sortId {
+        case "z_to_a":
+            return games.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
+        default:
+            return games.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        }
+    }
+
+    /// Re-derives `catalogGames`, `filterGroups`, and `sortOptions` for the active collection so the
+    /// existing Show All page + filter panel render the local collection without any view changes.
+    private func recomputeCollectionShowAll() {
+        guard showAllCollectionKind != nil else { return }
+        var games = collectionScopedGames()
+
+        let genreValues = selectedFilterValues(inGroup: Self.genreFilterGroupId)
+        if !genreValues.isEmpty {
+            games = games.filter { game in game.genres.contains { genreValues.contains($0.lowercased()) } }
+        }
+        let storeValues = selectedFilterValues(inGroup: Self.storeFilterGroupId)
+        if !storeValues.isEmpty {
+            games = games.filter { game in
+                game.variants.contains { storeValues.contains(Self.normalizedStore($0.appStore).lowercased()) }
+            }
+        }
+        let query = searchQuery.trimmed.lowercased()
+        if !query.isEmpty {
+            games = games.filter { $0.title.lowercased().contains(query) }
+        }
+
+        catalogGames = sortedCollectionGames(games, sortId: selectedSortId)
+        totalCatalogCount = catalogGames.count
+        supportedCatalogCount = catalogGames.count
+        hasMoreCatalogResults = false
+        isLoading = false
+        errorMessage = ""
+        filterGroups = buildCollectionFilterGroups()
+        sortOptions = Self.collectionSortOptions
+    }
+
+    /// Builds the client-side filter groups shown in the Show All panel for a collection: a
+    /// Collection group (My Library / My Favorites) plus Genre and Store facets derived from the
+    /// games currently in scope.
+    private func buildCollectionFilterGroups() -> [OPNCatalogFilterGroupObject] {
+        var groups: [OPNCatalogFilterGroup] = []
+
+        var collectionOptions: [OPNCatalogFilterOption] = []
+        if !libraryGames.isEmpty || showAllCollectionKind == .library {
+            collectionOptions.append(collectionOption(value: ShowAllCollection.library.rawValue, label: "My Library"))
+        }
+        if !favoriteGames.isEmpty || showAllCollectionKind == .favorites {
+            collectionOptions.append(collectionOption(value: ShowAllCollection.favorites.rawValue, label: "My Favorites"))
+        }
+        if !collectionOptions.isEmpty {
+            groups.append(OPNCatalogFilterGroup(id: Self.collectionFilterGroupId, label: "Collection", options: collectionOptions))
+        }
+
+        let scoped = collectionScopedGames()
+
+        let genres = Set(scoped.flatMap { $0.genres }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }).filter { !$0.isEmpty }
+        if !genres.isEmpty {
+            let options = genres
+                .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+                .map { genre in
+                    OPNCatalogFilterOption(
+                        id: "\(Self.genreFilterGroupId):\(genre.lowercased())",
+                        rawId: genre,
+                        label: genre,
+                        groupId: Self.genreFilterGroupId,
+                        groupLabel: "Genre"
+                    )
+                }
+            groups.append(OPNCatalogFilterGroup(id: Self.genreFilterGroupId, label: "Genre", options: options))
+        }
+
+        var storeLabels: [String: String] = [:]
+        for game in scoped {
+            for variant in game.variants {
+                let code = Self.normalizedStore(variant.appStore)
+                guard !code.isEmpty else { continue }
+                let label = variant.appStoreLabel.trimmed.isEmpty ? code.capitalized : variant.appStoreLabel
+                storeLabels[code.lowercased()] = label
+            }
+        }
+        if !storeLabels.isEmpty {
+            let options = storeLabels
+                .sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
+                .map { entry in
+                    OPNCatalogFilterOption(
+                        id: "\(Self.storeFilterGroupId):\(entry.key)",
+                        rawId: entry.key,
+                        label: entry.value,
+                        groupId: Self.storeFilterGroupId,
+                        groupLabel: "Store"
+                    )
+                }
+            groups.append(OPNCatalogFilterGroup(id: Self.storeFilterGroupId, label: "Store", options: options))
+        }
+
+        return groups.map(OPNCatalogFilterGroupObject.init(group:))
+    }
+
+    private func collectionOption(value: String, label: String) -> OPNCatalogFilterOption {
+        OPNCatalogFilterOption(
+            id: "\(Self.collectionFilterGroupId):\(value)",
+            rawId: value,
+            label: label,
+            groupId: Self.collectionFilterGroupId,
+            groupLabel: "Collection"
+        )
     }
 
     func selectGame(_ game: OPNCatalogGameObject?) {
@@ -1775,8 +1977,10 @@ final class CatalogViewModel {
                 if success {
                     self.libraryGames = gamesBox.value
                     self.schedulePatchingPollIfNeeded()
+                    if self.showAllCollectionKind != nil { self.recomputeCollectionShowAll() }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.libraryGames = []
+                    if self.showAllCollectionKind != nil { self.recomputeCollectionShowAll() }
                 }
             }
         }
@@ -1792,9 +1996,11 @@ final class CatalogViewModel {
                 if success {
                     self.updateFavoriteGames(gamesBox.value)
                     self.schedulePatchingPollIfNeeded()
+                    if self.showAllCollectionKind != nil { self.recomputeCollectionShowAll() }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.updateFavoriteGames([])
-                } else if self.selectedCatalogDestination == .favorites, self.errorMessage.isEmpty {
+                    if self.showAllCollectionKind != nil { self.recomputeCollectionShowAll() }
+                } else if self.showAllCollectionKind == .favorites, self.errorMessage.isEmpty {
                     self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW favorites." : error
                 }
             }
@@ -2300,6 +2506,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
     enum Kind: Equatable {
         case catalog
         case library
+        case favorites
         case panel
     }
 
@@ -2330,7 +2537,8 @@ struct CatalogSectionModel: Identifiable, Equatable {
     }
 
     var canLoadFullList: Bool {
-        !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty
+        if kind == .library || kind == .favorites { return true }
+        return !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty
     }
 
     func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {

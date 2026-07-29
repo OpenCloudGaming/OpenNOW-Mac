@@ -300,7 +300,7 @@ struct ControllerCatalogView: View {
         var items: [ControllerActionMenuItem] = [.refresh]
         if viewModel.isBrowseMode { items.append(.clearSearch) }
         items.append(.twitch)
-        items.append(contentsOf: [.home, .library, .favorites, .recordings, .settings])
+        items.append(contentsOf: [.home, .recordings, .settings])
         for account in accounts where account.id != viewModel.account.id {
             items.append(.switchAccount(account))
         }
