@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/anderson-oki/macforce-now/compare/v0.5.0...v0.6.0) (2026-07-29)
+
+
+### Features
+
+* add Applications folder and background layout to DMG ([a887b05](https://github.com/anderson-oki/macforce-now/commit/a887b05b3f2c79a25ff74f937f8494450bc2baf3))
+* add library and favorites catalog view ([de38224](https://github.com/anderson-oki/macforce-now/commit/de382248f8f752eb9512d704bd313ad89b4e361e))
+
+
+### Bug Fixes
+
+* catalog loading state ([aa43718](https://github.com/anderson-oki/macforce-now/commit/aa437185dbc5bfb5bb55f72e0fc05606c344256d))
+
 ## [0.5.0](https://github.com/anderson-oki/macforce-now/compare/v0.4.0...v0.5.0) (2026-07-28)
 
 
