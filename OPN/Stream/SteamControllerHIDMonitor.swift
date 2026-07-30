@@ -13,6 +13,14 @@ public enum SteamControllerPreference {
     }
 }
 
+public enum SteamControllerTrackpadMousePreference {
+    public static let key = "MacForceNow.Input.SteamControllerTrackpadMouseEnabled"
+
+    public static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: key) == nil ? true : UserDefaults.standard.bool(forKey: key)
+    }
+}
+
 public enum SteamControllerPermissionError: Error, LocalizedError {
     case missingBundleIdentifier
     case tccutilFailed(exitCode: Int, stderr: String)
@@ -80,6 +88,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var deckSnapshot = SteamControllerInputSnapshot()
         var mergedSnapshot = SteamControllerInputSnapshot()
         var isActive: Bool
+        var isSeized = false
         var batteryLevel: UInt8?
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
@@ -130,6 +139,22 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         devices.values.first { $0.deviceID == deviceID }?.mergedSnapshot
     }
 
+    /// Re-applies the capture configuration after the trackpad mouse preference
+    /// changes, so toggling it mid-stream takes effect immediately.
+    public func refreshTrackpadMouseMode() {
+        guard isInputCaptureActive else { return }
+        for context in devices.values {
+            if SteamControllerTrackpadMousePreference.isEnabled {
+                guard !context.isSeized else { continue }
+                configureCapture(for: context)
+            } else if context.isSeized {
+                _ = reopenVendorDevice(context, seize: false)
+                context.isSeized = false
+                disableLizardMode(for: context)
+            }
+        }
+    }
+
     public func register(_ consumer: AnyObject,
                          onControllersChanged: @escaping () -> Void,
                          onInputState: @escaping (InputDeviceID, SteamControllerInputSnapshot) -> Void,
@@ -174,7 +199,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         print("[SteamController] input capture \(shouldCapture ? "began" : "ended")")
         if shouldCapture {
             for context in devices.values {
-                disableLizardMode(for: context)
+                configureCapture(for: context)
             }
             if !devices.isEmpty {
                 startHeartbeatIfNeeded()
@@ -183,7 +208,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             heartbeatTimer?.invalidate()
             heartbeatTimer = nil
             for context in devices.values {
-                enableLizardMode(for: context)
+                restoreAfterCapture(for: context)
             }
         }
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.capture", level: .info, message: "Steam Controller input capture changed.", attributes: ["active": String(shouldCapture)])
@@ -455,7 +480,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
 
         openVendorDevice(device, context: context)
         if isInputCaptureActive {
-            disableLizardMode(for: context)
+            configureCapture(for: context)
             startHeartbeatIfNeeded()
         }
         publishActiveCount()
@@ -487,8 +512,12 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             return
         }
 
+        registerVendorReportCallback(for: context)
+    }
+
+    private func registerVendorReportCallback(for context: DeviceContext) {
         IOHIDDeviceRegisterInputReportCallback(
-            device,
+            context.device,
             context.reportBuffer,
             SteamControllerReport.reportLength,
             Self.inputReportReceived,
@@ -667,6 +696,54 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         }
     }
 
+    /// Capture with the trackpad mouse preference on: the vendor interface is
+    /// seized so the firmware's lizard mouse/keyboard events never reach macOS,
+    /// while the firmware profile itself stays enabled — the pads keep their
+    /// native haptics and the raw reports drive the stream. When seizing fails
+    /// (or the preference is off) the firmware emulation is disabled instead.
+    private func configureCapture(for context: DeviceContext) {
+        if SteamControllerTrackpadMousePreference.isEnabled, reopenVendorDevice(context, seize: true) {
+            context.isSeized = true
+            enableLizardMode(for: context)
+        } else {
+            context.isSeized = false
+            disableLizardMode(for: context)
+        }
+    }
+
+    private func restoreAfterCapture(for context: DeviceContext) {
+        if context.isSeized {
+            context.isSeized = false
+            _ = reopenVendorDevice(context, seize: false)
+        } else {
+            enableLizardMode(for: context)
+        }
+    }
+
+    private func reopenVendorDevice(_ context: DeviceContext, seize: Bool) -> Bool {
+        let device = context.device
+        IOHIDDeviceRegisterInputReportCallback(device, context.reportBuffer, SteamControllerReport.reportLength, nil, nil)
+        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        let options = IOOptionBits(seize ? kIOHIDOptionsTypeSeizeDevice : kIOHIDOptionsTypeNone)
+        let status = IOHIDDeviceOpen(device, options)
+        if status == kIOReturnSuccess {
+            registerVendorReportCallback(for: context)
+            return true
+        }
+        guard seize else {
+            captureDeviceOpenFailure(interface: "vendor", context: context, status: status)
+            return false
+        }
+        print("[SteamController] seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
+        let reopenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        if reopenStatus == kIOReturnSuccess {
+            registerVendorReportCallback(for: context)
+        } else {
+            captureDeviceOpenFailure(interface: "vendor", context: context, status: reopenStatus)
+        }
+        return false
+    }
+
     private func disableLizardMode(for context: DeviceContext) {
         let attempts = context.isActive ? Self.featureReportAttempts : 1
         for report in SteamControllerReport.lizardModeDisableReports(model: context.model) {
@@ -692,7 +769,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
 
     private func sendHeartbeats() {
         guard isInputCaptureActive else { return }
-        for context in devices.values where context.isActive {
+        for context in devices.values where context.isActive && !context.isSeized {
             sendFeatureReport(SteamControllerReport.lizardModeHeartbeatReport(model: context.model), to: context.device, attempts: 1)
         }
     }

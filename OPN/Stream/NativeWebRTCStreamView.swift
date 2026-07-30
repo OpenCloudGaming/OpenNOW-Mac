@@ -45,6 +45,7 @@ public final class NativeWebRTCStreamView: NSView {
     private var pointerLockRestoreLocation: CGPoint?
     private var pointerLockCursorHidden = false
     private var streamContentSize = CGSize.zero
+    private var quickAccessPressedDevices: Set<InputDeviceID> = []
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
@@ -53,8 +54,37 @@ public final class NativeWebRTCStreamView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         addSubview(videoSurface)
-        gamepadMonitor.onInputEvent = { [weak self] event in self?.onInputEvent?(event) }
+        gamepadMonitor.onInputEvent = { [weak self] event in self?.handleGamepadEvent(event) }
         gamepadMonitor.start()
+    }
+
+    /// The quick access button toggles the local unified HUD (same as Cmd-G)
+    /// instead of reaching the stream, where GFN ignores it.
+    private func handleGamepadEvent(_ event: UserInputEvent) {
+        guard case .gamepad(let state) = event,
+              state.buttons.contains(.quickAccess) || quickAccessPressedDevices.contains(state.deviceID) else {
+            onInputEvent?(event)
+            return
+        }
+        let isPressed = state.buttons.contains(.quickAccess)
+        if isPressed, !quickAccessPressedDevices.contains(state.deviceID) {
+            quickAccessPressedDevices.insert(state.deviceID)
+            onCommand?(.toggleUnifiedHUD)
+        } else if !isPressed {
+            quickAccessPressedDevices.remove(state.deviceID)
+        }
+        onInputEvent?(.gamepad(GamepadState(
+            deviceID: state.deviceID,
+            playerIndex: state.playerIndex,
+            buttons: state.buttons.subtracting(.quickAccess),
+            leftTrigger: state.leftTrigger,
+            rightTrigger: state.rightTrigger,
+            leftStickX: state.leftStickX,
+            leftStickY: state.leftStickY,
+            rightStickX: state.rightStickX,
+            rightStickY: state.rightStickY,
+            timestamp: state.timestamp
+        )))
     }
 
     @available(*, unavailable)

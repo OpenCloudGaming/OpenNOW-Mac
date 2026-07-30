@@ -60,6 +60,7 @@ private struct StreamHUDActionRow: View {
     let systemName: String
     let isActive: Bool
     let isDisabled: Bool
+    var isFocused = false
     let action: () -> Void
     @State private var isHovering = false
 
@@ -72,7 +73,7 @@ private struct StreamHUDActionRow: View {
                 .background(rowBackground)
                 .overlay {
                     Rectangle()
-                        .stroke(isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -85,6 +86,11 @@ private struct StreamHUDActionRow: View {
         .help(subtitle.isEmpty ? title : "\(title): \(subtitle)")
     }
 
+    private var strokeColor: Color {
+        if isFocused { return WebRTCMediaStreamTheme.accent }
+        return isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider
+    }
+
     private var rowBackground: Color {
         if isActive { return WebRTCMediaStreamTheme.accent }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
@@ -92,6 +98,25 @@ private struct StreamHUDActionRow: View {
 
     private var iconColor: Color {
         isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.94 : 0.72)
+    }
+}
+
+private struct StreamHUDFocusEntry {
+    let id: String
+    let isDisabled: Bool
+    let action: () -> Void
+}
+
+/// Per-device gamepad edge tracking for HUD navigation. A plain class on
+/// purpose: mutating it from input callbacks must not invalidate the view.
+@MainActor
+private final class StreamHUDGamepadTracker {
+    var lastButtons: [InputDeviceID: GamepadButtons] = [:]
+    var lastStickStep: [InputDeviceID: Int] = [:]
+
+    func reset() {
+        lastButtons.removeAll()
+        lastStickStep.removeAll()
     }
 }
 
@@ -232,6 +257,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpMessage = ""
     @State private var controllerBatteries: [ControllerBatteryInfo] = []
     @State private var batteryAlertThresholds: [String: Set<Int>] = [:]
+    @State private var hudFocusID: String?
+    @State private var quitMenuFocusIndex = 0
+    @State private var hudGamepadTracker = StreamHUDGamepadTracker()
     private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init(configuration: StreamLaunchConfiguration,
@@ -478,6 +506,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
                     isDisabled: runtimeSettings.microphoneMode == "disabled",
+                    isFocused: hudFocusID == "microphone",
                     action: toggleMicrophone
                 )
                 StreamHUDActionRow(
@@ -486,6 +515,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: "record.circle",
                     isActive: recordingStatus.isRecording,
                     isDisabled: !isStreamReady || recordingIsBusy,
+                    isFocused: hudFocusID == "recording",
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
@@ -494,6 +524,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: "cursorarrow.motionlines",
                     isActive: runtimeSettings.antiAFKMouseMovementEnabled,
                     isDisabled: !isStreamReady,
+                    isFocused: hudFocusID == "anti-afk",
                     action: toggleAntiAFKMouseMovement
                 )
                 StreamHUDActionRow(
@@ -502,6 +533,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: "power",
                     isActive: false,
                     isDisabled: false,
+                    isFocused: hudFocusID == "quit",
                     action: { showQuitMenu() }
                 )
             }
@@ -538,6 +570,7 @@ public struct WebRTCMediaStreamSurface: View {
                         systemName: remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
                         isActive: remoteCoOpSnapshot.invite != nil,
                         isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
+                        isFocused: hudFocusID == "coop-invite",
                         action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
                     )
                     if remoteCoOpSnapshot.invite != nil {
@@ -547,6 +580,7 @@ public struct WebRTCMediaStreamSurface: View {
                             systemName: "doc.on.doc",
                             isActive: false,
                             isDisabled: false,
+                            isFocused: hudFocusID == "coop-copy",
                             action: copyRemoteCoOpInvite
                         )
                     }
@@ -826,6 +860,7 @@ public struct WebRTCMediaStreamSurface: View {
                             .foregroundStyle(.black)
                             .frame(width: 112, height: 44)
                             .background(WebRTCMediaStreamTheme.accent, in: Capsule())
+                            .overlay(quitMenuFocusRing(index: 0))
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.cancelAction)
@@ -837,6 +872,7 @@ public struct WebRTCMediaStreamSurface: View {
                             .frame(width: 112, height: 44)
                             .background(.white.opacity(0.11), in: Capsule())
                             .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                            .overlay(quitMenuFocusRing(index: 1))
                     }
                     .buttonStyle(.plain)
                     .disabled(isEndingStream)
@@ -847,6 +883,7 @@ public struct WebRTCMediaStreamSurface: View {
                             .frame(width: 112, height: 44)
                             .background(.white.opacity(0.11), in: Capsule())
                             .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                            .overlay(quitMenuFocusRing(index: 2))
                     }
                     .buttonStyle(.plain)
                     .disabled(isEndingStream)
@@ -857,6 +894,13 @@ public struct WebRTCMediaStreamSurface: View {
             .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
             .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
         }
+    }
+
+    private func quitMenuFocusRing(index: Int) -> some View {
+        Capsule()
+            .stroke(.white, lineWidth: 2.5)
+            .opacity(quitMenuFocusIndex == index ? 0.95 : 0)
+            .padding(-4)
     }
 
     private var twitchPanelBackground: some ShapeStyle {
@@ -1341,9 +1385,101 @@ public struct WebRTCMediaStreamSurface: View {
         WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
     }
 
+    private var hudFocusEntries: [StreamHUDFocusEntry] {
+        var entries: [StreamHUDFocusEntry] = [
+            StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
+            StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
+            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
+        ]
+        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+            entries.append(StreamHUDFocusEntry(
+                id: "coop-invite",
+                isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
+                action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
+            ))
+            if remoteCoOpSnapshot.invite != nil {
+                entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
+            }
+        }
+        return entries
+    }
+
+    private func handleHUDGamepad(_ state: GamepadState) {
+        guard let step = gamepadNavigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            moveHUDFocus(by: delta)
+        case .activate:
+            let entries = hudFocusEntries
+            if let entry = entries.first(where: { $0.id == hudFocusID }) ?? entries.first(where: { !$0.isDisabled }) {
+                entry.action()
+            }
+        case .back:
+            setUnifiedHUDVisible(false)
+        }
+    }
+
+    private func moveHUDFocus(by step: Int) {
+        let entries = hudFocusEntries.filter { !$0.isDisabled }
+        guard !entries.isEmpty else { return }
+        guard let currentIndex = entries.firstIndex(where: { $0.id == hudFocusID }) else {
+            hudFocusID = entries.first?.id
+            return
+        }
+        let nextIndex = (currentIndex + step + entries.count) % entries.count
+        hudFocusID = entries[nextIndex].id
+    }
+
+    private func handleQuitMenuGamepad(_ state: GamepadState) {
+        guard let step = gamepadNavigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            quitMenuFocusIndex = (quitMenuFocusIndex + delta + 3) % 3
+        case .activate:
+            switch quitMenuFocusIndex {
+            case 0: dismissQuitMenu()
+            case 1: pauseFromQuitMenu()
+            default: quitStreamFromMenu()
+            }
+        case .back:
+            dismissQuitMenu()
+        }
+    }
+
+    private enum GamepadNavigationStep {
+        case move(Int)
+        case activate
+        case back
+    }
+
+    private func gamepadNavigationStep(_ state: GamepadState) -> GamepadNavigationStep? {
+        let previousButtons = hudGamepadTracker.lastButtons[state.deviceID] ?? state.buttons
+        let pressed = state.buttons.subtracting(previousButtons)
+        hudGamepadTracker.lastButtons[state.deviceID] = state.buttons
+
+        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
+        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
+        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
+        let previousStickStep = hudGamepadTracker.lastStickStep[state.deviceID] ?? 0
+        hudGamepadTracker.lastStickStep[state.deviceID] = stickStep
+
+        if pressed.contains(.south) { return .activate }
+        if pressed.contains(.east) { return .back }
+        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
+        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
+        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
+        return nil
+    }
+
     private func setUnifiedHUDVisible(_ visible: Bool) {
         unifiedHUDVisible = visible
-        guard visible else { return }
+        hudGamepadTracker.reset()
+        guard visible else {
+            hudFocusID = nil
+            return
+        }
+        hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
         nativeView?.setPointerLocked(false)
     }
 
@@ -1545,6 +1681,17 @@ public struct WebRTCMediaStreamSurface: View {
             handleBroadcastStatusChanged(status)
         }
         nativeView.onInputEvent = { event in
+            if unifiedHUDVisible || quitMenuVisible, !isEndingStream, case .gamepad(let state) = event {
+                if quitMenuVisible {
+                    handleQuitMenuGamepad(state)
+                } else {
+                    handleHUDGamepad(state)
+                }
+                if isStreamReady {
+                    transport.sendNow(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
+                }
+                return
+            }
             switch inputAction(for: event) {
             case .send:
                 guard isStreamReady else { return }
@@ -1958,6 +2105,8 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        quitMenuFocusIndex = 0
+        hudGamepadTracker.reset()
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }

@@ -1188,7 +1188,10 @@ private struct ExperimentalFeaturesSettingsPage: View {
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
+    @ObservedObject private var gripMappingStore = SteamControllerGripMappingStore.shared
+    @AppStorage(SteamControllerTrackpadMousePreference.key) private var trackpadMouseEnabled = true
     @State private var showingControllerTest = false
+    @State private var showingGripMapping = false
     @State private var permissionResetInFlight = false
     @State private var permissionResetError: String?
 
@@ -1360,6 +1363,41 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .buttonStyle(.plain)
                     }
+
+                    SettingsDivider()
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Back Grip Mapping")
+                                .font(.settingsNvidia(size: 15, weight: .bold))
+                                .foregroundStyle(.white.opacity(1))
+                            Text(gripMappingStore.activeProfile.map { "Profile \"\($0.name)\" is applied to streams." } ?? "Map L4, L5, R4, and R5 to button combos sent to the stream.")
+                                .font(.settingsNvidia(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+                        Spacer()
+                        Button("Open Mapping") {
+                            showingGripMapping = true
+                        }
+                        .font(.settingsNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .frame(height: 32)
+                        .background(Color.openNowGreen)
+                        .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .buttonStyle(.plain)
+                    }
+                    .sheet(isPresented: $showingGripMapping) {
+                        SteamControllerGripMappingView()
+                    }
+
+                    SettingsDivider()
+                    SettingsToggleRow(
+                        title: "Trackpad Mouse Input",
+                        subtitle: trackpadMouseEnabled ? "Right pad moves the stream cursor and clicks as the left button; left pad scrolls and clicks as the middle button, with the controller's native haptics." : "Trackpads are fully disabled during streams.",
+                        isOn: trackpadMouseEnabled,
+                        action: setTrackpadMouseEnabled
+                    )
                 }
             }
         }
@@ -1386,6 +1424,11 @@ private struct ExperimentalFeaturesSettingsPage: View {
     private func setSteamControllerSupportEnabled(_ enabled: Bool) {
         steamControllerSupportEnabled = enabled
         SteamControllerHIDMonitor.shared.setEnabled(enabled)
+    }
+
+    private func setTrackpadMouseEnabled(_ enabled: Bool) {
+        trackpadMouseEnabled = enabled
+        SteamControllerHIDMonitor.shared.refreshTrackpadMouseMode()
     }
 
     private func resetInputMonitoringPermission() {

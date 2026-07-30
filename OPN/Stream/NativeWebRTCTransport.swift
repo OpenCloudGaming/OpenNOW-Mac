@@ -280,6 +280,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         if buttons.contains(.rightStick) { value |= 0x0080 }
         if buttons.contains(.leftShoulder) { value |= 0x0100 }
         if buttons.contains(.rightShoulder) { value |= 0x0200 }
+        if buttons.contains(.mode) { value |= 0x0400 }
         if buttons.contains(.south) { value |= 0x1000 }
         if buttons.contains(.east) { value |= 0x2000 }
         if buttons.contains(.west) { value |= 0x4000 }

@@ -416,6 +416,8 @@ struct WebRTCStreamingPathTests {
         let buttons: GamepadButtons = [.south, .east, .west, .north, .leftShoulder, .rightShoulder, .select, .start, .leftStick, .rightStick, .dpadUp, .dpadDown, .dpadLeft, .dpadRight]
 
         #expect(NativeWebRTCTransport.gfnGamepadButtons(buttons) == 0xf3ff)
+        #expect(NativeWebRTCTransport.gfnGamepadButtons([.mode]) == 0x0400)
+        #expect(NativeWebRTCTransport.gfnGamepadButtons([.quickAccess]) == 0)
         #expect(NativeWebRTCTransport.gfnControllerBitmap(playerIndex: 0) & 0x0101 == 0x0101)
     }
 
