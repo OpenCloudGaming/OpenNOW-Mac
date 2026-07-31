@@ -149,7 +149,13 @@ struct ControllerCatalogView: View {
         GeometryReader { proxy in
             let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
             ZStack {
-                ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
+                // The search overlay is near-opaque; dropping the hero background and
+                // games page while it is up keeps them from rendering behind it.
+                if isSearchOverlayPresented {
+                    Color.black
+                } else {
+                    ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
+                }
 
                 VStack(spacing: 0) {
                     ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout)
@@ -161,7 +167,11 @@ struct ControllerCatalogView: View {
                         layout: layout,
                         select: selectNavigationItem
                     )
-                    controllerPage(layout: layout)
+                    if isSearchOverlayPresented && viewModel.selectedMainPage == .games {
+                        Spacer(minLength: 0)
+                    } else {
+                        controllerPage(layout: layout)
+                    }
                     ControllerHintBar(hints: hints, glyphs: activeGlyphs, layout: layout)
                 }
                 .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
@@ -170,7 +180,7 @@ struct ControllerCatalogView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
-                if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil {
+                if isSearchOverlayPresented {
                     ControllerSearchOverlay(
                         viewModel: viewModel,
                         glyphs: activeGlyphs,
@@ -203,6 +213,14 @@ struct ControllerCatalogView: View {
                     .zIndex(28)
                 }
 
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+            // Attached as an overlay of the clipped container (rather than as a
+            // ZStack sibling) so the action menu inherits exactly the bounds the
+            // visible content is laid out in and can never anchor past the
+            // window's trailing edge.
+            .overlay {
                 if controllerViewModel.isActionMenuVisible {
                     ControllerActionMenuOverlay(
                         items: actionMenuItems,
@@ -214,17 +232,14 @@ struct ControllerCatalogView: View {
                         close: closeActionMenu
                     )
                     .transition(.opacity)
-                    .zIndex(34)
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
         }
         .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
         .onAppear {
             inputRouter.onCommand = handleInput
             steamNavigator.onCommand = handleInput
-            steamNavigator.start()
+            steamNavigator.start(capturingInput: true)
             synchronizeNavigationSelection()
         }
         .onDisappear {
@@ -261,6 +276,10 @@ struct ControllerCatalogView: View {
                 SettingsView(viewModel: viewModel)
             }
         }
+    }
+
+    private var isSearchOverlayPresented: Bool {
+        controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil
     }
 
     private var hasModalOverlay: Bool {
@@ -737,6 +756,7 @@ private struct ControllerHeader: View {
         }
         .frame(width: layout.contentWidth)
         .frame(height: 72)
+        .padding(.top, CatalogVendorLayout.windowTopInset)
         .background {
             Color.black.opacity(0.24)
             WindowDragArea()
@@ -870,6 +890,12 @@ private struct ControllerGamesPage: View {
                         proxy.scrollTo(sections[index].id, anchor: .center)
                     }
                 }
+                // The page is removed from the hierarchy while the search overlay is
+                // up, so restore the focused rail's scroll position on reinsertion.
+                .onAppear {
+                    guard sections.indices.contains(selectedRailIndex) else { return }
+                    proxy.scrollTo(sections[selectedRailIndex].id, anchor: .center)
+                }
             }
         }
         .overlay {
@@ -905,7 +931,7 @@ private struct ControllerHeroBillboard: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             if let game {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill)
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                 LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
@@ -1075,7 +1101,7 @@ private struct ControllerGameTile: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topLeading) {
-                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 720)
                     .frame(width: tileSize.width, height: tileSize.height)
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
@@ -1265,17 +1291,21 @@ private struct ControllerSearchOverlay: View {
     }
 
     private func resultsGrid(columns: Int) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let isResultsRowFocused = rowIndex == 2 + viewModel.visibleFilterGroups.count
+        return VStack(alignment: .leading, spacing: 10) {
             ControllerOverlaySectionTitle(viewModel.resultSummary.isEmpty ? "Results" : viewModel.resultSummary)
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: columns), spacing: 14) {
                     ForEach(Array(viewModel.catalogGames.enumerated()), id: \.element.catalogIdentity) { index, game in
                         ControllerCompactGameCard(
-                            viewModel: viewModel,
-                            game: game,
-                            isFocused: rowIndex == 2 + viewModel.visibleFilterGroups.count && resultIndex == index,
+                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 520),
+                            title: game.title.isEmpty ? "GeForce NOW" : game.title,
+                            subtitle: game.primaryStoreLabel.isEmpty ? (game.isInLibrary ? "In Library" : "Cloud ready") : game.primaryStoreLabel,
+                            badge: game.cardBadgeLabel,
+                            isFocused: isResultsRowFocused && resultIndex == index,
                             action: { selectResult(game) }
                         )
+                        .equatable()
                     }
                 }
                 .padding(.bottom, 12)
@@ -1303,12 +1333,12 @@ private struct ControllerGameDetailOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let panelWidth = min(layout.contentWidth * 0.62, 900)
-            ZStack(alignment: .leading) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill)
+            ZStack {
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
                 Color.black.opacity(0.58)
-                LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.64), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, .black.opacity(0.74), .black.opacity(0.74), .clear], startPoint: .leading, endPoint: .trailing)
                 LinearGradient(colors: [.clear, .black.opacity(0.72)], startPoint: .top, endPoint: .bottom)
 
                 VStack(alignment: .leading, spacing: 18) {
@@ -1343,9 +1373,7 @@ private struct ControllerGameDetailOverlay: View {
                     .padding(.vertical, 8)
                 }
                 .frame(width: panelWidth, alignment: .leading)
-                .padding(.leading, layout.leadingInset)
-                .padding(.trailing, layout.trailingInset)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
@@ -1410,59 +1438,58 @@ private struct ControllerActionMenuOverlay: View {
     let close: () -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .trailing) {
-                Color.black.opacity(0.58).onTapGesture(perform: close)
-                VStack(alignment: .leading, spacing: 0) {
-                    ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
-                        .padding(.horizontal, 22)
-                        .padding(.top, 22)
-                        .padding(.bottom, 12)
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 8) {
-                            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                                Button { perform(item) } label: {
-                                    HStack(spacing: 13) {
-                                        if item.isRefresh, isRefreshingCatalog {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                                .tint(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                                .scaleEffect(0.82)
-                                                .frame(width: 28)
-                                        } else {
-                                            Image(systemName: item.icon)
-                                                .font(.nvidia(size: 15, weight: .bold))
-                                                .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                                .frame(width: 28)
-                                        }
-                                        Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
+        ZStack(alignment: .trailing) {
+            Color.black.opacity(0.58).onTapGesture(perform: close)
+            VStack(alignment: .leading, spacing: 0) {
+                ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 22 + CatalogVendorLayout.windowTopInset)
+                    .padding(.bottom, 12)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 8) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            Button { perform(item) } label: {
+                                HStack(spacing: 13) {
+                                    if item.isRefresh, isRefreshingCatalog {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .tint(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                            .scaleEffect(0.82)
+                                            .frame(width: 28)
+                                    } else {
+                                        Image(systemName: item.icon)
                                             .font(.nvidia(size: 15, weight: .bold))
-                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
-                                            .lineLimit(1)
-                                        Spacer(minLength: 0)
+                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                            .frame(width: 28)
                                     }
-                                    .padding(.horizontal, 14)
-                                    .frame(height: 48)
-                                    .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
-                                    .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
+                                    Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
+                                        .font(.nvidia(size: 15, weight: .bold))
+                                        .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(item.isRefresh && isRefreshingCatalog)
+                                .padding(.horizontal, 14)
+                                .frame(height: 48)
+                                .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
+                                .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
                             }
+                            .buttonStyle(.plain)
+                            .disabled(item.isRefresh && isRefreshingCatalog)
                         }
-                        .padding(.horizontal, 22)
-                        .padding(.bottom, 22)
                     }
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 22)
                 }
-                .frame(width: min(420, layout.contentWidth), alignment: .topLeading)
-                .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
-                .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
-                .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
-                .padding(.trailing, layout.trailingInset)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+            .frame(maxWidth: 420, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
+            .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
+            .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
+            .padding(.leading, layout.leadingInset)
+            .padding(.trailing, layout.trailingInset)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 }
 
@@ -1504,23 +1531,38 @@ private struct ControllerOverlayHeader: View {
     }
 }
 
-private struct ControllerCompactGameCard: View {
-    let viewModel: CatalogViewModel
-    let game: OPNCatalogGameObject
+private struct ControllerCompactGameCard: View, Equatable {
+    let imageURL: URL?
+    let title: String
+    let subtitle: String
+    let badge: String?
     let isFocused: Bool
     let action: () -> Void
+
+    // The action closure is deliberately excluded: it is recreated on every parent
+    // render but always targets the same game, and comparing it would defeat the
+    // .equatable() body-skip that keeps d-pad moves from re-evaluating every card.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.imageURL == rhs.imageURL && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.badge == rhs.badge && lhs.isFocused == rhs.isFocused
+    }
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 9) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 520), contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 520)
                     .frame(height: 128)
                     .clipped()
-                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                    .overlay(alignment: .topLeading) {
+                        if let badge {
+                            CatalogGameCardBadge(label: badge)
+                                .scaleEffect(0.92, anchor: .topLeading)
+                        }
+                    }
+                Text(title)
                     .font(.nvidia(size: 14, weight: .bold))
                     .foregroundStyle(.white.opacity(0.94))
                     .lineLimit(1)
-                Text(game.primaryStoreLabel.isEmpty ? (game.isInLibrary ? "In Library" : "Cloud ready") : game.primaryStoreLabel)
+                Text(subtitle)
                     .font(.nvidia(size: 11, weight: .bold))
                     .foregroundStyle(Color.openNowGreen.opacity(0.84))
                     .lineLimit(1)
@@ -1744,7 +1786,7 @@ private struct ControllerCatalogBackground: View {
         ZStack {
             Color.gfnBackgroundGreen.ignoresSafeArea()
             if let game {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill)
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill, maxPixelSize: 1280)
                     .ignoresSafeArea()
                     .blur(radius: 44)
                     .opacity(0.26)

@@ -35,7 +35,11 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
-            .frame(minWidth: 980, minHeight: 600)
+            // Keep the floor low enough for Split View tiles and forced frames:
+            // when macOS sizes the window below the SwiftUI minimum, content
+            // pins at that minimum and the trailing edge (header avatar, the
+            // controller actions sidebar) gets clipped instead of adapting.
+            .frame(minWidth: 640, minHeight: 480)
             .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: windowTitle))
@@ -183,7 +187,15 @@ enum MacForceNowWindowFitting {
         guard widthScale < 1 || heightScale < 1 else { return nil }
         let scale = min(widthScale, heightScale)
         guard scale < 1 else { return nil }
-        let newSize = CGSize(width: floor(current.width * scale), height: floor(current.height * scale))
+        // Never shrink below the window's minimum content size: SwiftUI keeps
+        // laying the content out at its minWidth/minHeight, so a smaller frame
+        // just clips the trailing edge instead of resizing the interface.
+        let minFrame = window.frameRect(forContentRect: CGRect(origin: .zero, size: window.contentMinSize)).size
+        let newSize = CGSize(
+            width: max(floor(current.width * scale), minFrame.width),
+            height: max(floor(current.height * scale), minFrame.height)
+        )
+        guard newSize.width < current.width || newSize.height < current.height else { return nil }
         let origin = CGPoint(
             x: visible.midX - newSize.width / 2,
             y: visible.midY - newSize.height / 2

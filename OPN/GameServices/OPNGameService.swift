@@ -706,7 +706,13 @@ final class OPNGameService: @unchecked Sendable {
                     return
                 }
                 let panels = self.parsePanelResults(rawPanels)
+                // Deliver parsed panels immediately so the home rails paint fast,
+                // then redeliver once metadata enrichment completes so promo/sku
+                // badges (Free, -XX%) appear on panel games too.
                 self.dispatchPanel(completion, true, panels, "")
+                self.enrichPanelResults(panels, vpcId: resolvedVpcId) { enrichedPanels in
+                    self.dispatchPanel(completion, true, enrichedPanels, "")
+                }
             }
         }
     }

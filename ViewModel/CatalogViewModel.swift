@@ -146,19 +146,32 @@ final class CatalogViewModel {
     var showAllCollectionKind: ShowAllCollection? = nil
     var selectedSettingsGroup = CatalogSettingsGroup.account
     var searchQuery = "" {
-        didSet { scheduleSearchDebounce() }
+        didSet {
+            invalidateDerivedCatalogCaches()
+            scheduleSearchDebounce()
+        }
     }
     var selectedSortId = "a_to_z"
-    var selectedFilterIds: [String] = []
+    var selectedFilterIds: [String] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
     var isLoading = false
     var isLoadingPanels = false
     var errorMessage = ""
     var launchMessage = ""
     var actionMessage = ""
-    var marqueePanels: [OPNCatalogPanelObject] = []
-    var mainPanels: [OPNCatalogPanelObject] = []
-    var catalogGames: [OPNCatalogGameObject] = []
-    var libraryGames: [OPNCatalogGameObject] = []
+    var marqueePanels: [OPNCatalogPanelObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
+    var mainPanels: [OPNCatalogPanelObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
+    var catalogGames: [OPNCatalogGameObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
+    var libraryGames: [OPNCatalogGameObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
     var filterGroups: [OPNCatalogFilterGroupObject] = []
     var sortOptions: [OPNCatalogSortOptionObject] = []
     var totalCatalogCount = 0
@@ -189,7 +202,9 @@ final class CatalogViewModel {
     var playtimeStatistics = CatalogPlaytimeStatistics.empty
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     var favoriteGameIdentities: Set<String> = []
-    var favoriteGames: [OPNCatalogGameObject] = []
+    var favoriteGames: [OPNCatalogGameObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
     var selectedGameRevealRequest: CatalogGameRevealRequest?
     var catalogImageCacheSummary = "Calculating"
     var isStorePickerVisible = false
@@ -265,7 +280,25 @@ final class CatalogViewModel {
         }
     }
 
+    // Derived catalog collections are rebuilt from the full catalog on every
+    // access, and the catalog views read them many times per render, so they
+    // are memoized until an input property changes. The caches must stay
+    // invisible to Observation (@ObservationIgnored) while the getters still
+    // read their inputs on the cached path, so views keep registering
+    // dependencies and re-render when the underlying data changes.
+    @ObservationIgnored private var cachedMarqueeGames: [OPNCatalogGameObject]?
+    @ObservationIgnored private var cachedHeroRotationGames: [OPNCatalogGameObject]?
+    @ObservationIgnored private var cachedCatalogSections: [CatalogSectionModel]?
+
+    private func invalidateDerivedCatalogCaches() {
+        cachedMarqueeGames = nil
+        cachedHeroRotationGames = nil
+        cachedCatalogSections = nil
+    }
+
     var marqueeGames: [OPNCatalogGameObject] {
+        _ = marqueePanels
+        if let cachedMarqueeGames { return cachedMarqueeGames }
         var games: [OPNCatalogGameObject] = []
         var seen = Set<String>()
         for panel in marqueePanels {
@@ -278,14 +311,21 @@ final class CatalogViewModel {
                 }
             }
         }
+        cachedMarqueeGames = games
         return games
     }
 
     var heroRotationGames: [OPNCatalogGameObject] {
-        Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
+        _ = marqueePanels
+        if let cachedHeroRotationGames { return cachedHeroRotationGames }
+        let games = Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
+        cachedHeroRotationGames = games
+        return games
     }
 
     var catalogSections: [CatalogSectionModel] {
+        _ = (mainPanels, catalogGames, libraryGames, favoriteGames, searchQuery, selectedFilterIds)
+        if let cachedCatalogSections { return cachedCatalogSections }
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
         var seenIds = Set<String>()
@@ -322,7 +362,9 @@ final class CatalogViewModel {
             let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
             sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library), at: insertionIndex)
         }
-        return Array(sections.prefix(10))
+        let result = Array(sections.prefix(10))
+        cachedCatalogSections = result
+        return result
     }
 
     var isBrowseMode: Bool {

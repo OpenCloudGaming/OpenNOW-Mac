@@ -164,6 +164,33 @@ import Testing
         #expect(captured.isEmpty)
     }
 
+    @Test func startWithCapturingInputLeasesInputCapture() {
+        let navigator = GamepadUINavigator()
+        defer { navigator.stop() }
+        navigator.start(capturingInput: true)
+        #expect(SteamControllerHIDMonitor.shared.isInputCaptureActive)
+        navigator.stop()
+        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureActive)
+    }
+
+    @Test func startWithoutCapturingInputDoesNotLeaseCapture() {
+        let navigator = GamepadUINavigator()
+        defer { navigator.stop() }
+        navigator.start()
+        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureActive)
+    }
+
+    @Test func capturingNavigatorEmitsCommandsWithoutExternalCaptureLease() {
+        let navigator = GamepadUINavigator()
+        defer { navigator.stop() }
+        var captured: [ControllerInputCommand] = []
+        navigator.onCommand = { captured.append($0) }
+        navigator.start(capturingInput: true)
+        navigator.processSnapshot(deviceID: activeDeviceID, snapshot: makeSnapshot(), isActiveOverride: true)
+        navigator.processSnapshot(deviceID: activeDeviceID, snapshot: makeSnapshot(buttons: [.south]), isActiveOverride: true)
+        #expect(captured == [.confirm])
+    }
+
     @Test func multipleSequentialDpadEdgesMapToMoveCommands() {
         let navigator = GamepadUINavigator()
         var captured: [ControllerInputCommand] = []

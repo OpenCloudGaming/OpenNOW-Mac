@@ -52,7 +52,7 @@ public final class OPNSentryTransaction {
 extension OPNSentryTransaction: @unchecked Sendable {}
 
 final class OPNSentry {
-    private static let fallbackDsn = "https://75bd4534356a68eb8887bea8f6977b59@o4509317113184256.ingest.us.sentry.io/4511592927264768"
+    private static let fallbackDsn = "https://ddf2cd6fe39e070e972c8f864271f1ab@o428453.ingest.us.sentry.io/4511824907599872"
     private static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
     private static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
     private static let maxDiagnosticsUploadBytes = 384 * 1024

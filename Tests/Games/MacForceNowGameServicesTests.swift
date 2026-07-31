@@ -401,8 +401,14 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
+        // Panels are delivered twice (parsed, then metadata-enriched); the section's
+        // see-more parameters are identical in both, so resume on the first only.
         let result = await withCheckedContinuation { continuation in
+            nonisolated(unsafe) var didResume = false
             OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
+                dispatchPrecondition(condition: .onQueue(.main))
+                guard !didResume else { return }
+                didResume = true
                 let section = panels.first?.sections.first
                 continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", error))
             }

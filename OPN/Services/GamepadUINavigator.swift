@@ -16,10 +16,15 @@ final class GamepadUINavigator: ObservableObject {
 
     private var lastButtons: [InputDeviceID: GamepadButtons] = [:]
     private var thumbstickRepeatState: [ControllerInputDirection: Date] = [:]
+    private var isCapturingInput = false
 
     init() {}
 
-    func start() {
+    /// Pass `capturingInput: true` when the navigator should drive UI navigation:
+    /// processSnapshot drops every report unless a capture lease is held, and
+    /// capture suppresses lizard mode so d-pad presses aren't doubled as key
+    /// events. Leave it `false` for glyph/connection display only.
+    func start(capturingInput: Bool = false) {
         SteamControllerHIDMonitor.shared.register(
             self,
             onControllersChanged: { [weak self] in
@@ -29,11 +34,19 @@ final class GamepadUINavigator: ObservableObject {
                 MainActor.assumeIsolated { self?.processSnapshot(deviceID: deviceID, snapshot: snapshot, isActiveOverride: nil) }
             }
         )
+        if capturingInput, !isCapturingInput {
+            isCapturingInput = true
+            SteamControllerHIDMonitor.shared.beginInputCapture(self)
+        }
         refreshConnectedState()
         seedInitialButtonStates()
     }
 
     func stop() {
+        if isCapturingInput {
+            isCapturingInput = false
+            SteamControllerHIDMonitor.shared.endInputCapture(self)
+        }
         SteamControllerHIDMonitor.shared.unregister(self)
         isSteamControllerConnected = false
         connectedDeviceName = ""
@@ -46,6 +59,7 @@ final class GamepadUINavigator: ObservableObject {
         let consumerKey = ObjectIdentifier(self)
         Task { @MainActor in
             SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
+            SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
         }
     }
 
