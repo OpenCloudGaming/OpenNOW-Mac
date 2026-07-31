@@ -227,6 +227,7 @@ final class CatalogViewModel {
     private var searchDebounceTask: Task<Void, Never>?
     private var pendingLaunchGame: OPNCatalogGameObject?
     private var pendingLaunchVariantIndex = -1
+    private var activeDiscordPresence: DiscordGamePresence?
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
@@ -928,6 +929,9 @@ final class CatalogViewModel {
         launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
         launchFlowState = .checkingSession
+        let presence = discordPresence(for: game)
+        activeDiscordPresence = presence
+        DiscordRichPresence.shared.update(.launching(presence))
         continueVendorLaunch()
     }
 
@@ -1254,6 +1258,8 @@ final class CatalogViewModel {
         let finishedConfiguration = activeStreamConfiguration
         activeStreamConfiguration = nil
         activeStreamProgress = nil
+        activeDiscordPresence = nil
+        DiscordRichPresence.shared.update(.idle)
         isActiveStreamLaunchOverlayVisible = false
         streamProgressGeneration += 1
         clearLaunchFlow()
@@ -1282,6 +1288,9 @@ final class CatalogViewModel {
         activeStreamProgress = progress
         isActiveStreamLaunchOverlayVisible = true
         guard progress.isReady else { return }
+        if let presence = activeDiscordPresence {
+            DiscordRichPresence.shared.update(.streaming(presence))
+        }
         let generation = streamProgressGeneration
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(450))
@@ -1295,6 +1304,9 @@ final class CatalogViewModel {
     }
 
     private func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
+        if activeDiscordPresence == nil {
+            activeDiscordPresence = discordPresence(for: configuration)
+        }
         launchFlowState = .startingStream
         launchFlowMessage = message.isEmpty ? "Starting GeForce NOW stream..." : message
         launchFlowError = ""
@@ -1339,6 +1351,17 @@ final class CatalogViewModel {
             if !title.isEmpty { return title }
         }
         return fallback.isEmpty ? "Current Stream" : fallback
+    }
+
+    private func discordPresence(for game: OPNCatalogGameObject) -> DiscordGamePresence {
+        DiscordGamePresence(title: game.title, artworkURL: DiscordArtwork.imageURL(for: game))
+    }
+
+    private func discordPresence(for configuration: StreamLaunchConfiguration) -> DiscordGamePresence {
+        if let game = allKnownGames.first(where: { Self.game($0, matchesApplicationID: configuration.applicationID) }) {
+            return discordPresence(for: game)
+        }
+        return DiscordGamePresence(title: configuration.title, artworkURL: nil)
     }
 
     private func clearLaunchFlow() {

@@ -293,7 +293,28 @@ private struct ConnectionsSettingsGroup: View {
         VStack(alignment: .leading, spacing: 16) {
             ConnectionsSettingsPage(viewModel: viewModel)
             TwitchSettingsPage(viewModel: viewModel)
+            DiscordSettingsPage()
         }
+    }
+}
+
+private struct DiscordSettingsPage: View {
+    @State private var richPresenceEnabled = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Discord") {
+                SettingsToggleRow(
+                    title: "Rich Presence",
+                    subtitle: "Show the game you're streaming on your Discord profile, with its artwork and elapsed time.",
+                    isOn: richPresenceEnabled
+                ) { newValue in
+                    richPresenceEnabled = newValue
+                    DiscordRichPresence.shared.isEnabled = newValue
+                }
+            }
+        }
+        .onAppear { richPresenceEnabled = DiscordRichPresence.shared.isEnabled }
     }
 }
 
