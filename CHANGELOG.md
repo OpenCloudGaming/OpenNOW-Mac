@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/anderson-oki/macforce-now/compare/v0.6.0...v0.7.0) (2026-07-31)
+
+
+### Features
+
+* add steam controller mapping ([#18](https://github.com/anderson-oki/macforce-now/issues/18)) ([4287982](https://github.com/anderson-oki/macforce-now/commit/42879820943cfc6f15d62951ab3792efa3beabd4))
+
+
+### Bug Fixes
+
+* controller mode performance ([#19](https://github.com/anderson-oki/macforce-now/issues/19)) ([0561eb2](https://github.com/anderson-oki/macforce-now/commit/0561eb2d4d428dffa4d80aeee30de8e7dbf85df9))
+
 ## [0.6.0](https://github.com/anderson-oki/macforce-now/compare/v0.5.0...v0.6.0) (2026-07-29)
 
 
