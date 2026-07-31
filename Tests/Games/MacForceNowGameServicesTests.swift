@@ -401,14 +401,16 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-        // Panels are delivered twice (parsed, then metadata-enriched); the section's
-        // see-more parameters are identical in both, so resume on the first only.
+        // Panels are delivered twice (parsed, then metadata-enriched). Await the
+        // second delivery so the enrichment's follow-up requests have finished
+        // before this test uninstalls its URL handler — otherwise they bleed
+        // into the next test's stricter handler and fail its expectations.
         let result = await withCheckedContinuation { continuation in
-            nonisolated(unsafe) var didResume = false
+            nonisolated(unsafe) var deliveryCount = 0
             OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
                 dispatchPrecondition(condition: .onQueue(.main))
-                guard !didResume else { return }
-                didResume = true
+                deliveryCount += 1
+                guard deliveryCount == 2 else { return }
                 let section = panels.first?.sections.first
                 continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", error))
             }
