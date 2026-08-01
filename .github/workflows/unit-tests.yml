@@ -37,22 +37,31 @@ jobs:
         with:
           path: |
             .build
+            !.build/shared/artifacts
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-${{ github.event.repository.name }}-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
+          key: ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swiftpm-${{ github.event.repository.name }}-
+            ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-
 
       - name: Build package workspace
         run: |
           set -euo pipefail
-          swift build --scratch-path .build/shared
+          swift build --scratch-path .build/shared || {
+            echo "swift build failed; clearing scratch path and retrying with a clean build graph"
+            rm -rf .build/shared
+            swift build --scratch-path .build/shared
+          }
         shell: bash
 
       - name: Run package unit tests
         run: |
           set -euo pipefail
-          swift test --scratch-path .build/shared
+          swift test --scratch-path .build/shared || {
+            echo "swift test failed; clearing scratch path and retrying with a clean build graph"
+            rm -rf .build/shared
+            swift test --scratch-path .build/shared
+          }
         shell: bash
 
   app-build:
