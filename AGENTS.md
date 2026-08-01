@@ -94,6 +94,7 @@ sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/rele
 
 ## General
 - **Self-Documenting:** Names and structure must convey intent. No explanatory inline comments.
+- **Design System:** All UI code must follow `DESIGN.md` (colors, typography, spacing, components, elevation, guidelines). Update `DESIGN.md` whenever design tokens or component patterns change.
 - **Hermetic:** Every file includes all imports and dependencies. Must compile/run as-is.
 - **Complete:** All functions and methods contain final, working logic. No mocks or no-ops unless building a test suite.
 - **No Folded Code:** Folding code is strictly forbidden.

@@ -107,6 +107,51 @@ private struct StreamHUDFocusEntry {
     let action: () -> Void
 }
 
+private struct StreamQuitMenuButton: View {
+    let title: String
+    let isPrimary: Bool
+    let isFocused: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .tracking(0.4)
+                .foregroundStyle(foregroundColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(backgroundColor)
+                .overlay {
+                    Rectangle()
+                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.46 : 1)
+        .onHover { isHovering = $0 }
+    }
+
+    private var strokeColor: Color {
+        if isFocused { return WebRTCMediaStreamTheme.accent }
+        return isPrimary ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider
+    }
+
+    private var backgroundColor: Color {
+        if isPrimary { return WebRTCMediaStreamTheme.accent.opacity(isHovering ? 0.82 : 1) }
+        return Color.white.opacity(isHovering ? 0.14 : 0.075)
+    }
+
+    private var foregroundColor: Color {
+        if isPrimary { return .black.opacity(0.86) }
+        return .white.opacity(isHovering ? 0.94 : 0.82)
+    }
+}
+
 /// Per-device gamepad edge tracking for HUD navigation. A plain class on
 /// purpose: mutating it from input callbacks must not invalidate the view.
 @MainActor
@@ -840,68 +885,71 @@ public struct WebRTCMediaStreamSurface: View {
             Rectangle()
                 .fill(.black.opacity(0.54))
                 .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-            VStack(spacing: 18) {
-                Text("STREAM PAUSED")
-                    .font(.system(size: 12, weight: .black, design: .monospaced))
-                    .tracking(2.4)
-                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-                HStack(spacing: 12) {
-                    Button(action: dismissQuitMenu) {
-                        Text("Resume")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.black)
-                            .frame(width: 112, height: 44)
-                            .background(WebRTCMediaStreamTheme.accent, in: Capsule())
-                            .overlay(quitMenuFocusRing(index: 0))
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isEndingStream)
-                    Button(action: pauseFromQuitMenu) {
-                        Text("Pause Stream")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(width: 112, height: 44)
-                            .background(.white.opacity(0.11), in: Capsule())
-                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-                            .overlay(quitMenuFocusRing(index: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isEndingStream)
-                    Button(action: quitStreamFromMenu) {
-                        Text(isEndingStream ? "Quitting..." : "Quit")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(width: 112, height: 44)
-                            .background(.white.opacity(0.11), in: Capsule())
-                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-                            .overlay(quitMenuFocusRing(index: 2))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isEndingStream)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("STREAM PAUSED")
+                        .font(.streamNvidia(size: 10, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(WebRTCMediaStreamTheme.appBar)
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
+                        .font(.streamNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        StreamQuitMenuButton(
+                            title: "Resume",
+                            isPrimary: true,
+                            isFocused: quitMenuFocusIndex == 0,
+                            isDisabled: isEndingStream,
+                            action: dismissQuitMenu
+                        )
+                        .keyboardShortcut(.cancelAction)
+                        StreamQuitMenuButton(
+                            title: "Pause Stream",
+                            isPrimary: false,
+                            isFocused: quitMenuFocusIndex == 1,
+                            isDisabled: isEndingStream,
+                            action: pauseFromQuitMenu
+                        )
+                        StreamQuitMenuButton(
+                            title: isEndingStream ? "Quitting..." : "Quit",
+                            isPrimary: false,
+                            isFocused: quitMenuFocusIndex == 2,
+                            isDisabled: isEndingStream,
+                            action: quitStreamFromMenu
+                        )
+                    }
+                }
+                .padding(18)
             }
-            .padding(32)
-            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
-            .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
+            .frame(width: 440)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay {
+                Rectangle()
+                    .stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
         }
-    }
-
-    private func quitMenuFocusRing(index: Int) -> some View {
-        Capsule()
-            .stroke(.white, lineWidth: 2.5)
-            .opacity(quitMenuFocusIndex == index ? 0.95 : 0)
-            .padding(-4)
     }
 
     private var twitchPanelBackground: some ShapeStyle {
