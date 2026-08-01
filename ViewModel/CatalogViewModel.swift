@@ -219,7 +219,7 @@ final class CatalogViewModel {
 
     let account: LoginAccount
     let session: LoginSession
-    let onRefreshAuth: () -> Void
+    let onRefreshAuth: () async -> Bool
 
     private var hasLoaded = false
     private var browseGeneration = 0
@@ -243,7 +243,7 @@ final class CatalogViewModel {
 
     private var hasStarted = false
 
-    init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
+    init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
@@ -404,7 +404,16 @@ final class CatalogViewModel {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        loadCatalogDataAfterProviderConfiguration()
+        guard session.isExpired else {
+            loadCatalogDataAfterProviderConfiguration()
+            return
+        }
+        MacForceNowLog.info(.catalog, "Initial catalog load deferred until expired session refresh completes")
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await onRefreshAuth()
+            loadCatalogDataAfterProviderConfiguration()
+        }
     }
 
     func refresh() {
@@ -2416,7 +2425,17 @@ final class CatalogViewModel {
         isLoading = false
         isLoadingPanels = false
         errorMessage = "Refreshing NVIDIA session..."
-        onRefreshAuth()
+        Task { [weak self] in
+            guard let self else { return }
+            let refreshed = await onRefreshAuth()
+            authRefreshInFlight = false
+            guard refreshed else {
+                errorMessage = "Unable to refresh your NVIDIA session. Sign out and sign in again."
+                return
+            }
+            errorMessage = ""
+            loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true)
+        }
         return true
     }
 

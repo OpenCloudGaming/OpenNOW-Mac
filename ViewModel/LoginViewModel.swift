@@ -180,9 +180,9 @@ final class LoginViewModel: ObservableObject {
         Task { await signOutCurrentSession() }
     }
 
-    func refreshActiveSession() {
-        guard let activeAccount else { return }
-        Task { await restoreAccountSession(activeAccount) }
+    func refreshActiveSession() async -> Bool {
+        guard let activeAccount else { return false }
+        return await restoreAccountSession(activeAccount)
     }
 
     func forgetAccount(_ account: LoginAccount) {
@@ -283,7 +283,8 @@ final class LoginViewModel: ObservableObject {
         }
     }
 
-    private func restoreAccountSession(_ account: LoginAccount) async {
+    @discardableResult
+    private func restoreAccountSession(_ account: LoginAccount) async -> Bool {
         validationMessage = ""
         successMessage = ""
         email = account.email
@@ -293,7 +294,7 @@ final class LoginViewModel: ObservableObject {
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
             MacForceNowLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
             validationMessage = "No saved session exists for this account. Sign in again."
-            return
+            return false
         }
 
         isAuthenticating = true
@@ -326,15 +327,18 @@ final class LoginViewModel: ObservableObject {
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
             MacForceNowLog.info(.auth, "Session refreshed account=\(account.email)")
+            return true
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
                 markActive(accountEmail: account.email)
                 trySave()
                 successMessage = "Using saved offline session for \(account.displayName)."
                 MacForceNowLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
+                return true
             } else {
                 validationMessage = "Saved session expired. Sign in again."
                 MacForceNowLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
+                return false
             }
         }
     }
