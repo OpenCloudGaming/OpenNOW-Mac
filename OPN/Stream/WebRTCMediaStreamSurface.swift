@@ -217,6 +217,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var unifiedHUDVisible = false
+    @State private var restorePointerLockOnHUDHide = false
     @State private var twitchMarkerMessage = ""
     @State private var twitchMarkerDraft = ""
     @State private var twitchChatDraft = ""
@@ -1477,8 +1478,15 @@ public struct WebRTCMediaStreamSurface: View {
         hudGamepadTracker.reset()
         guard visible else {
             hudFocusID = nil
+            if restorePointerLockOnHUDHide {
+                restorePointerLockOnHUDHide = false
+                if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
+                    nativeView?.setPointerLocked(true)
+                }
+            }
             return
         }
+        restorePointerLockOnHUDHide = pointerLocked
         hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
         nativeView?.setPointerLocked(false)
     }
