@@ -170,8 +170,10 @@ value toward accent.
 
 Full-height leading dock, width `min(344, max(220, streamWidth * 0.72))`. Panel
 background @ 0.985, 1px Divider trailing edge, 2px accent bar along the top edge, App
-Bar header block, Divider-separated shortcut footer. Gamepad/keyboard focus moves across
-action rows with accent focus strokes.
+Bar header block, Divider-separated shortcut footer. The footer leads with a live clock
+(accent 9pt clock symbol, 11pt bold Text Primary time, monospaced digits) stacked above
+the 10pt bold shortcut hint line. Gamepad/keyboard focus moves across action rows with
+accent focus strokes.
 
 ### Stream Modal Dialog (quit menu)
 

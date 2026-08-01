@@ -534,13 +534,27 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudShortcutFooter: some View {
-        Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
-            .font(.streamNvidia(size: 10, weight: .bold))
-            .tracking(0.8)
-            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            .lineLimit(1)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                Text(Date(), style: .time)
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(Date(), style: .time))
+            Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
     }
 
     private var hudControlsPanel: some View {
