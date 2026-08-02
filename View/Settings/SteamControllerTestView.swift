@@ -129,8 +129,18 @@ struct SteamControllerTestView: View {
 
     // MARK: - Controller diagram
 
+    // The shell art is Valve's own Steam Controller (Triton) layout drawing, which is
+    // authored in a 456x320 space. Every live overlay below is positioned in those same
+    // coordinates and scaled to the rendered diagram width, so the two always line up.
+    private static let artSize = CGSize(width: 456, height: 320)
+    private static let diagramWidth: CGFloat = 560
+    private static let artScale = diagramWidth / artSize.width
+    private static let diagramHeight = artSize.height * artScale
+
+    private func art(_ value: CGFloat) -> CGFloat { value * Self.artScale }
+
     private var controllerDiagram: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 6) {
             shoulderRow
             controllerBody
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
@@ -141,87 +151,102 @@ struct SteamControllerTestView: View {
     }
 
     private var shoulderRow: some View {
-        HStack {
-            VStack(spacing: 4) {
-                triggerButton("L2", value: model.snapshot.leftTrigger)
-                    .frame(width: 120, height: 30)
-                bumperButton("L1", pressed: model.snapshot.buttons.contains(.leftShoulder))
-                    .frame(width: 140, height: 22)
-            }
-            Spacer()
-            VStack(spacing: 4) {
-                triggerButton("R2", value: model.snapshot.rightTrigger)
-                    .frame(width: 120, height: 30)
-                bumperButton("R1", pressed: model.snapshot.buttons.contains(.rightShoulder))
-                    .frame(width: 140, height: 22)
-            }
+        ZStack {
+            shoulderGroup(
+                trigger: "L2",
+                value: model.snapshot.leftTrigger,
+                bumper: "L1",
+                pressed: model.snapshot.buttons.contains(.leftShoulder)
+            )
+            .position(x: art(92), y: 27)
+
+            shoulderGroup(
+                trigger: "R2",
+                value: model.snapshot.rightTrigger,
+                bumper: "R1",
+                pressed: model.snapshot.buttons.contains(.rightShoulder)
+            )
+            .position(x: art(362), y: 27)
         }
-        .padding(.horizontal, 82)
-        .frame(width: 560)
+        .frame(width: Self.diagramWidth, height: 54)
+    }
+
+    private func shoulderGroup(trigger: String, value: Float, bumper: String, pressed: Bool) -> some View {
+        VStack(spacing: 4) {
+            triggerButton(trigger, value: value)
+                .frame(width: 104, height: 26)
+            bumperButton(bumper, pressed: pressed)
+                .frame(width: 118, height: 20)
+        }
     }
 
     private var controllerBody: some View {
         ZStack {
-            SteamControllerSilhouette()
-                .fill(Color.white.opacity(0.035))
-            SteamControllerSilhouette()
-                .stroke(Color.white.opacity(0.14), lineWidth: 1.5)
+            Image("SteamControllerShellFill")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: Self.diagramWidth, height: Self.diagramHeight)
+                .foregroundStyle(Color.white.opacity(0.035))
+            Image("SteamControllerShell")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: Self.diagramWidth, height: Self.diagramHeight)
+                .foregroundStyle(Color.white.opacity(0.18))
 
             dpadView
-                .frame(width: 100, height: 100)
-                .position(x: 152, y: 132)
+                .frame(width: art(68), height: art(68))
+                .position(x: art(88), y: art(75))
 
             faceButtonsView
-                .frame(width: 110, height: 110)
-                .position(x: 408, y: 132)
+                .frame(width: art(78), height: art(78))
+                .position(x: art(366.5), y: art(75.5))
 
-            centerButton(icon: "square.on.square", pressed: model.snapshot.buttons.contains(.select))
-                .position(x: 238, y: 92)
+            centerButton(icon: "rectangle.on.rectangle", pressed: model.snapshot.buttons.contains(.select))
+                .position(x: art(147), y: art(43))
             centerButton(icon: "line.3.horizontal", pressed: model.snapshot.buttons.contains(.start))
-                .position(x: 322, y: 92)
+                .position(x: art(307), y: art(43))
 
             steamButtonView(pressed: model.snapshot.buttons.contains(.mode))
-                .position(x: 280, y: 162)
-            quickAccessButtonView(pressed: model.snapshot.buttons.contains(.quickAccess))
-                .position(x: 280, y: 205)
+                .position(x: art(227.5), y: art(76))
 
             stickView(
-                label: "LS",
                 x: model.snapshot.leftStickX,
                 y: model.snapshot.leftStickY,
                 pressed: model.snapshot.buttons.contains(.leftStick)
             )
-            .position(x: 206, y: 240)
+            .position(x: art(161.5), y: art(108.5))
 
             stickView(
-                label: "RS",
                 x: model.snapshot.rightStickX,
                 y: model.snapshot.rightStickY,
                 pressed: model.snapshot.buttons.contains(.rightStick)
             )
-            .position(x: 354, y: 240)
+            .position(x: art(292.5), y: art(108.5))
 
             trackpadView(model.snapshot.leftPad)
-                .rotationEffect(.degrees(-14))
-                .position(x: 168, y: 330)
+                .rotationEffect(.degrees(9.87))
+                .position(x: art(140.5), y: art(193))
             trackpadView(model.snapshot.rightPad)
-                .rotationEffect(.degrees(14))
-                .position(x: 392, y: 330)
+                .rotationEffect(.degrees(-9.87))
+                .position(x: art(313.5), y: art(193))
+
+            quickAccessButtonView(pressed: model.snapshot.buttons.contains(.quickAccess))
+                .position(x: art(227), y: art(194.5))
 
             backGripPill("L4", pressed: model.snapshot.buttons.contains(.leftGrip))
-                .rotationEffect(.degrees(-14))
-                .position(x: 84, y: 296)
+                .rotationEffect(.degrees(-6))
+                .position(x: art(84), y: art(246))
             backGripPill("L5", pressed: model.snapshot.buttons.contains(.leftGrip2))
-                .rotationEffect(.degrees(-18))
-                .position(x: 72, y: 344)
+                .rotationEffect(.degrees(-10))
+                .position(x: art(76), y: art(268))
             backGripPill("R4", pressed: model.snapshot.buttons.contains(.rightGrip))
-                .rotationEffect(.degrees(14))
-                .position(x: 476, y: 296)
+                .rotationEffect(.degrees(6))
+                .position(x: art(370), y: art(246))
             backGripPill("R5", pressed: model.snapshot.buttons.contains(.rightGrip2))
-                .rotationEffect(.degrees(18))
-                .position(x: 488, y: 344)
+                .rotationEffect(.degrees(10))
+                .position(x: art(378), y: art(268))
         }
-        .frame(width: 560, height: 440)
+        .frame(width: Self.diagramWidth, height: Self.diagramHeight)
     }
 
     private func triggerButton(_ label: String, value: Float) -> some View {
@@ -267,48 +292,45 @@ struct SteamControllerTestView: View {
         }
     }
 
-    private func stickView(label: String, x: Float, y: Float, pressed: Bool) -> some View {
+    private func stickView(x: Float, y: Float, pressed: Bool) -> some View {
         let active = pressed || abs(x) > 0.05 || abs(y) > 0.05
+        // Valve draws the well at r=34.5 and the thumb cap at r=20.75.
+        let well = art(69)
+        let cap = art(41.5)
+        let travel = art(13.75)
         return ZStack {
             Circle()
                 .fill(Color.white.opacity(0.02))
                 .overlay(
                     Circle().stroke(
-                        pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(active ? 0.22 : 0.1),
+                        pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(active ? 0.28 : 0.16),
                         lineWidth: pressed ? 1.5 : 1
                     )
                 )
-                .frame(width: 88, height: 88)
-
-            Path { p in
-                p.move(to: CGPoint(x: 44, y: 6))
-                p.addLine(to: CGPoint(x: 44, y: 82))
-                p.move(to: CGPoint(x: 6, y: 44))
-                p.addLine(to: CGPoint(x: 82, y: 44))
-            }
-            .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-            .frame(width: 88, height: 88)
+                .frame(width: well, height: well)
 
             Circle()
-                .fill(active ? Color.openNowGreen : Color.white.opacity(0.3))
-                .frame(width: 20, height: 20)
+                .fill(active ? Color.openNowGreen.opacity(0.9) : Color.white.opacity(0.12))
+                .overlay(
+                    Circle().stroke(
+                        active ? Color.openNowGreen : Color.white.opacity(0.28),
+                        lineWidth: 1
+                    )
+                )
+                .frame(width: cap, height: cap)
                 .shadow(color: active ? Color.openNowGreen.opacity(0.5) : .clear, radius: 6)
-                .offset(x: CGFloat(x) * 30, y: CGFloat(-y) * 30)
-
-            Text(label)
-                .font(MacForceNowNVIDIAFont.font(size: 8, weight: .bold))
-                .foregroundStyle(.white.opacity(0.2))
-                .offset(y: 54)
+                .offset(x: CGFloat(x) * travel, y: CGFloat(-y) * travel)
         }
-        .frame(width: 104, height: 118)
+        .frame(width: well, height: well)
     }
 
     private var faceButtonsView: some View {
         ZStack {
-            faceButtonNode("Y", x: 0, y: -38, pressed: model.snapshot.buttons.contains(.north))
-            faceButtonNode("B", x: 38, y: 0, pressed: model.snapshot.buttons.contains(.east))
-            faceButtonNode("A", x: 0, y: 38, pressed: model.snapshot.buttons.contains(.south))
-            faceButtonNode("X", x: -38, y: 0, pressed: model.snapshot.buttons.contains(.west))
+            // Valve spaces the diamond 26pt from its centre in art units.
+            faceButtonNode("Y", x: 0, y: -art(26), pressed: model.snapshot.buttons.contains(.north))
+            faceButtonNode("B", x: art(26), y: 0, pressed: model.snapshot.buttons.contains(.east))
+            faceButtonNode("A", x: 0, y: art(26), pressed: model.snapshot.buttons.contains(.south))
+            faceButtonNode("X", x: -art(26), y: 0, pressed: model.snapshot.buttons.contains(.west))
         }
     }
 
@@ -316,8 +338,8 @@ struct SteamControllerTestView: View {
         ZStack {
             Circle()
                 .fill(pressed ? Color.openNowGreen : Color.white.opacity(0.05))
-                .overlay(Circle().stroke(pressed ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1))
-                .frame(width: 34, height: 34)
+                .overlay(Circle().stroke(pressed ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.18), lineWidth: 1))
+                .frame(width: art(27), height: art(27))
                 .shadow(color: pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 6)
                 .offset(x: x, y: y)
             Text(label)
@@ -333,40 +355,46 @@ struct SteamControllerTestView: View {
             dpadSegment("R", rotation: 90, pressed: model.snapshot.buttons.contains(.dpadRight))
             dpadSegment("D", rotation: 180, pressed: model.snapshot.buttons.contains(.dpadDown))
             dpadSegment("L", rotation: 270, pressed: model.snapshot.buttons.contains(.dpadLeft))
-            Rectangle()
-                .fill(Color.white.opacity(0.04))
-                .frame(width: 14, height: 14)
+            RoundedRectangle(cornerRadius: art(2))
+                .fill(Color.white.opacity(0.06))
+                .frame(width: art(21), height: art(21))
         }
     }
 
     private func dpadSegment(_ label: String, rotation: Double, pressed: Bool) -> some View {
-        let isActive = pressed
+        // Valve's cross spans 68 art units, so each arm reaches 34 from centre.
+        let armWidth = art(21)
+        let armLength = art(23)
+        let armOffset = art(22.5)
         return ZStack {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(isActive ? Color.openNowGreen : Color.white.opacity(0.05))
-                .overlay(RoundedRectangle(cornerRadius: 3).stroke(isActive ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(0.08), lineWidth: 0.5))
-                .frame(width: 26, height: 30)
-                .offset(y: -16)
+            RoundedRectangle(cornerRadius: art(4))
+                .fill(pressed ? Color.openNowGreen : Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: art(4))
+                        .stroke(pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(0.16), lineWidth: 1)
+                )
+                .frame(width: armWidth, height: armLength)
+                .offset(y: -armOffset)
                 .rotationEffect(.degrees(rotation))
             Text(label)
-                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
-                .foregroundStyle(isActive ? .black : .white.opacity(0.25))
-                .offset(y: -16)
+                .font(MacForceNowNVIDIAFont.font(size: 8, weight: .bold))
+                .foregroundStyle(pressed ? .black : .white.opacity(0.3))
+                .offset(y: -armOffset)
                 .rotationEffect(.degrees(rotation))
         }
     }
 
     private func centerButton(icon: String, pressed: Bool) -> some View {
         ZStack {
-            Circle()
+            Capsule()
                 .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
-            Circle()
+            Capsule()
                 .stroke(pressed ? Color.openNowGreen.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.35))
         }
-        .frame(width: 24, height: 24)
+        .frame(width: art(30), height: art(14))
     }
 
     private func steamButtonView(pressed: Bool) -> some View {
@@ -392,32 +420,32 @@ struct SteamControllerTestView: View {
                 context.fill(Path(ellipseIn: CGRect(x: bigCenter.x - bigHole, y: bigCenter.y - bigHole, width: bigHole * 2, height: bigHole * 2)), with: .color(Self.backgroundColor))
                 context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallHole, y: smallCenter.y - smallHole, width: smallHole * 2, height: smallHole * 2)), with: .color(Self.backgroundColor))
             }
-            .frame(width: 34, height: 34)
+            .frame(width: art(26), height: art(26))
             .clipShape(Circle())
         }
-        .frame(width: 36, height: 36)
+        .frame(width: art(28), height: art(28))
     }
 
     private func quickAccessButtonView(pressed: Bool) -> some View {
         ZStack {
-            Circle()
+            Capsule()
                 .fill(pressed ? Color.openNowGreen.opacity(0.25) : Color.white.opacity(0.04))
-            Circle()
+            Capsule()
                 .stroke(pressed ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: "ellipsis")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.35))
         }
-        .frame(width: 20, height: 20)
+        .frame(width: art(38), height: art(15))
         .shadow(color: pressed ? Color.openNowGreen.opacity(0.4) : .clear, radius: 5)
     }
 
     private func trackpadView(_ pad: SteamControllerTrackpadState) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: art(16))
                 .fill(pad.pressed ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.045))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12).stroke(
+                    RoundedRectangle(cornerRadius: art(16)).stroke(
                         pad.pressed ? Color.openNowGreen.opacity(0.8) : (pad.touched ? Color.openNowGreen.opacity(0.45) : Color.white.opacity(0.14)),
                         lineWidth: pad.pressed ? 1.5 : 1
                     )
@@ -441,12 +469,12 @@ struct SteamControllerTestView: View {
             if pad.touched {
                 Circle()
                     .fill(pad.pressed ? Color.openNowGreen : Color.openNowGreen.opacity(0.6))
-                    .frame(width: 12, height: 12)
+                    .frame(width: art(14), height: art(14))
                     .shadow(color: Color.openNowGreen.opacity(0.5), radius: 4)
-                    .offset(x: CGFloat(pad.x) * 30, y: CGFloat(-pad.y) * 30)
+                    .offset(x: CGFloat(pad.x) * art(38), y: CGFloat(-pad.y) * art(38))
             }
         }
-        .frame(width: 76, height: 76)
+        .frame(width: art(93), height: art(93))
     }
 
     private func backGripPill(_ label: String, pressed: Bool) -> some View {
@@ -462,7 +490,7 @@ struct SteamControllerTestView: View {
                 .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
                 .foregroundStyle(pressed ? Color.openNowGreen : .white.opacity(0.4))
         }
-        .frame(width: 42, height: 20)
+        .frame(width: art(30), height: art(15))
     }
 
     // MARK: - Raw values
@@ -582,31 +610,6 @@ struct SteamControllerTestView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(active ? Color.openNowGreen.opacity(0.8) : .white.opacity(0.2))
         }
-    }
-}
-
-private struct SteamControllerSilhouette: Shape {
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(x: rect.minX + x * w, y: rect.minY + y * h)
-        }
-
-        var path = Path()
-        path.move(to: point(0.5, 0.055))
-        path.addQuadCurve(to: point(0.78, 0.085), control: point(0.645, 0.04))
-        path.addQuadCurve(to: point(0.965, 0.36), control: point(0.94, 0.12))
-        path.addQuadCurve(to: point(0.88, 0.92), control: point(1.005, 0.66))
-        path.addQuadCurve(to: point(0.64, 0.90), control: point(0.77, 1.02))
-        path.addQuadCurve(to: point(0.5, 0.64), control: point(0.56, 0.70))
-        path.addQuadCurve(to: point(0.36, 0.90), control: point(0.44, 0.70))
-        path.addQuadCurve(to: point(0.12, 0.92), control: point(0.23, 1.02))
-        path.addQuadCurve(to: point(0.035, 0.36), control: point(-0.005, 0.66))
-        path.addQuadCurve(to: point(0.22, 0.085), control: point(0.06, 0.12))
-        path.addQuadCurve(to: point(0.5, 0.055), control: point(0.355, 0.04))
-        path.closeSubpath()
-        return path
     }
 }
 
