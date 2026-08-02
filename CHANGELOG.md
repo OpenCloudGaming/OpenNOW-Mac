@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/anderson-oki/macforce-now/compare/v0.8.0...v0.8.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* stop detail image hit-spill and add styled overflow menu ([64e21e7](https://github.com/anderson-oki/macforce-now/commit/64e21e7352af1d20c1887b5e459a64da9b900061))
+
 ## [0.8.0](https://github.com/anderson-oki/macforce-now/compare/v0.7.0...v0.8.0) (2026-08-02)
 
 
