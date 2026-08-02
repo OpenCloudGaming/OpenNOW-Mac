@@ -26,12 +26,33 @@ enum CatalogVendorLayout {
     static let tileScaleFactor: CGFloat = 1.12
     static let heroAspectRatio: CGFloat = 0.3229
     static let heroFallbackHeight: CGFloat = 500
-    static let detailPanelHeight: CGFloat = 500
+    static let heroMaxHeight: CGFloat = 760
+    static let detailPanelAspectRatio: CGFloat = 0.3229
+    static let detailPanelMinHeight: CGFloat = 500
+    static let detailPanelMaxHeight: CGFloat = 760
     static let mainMenuWidth: CGFloat = 344
     static let accountMenuWidth: CGFloat = 260
 
-    static func heroHeight(for width: CGFloat) -> CGFloat {
-        width > 0 ? min(width * heroAspectRatio, heroFallbackHeight) : heroFallbackHeight
+    /// Hero keeps its 0.3229 ratio as the window widens instead of stopping at 500pt, which made the
+    /// banner artwork look squeezed on ultrawide/5K windows.
+    static func heroHeight(for width: CGFloat, viewportHeight: CGFloat = 0) -> CGFloat {
+        guard width > 0 else { return heroFallbackHeight }
+        var maximum = heroMaxHeight
+        if viewportHeight > 0 {
+            maximum = min(maximum, max(heroFallbackHeight, viewportHeight * 0.78))
+        }
+        return min(width * heroAspectRatio, maximum)
+    }
+
+    /// Detail panel height grows with the panel width so the artwork keeps a sane aspect ratio on
+    /// ultrawide/5K windows instead of being squeezed into a fixed 500pt letterbox.
+    static func detailPanelHeight(for width: CGFloat, viewportHeight: CGFloat = 0) -> CGFloat {
+        guard width > 0 else { return detailPanelMinHeight }
+        var maximum = detailPanelMaxHeight
+        if viewportHeight > 0 {
+            maximum = min(maximum, max(detailPanelMinHeight, viewportHeight * 0.78))
+        }
+        return MacForceNowDesign.clamped(width * detailPanelAspectRatio, minimum: detailPanelMinHeight, maximum: maximum)
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
@@ -2042,6 +2063,7 @@ private struct CatalogContentView: View {
                                         games: heroes,
                                         activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
                                         availableWidth: viewport.size.width,
+                                        availableHeight: viewport.size.height,
                                         onSelectSlide: { index in
                                             heroAutoScrollEnabled = false
                                             heroIndex = index
@@ -2070,7 +2092,11 @@ private struct CatalogContentView: View {
                                 if isGridDestination, let section = sections.first {
                                     CatalogDestinationGridView(viewModel: viewModel, section: section)
                                     if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
-                                        GameDetailPanel(viewModel: viewModel)
+                                        GameDetailPanel(
+                                            viewModel: viewModel,
+                                            availableWidth: max(0, viewport.size.width - CatalogVendorLayout.sectionHeaderMargin * 2),
+                                            viewportHeight: viewport.size.height
+                                        )
                                             .padding(.top, -10)
                                             .padding(.bottom, 22)
                                             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
@@ -2088,7 +2114,11 @@ private struct CatalogContentView: View {
                                         }
                                         CatalogRailView(viewModel: viewModel, section: section, onShowAll: { viewModel.openShowAll(section) })
                                         if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
-                                            GameDetailPanel(viewModel: viewModel)
+                                            GameDetailPanel(
+                                                viewModel: viewModel,
+                                                availableWidth: viewport.size.width,
+                                                viewportHeight: viewport.size.height
+                                            )
                                                 .padding(.top, -8)
                                                 .padding(.bottom, 22)
                                                 .onHover { isPointerInsideDetailPanel = $0 }
@@ -2208,6 +2238,7 @@ private struct CatalogHeroView: View {
     let games: [OPNCatalogGameObject]
     let activeIndex: Int
     let availableWidth: CGFloat
+    var availableHeight: CGFloat = 0
     let onSelectSlide: (Int) -> Void
     let onPreviousSlide: () -> Void
     let onNextSlide: () -> Void
@@ -2220,7 +2251,7 @@ private struct CatalogHeroView: View {
     var body: some View {
         if let game {
             GeometryReader { proxy in
-                let heroHeight = CatalogVendorLayout.heroHeight(for: proxy.size.width)
+                let heroHeight = proxy.size.height > 1 ? proxy.size.height : CatalogVendorLayout.heroHeight(for: proxy.size.width, viewportHeight: availableHeight)
                 let imageLeading = CatalogVendorLayout.heroImageLeading(for: proxy.size.width)
                 let textWidth = CatalogVendorLayout.heroTextWidth(for: proxy.size.width)
                 ZStack(alignment: .bottom) {
@@ -2289,7 +2320,7 @@ private struct CatalogHeroView: View {
                     .padding(.bottom, 34)
                 }
             }
-            .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth))
+            .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, viewportHeight: availableHeight))
             .clipShape(Rectangle())
         }
     }
@@ -2982,6 +3013,9 @@ private struct CatalogDetailActionsMenuItem: View {
 
 struct GameDetailPanel: View {
     let viewModel: CatalogViewModel
+    /// Width the panel will occupy. Needed up front because the panel height is derived from it.
+    var availableWidth: CGFloat = 0
+    var viewportHeight: CGFloat = 0
     @State private var activeImageIndex = 0
     @State private var isDescriptionExpanded = false
     @State private var isHovering = false
@@ -2994,8 +3028,11 @@ struct GameDetailPanel: View {
             let imageURLs = game.detailImageURLs
             let imageIndex = imageURLs.indices.contains(activeImageIndex) ? activeImageIndex : 0
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
+            let panelHeight = CatalogVendorLayout.detailPanelHeight(for: availableWidth, viewportHeight: viewportHeight)
             GeometryReader { proxy in
                 let panelWidth = max(1, proxy.size.width)
+                // AppKit hosts (Show All grid) size the row themselves; trust the measured height there.
+                let resolvedHeight = proxy.size.height > 1 ? proxy.size.height : panelHeight
                 let contentWidth = min(panelWidth * 0.43, 820)
                 let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
                 let hiddenImageLeading = max(0, contentWidth + 54 - (panelWidth - imageWidth))
@@ -3005,7 +3042,7 @@ struct GameDetailPanel: View {
                         contentMode: .fill,
                         fallbackIconOffsetX: hiddenImageLeading / 2
                     )
-                        .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
+                        .frame(width: imageWidth, height: resolvedHeight)
                         .clipped()
                         .contentShape(Rectangle())
                         .id(imageURL)
@@ -3046,7 +3083,7 @@ struct GameDetailPanel: View {
                         detailActions(game: game)
                             .zIndex(1)
                         accessMessage(game: game)
-                        detailMetadataScrollArea(game: game)
+                        detailMetadataScrollArea(game: game, panelHeight: resolvedHeight)
                             .padding(.top, 4)
                         readMoreButton
                             .padding(.top, 2)
@@ -3109,11 +3146,11 @@ struct GameDetailPanel: View {
                         .opacity(0.94)
                     }
                 }
-                .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
+                .frame(width: panelWidth, height: resolvedHeight)
                 .background(Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255))
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
+            .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
             .onHover { isHovering = $0 }
             .onReceive(imageTimer) { _ in
                 guard !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { return }
@@ -3364,7 +3401,11 @@ struct GameDetailPanel: View {
         return "Access requires a GeForce NOW membership and supported game ownership."
     }
 
-    private func detailMetadataScrollArea(game: OPNCatalogGameObject) -> some View {
+    private func detailMetadataScrollArea(game: OPNCatalogGameObject, panelHeight: CGFloat) -> some View {
+        // Text area grows with the panel so tall (ultrawide) panels do not leave a dead gap.
+        let collapsedHeight = MacForceNowDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
+        let expandedHeight = MacForceNowDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
+        return
         ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
             VStack(alignment: .leading, spacing: 14) {
                 shortDescription(game: game)
@@ -3378,7 +3419,12 @@ struct GameDetailPanel: View {
             .padding(.trailing, isDescriptionExpanded ? 8 : 0)
         }
         .scrollDisabled(!isDescriptionExpanded)
-        .frame(maxWidth: 660, minHeight: 128, maxHeight: isDescriptionExpanded ? 248 : 128, alignment: .topLeading)
+        .frame(
+            maxWidth: 660,
+            minHeight: collapsedHeight,
+            maxHeight: isDescriptionExpanded ? expandedHeight : collapsedHeight,
+            alignment: .topLeading
+        )
         .clipped()
     }
 

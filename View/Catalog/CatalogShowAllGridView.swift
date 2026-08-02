@@ -66,7 +66,8 @@ struct CatalogShowAllGridView: NSViewRepresentable {
 
         layout.minTileWidth = 230
         layout.spacing = 12
-        layout.detailRowHeight = 500
+        context.coordinator.lastViewportHeight = nsView.contentView.bounds.height
+        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height)
 
         let selectedIdentity = selectedGame?.catalogIdentity
         let selectedIndex = games.firstIndex { $0.catalogIdentity == selectedIdentity }
@@ -125,6 +126,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var gameIdentities: [String] = []
     var selectedIdentity: String?
     var lastWidth: CGFloat = 0
+    var lastViewportHeight: CGFloat = 0
     nonisolated(unsafe) var frameObserver: (any NSObjectProtocol)?
     private var gameCount = 0
     private var firstIdentity: String = ""
@@ -147,12 +149,35 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
               let scrollView = collectionView.enclosingScrollView,
               let layout = collectionView.collectionViewLayout as? CatalogShowAllGridLayout else { return }
         let width = scrollView.contentView.bounds.width
-        guard width > 0, width != lastWidth else { return }
+        let viewportHeight = scrollView.contentView.bounds.height
+        let detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight)
+        guard width > 0, width != lastWidth || detailRowHeight != layout.detailRowHeight else { return }
         lastWidth = width
+        lastViewportHeight = viewportHeight
+        layout.detailRowHeight = detailRowHeight
         collectionView.frame.size.width = width
         layout.invalidateLayout()
         collectionView.layoutSubtreeIfNeeded()
         collectionView.frame.size.height = layout.collectionViewContentSize.height
+        refreshDetailRows()
+    }
+
+    /// Re-hosts the detail panel so it picks up the new width/height after a resize.
+    private func refreshDetailRows() {
+        guard let collectionView else { return }
+        for case let row as CatalogShowAllGridDetailRow in collectionView.visibleSupplementaryViews(ofKind: CatalogShowAllGridLayout.detailRowKind) {
+            configure(detailRow: row)
+        }
+    }
+
+    func configure(detailRow: CatalogShowAllGridDetailRow) {
+        detailRow.configure(
+            detailPanel: GameDetailPanel(
+                viewModel: parent.viewModel,
+                availableWidth: lastWidth,
+                viewportHeight: lastViewportHeight
+            )
+        )
     }
 
     func needsIdentityUpdate(for games: [OPNCatalogGameObject]) -> Bool {
@@ -209,7 +234,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             for: indexPath
         )
         if let detailRow = view as? CatalogShowAllGridDetailRow {
-            detailRow.configure(detailPanel: GameDetailPanel(viewModel: parent.viewModel))
+            configure(detailRow: detailRow)
         }
         return view
     }
@@ -363,7 +388,7 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
 
     var minTileWidth: CGFloat = 230
     var spacing: CGFloat = 12
-    var detailRowHeight: CGFloat = 500
+    var detailRowHeight: CGFloat = CatalogVendorLayout.detailPanelMinHeight
     var selectedItemIndex: Int?
 
     private var itemAttributes: [IndexPath: NSCollectionViewLayoutAttributes] = [:]
@@ -463,7 +488,7 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
     }
 }
 
-final class CatalogShowAllGridDetailRow: NSView {
+final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
     private var hostingView: NSHostingView<AnyView>?
 
     func configure(detailPanel: any View) {
