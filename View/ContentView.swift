@@ -19,6 +19,7 @@ struct ContentView: View {
     @Query private var devices: [LoginDeviceRegistration]
 
     @StateObject private var viewModel = LoginViewModel()
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @State private var windowTitle = Self.defaultWindowTitle
     @State private var didBootstrap = false
     @State private var isShowingStartupLoading = true
@@ -43,6 +44,7 @@ struct ContentView: View {
             .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: windowTitle))
+            .background(MacForceNowInterfaceScaleDensityBooster(scale: uiScale))
             .task {
                 await bootstrapAppStartIfNeeded()
             }

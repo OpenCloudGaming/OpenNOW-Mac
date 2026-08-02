@@ -73,6 +73,7 @@ struct CatalogView: View {
 
     @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -131,51 +132,54 @@ struct CatalogView: View {
                 .ignoresSafeArea()
                 .transition(.opacity)
             } else {
-                if controllerModeEnabled {
-                    ControllerCatalogView(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                ZStack {
+                    if controllerModeEnabled {
+                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            .transition(.opacity)
+                    } else {
+                        VStack(spacing: 0) {
+                            CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            if viewModel.selectedMainPage == .settings {
+                                SettingsView(viewModel: viewModel)
+                            } else if viewModel.selectedMainPage == .recordings {
+                                RecordingsView()
+                            } else {
+                                CatalogContentView(viewModel: viewModel)
+                            }
+                        }
+                        .padding(.top, CatalogVendorLayout.windowTopInset)
                         .transition(.opacity)
-                } else {
-                    VStack(spacing: 0) {
-                        CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                        if viewModel.selectedMainPage == .settings {
-                            SettingsView(viewModel: viewModel)
-                        } else if viewModel.selectedMainPage == .recordings {
-                            RecordingsView()
-                        } else {
-                            CatalogContentView(viewModel: viewModel)
+
+                        if showsMainMenu {
+                            CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
+                                .transition(.opacity)
+                                .zIndex(12)
+                        }
+
+                        if showsAccountMenu {
+                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                                .transition(.opacity)
+                                .zIndex(13)
                         }
                     }
-                    .padding(.top, CatalogVendorLayout.windowTopInset)
-                    .transition(.opacity)
 
-                    if showsMainMenu {
-                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
-                            .transition(.opacity)
-                            .zIndex(12)
+                    if controllerModeEnabled == false {
+                        EmptyView()
                     }
 
-                    if showsAccountMenu {
-                        CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    if viewModel.isLaunchFlowVisible {
+                        VendorLaunchFlowOverlay(viewModel: viewModel)
                             .transition(.opacity)
-                            .zIndex(13)
+                            .zIndex(20)
+                    }
+
+                    if viewModel.isStorePickerVisible {
+                        CatalogStorePickerOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(18)
                     }
                 }
-
-                if controllerModeEnabled == false {
-                    EmptyView()
-                }
-
-                if viewModel.isLaunchFlowVisible {
-                    VendorLaunchFlowOverlay(viewModel: viewModel)
-                        .transition(.opacity)
-                        .zIndex(20)
-                }
-
-                if viewModel.isStorePickerVisible {
-                    CatalogStorePickerOverlay(viewModel: viewModel)
-                        .transition(.opacity)
-                        .zIndex(18)
-                }
+                .macForceNowInterfaceScale(uiScale)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {

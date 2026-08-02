@@ -670,6 +670,7 @@ private struct SettingsStatisticTile: View {
 private struct InterfaceSettingsPage: View {
     let viewModel: CatalogViewModel
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @StateObject private var inputRouter = ControllerInputRouter()
     @StateObject private var steamNavigator = GamepadUINavigator()
 
@@ -704,6 +705,17 @@ private struct InterfaceSettingsPage: View {
                 SettingsToggleRow(title: "Controller Mode", subtitle: "Use a clean Netflix-style catalog with large focus targets, controller shortcuts, and dynamic input glyphs.", isOn: controllerModeEnabled) { enabled in
                     controllerModeEnabled = enabled
                 }
+            }
+
+            SettingsCard(title: "Display") {
+                SettingsSliderRow(title: "Interface Scale", valueText: "\(Int((uiScale * 100).rounded()))%", value: uiScale, range: MacForceNowInterfacePreferences.uiScaleRange, step: 0.05) { scale in
+                    uiScale = scale
+                }
+                SettingsDivider()
+                Text("Scales the catalog, settings, and in-stream HUD. Increase it on high-resolution displays (for example 5K) when the interface feels too small.")
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             SettingsCard(title: "Controls") {

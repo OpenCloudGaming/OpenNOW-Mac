@@ -306,6 +306,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var hudFocusID: String?
     @State private var quitMenuFocusIndex = 0
     @State private var hudGamepadTracker = StreamHUDGamepadTracker()
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init(configuration: StreamLaunchConfiguration,
@@ -352,12 +353,8 @@ public struct WebRTCMediaStreamSurface: View {
                     startTask = Task { await startIfNeeded(nativeView: view) }
                 }
             }
-            if !isStreamReady { launchOverlay }
-            if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
-            if statsVisible { statsHUD }
-            if unifiedHUDVisible { unifiedHUD }
-            if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
-            if quitMenuVisible { quitMenu }
+            hudChrome
+                .macForceNowInterfaceScale(uiScale)
         }
         .background(Color.black)
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
@@ -369,6 +366,16 @@ public struct WebRTCMediaStreamSurface: View {
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
         .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
+    }
+
+    @ViewBuilder
+    private var hudChrome: some View {
+        if !isStreamReady { launchOverlay }
+        if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
+        if statsVisible { statsHUD }
+        if unifiedHUDVisible { unifiedHUD }
+        if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
+        if quitMenuVisible { quitMenu }
     }
 
     private var statsHUD: some View {

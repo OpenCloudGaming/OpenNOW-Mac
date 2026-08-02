@@ -13,6 +13,7 @@ struct LoginView: View {
     let accounts: [LoginAccount]
     let onWindowTitleChange: (String?) -> Void
 
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @FocusState private var focusedField: LoginField?
 
     var body: some View {
@@ -35,6 +36,7 @@ struct LoginView: View {
             } else {
                 loginWindow
                     .padding(.top, 10)
+                    .macForceNowInterfaceScale(uiScale)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 

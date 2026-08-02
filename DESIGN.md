@@ -116,6 +116,33 @@ Twitch panel, transient message pills). Do not use them in new code.
 - **Dialog body**: 18 padding; 16 between description and actions.
 - **Footer**: 18 horizontal, 9 vertical.
 
+## Interface Scale
+
+All point sizes in this document are pre-scale (100 %) values. A user-adjustable
+interface scale multiplies every size on the chrome surfaces it wraps.
+
+- **Token**: `MacForceNowInterfacePreferences.uiScale` (`MacForceNow.Interface.UIScale`),
+  Double in 0.75–2.0, default 1.0. Always read/write through `clampedUIScale(_:)`.
+- **Mechanism**: `.macForceNowInterfaceScale(_:)` (`View/MacForceNowDesign.swift`) lays
+  content out in a reduced logical space, then applies `scaleEffect` so chrome reflows
+  larger instead of cropping. Never apply plain `scaleEffect` to chrome without the
+  compensating frame, and never scale the video surface itself.
+- **Text fidelity**: `scaleEffect` alone rasterizes text at display density and upscales
+  the bitmap (progressively blurrier as scale grows). `MacForceNowInterfaceScaleDensityBooster`
+  (mounted once at the `ContentView` root) keeps every non-Metal window layer's
+  `contentsScale` pinned at `uiScale × window.backingScaleFactor` via a run-loop observer,
+  forcing SwiftUI to re-render text and vector content at zoom density. It skips
+  `CAMetalLayer` (the stream video) and restores natural density at 100 %. Layers with
+  direct bitmap content (game art, `ImageLayer`) are never display-invalidated —
+  re-rendering would blank them; only empty or re-renderable (`CGDrawingLayer`) layers
+  are redrawn. Never bypass it with per-layer `contentsScale` edits elsewhere.
+- **Applied to**: catalog chrome including controller mode and overlays (`CatalogView`
+  non-stream branch), the login window (`LoginView`), and the stream HUD chrome layer
+  (`hudChrome` in `WebRTCMediaStreamSurface`). Full-bleed backdrops and transient
+  splash/loading screens stay at 100 %.
+- **Setting**: Settings → General → Interface → Display, "Interface Scale" slider
+  (5 % steps, shown as a percentage).
+
 ## Radius
 
 - **Default**: 0 — panels, docks, dialogs, buttons, fields, and cards are plain
