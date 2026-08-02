@@ -177,6 +177,16 @@ Full-width rectangular button, height 38, NVIDIA Sans 12pt bold (tracking 0.4).
   Divider stroke.
 - **Focused**: accent stroke at 2px. **Disabled**: opacity 0.46.
 
+### Overflow Menu (app shell dropdown)
+
+Square dropdown replacing native `Menu` for app-shell overflow actions (e.g. game
+detail "⋮" menu). Panel: Panel Raised background, 1px Stroke Regular, 4 vertical
+padding, width 208, leading-aligned to the trigger and anchored 4pt below it, no
+shadow. Rows: full width,
+height 30, 12 horizontal padding, NVIDIA Sans 12pt bold — Text Secondary resting,
+Text Primary + #FFFFFF @ 0.08 fill on hover. Dismisses on outside click, Escape, or
+selection, and closes when the underlying selection changes.
+
 ### Text Fields (login)
 
 14pt regular white text, accent caret, 16 horizontal / 14 vertical padding, #FFFFFF
@@ -246,6 +256,8 @@ reserved for floating layers above the stream:
 
 - Don't add corner radius, `Capsule`, or `RoundedRectangle` to stream HUD or app-shell
   chrome — the only radii are the documented exceptions.
+- Don't use native SwiftUI `Menu` for app-shell overflow actions — it renders rounded
+  system chrome; use the styled Overflow Menu dropdown instead.
 - Don't use system rounded or monospaced font designs on new surfaces; they are legacy
   in the launch overlay, Twitch panel, and transient message pills only.
 - Don't introduce new accent colors or hardcode hex values outside the token files.

@@ -2959,11 +2959,33 @@ private struct MallRibbonShape: Shape {
     }
 }
 
+private struct CatalogDetailActionsMenuItem: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.nvidia(size: 12, weight: .bold))
+                .foregroundStyle(isHovering ? MacForceNowDesign.Text.primary : MacForceNowDesign.Text.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(isHovering ? Color.white.opacity(0.08) : .clear)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
 struct GameDetailPanel: View {
     let viewModel: CatalogViewModel
     @State private var activeImageIndex = 0
     @State private var isDescriptionExpanded = false
     @State private var isHovering = false
+    @State private var showsActionsMenu = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -2985,6 +3007,7 @@ struct GameDetailPanel: View {
                     )
                         .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
+                        .contentShape(Rectangle())
                         .id(imageURL)
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
@@ -3021,6 +3044,7 @@ struct GameDetailPanel: View {
                         capabilityChips(game: game)
                         variantStatusRow(game: game)
                         detailActions(game: game)
+                            .zIndex(1)
                         accessMessage(game: game)
                         detailMetadataScrollArea(game: game)
                             .padding(.top, 4)
@@ -3213,19 +3237,7 @@ struct GameDetailPanel: View {
             .disabled((game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game))
             .fixedSize()
 
-            Menu {
-                if game.variants.count > 1 {
-                    Button("Change game store") { viewModel.changeSelectedGameStore() }
-                }
-                Button("Share") { viewModel.shareSelectedGame() }
-                Button("Add shortcut") { viewModel.addShortcutForSelectedGame() }
-                if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
-                    Button("Unmark as owned") { viewModel.removeSelectedVariantOwned() }
-                } else if selectedVariant != nil {
-                    Button("Mark as owned") { viewModel.markSelectedVariantOwned() }
-                }
-                Button("Visit game store") { viewModel.openStoreForSelectedVariant() }
-            } label: {
+            Button { showsActionsMenu.toggle() } label: {
                 Text("⋮")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
@@ -3233,8 +3245,65 @@ struct GameDetailPanel: View {
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(.plain)
+            .overlay {
+                if showsActionsMenu {
+                    Color.black.opacity(0.001)
+                        .frame(width: 6000, height: 6000)
+                        .contentShape(Rectangle())
+                        .onTapGesture { showsActionsMenu = false }
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if showsActionsMenu {
+                    detailActionsMenuPanel(game: game)
+                        .offset(y: 44)
+                }
+            }
+            .onExitCommand { showsActionsMenu = false }
+            .onChange(of: game.catalogIdentity) { _, _ in showsActionsMenu = false }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if game.variants.count > 1 {
+                CatalogDetailActionsMenuItem(title: "Change game store") {
+                    showsActionsMenu = false
+                    viewModel.changeSelectedGameStore()
+                }
+            }
+            CatalogDetailActionsMenuItem(title: "Share") {
+                showsActionsMenu = false
+                viewModel.shareSelectedGame()
+            }
+            CatalogDetailActionsMenuItem(title: "Add shortcut") {
+                showsActionsMenu = false
+                viewModel.addShortcutForSelectedGame()
+            }
+            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+                CatalogDetailActionsMenuItem(title: "Unmark as owned") {
+                    showsActionsMenu = false
+                    viewModel.removeSelectedVariantOwned()
+                }
+            } else if selectedVariant != nil {
+                CatalogDetailActionsMenuItem(title: "Mark as owned") {
+                    showsActionsMenu = false
+                    viewModel.markSelectedVariantOwned()
+                }
+            }
+            CatalogDetailActionsMenuItem(title: "Visit game store") {
+                showsActionsMenu = false
+                viewModel.openStoreForSelectedVariant()
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: 208)
+        .background(MacForceNowDesign.Surface.panelRaised)
+        .overlay {
+            Rectangle()
+                .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
+        }
     }
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
