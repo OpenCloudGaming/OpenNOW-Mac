@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0](https://github.com/anderson-oki/macforce-now/compare/v0.7.0...v0.8.0) (2026-08-02)
+
+
+### Features
+
+* add discord rich presence ([#22](https://github.com/anderson-oki/macforce-now/issues/22)) ([6771a4a](https://github.com/anderson-oki/macforce-now/commit/6771a4a7723f218c99504f498237bb58061956b7))
+* add live clock to stream HUD footer ([c4a76ab](https://github.com/anderson-oki/macforce-now/commit/c4a76ab2c512142e8845df71d03a9105b5c5b844))
+* add ui scaling configuration ([6438fa6](https://github.com/anderson-oki/macforce-now/commit/6438fa65745b2fda14ee0f7ce53fe3ddaa4f0177))
+* re-style quit game dialog ([3cfbabc](https://github.com/anderson-oki/macforce-now/commit/3cfbabcc3860427cb9a7e60113eab788312379ba))
+
+
+### Bug Fixes
+
+* harden CI SwiftPM cache against corrupt restores ([ee61ecf](https://github.com/anderson-oki/macforce-now/commit/ee61ecf17b4102f73e07f5c90cdd25d18126c410))
+* refresh expired session before initial catalog load and reload after 401 recovery ([4798fa8](https://github.com/anderson-oki/macforce-now/commit/4798fa84e3b98330a27f087bafa026432bfebd74))
+* restore pointer lock on hide hud ([6bde82e](https://github.com/anderson-oki/macforce-now/commit/6bde82eca02e03d4bffb48af627a81fa3afd360c))
+
 ## [0.7.0](https://github.com/anderson-oki/macforce-now/compare/v0.6.0...v0.7.0) (2026-07-31)
 
 
