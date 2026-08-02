@@ -457,6 +457,60 @@ import Foundation
     }
 }
 
+@Test func catalogBrowseAppliesCollectionFiltersWhenDefinitionsAreEmpty() async {
+        await networkTestIsolationLock.withLock {
+        let host = "*"
+        let token = "catalog-collections-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("catalog-collections-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
+            }
+            if query.contains("filterGroupDefinitions") {
+                return SessionManagerURLProtocol.response(json: ["data": ["filterGroupDefinitions": [], "sortOrderDefinitions": [["id": "a_to_z", "label": "A-Z", "orderBy": "sortName:ASC"]]]])
+            }
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": 1,
+                "numberSupported": 1,
+                "pageInfo": ["hasNextPage": false, "endCursor": "", "totalCount": 1],
+                "items": [catalogGraphQLGame(id: "favorite-catalog-game")],
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: ["my_favorites"], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+                continuation.resume(returning: (
+                    success,
+                    browseResult.selectedFilterIds,
+                    browseResult.filterGroups.map { group in (group.id, group.options.map(\.id)) },
+                    error
+                ))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.3.isEmpty)
+        #expect(result.1 == ["my_favorites"])
+        #expect(result.2.contains { $0.0 == "collections" && $0.1.sorted() == ["my_favorites", "my_library"] })
+        let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
+            ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
+        }
+        let filters = catalogBodies.first?["variables"].flatMap { ($0 as? [String: Any])?["filters"] as? [String: Any] }
+        let library = filters?["library"] as? [String: Any]
+        let favorited = library?["favorited"] as? [String: Any]
+        #expect(favorited?["equals"] as? Bool == true)
+    }
+}
+
 @Test func catalogBrowseContinuesAfterFortyItemFirstPage() async {
         await networkTestIsolationLock.withLock {
         let host = "*"

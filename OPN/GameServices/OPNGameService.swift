@@ -39,7 +39,9 @@ final class OPNGameService: @unchecked Sendable {
     private static let defaultCatalogFetchCount = 96
     private static let maxCatalogPages = 150
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
-    private static let libraryCatalogFilterId = "gfn-library-owned"
+    static let collectionsFilterGroupId = "collections"
+    static let libraryCatalogFilterId = "my_library"
+    static let favoritesCatalogFilterId = "my_favorites"
     private static let catalogDefinitionsFreshSeconds: TimeInterval = TimeInterval(LCARS.RequestType.staticAppData.cachePolicy.maxAgeSeconds)
     private static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
     private static let accountLinkingCallbackTimeoutSeconds: TimeInterval = 5 * 60
@@ -1182,6 +1184,7 @@ final class OPNGameService: @unchecked Sendable {
             }
             if !group.options.isEmpty { result.filterGroups.append(group) }
         }
+        applyCollectionsFilterFallback(result: &result, filterPayloadById: &filterPayloadById)
         let sorts = definitionsData?["sortOrderDefinitions"] as? [NSDictionary] ?? []
         for sort in sorts {
             let id = safeString(sort["id"]) ?? ""
@@ -1191,6 +1194,41 @@ final class OPNGameService: @unchecked Sendable {
             }
         }
         return filterPayloadById
+    }
+
+    /// Guarantees the My Library / My Favorites filters exist. They are normally part of the
+    /// server's `collections` group; when a definitions response omits them we splice the known
+    /// payloads in so the Show All page can still scope to a collection.
+    private func applyCollectionsFilterFallback(result: inout OPNCatalogBrowseResult, filterPayloadById: inout [String: [String: Any]]) {
+        let fallbacks: [(id: String, label: String, payload: [String: Any])] = [
+            (Self.favoritesCatalogFilterId, "My Favorites", Self.favoritesCatalogFilterPayload),
+            (Self.libraryCatalogFilterId, "My Library", Self.libraryCatalogFilterPayload),
+        ]
+        let missing = fallbacks.filter { filterPayloadById[$0.id] == nil }
+        guard !missing.isEmpty else { return }
+
+        var groupIndex = result.filterGroups.firstIndex { $0.id == Self.collectionsFilterGroupId }
+        if groupIndex == nil {
+            var group = OPNCatalogFilterGroup()
+            group.id = Self.collectionsFilterGroupId
+            group.label = "Collections"
+            result.filterGroups.insert(group, at: 0)
+            groupIndex = 0
+        }
+        guard let index = groupIndex else { return }
+
+        for fallback in missing {
+            filterPayloadById[fallback.id] = fallback.payload
+            result.filterGroups[index].options.append(
+                OPNCatalogFilterOption(
+                    id: fallback.id,
+                    rawId: fallback.id,
+                    label: fallback.label,
+                    groupId: Self.collectionsFilterGroupId,
+                    groupLabel: result.filterGroups[index].label
+                )
+            )
+        }
     }
 
     private func hasValidFilterGroups(_ definitions: NSDictionary?) -> Bool {
@@ -1796,7 +1834,18 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private static var libraryCatalogFilter: NSDictionary {
-        ["variants": ["gfn": ["library": ["status": ["notEquals": "NOT_OWNED"]]]]] as NSDictionary
+        libraryCatalogFilterPayload as NSDictionary
+    }
+
+    /// Payloads for the server-defined `collections` filter group. The catalog normally delivers
+    /// these through `filterGroupDefinitions`; we keep copies so a locale/account that returns no
+    /// definitions still scopes My Library / My Favorites instead of silently browsing everything.
+    private static var libraryCatalogFilterPayload: [String: Any] {
+        ["variants": ["gfn": ["library": ["status": ["notEquals": "NOT_OWNED"]]]]]
+    }
+
+    private static var favoritesCatalogFilterPayload: [String: Any] {
+        ["library": ["favorited": ["equals": true]]]
     }
 
     private static func libraryStatusIsOwned(_ status: String) -> Bool {
