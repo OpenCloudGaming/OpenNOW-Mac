@@ -116,6 +116,7 @@ public enum SteamControllerReport {
     private static let defaultDigitalMappingsCommand: UInt8 = 0x85
     private static let setSettingsCommand: UInt8 = 0x87
     private static let defaultSettingsCommand: UInt8 = 0x8e
+    private static let powerOffCommand: UInt8 = 0x9f
     private static let rightPadModeRegister: UInt8 = 0x08
     private static let rightPadModeOff: UInt8 = 0x07
     private static let rightPadMarginRegister: UInt8 = 0x18
@@ -242,6 +243,13 @@ public enum SteamControllerReport {
         switch model {
         case .legacy: legacyFeatureReport([clearDigitalMappingsCommand, 0x00])
         case .triton: tritonLizardModeDisableReport()
+        }
+    }
+
+    public static func powerOffReport(model: SteamControllerModel) -> SteamControllerFeatureReport {
+        switch model {
+        case .legacy: legacyFeatureReport([powerOffCommand, 0x00])
+        case .triton: tritonCommandReport(powerOffCommand)
         }
     }
 

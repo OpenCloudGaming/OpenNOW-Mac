@@ -71,6 +71,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     private nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
     private static let heartbeatInterval: TimeInterval = 5.0
     private static let featureReportAttempts = 5
+    private static let powerOffCombo: GamepadButtons = [.mode, .north]
 
     private struct Consumer {
         let controllersChanged: () -> Void
@@ -92,6 +93,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var batteryLevel: UInt8?
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
+        var powerOffComboSent = false
 
         init(device: IOHIDDevice, controllerID: UInt64, model: SteamControllerModel, isActive: Bool) {
             self.device = device
@@ -370,6 +372,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
         for context in devices.values {
+            cancelPowerOffCombo(for: context)
             emitNeutralStateIfNeeded(for: context)
             if isInputCaptureActive {
                 enableLizardMode(for: context)
@@ -567,6 +570,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         if let context = devices.removeValue(forKey: ObjectIdentifier(device)) {
             matchedDeviceCount = devices.count
             updateAllDevices()
+            cancelPowerOffCombo(for: context)
             emitNeutralStateIfNeeded(for: context)
             batteryLevels.removeValue(forKey: context.deviceID)
             batteryCharging.removeValue(forKey: context.deviceID)
@@ -630,6 +634,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
                 context.snapshot = snapshot
             }
             let merged = mergedSnapshot(for: context)
+            evaluatePowerOffCombo(for: context, buttons: merged.buttons)
             guard merged != context.mergedSnapshot else { return }
             if merged.buttons != context.mergedSnapshot.buttons {
                 if isDeckStateReport, report.count >= 16 {
@@ -660,12 +665,35 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         return merged
     }
 
+    private func evaluatePowerOffCombo(for context: DeviceContext, buttons: GamepadButtons) {
+        guard buttons.isSuperset(of: Self.powerOffCombo), !context.powerOffComboSent else { return }
+        context.powerOffComboSent = true
+        powerOff(context)
+    }
+
+    private func powerOff(_ context: DeviceContext) {
+        let report = SteamControllerReport.powerOffReport(model: context.model)
+        sendFeatureReport(report, to: context.device, attempts: Self.featureReportAttempts)
+        print("[SteamController] power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
+        WebRTCMediaTelemetry.capture(
+            "webrtc.input.steamcontroller.poweroff.combo",
+            level: .info,
+            message: "Steam+Y power-off combo triggered.",
+            attributes: ["controllerID": String(format: "%016X", context.controllerID)]
+        )
+    }
+
+    private func cancelPowerOffCombo(for context: DeviceContext) {
+        context.powerOffComboSent = false
+    }
+
     private func emitNeutralStateIfNeeded(for context: DeviceContext) {
         let neutral = SteamControllerInputSnapshot()
         guard context.mergedSnapshot != neutral else { return }
         context.snapshot = neutral
         context.deckSnapshot = neutral
         context.mergedSnapshot = neutral
+        cancelPowerOffCombo(for: context)
         notifyInputState(context.deviceID, neutral)
     }
 

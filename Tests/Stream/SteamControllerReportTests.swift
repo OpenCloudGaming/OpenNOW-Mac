@@ -86,6 +86,14 @@ private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapsh
         #expect(parsedState(inputReport()).buttons.contains(.mode) == false)
     }
 
+    @Test func powerOffReportLegacySendsCommand9f() {
+        let report = SteamControllerReport.powerOffReport(model: .legacy)
+        #expect(report.reportID == 0)
+        #expect(report.bytes.count == SteamControllerReport.reportLength)
+        #expect(report.bytes[0] == 0x9f)
+        #expect(report.bytes[1] == 0x00)
+    }
+
     @Test func mapsAnalogTriggers() {
         let snapshot = parsedState(inputReport(leftTrigger: 255, rightTrigger: 128))
         #expect(snapshot.leftTrigger == 1.0)
@@ -349,6 +357,13 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(reports[1].reportID == 1)
         #expect(reports[1].bytes.count == SteamControllerReport.reportLength)
         #expect(Array(reports[1].bytes[0...5]) == [0x01, 0x87, 0x03, 0x09, 0x01, 0x00])
+    }
+
+    @Test func powerOffReportTritonSendsCommand9f() {
+        let report = SteamControllerReport.powerOffReport(model: .triton)
+        #expect(report.reportID == 1)
+        #expect(report.bytes.count == SteamControllerReport.reportLength)
+        #expect(Array(report.bytes[0...2]) == [0x01, 0x9f, 0x00])
     }
 }
 
