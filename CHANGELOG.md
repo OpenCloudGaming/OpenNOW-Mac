@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/anderson-oki/macforce-now/compare/v0.8.1...v0.9.0) (2026-08-02)
+
+
+### Features
+
+* add steam controller shape on tester ([b92a3c8](https://github.com/anderson-oki/macforce-now/commit/b92a3c85f9269688a6946164f2b9671817104632))
+* add turn off steam controller on steam + y shortcut ([1e3f273](https://github.com/anderson-oki/macforce-now/commit/1e3f273fcfc51ca4a2b2dccfebb6da34604d1b71))
+
+
+### Bug Fixes
+
+* hero aspect ratio ([4e0bd2f](https://github.com/anderson-oki/macforce-now/commit/4e0bd2fc7903224f5a83067e221934c5aded97d2))
+* my favories catalog filter ([15a9ec4](https://github.com/anderson-oki/macforce-now/commit/15a9ec45c871a7f10e51709668fbd33acbd19e9d))
+
 ## [0.8.1](https://github.com/anderson-oki/macforce-now/compare/v0.8.0...v0.8.1) (2026-08-02)
 
 
