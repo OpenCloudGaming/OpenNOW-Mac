@@ -674,6 +674,7 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == nil)
     #expect(request.value(forHTTPHeaderField: "nv-device-make") == nil)
+    #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
     #expect(requestData["clientPlatformName"] as? String == "browser")
     #expect(requestData["clientDisplayHdrCapabilities"] is [String: Any])
@@ -989,7 +990,7 @@ import Foundation
     }
 }
 
-@Test func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
+@Test func sessionManagerStaleInternalCreateErrorReturnsActionableMessage() async {
     await networkTestIsolationLock.withLock {
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -1008,8 +1009,7 @@ import Foundation
     }
 
     #expect(result.0 == false)
-    #expect(result.1.contains("HTTP 400:"))
-    #expect(result.1.contains("INTERNAL_ERROR_STATUS 8A8C0000"))
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     }
 }
 

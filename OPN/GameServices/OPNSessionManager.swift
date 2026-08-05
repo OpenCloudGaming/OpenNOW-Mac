@@ -60,7 +60,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         var sessionRequestData: [String: Any] = [
-            "appId": launchAppId.stringValue,
+            "appId": launchAppId.intValue,
             "internalTitle": internalTitle,
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
             "networkTestSessionId": networkTestSessionIdValue(effectiveSettings),
@@ -131,6 +131,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard http?.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
+                if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
+                    self.clearPersistedActiveSessionId("")
+                    createCompletion(false, [:], staleMessage)
+                    return
+                }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
