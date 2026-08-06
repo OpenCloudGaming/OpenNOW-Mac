@@ -136,6 +136,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     createCompletion(false, [:], staleMessage)
                     return
                 }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    createCompletion(false, [:], limitedModeMessage)
+                    return
+                }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
@@ -380,6 +384,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                         completion(false, [:], staleMessage)
                         return
                     }
+                    if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                        completion(false, [:], limitedModeMessage)
+                        return
+                    }
                     completion(false, [:], "STALE_ACTIVE_SESSION: validation HTTP \(http?.statusCode ?? 0): \(body)")
                     return
                 }
@@ -489,6 +497,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     completion(false, [:], staleMessage)
                     return
                 }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    completion(false, [:], limitedModeMessage)
+                    return
+                }
                 completion(false, [:], "Claim HTTP \(http?.statusCode ?? 0): \(body)")
                 return
             }
@@ -503,6 +515,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
+                    return
+                }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    completion(false, [:], limitedModeMessage)
                     return
                 }
                 completion(false, [:], "Claim API error \(statusCode): \(description.isEmpty ? "unknown" : description)")

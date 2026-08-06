@@ -1013,6 +1013,29 @@ import Foundation
     }
 }
 
+@Test func sessionManagerLimitedModeCreateErrorReturnsActionableMessage() async {
+    await networkTestIsolationLock.withLock {
+    let host = "create-limited-mode.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: limitedModeSessionResponse(), status: 500)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "GeForce NOW says this game is out of limited playtime. Add playtime or try another game.")
+    }
+}
+
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
     let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
         "sessionId": "stale-session",
@@ -1085,6 +1108,21 @@ private func staleSessionResponse() -> [String: Any] {
             "sessionId": "resume-session",
             "status": 4,
             "sessionRequestData": ["appId": 0],
+        ],
+    ]
+}
+
+private func limitedModeSessionResponse() -> [String: Any] {
+    [
+        "requestStatus": [
+            "statusCode": 81,
+            "statusDescription": "STREAMING_NOT_ALLOWED_IN_LIMITED_MODE 8A91000D",
+            "unifiedErrorCode": -1970208755,
+        ],
+        "session": [
+            "sessionId": "limited-mode-session",
+            "status": 0,
+            "seatSetupInfo": ["queuePosition": 1, "seatSetupStep": 0, "seatSetupEta": 0],
         ],
     ]
 }

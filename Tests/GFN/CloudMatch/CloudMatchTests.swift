@@ -152,6 +152,9 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     let notPausedData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 34, "statusDescription": "SESSION_NOT_PAUSED"]])
     #expect(CloudMatchResponseParser.isSessionNotPausedResponse(notPausedData))
 
+    let limitedModeData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 81, "statusDescription": "STREAMING_NOT_ALLOWED_IN_LIMITED_MODE 8A91000D"]])
+    #expect(CloudMatchResponseParser.limitedModeStreamingMessage(limitedModeData) == "GeForce NOW says this game is out of limited playtime. Add playtime or try another game.")
+
     let staleData = try JSONSerialization.data(withJSONObject: [
         "requestStatus": ["statusCode": 4, "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000"],
         "session": ["sessionRequestData": ["appId": 0]],

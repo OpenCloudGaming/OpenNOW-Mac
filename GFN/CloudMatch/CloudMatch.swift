@@ -484,6 +484,14 @@ public enum CloudMatchResponseParser {
         return status.statusCode == 34 || status.statusDescription.contains("SESSION_NOT_PAUSED")
     }
 
+    public static func limitedModeStreamingMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let status = requestStatus(from: json)
+        let description = status.statusDescription.uppercased()
+        let isLimitedModeFailure = status.statusCode == 81 || description.contains("STREAMING_NOT_ALLOWED_IN_LIMITED_MODE") || description.contains("8A91000D")
+        return isLimitedModeFailure ? "GeForce NOW says this game is out of limited playtime. Add playtime or try another game." : nil
+    }
+
     public static func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
         guard let data, let json = jsonDictionary(data) else { return nil }
         let status = requestStatus(from: json)
