@@ -1108,6 +1108,12 @@ private struct ControllerGameTile: View {
                     CatalogGameCardBadge(label: badge)
                         .scaleEffect(0.92, anchor: .topLeading)
                 }
+                if let badge = game.freeAccountAccessBadgeLabel {
+                    CatalogGameAccessBadge(label: badge)
+                        .scaleEffect(0.92, anchor: .topTrailing)
+                        .padding(9)
+                        .frame(width: tileSize.width, height: tileSize.height, alignment: .topTrailing)
+                }
                 VStack(alignment: .leading, spacing: 7) {
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {

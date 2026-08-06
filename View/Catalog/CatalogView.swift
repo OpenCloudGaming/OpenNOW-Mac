@@ -3148,6 +3148,11 @@ private struct CatalogGameTile: View {
                 if let badge = game.cardBadgeLabel {
                     CatalogGameCardBadge(label: badge)
                 }
+                if let badge = game.freeAccountAccessBadgeLabel {
+                    CatalogGameAccessBadge(label: badge)
+                        .padding(8)
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight, alignment: .topTrailing)
+                }
                 if isActive {
                     VStack {
                         Spacer(minLength: 0)
@@ -3205,6 +3210,28 @@ struct CatalogGameCardBadge: View {
                 .frame(height: 24)
                 .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))
         }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct CatalogGameAccessBadge: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.nvidia(size: 11, weight: .bold))
+            Text(label)
+                .font(.nvidia(size: 11, weight: .bold))
+                .tracking(0.7)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.42), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }
 }
@@ -4514,6 +4541,12 @@ extension OPNCatalogGameObject {
     var cardBadgeLabel: String? {
         if isLaunchPatching { return "Patching" }
         return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
+    }
+
+    var freeAccountAccessBadgeLabel: String? {
+        let tier = membershipTierLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tier.isEmpty, tier.caseInsensitiveCompare("Free") != .orderedSame else { return nil }
+        return "Membership Required"
     }
 
     var isLaunchPatching: Bool {
