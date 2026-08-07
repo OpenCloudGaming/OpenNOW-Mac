@@ -853,23 +853,18 @@ public final class OPNSessionJSONParser: NSObject {
         let session = session as? [String: Any] ?? [:]
         let progress = dictionary(session["sessionProgress"])
         let progressInfo = dictionary(session["progressInfo"])
-        let required = boolValue(session["sessionAdsRequired"])
-            || boolValue(session["isAdsRequired"])
-            || boolValue(progress?["isAdsRequired"])
-            || boolValue(progressInfo?["isAdsRequired"])
+        let controlInfo = dictionary(session["sessionControlInfo"])
+        let containers = [session, progress, progressInfo, controlInfo].compactMap { $0 }
+        let required = containers.contains { container in
+            boolValue(container["sessionAdsRequired"]) || boolValue(container["isAdsRequired"])
+        }
 
         var adState = OPNSessionAdState()
         adState.sessionAdsRequired = required
-        adState.serverSentEmptyAds = session["sessionAds"] == nil || session["sessionAds"] is NSNull
-        adState.sessionAds = array(session["sessionAds"]).enumerated().compactMap { index, value in
-            guard let ad = dictionary(value) else { return nil }
-            let parsed = parseSessionAd(ad, index: index)
-            guard !isTerminalAdState(parsed.adState) else { return nil }
-            guard !parsed.adId.isEmpty || !parsed.mediaUrl.isEmpty || !parsed.title.isEmpty || !parsed.description.isEmpty else { return nil }
-            return parsed
-        }
+        adState.serverSentEmptyAds = !containers.contains { !array($0["sessionAds"]).isEmpty }
+        adState.sessionAds = sessionAds(from: containers)
 
-        if let opportunity = dictionary(session["opportunity"]) {
+        if let opportunity = containers.compactMap({ dictionary($0["opportunity"]) }).first {
             adState.isQueuePaused = boolValue(opportunity["queuePaused"], fallback: adState.isQueuePaused)
             adState.gracePeriodSeconds = positiveInt(opportunity["gracePeriodSeconds"]) ?? 0
             adState.message = nonEmptyString(opportunity["message"]) ?? nonEmptyString(opportunity["description"]) ?? ""
@@ -880,6 +875,17 @@ public final class OPNSessionJSONParser: NSObject {
 
         adState.isAdsRequired = required || !adState.sessionAds.isEmpty || adState.isQueuePaused
         return OPNParsedSessionAdState(adState: adState)
+    }
+
+    private static func sessionAds(from containers: [[String: Any]]) -> [OPNSessionAdInfo] {
+        let adValues = containers.map { array($0["sessionAds"]) }.first { !$0.isEmpty } ?? []
+        return adValues.enumerated().compactMap { index, value in
+            guard let ad = dictionary(value) else { return nil }
+            let parsed = parseSessionAd(ad, index: index)
+            guard !isTerminalAdState(parsed.adState) else { return nil }
+            guard !parsed.adId.isEmpty || !parsed.mediaUrl.isEmpty || !parsed.title.isEmpty || !parsed.description.isEmpty else { return nil }
+            return parsed
+        }
     }
 
     private static func nonEmptyString(_ value: Any?) -> String? {

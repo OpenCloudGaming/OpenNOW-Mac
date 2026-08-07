@@ -788,8 +788,8 @@ import Foundation
     }
 }
 
-@Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async throws {
-    try await networkTestIsolationLock.withLock {
+@Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async {
+    await networkTestIsolationLock.withLock {
     let host = "bundle-media.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
@@ -1047,6 +1047,91 @@ import Foundation
     #expect(selected == nil)
 }
 
+@Test func sessionAdStateParsesNestedProgressAds() throws {
+    let parsed = OPNSessionJSONParser.parseSessionAdState(from: [
+        "sessionProgress": [
+            "isAdsRequired": true,
+            "sessionAds": [[
+                "adId": "nested-ad",
+                "adState": 1,
+                "adMediaFiles": [[
+                    "mediaFileUrl": "https://ads.example.test/video.mp4",
+                    "encodingProfile": "mp4deinterlaced720p",
+                ]],
+                "clickThroughUrl": "https://ads.example.test/click",
+                "adLengthInSeconds": 15,
+                "title": "Sponsor",
+            ]],
+        ],
+    ])
+
+    let ad = try #require(parsed.sessionAds.first)
+    #expect(parsed.isAdsRequired)
+    #expect(parsed.sessionAdsRequired)
+    #expect(!parsed.serverSentEmptyAds)
+    #expect(ad.adId == "nested-ad")
+    #expect(ad.mediaUrl == "https://ads.example.test/video.mp4")
+    #expect(ad.durationMs == 15_000)
+}
+
+@Test func sessionManagerKeepsNestedAdsAcrossEmptyRequiredPolls() async {
+    await networkTestIsolationLock.withLock {
+        let host = "nested-ads.example.test"
+        let lock = NSLock()
+        nonisolated(unsafe) var pollCount = 0
+        SessionManagerURLProtocol.install(host: host) { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/v2/session/resume-session")
+            lock.withLock { pollCount += 1 }
+            if lock.withLock({ pollCount }) == 1 {
+                return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 1, controlHost: host, extraSession: [
+                    "sessionProgress": [
+                        "isAdsRequired": true,
+                        "sessionAds": [[
+                            "adId": "nested-ad",
+                            "adState": 1,
+                            "mediaUrl": "https://ads.example.test/video.mp4",
+                            "adLengthInSeconds": 15,
+                        ]],
+                    ],
+                ]))
+            }
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 1, controlHost: host, extraSession: [
+                "sessionProgress": [
+                    "isAdsRequired": true,
+                ],
+            ]))
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let manager = OPNSessionManager()
+        manager.setAccessToken("token")
+        manager.setStreamingBaseUrl("https://\(host)")
+
+        let first = await withCheckedContinuation { continuation in
+            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+                let adState = info["adState"] as? [String: Any]
+                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
+                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
+            }
+        }
+        let second = await withCheckedContinuation { continuation in
+            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+                let adState = info["adState"] as? [String: Any]
+                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
+                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
+            }
+        }
+
+        #expect(first.0)
+        #expect(first.3.isEmpty)
+        #expect(first.1 == "nested-ad")
+        #expect(second.0)
+        #expect(second.3.isEmpty)
+        #expect(second.2 == "https://ads.example.test/video.mp4")
+    }
+}
+
 private func minimalSettings() -> [String: Any] {
     [
         "resolution": "1920x1080",
@@ -1070,31 +1155,36 @@ private func parsePhysicalResolutionMetadata(_ metadata: [[String: String]]) -> 
     return object
 }
 
-private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {
-    [
+private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", extraSession: [String: Any] = [:]) -> [String: Any] {
+    var session: [String: Any] = [
+        "sessionId": "resume-session",
+        "status": sessionStatus,
+        "gpuType": "L40",
+        "sessionRequestData": ["appId": 123],
+        "sessionControlInfo": ["ip": controlHost],
+        "connectionInfo": [[
+            "usage": 14,
+            "ip": "signaling.example.test",
+            "port": 443,
+            "resourcePath": "/nvst/",
+        ]],
+        "monitorSettings": [[
+            "widthInPixels": 1920,
+            "heightInPixels": 1080,
+            "framesPerSecond": 60,
+            "dpi": 96,
+        ]],
+    ]
+    for (key, value) in extraSession {
+        session[key] = value
+    }
+
+    return [
         "requestStatus": [
             "statusCode": statusCode,
             "statusDescription": statusCode == 1 ? "SUCCESS" : "ERROR",
         ],
-        "session": [
-            "sessionId": "resume-session",
-            "status": sessionStatus,
-            "gpuType": "L40",
-            "sessionRequestData": ["appId": 123],
-            "sessionControlInfo": ["ip": controlHost],
-            "connectionInfo": [[
-                "usage": 14,
-                "ip": "signaling.example.test",
-                "port": 443,
-                "resourcePath": "/nvst/",
-            ]],
-            "monitorSettings": [[
-                "widthInPixels": 1920,
-                "heightInPixels": 1080,
-                "framesPerSecond": 60,
-                "dpi": 96,
-            ]],
-        ],
+        "session": session,
     ]
 }
 
