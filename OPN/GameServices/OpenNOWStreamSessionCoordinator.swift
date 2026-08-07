@@ -1,3 +1,5 @@
+import AppKit
+import AVKit
 import Foundation
 
 public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
@@ -179,8 +181,16 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         var attempts = 0
         var lastPollWasPendingProgress = initial.isPendingProgress
         var latest = initial
+        var completedAdIds: Set<String> = []
         while !latest.isReady {
             try Task.checkCancellation()
+            if let ad = latest.pendingAd, !completedAdIds.contains(ad.adId) {
+                latest = try await playRequiredAd(ad, session: latest)
+                completedAdIds.insert(ad.adId)
+                attempts = 0
+                lastPollWasPendingProgress = latest.isPendingProgress
+                continue
+            }
             if attempts >= 60, !lastPollWasPendingProgress {
                 throw OpenNOWStreamSessionError.sessionAllocationFailed("Session poll timeout")
             }
@@ -194,6 +204,34 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             lastPollWasPendingProgress = latest.isPendingProgress
         }
         return latest
+    }
+
+    private func playRequiredAd(_ ad: AllocatedSessionAd, session: AllocatedStreamSession) async throws -> AllocatedStreamSession {
+        guard !ad.mediaUrl.isEmpty else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but no playable ad media was returned.")
+        }
+        let startedSession = try await reportSessionAd(session: session, ad: ad, action: "start", watchedTimeInMs: -1, cancelReason: "")
+        let playbackSession = startedSession.sessionId.isEmpty ? session : startedSession
+        do {
+            let watchedTimeInMs = try await OpenNOWSessionAdPlayer.play(ad: ad, title: session.title)
+            let updated = try await reportSessionAd(session: playbackSession, ad: ad, action: "finish", watchedTimeInMs: watchedTimeInMs, cancelReason: "")
+            return updated.sessionId.isEmpty ? playbackSession : updated
+        } catch {
+            _ = try? await reportSessionAd(session: playbackSession, ad: ad, action: "cancel", watchedTimeInMs: -1, cancelReason: "playback_failed")
+            throw error
+        }
+    }
+
+    private func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
+        try await withCheckedThrowingContinuation { continuation in
+            OPNSessionManager.shared.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason) { success, info, error in
+                if success {
+                    continuation.resume(returning: AllocatedStreamSession(info))
+                } else {
+                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error))
+                }
+            }
+        }
     }
 
     private func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
@@ -510,17 +548,20 @@ private struct PreparedStreamLaunch {
 
 private struct AllocatedStreamSession: Sendable {
     let sessionId: String
+    let title: String
     let serverIp: String
     let signalingServer: String
     let signalingUrl: String
     let signalingQueryParameters: String
     let signalingHeaders: [String]
     let streamingBaseUrl: String
+    let deviceId: String
     let status: Int
     let queuePosition: Int
     let seatSetupStep: Int
     let progressState: Int
     let adsRequired: Bool
+    let pendingAd: AllocatedSessionAd?
     let rawJSON: String
 
     var isReady: Bool {
@@ -535,18 +576,36 @@ private struct AllocatedStreamSession: Sendable {
 
     init(_ info: [String: Any]) {
         sessionId = Self.string(info["sessionId"])
+        title = Self.string(info["title"]).isEmpty ? "GeForce NOW" : Self.string(info["title"])
         serverIp = Self.string(info["serverIp"])
         signalingServer = Self.string(info["signalingServer"])
         signalingUrl = Self.string(info["signalingUrl"])
         signalingQueryParameters = Self.string(info["signalingQueryParameters"])
         signalingHeaders = Self.stringArray(info["signalingHeaders"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
+        deviceId = Self.string(info["deviceId"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
         seatSetupStep = Self.int(info["seatSetupStep"])
         progressState = Self.int(info["progressState"])
-        adsRequired = Self.bool((info["adState"] as? [String: Any])?["isAdsRequired"])
+        let adState = info["adState"] as? [String: Any]
+        adsRequired = Self.bool(adState?["isAdsRequired"])
+        pendingAd = Self.pendingAd(from: adState)
         rawJSON = Self.jsonString(info)
+    }
+
+    var reportableSession: [String: Any] {
+        [
+            "sessionId": sessionId,
+            "serverIp": serverIp,
+            "streamingBaseUrl": streamingBaseUrl,
+            "deviceId": deviceId,
+        ]
+    }
+
+    private static func pendingAd(from adState: [String: Any]?) -> AllocatedSessionAd? {
+        guard bool(adState?["isAdsRequired"]), let ads = adState?["sessionAds"] as? [[String: Any]] else { return nil }
+        return ads.compactMap(AllocatedSessionAd.init(dictionary:)).first
     }
 
     private static func jsonString(_ value: [String: Any]) -> String {
@@ -581,6 +640,166 @@ private struct AllocatedStreamSession: Sendable {
         if let values = value as? [String] { return values }
         if let values = value as? [NSString] { return values.map { $0 as String } }
         return []
+    }
+}
+
+private struct AllocatedSessionAd: Equatable, Sendable {
+    let adId: String
+    let mediaUrl: String
+    let durationMs: Int
+    let title: String
+
+    init?(dictionary: [String: Any]) {
+        let adId = Self.string(dictionary["adId"])
+        guard !adId.isEmpty else { return nil }
+        self.adId = adId
+        title = Self.string(dictionary["title"])
+        durationMs = Self.int(dictionary["durationMs"])
+        mediaUrl = Self.bestMediaUrl(dictionary)
+    }
+
+    private static func bestMediaUrl(_ dictionary: [String: Any]) -> String {
+        let mediaFiles = (dictionary["adMediaFiles"] as? [[String: Any]] ?? [])
+            .compactMap { file -> (url: String, rank: Int)? in
+                let url = string(file["mediaFileUrl"])
+                guard !url.isEmpty else { return nil }
+                return (url, mediaProfileRank(string(file["encodingProfile"])))
+            }
+            .sorted { $0.rank < $1.rank }
+        if let url = mediaFiles.first?.url { return url }
+        for key in ["mediaUrl", "videoUrl", "url", "adUrl"] {
+            let url = string(dictionary[key])
+            if !url.isEmpty { return url }
+        }
+        return ""
+    }
+
+    private static func mediaProfileRank(_ profile: String) -> Int {
+        switch profile {
+        case "mp4deinterlaced720p": return 0
+        case "hlsadaptive": return 1
+        case "webm": return 2
+        default: return 100
+        }
+    }
+
+    private static func string(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        if let value = value as? NSString { return value as String }
+        if let value = value as? NSNumber { return value.stringValue }
+        return ""
+    }
+
+    private static func int(_ value: Any?) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? 0 }
+        return 0
+    }
+}
+
+@MainActor
+private final class OpenNOWSessionAdPlayer: NSObject {
+    private static var activePlayers: [ObjectIdentifier: OpenNOWSessionAdPlayer] = [:]
+
+    private let ad: AllocatedSessionAd
+    private let player: AVPlayer
+    private let item: AVPlayerItem
+    private let panel: NSPanel
+    private let startedAt = Date()
+    private var continuation: CheckedContinuation<Int, Error>?
+    private var statusObservation: NSKeyValueObservation?
+    private var endObserver: NSObjectProtocol?
+
+    static func play(ad: AllocatedSessionAd, title: String) async throws -> Int {
+        guard URL(string: ad.mediaUrl) != nil else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            let player = OpenNOWSessionAdPlayer(ad: ad, title: title, continuation: continuation)
+            player.start()
+        }
+    }
+
+    private init(ad: AllocatedSessionAd, title: String, continuation: CheckedContinuation<Int, Error>) {
+        self.ad = ad
+        self.continuation = continuation
+        item = AVPlayerItem(url: URL(string: ad.mediaUrl) ?? URL(fileURLWithPath: "/dev/null"))
+        player = AVPlayer(playerItem: item)
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 960, height: 540), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        super.init()
+        panel.title = ad.title.isEmpty ? "GeForce NOW ad for \(title)" : ad.title
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
+        panel.contentView = contentView()
+        panel.center()
+    }
+
+    private func start() {
+        Self.activePlayers[ObjectIdentifier(self)] = self
+        statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if item.status == .failed {
+                    self.finish(error: OpenNOWStreamSessionError.sessionAllocationFailed(item.error?.localizedDescription ?? "Required ad failed to load."))
+                }
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.finish(error: nil) }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        player.play()
+    }
+
+    private func contentView() -> NSView {
+        let container = NSView(frame: panel.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 960, height: 540))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.black.cgColor
+
+        let playerView = AVPlayerView(frame: NSRect(x: 0, y: 54, width: 960, height: 486))
+        playerView.autoresizingMask = [.width, .height]
+        playerView.controlsStyle = .none
+        playerView.player = player
+        container.addSubview(playerView)
+
+        let label = NSTextField(labelWithString: "GeForce NOW requires this ad before your free-tier session can continue.")
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 15, weight: .semibold)
+        label.alignment = .center
+        label.frame = NSRect(x: 20, y: 15, width: 920, height: 24)
+        label.autoresizingMask = [.width, .maxYMargin]
+        container.addSubview(label)
+
+        return container
+    }
+
+    private func finish(error: Error?) {
+        guard let continuation else { return }
+        self.continuation = nil
+        statusObservation = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+        player.pause()
+        panel.delegate = nil
+        panel.close()
+        Self.activePlayers[ObjectIdentifier(self)] = nil
+        if let error {
+            continuation.resume(throwing: error)
+            return
+        }
+        let watchedTimeInMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+        continuation.resume(returning: watchedTimeInMs)
+    }
+}
+
+extension OpenNOWSessionAdPlayer: NSWindowDelegate {
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        finish(error: OpenNOWStreamSessionError.sessionAllocationFailed("Required ad playback was cancelled."))
+        return false
     }
 }
 

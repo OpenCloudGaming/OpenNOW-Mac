@@ -861,7 +861,7 @@ public final class OPNSessionJSONParser: NSObject {
 
         var adState = OPNSessionAdState()
         adState.sessionAdsRequired = required
-        adState.serverSentEmptyAds = !containers.contains { !array($0["sessionAds"]).isEmpty }
+        adState.serverSentEmptyAds = !containers.contains { !array($0["sessionAds"]).isEmpty || !array($0["ads"]).isEmpty }
         adState.sessionAds = sessionAds(from: containers)
 
         if let opportunity = containers.compactMap({ dictionary($0["opportunity"]) }).first {
@@ -878,7 +878,12 @@ public final class OPNSessionJSONParser: NSObject {
     }
 
     private static func sessionAds(from containers: [[String: Any]]) -> [OPNSessionAdInfo] {
-        let adValues = containers.map { array($0["sessionAds"]) }.first { !$0.isEmpty } ?? []
+        let adValues = containers.compactMap { container -> [Any]? in
+            let sessionAds = array(container["sessionAds"])
+            if !sessionAds.isEmpty { return sessionAds }
+            let ads = array(container["ads"])
+            return ads.isEmpty ? nil : ads
+        }.first ?? []
         return adValues.enumerated().compactMap { index, value in
             guard let ad = dictionary(value) else { return nil }
             let parsed = parseSessionAd(ad, index: index)

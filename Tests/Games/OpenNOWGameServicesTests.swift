@@ -1074,6 +1074,25 @@ import Foundation
     #expect(ad.durationMs == 15_000)
 }
 
+@Test func sessionAdStateParsesVendorAdsAlias() throws {
+    let parsed = OPNSessionJSONParser.parseSessionAdState(from: [
+        "sessionAdsRequired": true,
+        "ads": [[
+            "adId": "vendor-ad",
+            "adState": 1,
+            "adMediaFiles": [[
+                "mediaFileUrl": "https://ads.example.test/hls.m3u8",
+                "encodingProfile": "hlsadaptive",
+            ]],
+        ]],
+    ])
+
+    let ad = try #require(parsed.sessionAds.first)
+    #expect(parsed.isAdsRequired)
+    #expect(ad.adId == "vendor-ad")
+    #expect(ad.mediaUrl == "https://ads.example.test/hls.m3u8")
+}
+
 @Test func sessionManagerKeepsNestedAdsAcrossEmptyRequiredPolls() async {
     await networkTestIsolationLock.withLock {
         let host = "nested-ads.example.test"
