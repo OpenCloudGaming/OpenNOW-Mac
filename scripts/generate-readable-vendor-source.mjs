@@ -25,26 +25,32 @@ const jsonPrettierOptions = {
   parser: "json",
 };
 const outputMappings = new Map([
-  ["main.026ecf752c8007b0.js", "apps/gfn-mall/main.js"],
-  ["vendor.21f80c4cffa8f4b6.js", "apps/gfn-mall/vendor.js"],
-  ["runtime.41484bfec6975734.js", "apps/gfn-mall/bootstrap/runtime.js"],
+  ["main.a1f33bd9bb331099.js", "apps/gfn-mall/main.js"],
+  ["vendor.5586c78cc423066e.js", "apps/gfn-mall/vendor.js"],
+  ["runtime.332dd8696d307479.js", "apps/gfn-mall/bootstrap/runtime.js"],
   ["polyfills.0119af3bec0a10f7.js", "apps/gfn-mall/bootstrap/polyfills.js"],
   ["common.1bb8089756535934.js", "apps/gfn-mall/chunks/common.chunk-076.js"],
   [
     "65.3aba320076f7b6f2.js",
     "apps/gfn-mall/chunks/comlink-worker.chunk-065.js",
   ],
+  ["77.1882f9ae7a439de5.js", "apps/gfn-mall/chunks/gfn-mall.chunk-077.js"],
   [
     "599.bfb696c039ce2bd0.js",
     "apps/gfn-mall/chunks/material-text-field.chunk-599.js",
   ],
   [
-    "614.e593ea551ae52c71.js",
+    "614.7d43af85e6d3b338.js",
     "apps/gfn-mall/chunks/feature-bundle.chunk-614.js",
   ],
+  ["626.e518a0378790b839.js", "apps/gfn-mall/chunks/gfn-mall.chunk-626.js"],
   [
-    "862.18d85c1438a340a2.js",
+    "862.843ae6cca914daac.js",
     "apps/gfn-mall/chunks/settings-keyboard-network.chunk-862.js",
+  ],
+  [
+    "marquee-image-metadata.afc4560e5ac0f3fe.js",
+    "apps/gfn-mall/chunks/marquee-image-metadata.chunk-889.js",
   ],
   ["starfleet.js", "apps/account-wrapper/starfleet.js"],
   [
