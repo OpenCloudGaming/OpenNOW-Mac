@@ -705,13 +705,15 @@ public final class OPNParsedSessionProgress: NSObject {
     public let progressState: Int
     public let remainingPlaytimeHours: Double
     public let remainingPlaytimeAvailable: Bool
+    public let remainingSessionLimitSeconds: Int
 
-    public init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool) {
+    public init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool, remainingSessionLimitSeconds: Int) {
         self.queuePosition = queuePosition
         self.seatSetupStep = seatSetupStep
         self.progressState = progressState.rawValue
         self.remainingPlaytimeHours = remainingPlaytimeHours
         self.remainingPlaytimeAvailable = remainingPlaytimeAvailable
+        self.remainingSessionLimitSeconds = remainingSessionLimitSeconds
     }
 }
 
@@ -837,14 +839,26 @@ public final class OPNSessionJSONParser: NSObject {
             ?? intValue(sessionProgress?["seatSetupStep"])
             ?? intValue(progressInfo?["seatSetupStep"])
             ?? 0
-        let remaining = remainingPlaytime(containers: [session, sessionProgress, progressInfo, controlInfo])
+        let timerDataContainers = [
+            dictionary(session["timerData"]),
+            dictionary(sessionProgress?["timerData"]),
+            dictionary(progressInfo?["timerData"]),
+            dictionary(controlInfo?["timerData"]),
+            dictionary(dictionary(session["message"])?["timerData"]),
+            dictionary(dictionary(sessionProgress?["message"])?["timerData"]),
+            dictionary(dictionary(progressInfo?["message"])?["timerData"]),
+            dictionary(dictionary(controlInfo?["message"])?["timerData"]),
+        ]
+        let containers = [session, sessionProgress, progressInfo, controlInfo] + timerDataContainers
+        let remaining = remainingPlaytime(containers: containers)
 
         return OPNParsedSessionProgress(
             queuePosition: queuePosition,
             seatSetupStep: seatSetupStep,
             progressState: progressState(seatSetupStep: seatSetupStep, queuePosition: queuePosition),
             remainingPlaytimeHours: remaining.hours,
-            remainingPlaytimeAvailable: remaining.available
+            remainingPlaytimeAvailable: remaining.available,
+            remainingSessionLimitSeconds: remainingSessionLimitSeconds(containers: containers)
         )
     }
 
@@ -1025,6 +1039,24 @@ public final class OPNSessionJSONParser: NSObject {
             }
         }
         return (0.0, false)
+    }
+
+    private static func remainingSessionLimitSeconds(containers: [[String: Any]?]) -> Int {
+        for container in containers.compactMap({ $0 }) {
+            if let milliseconds = firstNumber(in: container, keys: ["beforeEventMS", "remainingSessionLimitMs", "remainingSessionLimitMilliseconds", "sessionLimitRemainingMs", "sessionLimitRemainingMilliseconds"]) {
+                let seconds = Int((milliseconds / 1000.0).rounded())
+                if seconds > 0 && seconds <= 3600 { return seconds }
+            }
+            if let seconds = firstNumber(in: container, keys: ["timeRemaining", "remainingTime", "remainingTimeInSeconds", "remainingSessionTimeInSeconds", "sessionTimeRemainingInSeconds", "timeRemainingInSeconds", "remainingSessionLimitSeconds", "sessionLimitRemainingSeconds"]) {
+                let rounded = Int(seconds.rounded())
+                if rounded > 0 && rounded <= 3600 { return rounded }
+            }
+            if let minutes = firstNumber(in: container, keys: ["remainingTimeInMinutes", "remainingSessionTimeInMinutes", "sessionTimeRemainingInMinutes", "timeRemainingInMinutes", "remainingSessionLimitMinutes", "sessionLimitRemainingMinutes"]) {
+                let seconds = Int((minutes * 60.0).rounded())
+                if seconds > 0 && seconds <= 3600 { return seconds }
+            }
+        }
+        return 0
     }
 
     private static func colorQuality(bitDepth: Int, chromaFormat: Int) -> String {

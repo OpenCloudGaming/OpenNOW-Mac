@@ -828,6 +828,51 @@ import Foundation
     }
 }
 
+@Test func sessionProgressParsesSessionLimitTimerData() {
+    let parsed = OPNSessionJSONParser.parseSessionProgress(from: [
+        "message": [
+            "messageType": "SESSION_LENGTH_TIMER",
+            "timerData": [
+                "beforeEventMS": 1_794_000,
+                "presentDurationMS": 30_000,
+                "timerType": 0,
+            ],
+        ],
+    ])
+
+    #expect(parsed.remainingSessionLimitSeconds == 1794)
+}
+
+@Test func sessionManagerCarriesRemainingSessionLimitSeconds() async {
+    await networkTestIsolationLock.withLock {
+    let host = "session-limit-timer.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session/resume-session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host, extraSession: [
+            "sessionProgress": [
+                "timeRemaining": 1200,
+            ],
+        ]))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+            continuation.resume(returning: (success, info["remainingSessionLimitSeconds"] as? Int ?? 0, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1 == 1200)
+    #expect(result.2.isEmpty)
+    }
+}
+
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-success.example.test"

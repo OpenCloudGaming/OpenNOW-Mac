@@ -324,10 +324,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             }
             var updated = adSession
             if let sessionJson = json["session"] as? [String: Any] {
+                let progress = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary)
                 updated["status"] = int(sessionJson["status"])
-                updated["queuePosition"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).queuePosition
-                updated["seatSetupStep"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).seatSetupStep
-                updated["progressState"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).progressState
+                updated["queuePosition"] = progress.queuePosition
+                updated["seatSetupStep"] = progress.seatSetupStep
+                updated["progressState"] = progress.progressState
+                updated["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
                 updated["negotiatedStreamProfile"] = self.negotiatedStreamProfile(from: sessionJson)
                 updated["adState"] = self.sessionAdState(from: sessionJson)
                 self.mergeAndStoreAdState(&updated)
@@ -589,6 +591,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "remainingPlaytimeHours": 0.0,
             "remainingPlaytimeAvailable": false,
             "remainingPlaytimeUnlimited": false,
+            "remainingSessionLimitSeconds": 0,
             "clientId": clientId,
             "deviceId": deviceId,
         ]
@@ -600,6 +603,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["remainingPlaytimeHours"] = progress.remainingPlaytimeHours
             info["remainingPlaytimeAvailable"] = true
         }
+        info["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
         applyConnectionInfo(session, to: &info)
         if string(info["serverIp"]).isEmpty, let controlInfo = session["sessionControlInfo"] as? [String: Any] {
             info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))

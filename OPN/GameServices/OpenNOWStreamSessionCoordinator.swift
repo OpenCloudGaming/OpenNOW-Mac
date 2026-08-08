@@ -454,11 +454,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             "accessToken": configuration.accessToken,
             "signalingUrl": sessionInfo.signalingUrl,
             "streamingBaseUrl": sessionInfo.streamingBaseUrl,
-            "startedAtEpochSeconds": String(startedAtEpochSeconds(sessionInfo: sessionInfo, isSessionLimited: isSessionLimited)),
         ]) { _, new in new }
         if isSessionLimited {
             metadata["sessionLimitSeconds"] = "3600"
             metadata["sessionLimitReason"] = "freeTier"
+            metadata["startedAtEpochSeconds"] = String(startedAtEpochSeconds(sessionInfo: sessionInfo, isSessionLimited: true))
+        } else {
+            metadata["startedAtEpochSeconds"] = String(Date().timeIntervalSince1970)
         }
         return StreamSessionDescriptor(
             id: sessionInfo.sessionId,
@@ -471,10 +473,14 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func startedAtEpochSeconds(sessionInfo: AllocatedStreamSession, isSessionLimited: Bool) -> TimeInterval {
         guard isSessionLimited, !sessionInfo.sessionId.isEmpty else { return Date().timeIntervalSince1970 }
+        if sessionInfo.remainingSessionLimitSeconds > 0 {
+            return Date().timeIntervalSince1970 - Double(max(0, 3600 - sessionInfo.remainingSessionLimitSeconds))
+        }
         return StreamSessionLimitStartStore.startedAtEpochSeconds(for: sessionInfo.sessionId)
     }
 
     private func isFreeTierSession(configuration: StreamLaunchConfiguration, sessionInfo: AllocatedStreamSession) -> Bool {
+        if sessionInfo.remainingSessionLimitSeconds > 0 { return true }
         if sessionInfo.requiredAdGateObserved { return true }
         let tier = (configuration.metadata["membershipTier"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return tier == "free" || tier.contains("free")
@@ -655,6 +661,7 @@ private struct AllocatedStreamSession: Sendable {
     let progressState: Int
     let adsRequired: Bool
     let requiredAdGateObserved: Bool
+    let remainingSessionLimitSeconds: Int
     let pendingAd: AllocatedSessionAd?
     let rawJSON: String
 
@@ -685,6 +692,7 @@ private struct AllocatedStreamSession: Sendable {
         let adState = info["adState"] as? [String: Any]
         adsRequired = Self.bool(adState?["isAdsRequired"])
         requiredAdGateObserved = Self.bool(info["requiredAdGateObserved"])
+        remainingSessionLimitSeconds = Self.int(info["remainingSessionLimitSeconds"])
         pendingAd = Self.pendingAd(from: adState)
         rawJSON = Self.jsonString(info)
     }
