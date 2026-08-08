@@ -7,7 +7,7 @@ public enum Starfleet: Sendable {
     public static let defaultIdpId = "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg"
     public static let defaultOrigin = "https://nvfile"
     public static let defaultReferer = "https://nvfile/"
-    public static let defaultUserAgent = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
+    public static let defaultUserAgent = GFNClientMetadata.nativeUserAgent
     public static let oauthScope = "openid consent email tk_client age"
 }
 

@@ -27,8 +27,8 @@ final class OPNGameService: @unchecked Sendable {
     private static let favoritesPanelHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     private static let marqueeHash = "dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f"
     private static let appMetaDataHash = "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63"
-    private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
-    private static let nvClientVersion = "2.0.80.173"
+    private static let nvClientId = GFNClientMetadata.clientId
+    private static let nvClientVersion = GFNClientMetadata.appVersion
     private static let defaultStreamingBaseUrl = CloudMatch.productionBaseURLString + "/"
     private static let providerServiceUrlsEndpoint = "https://pcs.geforcenow.com/v1/serviceUrls"
     private static let accountLinkingServer = "https://als.geforcenow.com"
@@ -1389,7 +1389,7 @@ final class OPNGameService: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
         Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173", forHTTPHeaderField: "User-Agent")
+        request.setValue(GFNClientMetadata.nativeWindowsUserAgent, forHTTPHeaderField: "User-Agent")
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.serverInfo")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
@@ -1422,7 +1422,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private static var gfnUserAgent: String {
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173"
+        GFNClientMetadata.nativeMacUserAgent
     }
 
     private static func graphQLOperationName(_ query: String) -> String {

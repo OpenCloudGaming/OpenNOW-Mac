@@ -37,12 +37,13 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 }
 
 @Test func cloudMatchBuildsBrowserWebRTCServerInfoRequest() throws {
-    let request = try #require(CloudMatchRequestFactory.serverInfoRequest(baseURLString: "region.example.test", accessToken: "access", deviceId: "device", headers: .browserWebRTC(clientVersion: "2.0.85.135"), timeoutInterval: 4))
+    let request = try #require(CloudMatchRequestFactory.serverInfoRequest(baseURLString: "region.example.test", accessToken: "access", deviceId: "device", headers: .browserWebRTC(), timeoutInterval: 4))
     #expect(request.url?.absoluteString == "https://region.example.test/v2/serverInfo")
     #expect(request.timeoutInterval == 4)
     #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.webRTCClientVersion)
     #expect(request.value(forHTTPHeaderField: "nv-device-os") == "WINDOWS")
 }
 

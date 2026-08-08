@@ -41,13 +41,13 @@ import Testing
 
 @Test func telemetryRecorderBuildsSentryAttributesWithoutNvidiaEndpoint() {
     let event = OPNTelemetryEvent(name: .routingStatus, timestamp: "2026-01-01T00:00:00Z", parameters: ["zone": "192.168.1.24"])
-    let commonData = OPNTelemetryCommonData(clientVersion: "2.0.80.173", sessionId: "session")
+    let commonData = OPNTelemetryCommonData(clientVersion: GFNClientMetadata.appVersion, sessionId: "session")
     let attributes = OPNTelemetryRecorder.sentryAttributes(event: event, commonData: commonData)
 
     #expect(attributes["opennow.event"] as? String == "RoutingStatus")
     #expect(attributes["opennow.privacy_level"] as? String == "Functional")
     #expect(attributes["opennow.personalization"] as? String == "UserPreferred")
-    #expect(attributes["opennow.common.clientVersion"] as? String == "2.0.80.173")
+    #expect(attributes["opennow.common.clientVersion"] as? String == GFNClientMetadata.appVersion)
     #expect(attributes["opennow.common.sessionId"] as? String == "session")
     #expect(attributes["opennow.parameter.zone"] as? String != "192.168.1.24")
     #expect(!String(describing: attributes).contains(["events", "telemetry", "data", "nvidia", "com"].joined(separator: ".")))

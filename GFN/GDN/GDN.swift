@@ -234,7 +234,7 @@ public struct GDNConfiguration: Equatable, Sendable {
     public let cloudVariablesURLString: String
     public let userAgent: String
 
-    public init(cloudVariablesURLString: String = GDN.cloudVariablesURLString, userAgent: String = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
+    public init(cloudVariablesURLString: String = GDN.cloudVariablesURLString, userAgent: String = GFNClientMetadata.nativeUserAgent) {
         self.cloudVariablesURLString = cloudVariablesURLString
         self.userAgent = userAgent
     }

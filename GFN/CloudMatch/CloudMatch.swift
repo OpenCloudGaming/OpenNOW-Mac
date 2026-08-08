@@ -107,16 +107,16 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
     public let browserType: String
     public let userAgent: String
 
-    public init(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab",
+    public init(clientId: String = GFNClientMetadata.clientId,
                 clientType: String = "NATIVE",
-                clientVersion: String = "2.0.80.173",
+                clientVersion: String = GFNClientMetadata.appVersion,
                 clientStreamer: String = "NVIDIA-CLASSIC",
                 deviceOS: String = "MACOS",
                 deviceType: String = "DESKTOP",
                 deviceMake: String = "UNKNOWN",
                 deviceModel: String = "UNKNOWN",
                 browserType: String = "CHROME",
-                userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
+                userAgent: String = GFNClientMetadata.nativeWindowsUserAgent) {
         self.clientId = clientId
         self.clientType = clientType
         self.clientVersion = clientVersion
@@ -131,7 +131,7 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
 
     public static let nativeGFNPC = CloudMatchClientHeaders()
 
-    public static func browserWebRTC(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab", clientVersion: String = "2.0.85.135", userAgent: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36") -> CloudMatchClientHeaders {
+    public static func browserWebRTC(clientId: String = GFNClientMetadata.clientId, clientVersion: String = GFNClientMetadata.webRTCClientVersion, userAgent: String = GFNClientMetadata.browserMacUserAgent) -> CloudMatchClientHeaders {
         CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "WINDOWS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
     }
 

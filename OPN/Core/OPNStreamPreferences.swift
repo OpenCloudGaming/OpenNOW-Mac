@@ -363,8 +363,9 @@ public enum OPNStreamPreferences {
         OPNStreamMicrophoneModeOption(label: "Open Mic", value: "voice-activity")
     ]
 
-    private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
-    private static let nvClientVersion = "2.0.85.135"
+    private static let nvClientId = GFNClientMetadata.clientId
+    private static let nvCloudVariablesClientVersion = GFNClientMetadata.appVersion
+    private static let nvWebRTCClientVersion = GFNClientMetadata.webRTCClientVersion
     private static let defaultUpscalingTargetIndex = 1
     private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
@@ -804,7 +805,7 @@ public enum OPNStreamPreferences {
             URLQueryItem(name: "userId", value: vendorIdentity(userId)),
             URLQueryItem(name: "idpId", value: vendorIdentity(idpId)),
             URLQueryItem(name: "clientId", value: "78589530426925203"),
-            URLQueryItem(name: "clientVer", value: nvClientVersion),
+            URLQueryItem(name: "clientVer", value: nvCloudVariablesClientVersion),
             URLQueryItem(name: "clientVariant", value: "Release"),
             URLQueryItem(name: "deviceOS", value: "MacOS"),
             URLQueryItem(name: "deviceType", value: "Desktop"),
@@ -1278,11 +1279,11 @@ public enum OPNStreamPreferences {
     }
 
     private static func browserUserAgent() -> String {
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+        GFNClientMetadata.browserMacUserAgent
     }
 
     private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
-        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, clientVersion: nvClientVersion, userAgent: browserUserAgent())
+        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, clientVersion: nvWebRTCClientVersion, userAgent: browserUserAgent())
         var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: headers, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         return request

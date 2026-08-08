@@ -25,7 +25,7 @@ public struct NesAuthConfiguration: Equatable, Sendable {
         layoutServerURLString: String = "https://pcs.geforcenow.com",
         layoutServerVersion: String = "v1",
         serviceName: String = "gfn_pc",
-        userAgent: String = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
+        userAgent: String = GFNClientMetadata.nativeUserAgent
     ) {
         self.serverURLString = Self.normalizedBaseURL(serverURLString)
         self.version = version.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

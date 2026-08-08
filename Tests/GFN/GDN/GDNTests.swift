@@ -36,7 +36,7 @@ private struct MockGDNTransport: GDNHTTPTransport {
 @Test func gdnBuildsVendorCloudVariableRequest() throws {
     let context = GDNClientContext(
         clientId: "client",
-        clientVersion: "2.0.80.173",
+        clientVersion: GFNClientMetadata.appVersion,
         userId: "user",
         idpId: "idp",
         deviceId: "device",
@@ -58,7 +58,7 @@ private struct MockGDNTransport: GDNHTTPTransport {
     #expect(items["product"] == "NVIDIAGDN")
     #expect(items["cvName"] == "feature")
     #expect(items["clientId"] == "client")
-    #expect(items["clientVer"] == "2.0.80.173")
+    #expect(items["clientVer"] == GFNClientMetadata.appVersion)
     #expect(items["deviceId"] == "device")
     #expect(items["source"] == "MallClient")
     #expect(items["locale"] == "en_US")
