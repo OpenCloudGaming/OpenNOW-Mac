@@ -613,8 +613,10 @@ final class CatalogViewModel: ObservableObject {
             OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
             let selfBox = CatalogWeakObject(self)
             OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId(shortcut.cmsId) { success, game, error in
+                let gameBox = CatalogSendableValue(game)
                 Task { @MainActor in
                     guard let self = selfBox.value else { return }
+                    let game = gameBox.value
                     if success, let game {
                         OpenNOWLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
                         self.selectGame(game)
