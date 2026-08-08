@@ -1741,7 +1741,10 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func storeSelectionContent(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let indexedVariants = Array(game.variants.enumerated())
+        let storeOptions = indexedVariants.filter { !isSubscriptionVariant($0.element) }
+        let subscriptionOptions = indexedVariants.filter { isSubscriptionVariant($0.element) }
+        return VStack(alignment: .leading, spacing: 0) {
             Text("Choose a game store")
                 .font(.nvidia(size: 24, weight: .bold))
                 .foregroundStyle(.white.opacity(0.96))
@@ -1750,22 +1753,39 @@ private struct CatalogStorePickerOverlay: View {
                 .font(.nvidia(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
                 .padding(.bottom, 32)
-            CatalogStorePickerSection(label: "Game stores:") {
-                VStack(alignment: .leading, spacing: 19) {
-                    ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                        CatalogStorePickerRow(
-                            title: storeTitle(variant),
-                            iconURL: storeIconURL(variant),
-                            status: storeStatus(game: game, variant: variant),
-                            isSelected: selectedIndex(game: game) == index,
-                            isAvailable: variantIsOwned(game: game, variant: variant)
-                        ) {
-                            viewModel.selectGameStoreVariant(at: index)
-                        }
+            VStack(alignment: .leading, spacing: 16) {
+                if !storeOptions.isEmpty {
+                    CatalogStorePickerSection(label: "Game stores:") {
+                        storeOptionList(options: storeOptions, game: game)
+                    }
+                }
+                if !subscriptionOptions.isEmpty {
+                    CatalogStorePickerSection(label: "Subscriptions:") {
+                        storeOptionList(options: subscriptionOptions, game: game)
                     }
                 }
             }
         }
+    }
+
+    private func storeOptionList(options: [(offset: Int, element: OPNCatalogGameVariantObject)], game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(options, id: \.offset) { index, variant in
+                CatalogStorePickerRow(
+                    title: storeTitle(variant),
+                    iconURL: storeIconURL(variant),
+                    status: storeStatus(game: game, variant: variant),
+                    isSelected: selectedIndex(game: game) == index
+                ) {
+                    viewModel.selectGameStoreVariant(at: index)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func isSubscriptionVariant(_ variant: OPNCatalogGameVariantObject) -> Bool {
+        !CatalogViewModel.visibleSubscriptionIds(for: variant).isEmpty
     }
 
     private func manualMarkContent(game: OPNCatalogGameObject) -> some View {
@@ -1956,15 +1976,28 @@ private struct CatalogStorePickerSection<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 32) {
-            Text(label)
-                .font(.nvidia(size: 14, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 132, alignment: .leading)
-                .padding(.top, 3)
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 48) {
+                sectionLabel
+                    .padding(.top, 12)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                sectionLabel
+                    .padding(.bottom, 4)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    private var sectionLabel: some View {
+        Text(label)
+            .font(.nvidia(size: 14, weight: .bold))
+            .foregroundStyle(.white.opacity(0.92))
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -1973,7 +2006,6 @@ private struct CatalogStorePickerRow: View {
     let iconURL: String
     let status: String
     let isSelected: Bool
-    let isAvailable: Bool
     let action: (() -> Void)?
     @State private var isHovering = false
 
@@ -1986,43 +2018,60 @@ private struct CatalogStorePickerRow: View {
                 rowContent
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { isHovering = $0 }
     }
+}
 
+private extension CatalogStorePickerRow {
     private var rowContent: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 8) {
             storeIcon
             Text(title)
                 .font(.nvidia(size: 16, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 232, alignment: .leading)
-            if !status.isEmpty {
-                Text(status)
-                    .font(.nvidia(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 0)
-                    .frame(height: 24)
-                if isAvailable {
-                    Image(systemName: "checkmark")
-                        .font(.nvidia(size: 14, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
-                }
-            }
-            Spacer(minLength: 0)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            statusTag
+            selectedCheckmark
         }
-        .frame(height: 30)
-        .padding(.horizontal, isHovering ? 8 : 0)
+        .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .leading)
+        .padding(.horizontal, 16)
         .background(Color.white.opacity(isHovering ? 0.08 : 0))
+        .overlay { Rectangle().stroke(Color.white.opacity(0), lineWidth: 1) }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var statusTag: some View {
+        if !status.isEmpty {
+            Text(status)
+                .font(.nvidia(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.70))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Color.black.opacity(0.32))
+        }
+    }
+
+    private var selectedCheckmark: some View {
+        Image(systemName: "checkmark")
+            .font(.nvidia(size: 14, weight: .bold))
+            .foregroundStyle(Color.openNowGreen)
+            .frame(width: 20, height: 20)
+            .opacity(isSelected ? 1 : 0)
     }
 
     @ViewBuilder
     private var storeIcon: some View {
         if !iconURL.isEmpty {
-            CatalogStoreIconImage(url: URL(string: iconURL), size: 22)
-                .frame(width: 22, height: 22)
+            CatalogStoreIconImage(url: URL(string: iconURL), size: 20)
+                .frame(width: 20, height: 20)
         } else {
-            Color.clear.frame(width: 22, height: 22)
+            Color.clear.frame(width: 20, height: 20)
         }
     }
 }

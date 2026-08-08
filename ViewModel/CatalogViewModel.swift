@@ -1542,14 +1542,14 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func displayName(forVariant variant: OPNCatalogGameVariantObject) -> String {
-        let subscriptionNames = Self.uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).map { displayName(forSubscription: $0) }
+        let subscriptionNames = Self.visibleSubscriptionIds(for: variant).map { displayName(forSubscription: $0) }
         if !subscriptionNames.isEmpty { return subscriptionNames.joined(separator: " / ") }
         if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
         return variant.appStore.isEmpty ? "GeForce NOW" : displayName(forStore: variant.appStore)
     }
 
     func iconURL(forVariant variant: OPNCatalogGameVariantObject) -> String {
-        let subscription = Self.uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).first ?? ""
+        let subscription = Self.visibleSubscriptionIds(for: variant).first ?? ""
         let subscriptionIconURL = iconURL(forSubscription: subscription)
         if !subscriptionIconURL.isEmpty { return subscriptionIconURL }
         return variant.appStoreSmallImageUrl
@@ -2435,6 +2435,10 @@ final class CatalogViewModel: ObservableObject {
 
     static func gameHasOwnedVariant(_ game: OPNCatalogGameObject) -> Bool {
         game.variants.contains { $0.inLibrary || $0.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch($0.serviceStatus) }
+    }
+
+    static func visibleSubscriptionIds(for variant: OPNCatalogGameVariantObject) -> [String] {
+        uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).filter { $0.caseInsensitiveCompare("NONE") != .orderedSame }
     }
 
     private static func parseStoreAccounts(_ account: NSDictionary) -> [CatalogStoreAccount] {
