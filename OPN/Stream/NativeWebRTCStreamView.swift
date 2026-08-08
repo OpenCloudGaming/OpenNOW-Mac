@@ -17,7 +17,6 @@ private final class NativeWebRTCVideoSurfaceView: NSView {
     }
 }
 
-@MainActor
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleUnifiedHUD
@@ -27,7 +26,6 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case showQuitMenu
 }
 
-@MainActor
 public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     public var onPointerLockChanged: ((Bool) -> Void)?
@@ -134,16 +132,6 @@ public final class NativeWebRTCStreamView: NSView {
         emitMouseButton(.right, isPressed: false)
     }
 
-    public override func otherMouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        if capturePointerForMouseDown() { return }
-        emitMouseButton(mouseButton(event.buttonNumber), isPressed: true)
-    }
-
-    public override func otherMouseUp(with event: NSEvent) {
-        emitMouseButton(mouseButton(event.buttonNumber), isPressed: false)
-    }
-
     public override func mouseMoved(with event: NSEvent) {
         emitMouseMove(event)
     }
@@ -153,10 +141,6 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func rightMouseDragged(with event: NSEvent) {
-        emitMouseMove(event)
-    }
-
-    public override func otherMouseDragged(with event: NSEvent) {
         emitMouseMove(event)
     }
 

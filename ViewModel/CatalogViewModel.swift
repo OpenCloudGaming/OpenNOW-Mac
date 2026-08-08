@@ -118,6 +118,14 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
 }
 
 @MainActor
+struct CatalogStreamAdPlayback: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let mediaUrl: String
+    let durationMs: Int
+}
+
+@MainActor
 final class CatalogViewModel: ObservableObject {
     @Published var selectedMainPage = CatalogMainPage.games
     @Published var selectedCatalogDestination = CatalogDestination.home
@@ -149,6 +157,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedVariantIndex = -1
     @Published var activeStreamConfiguration: StreamLaunchConfiguration?
     @Published var activeStreamProgress: StreamProgress?
+    @Published var activeStreamAdPlayback: CatalogStreamAdPlayback?
     @Published var isActiveStreamLaunchOverlayVisible = false
     @Published var launchFlowState = CatalogLaunchFlowState.idle
     @Published var launchFlowTitle = ""
@@ -193,6 +202,7 @@ final class CatalogViewModel: ObservableObject {
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
+    private var activeStreamAdContinuation: CheckedContinuation<Int, Error>?
     private var settingsPreferencesGeneration = 0
     private var isCatalogBroadcastPreparing = false
     private var selectedGameRevealSequence = 0
@@ -746,6 +756,7 @@ final class CatalogViewModel: ObservableObject {
     func cancelActiveStreamLaunch() {
         guard activeStreamConfiguration != nil else { return }
         streamProgressGeneration += 1
+        cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
@@ -960,6 +971,7 @@ final class CatalogViewModel: ObservableObject {
 
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
+        cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
@@ -996,6 +1008,54 @@ final class CatalogViewModel: ObservableObject {
             guard generation == self.streamProgressGeneration else { return }
             self.isActiveStreamLaunchOverlayVisible = false
         }
+    }
+
+    func presentRequiredStreamAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
+        guard URL(string: ad.mediaUrl) != nil else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
+        }
+        activeStreamAdContinuation?.resume(throwing: CancellationError())
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = CatalogStreamAdPlayback(
+            id: ad.adId,
+            title: ad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Sponsored Message" : ad.title,
+            mediaUrl: ad.mediaUrl,
+            durationMs: ad.durationMs
+        )
+        isActiveStreamLaunchOverlayVisible = true
+        let title = activeStreamConfiguration?.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeStreamProgress = StreamProgress(
+            title: title?.isEmpty == false ? title ?? "GeForce NOW" : "GeForce NOW",
+            message: "Playing sponsored message before your free-tier session continues...",
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.allocateCloudSession.rawValue,
+            isReady: false,
+            queuePosition: activeStreamProgress?.queuePosition
+        )
+        return try await withCheckedThrowingContinuation { continuation in
+            activeStreamAdContinuation = continuation
+        }
+    }
+
+    func finishRequiredStreamAdPlayback(watchedTimeInMs: Int) {
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = nil
+        continuation.resume(returning: max(0, watchedTimeInMs))
+    }
+
+    func failRequiredStreamAdPlayback(_ message: String) {
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = nil
+        continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
+    }
+
+    private func cancelActiveStreamAdPlayback() {
+        activeStreamAdPlayback = nil
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        continuation.resume(throwing: CancellationError())
     }
 
     private var launchToken: String {

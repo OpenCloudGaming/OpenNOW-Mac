@@ -1,5 +1,3 @@
-import AppKit
-import AVKit
 import Foundation
 
 public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
@@ -13,8 +11,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     private var remoteEndContinuation: AsyncStream<String>.Continuation?
     private var pendingRemoteEndMessage: String?
     private var offerContinuation: CheckedContinuation<StreamOffer, Error>?
+    private let adPresenter: (any StreamSessionAdPresenter)?
+    private let progressHandler: (@Sendable (StreamProgress) -> Void)?
 
-    public init() {}
+    public init(adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil) {
+        self.adPresenter = adPresenter
+        self.progressHandler = progressHandler
+    }
 
     public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
         guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
@@ -141,11 +144,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
         if configuration.resumesExistingSession {
             let claimed = try await claimSession(configuration: configuration, settings: launch.settings)
-            return try await waitForReadySession(claimed)
+            return try await waitForReadySession(claimed, configuration: configuration)
         }
 
         let created = try await createSession(configuration: configuration, settings: launch.settings)
-        return try await waitForReadySession(created)
+        return try await waitForReadySession(created, configuration: configuration)
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
@@ -172,7 +175,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
     }
 
-    private func waitForReadySession(_ initial: AllocatedStreamSession) async throws -> AllocatedStreamSession {
+    private func waitForReadySession(_ initial: AllocatedStreamSession, configuration: StreamLaunchConfiguration) async throws -> AllocatedStreamSession {
         if initial.isReady { return initial }
         guard !initial.sessionId.isEmpty, !initial.serverIp.isEmpty else {
             throw OpenNOWStreamSessionError.sessionAllocationFailed("Cloud session is missing session id or server address.")
@@ -182,13 +185,16 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         var lastPollWasPendingProgress = initial.isPendingProgress
         var latest = initial
         var completedAdIds: Set<String> = []
+        publishAllocationProgress(latest, configuration: configuration)
         while !latest.isReady {
             try Task.checkCancellation()
             if let ad = latest.pendingAd, !completedAdIds.contains(ad.adId) {
+                publishAllocationProgress(latest, configuration: configuration, overrideMessage: "Playing sponsored message before your free-tier session continues...")
                 latest = try await playRequiredAd(ad, session: latest)
                 completedAdIds.insert(ad.adId)
                 attempts = 0
                 lastPollWasPendingProgress = latest.isPendingProgress
+                publishAllocationProgress(latest, configuration: configuration)
                 continue
             }
             if attempts >= 60, !lastPollWasPendingProgress {
@@ -202,6 +208,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 throw OpenNOWStreamSessionError.sessionAllocationFailed("Session in terminal error state")
             }
             lastPollWasPendingProgress = latest.isPendingProgress
+            publishAllocationProgress(latest, configuration: configuration)
         }
         return latest
     }
@@ -210,16 +217,38 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         guard !ad.mediaUrl.isEmpty else {
             throw OpenNOWStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but no playable ad media was returned.")
         }
+        guard let adPresenter else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but the loading screen ad player is not available.")
+        }
         let startedSession = try await reportSessionAd(session: session, ad: ad, action: "start", watchedTimeInMs: -1, cancelReason: "")
         let playbackSession = startedSession.sessionId.isEmpty ? session : startedSession
         do {
-            let watchedTimeInMs = try await OpenNOWSessionAdPlayer.play(ad: ad, title: session.title)
+            let watchedTimeInMs = try await adPresenter.playRequiredSessionAd(ad.presentation)
             let updated = try await reportSessionAd(session: playbackSession, ad: ad, action: "finish", watchedTimeInMs: watchedTimeInMs, cancelReason: "")
             return updated.sessionId.isEmpty ? playbackSession : updated
         } catch {
             _ = try? await reportSessionAd(session: playbackSession, ad: ad, action: "cancel", watchedTimeInMs: -1, cancelReason: "playback_failed")
             throw error
         }
+    }
+
+    private func publishAllocationProgress(_ session: AllocatedStreamSession, configuration: StreamLaunchConfiguration, overrideMessage: String = "") {
+        guard let progressHandler else { return }
+        progressHandler(StreamProgress(
+            title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title,
+            message: overrideMessage.isEmpty ? allocationProgressMessage(session) : overrideMessage,
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.allocateCloudSession.rawValue,
+            isReady: session.isReady,
+            queuePosition: session.queuePosition > 0 ? session.queuePosition : nil
+        ))
+    }
+
+    private func allocationProgressMessage(_ session: AllocatedStreamSession) -> String {
+        if session.queuePosition > 0 { return "Queue position: \(session.queuePosition)" }
+        if session.adsRequired { return "Preparing sponsored message before your free-tier session continues..." }
+        if session.seatSetupStep > 0 { return "Setting up your cloud gaming rig..." }
+        return "Allocating cloud session..."
     }
 
     private func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
@@ -649,6 +678,10 @@ private struct AllocatedSessionAd: Equatable, Sendable {
     let durationMs: Int
     let title: String
 
+    var presentation: StreamSessionAdPresentation {
+        StreamSessionAdPresentation(adId: adId, title: title, mediaUrl: mediaUrl, durationMs: durationMs)
+    }
+
     init?(dictionary: [String: Any]) {
         let adId = Self.string(dictionary["adId"])
         guard !adId.isEmpty else { return nil }
@@ -695,111 +728,6 @@ private struct AllocatedSessionAd: Equatable, Sendable {
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) ?? 0 }
         return 0
-    }
-}
-
-@MainActor
-private final class OpenNOWSessionAdPlayer: NSObject {
-    private static var activePlayers: [ObjectIdentifier: OpenNOWSessionAdPlayer] = [:]
-
-    private let ad: AllocatedSessionAd
-    private let player: AVPlayer
-    private let item: AVPlayerItem
-    private let panel: NSPanel
-    private let startedAt = Date()
-    private var continuation: CheckedContinuation<Int, Error>?
-    private var statusObservation: NSKeyValueObservation?
-    private var endObserver: NSObjectProtocol?
-
-    static func play(ad: AllocatedSessionAd, title: String) async throws -> Int {
-        guard URL(string: ad.mediaUrl) != nil else {
-            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
-        }
-        return try await withCheckedThrowingContinuation { continuation in
-            let player = OpenNOWSessionAdPlayer(ad: ad, title: title, continuation: continuation)
-            player.start()
-        }
-    }
-
-    private init(ad: AllocatedSessionAd, title: String, continuation: CheckedContinuation<Int, Error>) {
-        self.ad = ad
-        self.continuation = continuation
-        item = AVPlayerItem(url: URL(string: ad.mediaUrl) ?? URL(fileURLWithPath: "/dev/null"))
-        player = AVPlayer(playerItem: item)
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 960, height: 540), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        super.init()
-        panel.title = ad.title.isEmpty ? "GeForce NOW ad for \(title)" : ad.title
-        panel.isReleasedWhenClosed = false
-        panel.delegate = self
-        panel.contentView = contentView()
-        panel.center()
-    }
-
-    private func start() {
-        Self.activePlayers[ObjectIdentifier(self)] = self
-        statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor in
-                guard let self else { return }
-                if item.status == .failed {
-                    self.finish(error: OpenNOWStreamSessionError.sessionAllocationFailed(item.error?.localizedDescription ?? "Required ad failed to load."))
-                }
-            }
-        }
-        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.finish(error: nil) }
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        player.play()
-    }
-
-    private func contentView() -> NSView {
-        let container = NSView(frame: panel.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 960, height: 540))
-        container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.black.cgColor
-
-        let playerView = AVPlayerView(frame: NSRect(x: 0, y: 54, width: 960, height: 486))
-        playerView.autoresizingMask = [.width, .height]
-        playerView.controlsStyle = .none
-        playerView.player = player
-        container.addSubview(playerView)
-
-        let label = NSTextField(labelWithString: "GeForce NOW requires this ad before your free-tier session can continue.")
-        label.textColor = .white
-        label.font = .systemFont(ofSize: 15, weight: .semibold)
-        label.alignment = .center
-        label.frame = NSRect(x: 20, y: 15, width: 920, height: 24)
-        label.autoresizingMask = [.width, .maxYMargin]
-        container.addSubview(label)
-
-        return container
-    }
-
-    private func finish(error: Error?) {
-        guard let continuation else { return }
-        self.continuation = nil
-        statusObservation = nil
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-            self.endObserver = nil
-        }
-        player.pause()
-        panel.delegate = nil
-        panel.close()
-        Self.activePlayers[ObjectIdentifier(self)] = nil
-        if let error {
-            continuation.resume(throwing: error)
-            return
-        }
-        let watchedTimeInMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
-        continuation.resume(returning: watchedTimeInMs)
-    }
-}
-
-extension OpenNOWSessionAdPlayer: NSWindowDelegate {
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        finish(error: OpenNOWStreamSessionError.sessionAllocationFailed("Required ad playback was cancelled."))
-        return false
     }
 }
 

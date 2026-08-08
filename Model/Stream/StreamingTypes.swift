@@ -65,13 +65,15 @@ public struct StreamProgress: Codable, Equatable, Sendable {
     public let steps: [String]
     public let currentStepIndex: Int
     public let isReady: Bool
+    public let queuePosition: Int?
 
-    public init(title: String, message: String, steps: [String], currentStepIndex: Int, isReady: Bool) {
+    public init(title: String, message: String, steps: [String], currentStepIndex: Int, isReady: Bool, queuePosition: Int? = nil) {
         self.title = title
         self.message = message
         self.steps = steps
         self.currentStepIndex = currentStepIndex
         self.isReady = isReady
+        self.queuePosition = queuePosition
     }
 
     public init(configuration: StreamLaunchConfiguration, step: StreamLaunchStep, message: String, isReady: Bool = false) {
@@ -83,6 +85,24 @@ public struct StreamProgress: Codable, Equatable, Sendable {
             isReady: isReady
         )
     }
+}
+
+public struct StreamSessionAdPresentation: Equatable, Sendable {
+    public let adId: String
+    public let title: String
+    public let mediaUrl: String
+    public let durationMs: Int
+
+    public init(adId: String, title: String, mediaUrl: String, durationMs: Int) {
+        self.adId = adId
+        self.title = title
+        self.mediaUrl = mediaUrl
+        self.durationMs = durationMs
+    }
+}
+
+public protocol StreamSessionAdPresenter: Sendable {
+    func playRequiredSessionAd(_ ad: StreamSessionAdPresentation) async throws -> Int
 }
 
 public struct StreamSessionDescriptor: Identifiable, Codable, Equatable, Hashable, Sendable {

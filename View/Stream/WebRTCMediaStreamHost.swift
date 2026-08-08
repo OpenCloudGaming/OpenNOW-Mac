@@ -12,9 +12,26 @@ typealias WebRTCMediaStreamProgressHandler = WebRTCMediaStreamProgressCallback
 struct WebRTCMediaStreamView: View {
     let configuration: StreamLaunchConfiguration
     let onProgress: WebRTCMediaStreamProgressHandler?
+    let onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)?
     let onEnd: WebRTCMediaStreamCompletion
     @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
-    private let coordinator = OpenNOWStreamSessionCoordinator()
+    private let coordinator: OpenNOWStreamSessionCoordinator
+
+    init(configuration: StreamLaunchConfiguration,
+         onProgress: WebRTCMediaStreamProgressHandler?,
+         onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)? = nil,
+         onEnd: @escaping WebRTCMediaStreamCompletion) {
+        self.configuration = configuration
+        self.onProgress = onProgress
+        self.onRequiredSessionAd = onRequiredSessionAd
+        self.onEnd = onEnd
+        coordinator = OpenNOWStreamSessionCoordinator(
+            adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
+            progressHandler: { progress in
+                Task { @MainActor in onProgress?(progress) }
+            }
+        )
+    }
 
     var body: some View {
         WebRTCMediaStreamSurface(
@@ -138,5 +155,16 @@ struct WebRTCMediaStreamView: View {
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription.isEmpty ? "Twitch API request failed." : error.localizedDescription
+    }
+}
+
+private struct InlineStreamSessionAdPresenter: StreamSessionAdPresenter {
+    let handler: (@Sendable (StreamSessionAdPresentation) async throws -> Int)?
+
+    func playRequiredSessionAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
+        guard let handler else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad playback is not available.")
+        }
+        return try await handler(ad)
     }
 }

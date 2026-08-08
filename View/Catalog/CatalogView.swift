@@ -5,6 +5,7 @@
 //
 
 import AppKit
+import AVKit
 import Combine
 import CryptoKit
 import ImageIO
@@ -113,6 +114,9 @@ struct CatalogView: View {
                                 WebRTCMediaStreamView(
                                     configuration: streamConfiguration,
                                     onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                                    onRequiredSessionAd: { ad in
+                                        try await viewModel.presentRequiredStreamAd(ad)
+                                    },
                                     onEnd: { success, message, report in
                                         viewModel.finishActiveStream(success: success, message: message, report: report)
                                     }
@@ -632,6 +636,7 @@ private struct VendorStreamLaunchLoadingOverlay: View {
             let steps = progress?.steps ?? []
             let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
             let message = progress?.message ?? "Starting GeForce NOW stream..."
+            let queuePosition = progress?.queuePosition
             ZStack {
                 Color.black
 
@@ -677,10 +682,19 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                     endPoint: .trailing
                 )
 
-                VStack(spacing: 24) {
-                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                        .scaledToFit()
-                        .frame(width: 174, height: 131)
+                VStack(spacing: 22) {
+                    if let ad = viewModel.activeStreamAdPlayback {
+                        VendorEmbeddedSessionAdPlayer(
+                            ad: ad,
+                            onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
+                            onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
+                        )
+                        .frame(width: min(max(proxy.size.width * 0.62, 520), 920), height: min(max(proxy.size.height * 0.48, 300), 540))
+                    } else {
+                        VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                            .scaledToFit()
+                            .frame(width: 174, height: 131)
+                    }
 
                     VStack(spacing: 10) {
                         Text(title)
@@ -694,8 +708,25 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                             .multilineTextAlignment(.center)
                     }
 
-                    VendorIndeterminateProgressBar()
-                        .frame(width: 320, height: 4)
+                    if let queuePosition, queuePosition > 0 {
+                        HStack(spacing: 10) {
+                            Text("QUEUE POSITION")
+                                .font(.nvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            Text("#\(queuePosition)")
+                                .font(.nvidia(size: 18, weight: .bold))
+                                .foregroundStyle(Color.openNowGreen)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.46), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 1))
+                    }
+
+                    if viewModel.activeStreamAdPlayback == nil {
+                        VendorIndeterminateProgressBar()
+                            .frame(width: 320, height: 4)
+                    }
 
                     Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
                         .buttonStyle(VendorLaunchSecondaryButtonStyle())
@@ -728,6 +759,162 @@ private struct VendorStreamLaunchLoadingOverlay: View {
         guard !urls.isEmpty else { return nil }
         let index = abs(configuration.id.uuidString.hashValue) % urls.count
         return URL(string: urls[index])
+    }
+}
+
+private struct VendorEmbeddedSessionAdPlayer: View {
+    let ad: CatalogStreamAdPlayback
+    let onFinished: (Int) -> Void
+    let onFailed: (String) -> Void
+    @State private var player: AVPlayer?
+    @State private var item: AVPlayerItem?
+    @State private var statusObservation: NSKeyValueObservation?
+    @State private var endObserver: NSObjectProtocol?
+    @State private var startedAt = Date()
+    @State private var remainingSeconds = 0
+    @State private var volume = 1.0
+    @State private var didFinish = false
+    private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                if let player {
+                    VendorSessionAdPlayerView(player: player)
+                } else {
+                    Color.black
+                    ProgressView()
+                        .controlSize(.large)
+                }
+
+                Text("AD · \(countdownText)")
+                    .font(.nvidia(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.72), in: Capsule())
+                    .padding(14)
+            }
+            .background(.black)
+
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ad.title)
+                        .font(.nvidia(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Sponsored message required before your free-tier session continues")
+                        .font(.nvidia(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 9) {
+                    Image(systemName: volume <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Slider(value: $volume, in: 0...1)
+                        .frame(width: 140)
+                        .onChange(of: volume) { _, nextVolume in
+                            player?.volume = Float(nextVolume)
+                        }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(.black.opacity(0.86))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.16), lineWidth: 1))
+        .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
+        .onAppear(perform: startPlayback)
+        .onDisappear(perform: stopPlayback)
+        .onReceive(timer) { _ in updateCountdown() }
+    }
+
+    private var countdownText: String {
+        let minutes = max(0, remainingSeconds) / 60
+        let seconds = max(0, remainingSeconds) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func startPlayback() {
+        guard player == nil else { return }
+        guard let url = URL(string: ad.mediaUrl) else {
+            fail("Required ad media URL is invalid.")
+            return
+        }
+        startedAt = Date()
+        remainingSeconds = max(1, Int(ceil(Double(ad.durationMs) / 1000.0)))
+        let nextItem = AVPlayerItem(url: url)
+        let nextPlayer = AVPlayer(playerItem: nextItem)
+        nextPlayer.volume = Float(volume)
+        item = nextItem
+        player = nextPlayer
+        statusObservation = nextItem.observe(\.status, options: [.new]) { observedItem, _ in
+            DispatchQueue.main.async {
+                if observedItem.status == .failed {
+                    fail(observedItem.error?.localizedDescription ?? "Required ad failed to load.")
+                }
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nextItem, queue: .main) { _ in
+            Task { @MainActor in finish() }
+        }
+        nextPlayer.play()
+    }
+
+    private func stopPlayback() {
+        statusObservation = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = nil
+        player?.pause()
+        player = nil
+        item = nil
+    }
+
+    private func updateCountdown() {
+        guard let player else { return }
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let knownDuration = Double(ad.durationMs) / 1000.0
+        let itemDuration = player.currentItem?.duration.seconds ?? 0
+        let duration = knownDuration > 0 ? knownDuration : (itemDuration.isFinite ? itemDuration : 0)
+        remainingSeconds = duration > 0 ? max(0, Int(ceil(duration - elapsed))) : 0
+    }
+
+    private func finish() {
+        guard !didFinish else { return }
+        didFinish = true
+        let watchedTimeInMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+        stopPlayback()
+        onFinished(watchedTimeInMs)
+    }
+
+    private func fail(_ message: String) {
+        guard !didFinish else { return }
+        didFinish = true
+        stopPlayback()
+        onFailed(message)
+    }
+}
+
+private struct VendorSessionAdPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView(frame: .zero)
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
     }
 }
 
