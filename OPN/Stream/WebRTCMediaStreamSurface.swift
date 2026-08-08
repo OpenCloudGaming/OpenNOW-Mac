@@ -164,6 +164,23 @@ private actor WebRTCMediaBroadcastPreparationGate {
     }
 }
 
+private struct WebRTCMediaSessionLimit: Equatable {
+    let startedAt: Date
+    let durationSeconds: Int
+
+    init?(session: StreamSessionDescriptor, fallbackStartedAt: Date = Date()) {
+        guard let duration = Int(session.metadata["sessionLimitSeconds"] ?? ""), duration > 0 else { return nil }
+        let startedAtEpoch = Double(session.metadata["startedAtEpochSeconds"] ?? "")
+        let startedAt = startedAtEpoch.map { Date(timeIntervalSince1970: $0) } ?? fallbackStartedAt
+        self.startedAt = startedAt
+        self.durationSeconds = duration
+    }
+
+    func remainingSeconds(at now: Date) -> Int {
+        max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
+    }
+}
+
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
@@ -228,6 +245,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
+    @State private var sessionLimit: WebRTCMediaSessionLimit?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -277,6 +295,7 @@ public struct WebRTCMediaStreamSurface: View {
             if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
             if statsVisible { statsHUD }
             if unifiedHUDVisible { unifiedHUD }
+            if isStreamReady { sessionLimitCountdownOverlay }
             if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
             if quitMenuVisible { quitMenu }
         }
@@ -406,10 +425,46 @@ public struct WebRTCMediaStreamSurface: View {
             hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
             hudMetricCard(title: "Rec", value: recordingStatusText, positive: recordingStatus.isRecording)
             hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
+            if sessionLimit != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    hudMetricCard(title: "Session", value: sessionLimitHUDText(at: context.date), positive: sessionLimitIsHealthy(at: context.date))
+                }
+            }
             if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
                 hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
             }
         }
+    }
+
+    private var sessionLimitCountdownOverlay: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let sessionLimit, sessionLimit.remainingSeconds(at: context.date) <= 30 {
+                VStack(spacing: 16) {
+                    Text("FREE SESSION ENDS IN")
+                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .tracking(2.2)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text(sessionLimitCountdownText(at: context.date))
+                        .font(.system(size: 74, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("Save progress now. GeForce NOW may close this free-tier session when the timer reaches zero.")
+                        .font(.streamNvidia(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                }
+                .padding(.horizontal, 34)
+                .padding(.vertical, 28)
+                .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))
+                .shadow(color: .black.opacity(0.64), radius: 30, x: 0, y: 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var hudShortcutFooter: some View {
@@ -1012,6 +1067,28 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func sessionLimitHUDText(at date: Date) -> String {
+        guard let sessionLimit else { return "Unlimited" }
+        return sessionLimitDurationText(sessionLimit.remainingSeconds(at: date))
+    }
+
+    private func sessionLimitCountdownText(at date: Date) -> String {
+        guard let sessionLimit else { return "0:00" }
+        return sessionLimitDurationText(sessionLimit.remainingSeconds(at: date))
+    }
+
+    private func sessionLimitIsHealthy(at date: Date) -> Bool {
+        guard let sessionLimit else { return true }
+        return sessionLimit.remainingSeconds(at: date) > 300
+    }
+
+    private func sessionLimitDurationText(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let minutes = clamped / 60
+        let remainingSeconds = clamped % 60
+        return "\(minutes):\(String(format: "%02d", remainingSeconds))"
+    }
+
     private var broadcastSummaryText: String {
         if isPreparingBroadcast { return "Preparing" }
         switch broadcastStatus {
@@ -1523,6 +1600,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             await MainActor.run {
+                sessionLimit = WebRTCMediaSessionLimit(session: session)
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
                 microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
                 transport.setMicrophoneEnabled(microphoneEnabled)
@@ -1974,6 +2052,7 @@ public struct WebRTCMediaStreamSurface: View {
         transientStreamMessageTask?.cancel()
         transientStreamMessageTask = nil
         transientStreamMessage = ""
+        sessionLimit = nil
         isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false

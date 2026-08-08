@@ -708,13 +708,13 @@ final class CatalogViewModel: ObservableObject {
             switch plan {
             case .ready(let configuration):
                 OpenNOWLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
-                self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
+                self.startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: self.account.membershipTier), message: message)
             case .activeSession(let active, let resume, let replacement):
                 OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
                 self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
-                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle)
-                self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
+                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
+                self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: self.account.membershipTier)
                 self.launchFlowState = .activeSessionPrompt
                 self.launchFlowMessage = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
                     ? "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
@@ -1082,10 +1082,12 @@ final class CatalogViewModel: ObservableObject {
         return error.localizedDescription
     }
 
-    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "") -> StreamLaunchConfiguration {
+    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "", membershipTier: String = "") -> StreamLaunchConfiguration {
         let overrideTitle = titleOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         var metadata = configuration.metadata
         metadata.merge(OPNRemoteCoOpPreferencesStore.load().launchMetadata) { _, launchValue in launchValue }
+        let tier = membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tier.isEmpty { metadata["membershipTier"] = tier }
         return StreamLaunchConfiguration(
             title: overrideTitle.isEmpty ? configuration.title : overrideTitle,
             applicationID: configuration.appId,

@@ -763,6 +763,8 @@ private struct VendorStreamLaunchLoadingOverlay: View {
 }
 
 private struct VendorEmbeddedSessionAdPlayer: View {
+    private static let volumePreferenceKey = "OpenNOW.Stream.RequiredSessionAdVolume"
+
     let ad: CatalogStreamAdPlayback
     let onFinished: (Int) -> Void
     let onFailed: (String) -> Void
@@ -772,7 +774,7 @@ private struct VendorEmbeddedSessionAdPlayer: View {
     @State private var endObserver: NSObjectProtocol?
     @State private var startedAt = Date()
     @State private var remainingSeconds = 0
-    @State private var volume = 1.0
+    @AppStorage(Self.volumePreferenceKey) private var volume = 1.0
     @State private var didFinish = false
     private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 

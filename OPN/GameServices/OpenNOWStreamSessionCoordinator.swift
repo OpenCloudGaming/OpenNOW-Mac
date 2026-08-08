@@ -184,13 +184,17 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         var attempts = 0
         var lastPollWasPendingProgress = initial.isPendingProgress
         var latest = initial
+        var requiredAdGateObserved = initial.requiredAdGateObserved
         var completedAdIds: Set<String> = []
         publishAllocationProgress(latest, configuration: configuration)
         while !latest.isReady {
             try Task.checkCancellation()
             if let ad = latest.pendingAd, !completedAdIds.contains(ad.adId) {
+                requiredAdGateObserved = true
+                latest = latest.markingRequiredAdGateObserved()
                 publishAllocationProgress(latest, configuration: configuration, overrideMessage: "Playing sponsored message before your free-tier session continues...")
                 latest = try await playRequiredAd(ad, session: latest)
+                latest = latest.markingRequiredAdGateObserved()
                 completedAdIds.insert(ad.adId)
                 attempts = 0
                 lastPollWasPendingProgress = latest.isPendingProgress
@@ -207,9 +211,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             if latest.status > 3, ![4, 5, 6].contains(latest.status) {
                 throw OpenNOWStreamSessionError.sessionAllocationFailed("Session in terminal error state")
             }
+            if requiredAdGateObserved { latest = latest.markingRequiredAdGateObserved() }
             lastPollWasPendingProgress = latest.isPendingProgress
             publishAllocationProgress(latest, configuration: configuration)
         }
+        if requiredAdGateObserved { latest = latest.markingRequiredAdGateObserved() }
         return latest
     }
 
@@ -441,18 +447,30 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     private func streamDescriptor(sessionInfo: AllocatedStreamSession, configuration: StreamLaunchConfiguration) -> StreamSessionDescriptor {
-        StreamSessionDescriptor(
+        var metadata = configuration.metadata
+        metadata.merge([
+            "accessToken": configuration.accessToken,
+            "signalingUrl": sessionInfo.signalingUrl,
+            "streamingBaseUrl": sessionInfo.streamingBaseUrl,
+            "startedAtEpochSeconds": String(Date().timeIntervalSince1970),
+        ]) { _, new in new }
+        if isFreeTierSession(configuration: configuration, sessionInfo: sessionInfo) {
+            metadata["sessionLimitSeconds"] = "3600"
+            metadata["sessionLimitReason"] = "freeTier"
+        }
+        return StreamSessionDescriptor(
             id: sessionInfo.sessionId,
             applicationID: configuration.applicationID,
             serverAddress: sessionInfo.serverIp,
             title: configuration.title,
-            metadata: [
-                "accessToken": configuration.accessToken,
-                "signalingUrl": sessionInfo.signalingUrl,
-                "streamingBaseUrl": sessionInfo.streamingBaseUrl,
-                "startedAtEpochSeconds": String(Date().timeIntervalSince1970),
-            ]
+            metadata: metadata
         )
+    }
+
+    private func isFreeTierSession(configuration: StreamLaunchConfiguration, sessionInfo: AllocatedStreamSession) -> Bool {
+        if sessionInfo.requiredAdGateObserved { return true }
+        let tier = (configuration.metadata["membershipTier"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return tier == "free" || tier.contains("free")
     }
 
     private func shouldReportFinishedSession(_ reason: StreamEndReason) -> Bool {
@@ -590,6 +608,7 @@ private struct AllocatedStreamSession: Sendable {
     let seatSetupStep: Int
     let progressState: Int
     let adsRequired: Bool
+    let requiredAdGateObserved: Bool
     let pendingAd: AllocatedSessionAd?
     let rawJSON: String
 
@@ -619,8 +638,16 @@ private struct AllocatedStreamSession: Sendable {
         progressState = Self.int(info["progressState"])
         let adState = info["adState"] as? [String: Any]
         adsRequired = Self.bool(adState?["isAdsRequired"])
+        requiredAdGateObserved = Self.bool(info["requiredAdGateObserved"])
         pendingAd = Self.pendingAd(from: adState)
         rawJSON = Self.jsonString(info)
+    }
+
+    func markingRequiredAdGateObserved() -> AllocatedStreamSession {
+        guard !requiredAdGateObserved else { return self }
+        var dictionary = (try? JSONSerialization.jsonObject(with: Data(rawJSON.utf8))) as? [String: Any] ?? [:]
+        dictionary["requiredAdGateObserved"] = true
+        return AllocatedStreamSession(dictionary)
     }
 
     var reportableSession: [String: Any] {
