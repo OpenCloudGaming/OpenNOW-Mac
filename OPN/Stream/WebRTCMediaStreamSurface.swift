@@ -177,8 +177,9 @@ private struct WebRTCMediaSessionLimit: Equatable {
     }
 
     init?(update: StreamSessionLimitUpdate, receivedAt: Date = Date()) {
-        self.startedAt = receivedAt.addingTimeInterval(-Double(3600 - update.remainingSeconds))
-        self.durationSeconds = 3600
+        let durationSeconds = max(3600, update.remainingSeconds)
+        self.startedAt = receivedAt.addingTimeInterval(-Double(durationSeconds - update.remainingSeconds))
+        self.durationSeconds = durationSeconds
     }
 
     func remainingSeconds(at now: Date) -> Int {
@@ -454,7 +455,7 @@ public struct WebRTCMediaStreamSurface: View {
                         .font(.system(size: 74, weight: .black, design: .monospaced))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
-                    Text("Save progress now. GeForce NOW may close this free-tier session when the timer reaches zero.")
+                    Text("Save progress now. GeForce NOW may close this session when the timer reaches zero.")
                         .font(.streamNvidia(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
@@ -1608,6 +1609,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             await MainActor.run {
                 sessionLimit = WebRTCMediaSessionLimit(session: session)
+                publishSessionLimitProgress()
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
                 microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
                 transport.setMicrophoneEnabled(microphoneEnabled)
@@ -1650,7 +1652,21 @@ public struct WebRTCMediaStreamSurface: View {
     private func applySessionLimitUpdate(_ update: StreamSessionLimitUpdate) {
         guard let limit = WebRTCMediaSessionLimit(update: update) else { return }
         sessionLimit = limit
+        publishSessionLimitProgress()
         WebRTCMediaTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
+    }
+
+    private func publishSessionLimitProgress() {
+        guard let sessionLimit else { return }
+        onProgress?(StreamProgress(
+            title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title,
+            message: "Connected.",
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.connected.rawValue,
+            isReady: true,
+            sessionLimitStartedAtEpochSeconds: sessionLimit.startedAt.timeIntervalSince1970,
+            sessionLimitSeconds: sessionLimit.durationSeconds
+        ))
     }
 
     private func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {

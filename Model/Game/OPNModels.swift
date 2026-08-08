@@ -1057,15 +1057,15 @@ public final class OPNSessionJSONParser: NSObject {
         for container in containers.compactMap({ $0 }) {
             if let milliseconds = firstNumber(in: container, keys: ["beforeEventMS", "remainingSessionLimitMs", "remainingSessionLimitMilliseconds", "sessionLimitRemainingMs", "sessionLimitRemainingMilliseconds"]) {
                 let seconds = Int((milliseconds / 1000.0).rounded())
-                if seconds > 0 && seconds <= 3600 { return seconds }
+                if seconds > 0 && seconds <= 86_400 { return seconds }
             }
             if let seconds = firstNumber(in: container, keys: ["timeRemaining", "remainingTime", "remainingTimeInSeconds", "remainingSessionTimeInSeconds", "sessionTimeRemainingInSeconds", "timeRemainingInSeconds", "remainingSessionLimitSeconds", "sessionLimitRemainingSeconds"]) {
                 let rounded = Int(seconds.rounded())
-                if rounded > 0 && rounded <= 3600 { return rounded }
+                if rounded > 0 && rounded <= 86_400 { return rounded }
             }
             if let minutes = firstNumber(in: container, keys: ["remainingTimeInMinutes", "remainingSessionTimeInMinutes", "sessionTimeRemainingInMinutes", "timeRemainingInMinutes", "remainingSessionLimitMinutes", "sessionLimitRemainingMinutes"]) {
                 let seconds = Int((minutes * 60.0).rounded())
-                if seconds > 0 && seconds <= 3600 { return seconds }
+                if seconds > 0 && seconds <= 86_400 { return seconds }
             }
         }
         return 0

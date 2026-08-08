@@ -861,6 +861,12 @@ import Foundation
     #expect(update.presentDurationSeconds == 30)
     #expect(update.timerType == "SmallMarquee")
 
+    let paidSessionData = try JSONSerialization.data(withJSONObject: [
+        "messageType": "SESSION_LENGTH_TIMER",
+        "timerData": ["beforeEventMS": 14_400_000],
+    ])
+    #expect(StreamSessionLimitUpdate.parse(from: paidSessionData)?.remainingSeconds == 14_400)
+
     let maintenanceData = try JSONSerialization.data(withJSONObject: [
         "message": [
             "messageType": "ZONE_MAINTENANCE_TIMER",
@@ -888,7 +894,7 @@ import Foundation
         #expect(request.url?.path == "/v2/session/resume-session")
         return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host, extraSession: [
             "sessionProgress": [
-                "timeRemaining": 1200,
+                "timeRemaining": 7200,
             ],
         ]))
     }
@@ -905,7 +911,7 @@ import Foundation
     }
 
     #expect(result.0 == true)
-    #expect(result.1 == 1200)
+    #expect(result.1 == 7200)
     #expect(result.2.isEmpty)
     }
 }

@@ -456,8 +456,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             "streamingBaseUrl": sessionInfo.streamingBaseUrl,
         ]) { _, new in new }
         if isSessionLimited {
-            metadata["sessionLimitSeconds"] = "3600"
-            metadata["sessionLimitReason"] = "freeTier"
+            metadata["sessionLimitSeconds"] = String(sessionLimitSeconds(sessionInfo: sessionInfo))
+            metadata["sessionLimitReason"] = sessionInfo.remainingSessionLimitSeconds > 0 ? "serverBacked" : "freeTier"
             metadata["startedAtEpochSeconds"] = String(startedAtEpochSeconds(sessionInfo: sessionInfo, isSessionLimited: true))
         } else {
             metadata["startedAtEpochSeconds"] = String(Date().timeIntervalSince1970)
@@ -474,9 +474,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     private func startedAtEpochSeconds(sessionInfo: AllocatedStreamSession, isSessionLimited: Bool) -> TimeInterval {
         guard isSessionLimited, !sessionInfo.sessionId.isEmpty else { return Date().timeIntervalSince1970 }
         if sessionInfo.remainingSessionLimitSeconds > 0 {
-            return Date().timeIntervalSince1970 - Double(max(0, 3600 - sessionInfo.remainingSessionLimitSeconds))
+            return Date().timeIntervalSince1970 - Double(max(0, sessionLimitSeconds(sessionInfo: sessionInfo) - sessionInfo.remainingSessionLimitSeconds))
         }
         return StreamSessionLimitStartStore.startedAtEpochSeconds(for: sessionInfo.sessionId)
+    }
+
+    private func sessionLimitSeconds(sessionInfo: AllocatedStreamSession) -> Int {
+        sessionInfo.remainingSessionLimitSeconds > 0 ? max(3600, sessionInfo.remainingSessionLimitSeconds) : 3600
     }
 
     private func isFreeTierSession(configuration: StreamLaunchConfiguration, sessionInfo: AllocatedStreamSession) -> Bool {

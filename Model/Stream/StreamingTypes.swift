@@ -66,14 +66,18 @@ public struct StreamProgress: Codable, Equatable, Sendable {
     public let currentStepIndex: Int
     public let isReady: Bool
     public let queuePosition: Int?
+    public let sessionLimitStartedAtEpochSeconds: Double?
+    public let sessionLimitSeconds: Int?
 
-    public init(title: String, message: String, steps: [String], currentStepIndex: Int, isReady: Bool, queuePosition: Int? = nil) {
+    public init(title: String, message: String, steps: [String], currentStepIndex: Int, isReady: Bool, queuePosition: Int? = nil, sessionLimitStartedAtEpochSeconds: Double? = nil, sessionLimitSeconds: Int? = nil) {
         self.title = title
         self.message = message
         self.steps = steps
         self.currentStepIndex = currentStepIndex
         self.isReady = isReady
         self.queuePosition = queuePosition
+        self.sessionLimitStartedAtEpochSeconds = sessionLimitStartedAtEpochSeconds
+        self.sessionLimitSeconds = sessionLimitSeconds
     }
 
     public init(configuration: StreamLaunchConfiguration, step: StreamLaunchStep, message: String, isReady: Bool = false) {
@@ -93,7 +97,7 @@ public struct StreamSessionLimitUpdate: Codable, Equatable, Sendable {
     public let timerType: String
 
     public init?(remainingSeconds: Int, presentDurationSeconds: Int? = nil, timerType: String = "") {
-        guard remainingSeconds > 0, remainingSeconds <= 3600 else { return nil }
+        guard remainingSeconds > 0, remainingSeconds <= 86_400 else { return nil }
         self.remainingSeconds = remainingSeconds
         self.presentDurationSeconds = presentDurationSeconds.map { max(0, $0) }
         self.timerType = timerType
@@ -144,19 +148,19 @@ public struct StreamSessionLimitUpdate: Codable, Equatable, Sendable {
         for key in ["beforeEventMS", "remainingSessionLimitMs", "remainingSessionLimitMilliseconds", "sessionLimitRemainingMs", "sessionLimitRemainingMilliseconds"] {
             if let value = milliseconds(dictionary[key]) {
                 let seconds = Int((value / 1000.0).rounded())
-                if seconds > 0 && seconds <= 3600 { return seconds }
+                if seconds > 0 && seconds <= 86_400 { return seconds }
             }
         }
         for key in ["timeRemaining", "remainingTime", "remainingTimeInSeconds", "remainingSessionTimeInSeconds", "sessionTimeRemainingInSeconds", "timeRemainingInSeconds", "remainingSessionLimitSeconds", "sessionLimitRemainingSeconds"] {
             if let value = number(dictionary[key]) {
                 let seconds = Int(value.rounded())
-                if seconds > 0 && seconds <= 3600 { return seconds }
+                if seconds > 0 && seconds <= 86_400 { return seconds }
             }
         }
         for key in ["remainingTimeInMinutes", "remainingSessionTimeInMinutes", "sessionTimeRemainingInMinutes", "timeRemainingInMinutes", "remainingSessionLimitMinutes", "sessionLimitRemainingMinutes"] {
             if let value = number(dictionary[key]) {
                 let seconds = Int((value * 60.0).rounded())
-                if seconds > 0 && seconds <= 3600 { return seconds }
+                if seconds > 0 && seconds <= 86_400 { return seconds }
             }
         }
         return nil

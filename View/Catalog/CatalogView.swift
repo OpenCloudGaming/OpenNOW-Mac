@@ -1329,7 +1329,7 @@ private struct CatalogMainMenuPanel: View {
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus)
+            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
 
@@ -1484,35 +1484,63 @@ private struct CatalogMainMenuSectionLabel: View {
 
 private struct CatalogMainMenuPlaytimeCard: View {
     let status: CatalogSubscriptionStatus
+    let activeStreamProgress: StreamProgress?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("REMAINING PLAYTIME")
-                    .font(.nvidia(size: 10, weight: .bold))
-                    .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.46))
-                Spacer(minLength: 0)
-                Text(status.membershipTier.uppercased())
-                    .font(.nvidia(size: 10, weight: .bold))
-                    .tracking(0.6)
-                    .foregroundStyle(.black.opacity(0.86))
-                    .padding(.horizontal, 8)
-                    .frame(height: 20)
-                    .background(Color.openNowGreen)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let activeSession = activeSessionTime(at: context.date)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(.white.opacity(0.46))
+                    Spacer(minLength: 0)
+                    Text(status.membershipTier.uppercased())
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.black.opacity(0.86))
+                        .padding(.horizontal, 8)
+                        .frame(height: 20)
+                        .background(Color.openNowGreen)
+                }
+                Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
+                    .font(.nvidia(size: 22, weight: .bold))
+                    .foregroundStyle((activeSession != nil || status.isAvailable) ? .white.opacity(0.95) : .white.opacity(0.56))
+                    .lineLimit(1)
+                Text(activeSession?.usageText ?? status.usageText)
+                    .font(.nvidia(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.56))
+                    .lineLimit(1)
             }
-            Text(status.remainingPlaytimeText)
-                .font(.nvidia(size: 22, weight: .bold))
-                .foregroundStyle(status.isAvailable ? .white.opacity(0.95) : .white.opacity(0.56))
-                .lineLimit(1)
-            Text(status.usageText)
-                .font(.nvidia(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.56))
-                .lineLimit(1)
+            .padding(14)
+            .background(Color.white.opacity(0.055))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private func activeSessionTime(at date: Date) -> (remainingText: String, usageText: String)? {
+        guard let progress = activeStreamProgress,
+              let startedAtEpoch = progress.sessionLimitStartedAtEpochSeconds,
+              let limitSeconds = progress.sessionLimitSeconds,
+              limitSeconds > 0 else { return nil }
+        let elapsedSeconds = max(0, Int(date.timeIntervalSince1970 - startedAtEpoch))
+        let remainingSeconds = max(0, limitSeconds - elapsedSeconds)
+        return (
+            CatalogSubscriptionStatus.durationText(seconds: remainingSeconds),
+            "Server session limit for this stream"
+        )
+    }
+}
+
+private extension CatalogSubscriptionStatus {
+    static func durationText(seconds: Int) -> String {
+        let totalSeconds = max(0, seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 { return String(format: "%dh %02dm", hours, minutes) }
+        return String(format: "%dm %02ds", minutes, seconds)
     }
 }
 
