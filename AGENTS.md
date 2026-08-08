@@ -12,6 +12,7 @@ Execute every task in this order:
 4. **Autonomy** — Resolve missing context or dependencies using the standard library or canonical practices.
 
 # Build Artifact Discipline
+- For this Xcode project, use Xcode/XcodeBuildMCP only for builds, tests, and runs. Do not use SwiftPM commands as build/test/run shortcuts unless the user explicitly overrides this instruction for a specific task.
 - Run SwiftPM commands from the repository root unless a task explicitly requires otherwise.
 - Use `--scratch-path .build/shared` for SwiftPM commands that generate build state, including `swift build`, `swift test`, `swift run`, and relevant `swift package` commands.
 - Do not run package-local SwiftPM commands that create package-specific `.build` directories. Use the root `Package.swift` with the shared scratch path instead.
