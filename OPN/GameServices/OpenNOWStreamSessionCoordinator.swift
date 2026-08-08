@@ -63,6 +63,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
         guard shouldReportFinishedSession(reason) else { return }
         let stopError = await stopCloudMatchSession(session)
+        if stopError == nil { StreamSessionLimitStartStore.clear(sessionId: session.id) }
         await reportUDSEndOfSession(session, reason: reason)
         if let stopError { throw stopError }
     }
@@ -447,14 +448,15 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     private func streamDescriptor(sessionInfo: AllocatedStreamSession, configuration: StreamLaunchConfiguration) -> StreamSessionDescriptor {
+        let isSessionLimited = isFreeTierSession(configuration: configuration, sessionInfo: sessionInfo)
         var metadata = configuration.metadata
         metadata.merge([
             "accessToken": configuration.accessToken,
             "signalingUrl": sessionInfo.signalingUrl,
             "streamingBaseUrl": sessionInfo.streamingBaseUrl,
-            "startedAtEpochSeconds": String(Date().timeIntervalSince1970),
+            "startedAtEpochSeconds": String(startedAtEpochSeconds(sessionInfo: sessionInfo, isSessionLimited: isSessionLimited)),
         ]) { _, new in new }
-        if isFreeTierSession(configuration: configuration, sessionInfo: sessionInfo) {
+        if isSessionLimited {
             metadata["sessionLimitSeconds"] = "3600"
             metadata["sessionLimitReason"] = "freeTier"
         }
@@ -465,6 +467,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             title: configuration.title,
             metadata: metadata
         )
+    }
+
+    private func startedAtEpochSeconds(sessionInfo: AllocatedStreamSession, isSessionLimited: Bool) -> TimeInterval {
+        guard isSessionLimited, !sessionInfo.sessionId.isEmpty else { return Date().timeIntervalSince1970 }
+        return StreamSessionLimitStartStore.startedAtEpochSeconds(for: sessionInfo.sessionId)
     }
 
     private func isFreeTierSession(configuration: StreamLaunchConfiguration, sessionInfo: AllocatedStreamSession) -> Bool {
@@ -591,6 +598,45 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 private struct PreparedStreamLaunch {
     let settings: [String: Any]
     let streamingBaseUrl: String
+}
+
+private enum StreamSessionLimitStartStore {
+    private static let lock = NSLock()
+    private static let key = "OpenNOW.Stream.SessionLimitStartedAtEpochSeconds"
+    private static let maxStoredAgeSeconds: TimeInterval = 24 * 60 * 60
+
+    static func startedAtEpochSeconds(for sessionId: String, now: Date = Date()) -> TimeInterval {
+        lock.withLock {
+            let nowEpoch = now.timeIntervalSince1970
+            var starts = storedStarts(nowEpoch: nowEpoch)
+            if let existing = starts[sessionId], existing > 0 {
+                persist(starts)
+                return existing
+            }
+            starts[sessionId] = nowEpoch
+            persist(starts)
+            return nowEpoch
+        }
+    }
+
+    static func clear(sessionId: String) {
+        guard !sessionId.isEmpty else { return }
+        lock.withLock {
+            var starts = storedStarts(nowEpoch: Date().timeIntervalSince1970)
+            guard starts.removeValue(forKey: sessionId) != nil else { return }
+            persist(starts)
+        }
+    }
+
+    private static func storedStarts(nowEpoch: TimeInterval) -> [String: TimeInterval] {
+        let raw = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+        return raw.filter { nowEpoch - $0.value <= maxStoredAgeSeconds }
+    }
+
+    private static func persist(_ starts: [String: TimeInterval]) {
+        UserDefaults.standard.set(starts, forKey: key)
+        UserDefaults.standard.synchronize()
+    }
 }
 
 private struct AllocatedStreamSession: Sendable {
