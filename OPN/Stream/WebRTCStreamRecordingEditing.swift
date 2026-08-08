@@ -183,9 +183,10 @@ public extension WebRTCStreamRecordingLibrary {
         let loadedSegments = try await loadSegments(normalizedRequest.segments)
         let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
         let previewAudioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
-        let previewVideoComposition = needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments)
+        let previewVideoComposition = try await (needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments)
             ? videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
             : nil
+        )
         return WebRTCStreamRecordingPreview(
             asset: build.composition,
             audioMix: previewAudioMix,
@@ -207,16 +208,15 @@ public extension WebRTCStreamRecordingLibrary {
             let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
             let presetName = await compatiblePreset(for: normalizedRequest.exportPreset, asset: build.composition)
             guard let exportSession = AVAssetExportSession(asset: build.composition, presetName: presetName) else { throw WebRTCStreamRecordingEditorError.unableToCreateExportSession }
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = try compatibleMP4FileType(for: exportSession)
+            let outputFileType = try compatibleMP4FileType(for: exportSession)
             exportSession.shouldOptimizeForNetworkUse = false
             exportSession.timeRange = CMTimeRange(start: .zero, duration: build.duration)
             exportSession.audioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
             if needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments) {
-                exportSession.videoComposition = videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
+                exportSession.videoComposition = try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
             }
             await progressHandler?(0)
-            try await runExportSession(exportSession, progressHandler: progressHandler)
+            try await runExportSession(exportSession, outputURL: outputURL, outputFileType: outputFileType, progressHandler: progressHandler)
             await progressHandler?(1)
             let attributes = try FileManager.default.attributesOfItem(atPath: outputURL.path)
             let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
@@ -315,32 +315,44 @@ public extension WebRTCStreamRecordingLibrary {
         return WebRTCStreamRecordingTimelineBuildResult(composition: composition, duration: cursor, firstRecording: firstSegment.segment.recording, renderSize: renderSize)
     }
 
-    private static func videoComposition(for composition: AVMutableComposition, request: WebRTCStreamRecordingEditRequest, renderSize: CGSize) -> AVMutableVideoComposition {
-        let composition = AVMutableVideoComposition(asset: composition) { filterRequest in
-            let sourceExtent = filterRequest.sourceImage.extent
-            let crop = request.crop ?? .fullFrame
-            let cropRect = cropRect(for: sourceExtent, crop: crop)
-            var image = filterRequest.sourceImage.cropped(to: cropRect).transformed(by: CGAffineTransform(translationX: -cropRect.minX, y: -cropRect.minY))
-            let croppedExtent = CGRect(origin: .zero, size: cropRect.size)
-            if request.isFlippedHorizontally {
-                image = image.transformed(by: CGAffineTransform(translationX: croppedExtent.width, y: 0).scaledBy(x: -1, y: 1))
+    private static func videoComposition(for composition: AVMutableComposition, request: WebRTCStreamRecordingEditRequest, renderSize: CGSize) async throws -> AVMutableVideoComposition {
+        let videoComposition = try await withCheckedThrowingContinuation { continuation in
+            AVMutableVideoComposition.videoComposition(with: composition, applyingCIFiltersWithHandler: { filterRequest in
+                applyVideoFilters(filterRequest, request: request, renderSize: renderSize)
+            }) { videoComposition, error in
+                if let videoComposition {
+                    continuation.resume(returning: videoComposition)
+                } else {
+                    continuation.resume(throwing: WebRTCStreamRecordingEditorError.exportFailed(error?.localizedDescription ?? "Unable to create video composition."))
+                }
             }
-            if request.isFlippedVertically {
-                image = image.transformed(by: CGAffineTransform(translationX: 0, y: croppedExtent.height).scaledBy(x: 1, y: -1))
-            }
-            image = rotatedImage(image, rotation: request.rotation, sourceSize: croppedExtent.size)
-            let rotatedExtent = CGRect(origin: .zero, size: rotatedSize(croppedExtent.size, rotation: request.rotation))
-            let scale = min(renderSize.width / max(rotatedExtent.width, 1), renderSize.height / max(rotatedExtent.height, 1))
-            let scaledWidth = rotatedExtent.width * scale
-            let scaledHeight = rotatedExtent.height * scale
-            let x = (renderSize.width - scaledWidth) / 2
-            let y = (renderSize.height - scaledHeight) / 2
-            image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: x / max(scale, 0.0001), y: y / max(scale, 0.0001)))
-            filterRequest.finish(with: image.cropped(to: CGRect(origin: .zero, size: renderSize)), context: nil)
         }
-        composition.renderSize = normalizedRenderSize(renderSize)
-        composition.frameDuration = CMTime(value: 1, timescale: 60)
-        return composition
+        videoComposition.renderSize = normalizedRenderSize(renderSize)
+        videoComposition.frameDuration = CMTime(value: 1, timescale: 60)
+        return videoComposition
+    }
+
+    private static func applyVideoFilters(_ filterRequest: AVAsynchronousCIImageFilteringRequest, request: WebRTCStreamRecordingEditRequest, renderSize: CGSize) {
+        let sourceExtent = filterRequest.sourceImage.extent
+        let crop = request.crop ?? .fullFrame
+        let cropRect = cropRect(for: sourceExtent, crop: crop)
+        var image = filterRequest.sourceImage.cropped(to: cropRect).transformed(by: CGAffineTransform(translationX: -cropRect.minX, y: -cropRect.minY))
+        let croppedExtent = CGRect(origin: .zero, size: cropRect.size)
+        if request.isFlippedHorizontally {
+            image = image.transformed(by: CGAffineTransform(translationX: croppedExtent.width, y: 0).scaledBy(x: -1, y: 1))
+        }
+        if request.isFlippedVertically {
+            image = image.transformed(by: CGAffineTransform(translationX: 0, y: croppedExtent.height).scaledBy(x: 1, y: -1))
+        }
+        image = rotatedImage(image, rotation: request.rotation, sourceSize: croppedExtent.size)
+        let rotatedExtent = CGRect(origin: .zero, size: rotatedSize(croppedExtent.size, rotation: request.rotation))
+        let scale = min(renderSize.width / max(rotatedExtent.width, 1), renderSize.height / max(rotatedExtent.height, 1))
+        let scaledWidth = rotatedExtent.width * scale
+        let scaledHeight = rotatedExtent.height * scale
+        let x = (renderSize.width - scaledWidth) / 2
+        let y = (renderSize.height - scaledHeight) / 2
+        image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: x / max(scale, 0.0001), y: y / max(scale, 0.0001)))
+        filterRequest.finish(with: image.cropped(to: CGRect(origin: .zero, size: renderSize)), context: nil)
     }
 
     private static func audioMix(for composition: AVMutableComposition, request: WebRTCStreamRecordingEditRequest, duration: CMTime) -> AVAudioMix? {
@@ -363,34 +375,21 @@ public extension WebRTCStreamRecordingLibrary {
         return mix
     }
 
-    private static func runExportSession(_ exportSession: AVAssetExportSession, progressHandler: (@MainActor @Sendable (Double) -> Void)?) async throws {
+    private static func runExportSession(_ exportSession: AVAssetExportSession, outputURL: URL, outputFileType: AVFileType, progressHandler: (@MainActor @Sendable (Double) -> Void)?) async throws {
         let box = WebRTCStreamRecordingExportSessionBox(session: exportSession)
         let progressTask = Task.detached(priority: .utility) {
             while !Task.isCancelled {
-                let status = box.session.status
-                if status != .waiting && status != .exporting { break }
                 await progressHandler?(Double(box.session.progress))
                 try? await Task.sleep(for: .milliseconds(150))
             }
         }
         defer { progressTask.cancel() }
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.session.exportAsynchronously {
-                    switch box.session.status {
-                    case .completed:
-                        continuation.resume()
-                    case .cancelled:
-                        continuation.resume(throwing: WebRTCStreamRecordingEditorError.exportCancelled)
-                    case .failed:
-                        continuation.resume(throwing: WebRTCStreamRecordingEditorError.exportFailed(box.session.error?.localizedDescription ?? "Video export failed."))
-                    default:
-                        continuation.resume(throwing: WebRTCStreamRecordingEditorError.exportFailed(box.session.error?.localizedDescription ?? "Video export did not complete."))
-                    }
-                }
-            }
-        } onCancel: {
-            box.session.cancelExport()
+        do {
+            try await exportSession.export(to: outputURL, as: outputFileType)
+        } catch is CancellationError {
+            throw WebRTCStreamRecordingEditorError.exportCancelled
+        } catch {
+            throw WebRTCStreamRecordingEditorError.exportFailed(error.localizedDescription)
         }
     }
 

@@ -1855,7 +1855,7 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func variantIsOwned(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> Bool {
-        variant.inLibrary || variant.librarySelected || (game.isInLibrary && game.variants.count == 1)
+        CatalogViewModel.variantIsOwned(variant, in: game)
     }
 
     private func selectedVariant(game: OPNCatalogGameObject) -> OPNCatalogGameVariantObject? {
@@ -3887,7 +3887,7 @@ private struct GameDetailPanel: View {
                 }
                 Button("Share") { viewModel.shareSelectedGame() }
                 Button("Add shortcut") { viewModel.addShortcutForSelectedGame() }
-                if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+                if selectedVariantIsOwned(game) {
                     Button("Unmark as owned") { viewModel.removeSelectedVariantOwned() }
                 } else if selectedVariant != nil {
                     Button("Mark as owned") { viewModel.markSelectedVariantOwned() }
@@ -3923,7 +3923,7 @@ private struct GameDetailPanel: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text((selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary) ? "Owned" : "Not Owned")
+            Text(selectedVariantIsOwned(game) ? "Owned" : "Not Owned")
                 .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.72))
                 .padding(.horizontal, 10)
@@ -3955,7 +3955,7 @@ private struct GameDetailPanel: View {
             let secondary = game.patchStatusSecondaryDisplayText
             return secondary.isEmpty ? "GeForce NOW is \(game.patchStatusPrimaryDisplayText.lowercased()). Launch will be available after patching finishes." : secondary
         }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true {
+        if selectedVariantIsOwned(game) {
             return "Access unlocked with your membership. Game ownership required to play."
         }
         if let selectedVariant, !selectedVariant.appStore.isEmpty {
@@ -4124,7 +4124,7 @@ private struct GameDetailPanel: View {
 
     private func primaryActionTitle(game: OPNCatalogGameObject) -> String {
         if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "QUEUED" : "QUEUE" }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "PLAY" }
+        if selectedVariantIsOwned(game) { return "PLAY" }
         if selectedVariant != nil { return "MARK OWNED" }
         return "PLAY"
     }
@@ -4134,11 +4134,16 @@ private struct GameDetailPanel: View {
             viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
             return
         }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
+        if selectedVariantIsOwned(game) || selectedVariant == nil {
             viewModel.launchSelectedGame()
         } else {
             viewModel.handleUnownedSelectedVariantPrimaryAction()
         }
+    }
+
+    private func selectedVariantIsOwned(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedVariant else { return false }
+        return CatalogViewModel.variantIsOwned(selectedVariant, in: game)
     }
 
     private func variantChips(game: OPNCatalogGameObject) -> some View {

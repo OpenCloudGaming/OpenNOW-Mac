@@ -1288,7 +1288,7 @@ final class CatalogViewModel: ObservableObject {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
         selectedVariantIndex = index
         let variant = selectedGame.variants[index]
-        if variant.inLibrary || variant.librarySelected || selectedGame.isInLibrary {
+        if Self.variantIsOwned(variant, in: selectedGame) {
             selectOwnedVariant(variant)
             ownershipFlowStage = .storeSelection
             ownershipFlowMessage = ""
@@ -2030,7 +2030,7 @@ final class CatalogViewModel: ObservableObject {
         }
     }
 
-    private func schedulePatchingPollIfNeeded(immediate: Bool = false) {
+    private func schedulePatchingPollIfNeeded(immediate: Bool = true) {
         let patchingAppIds = patchingPollAppIds()
         guard !patchingAppIds.isEmpty else {
             patchingPollTask?.cancel()
@@ -2177,11 +2177,11 @@ final class CatalogViewModel: ObservableObject {
 
     private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
         guard let selectedGame, Self.identity(for: selectedGame) == gameIdentity else { return }
-        selectedGame.isInLibrary = inLibrary
         for variant in selectedGame.variants where variant.id == variantId {
             variant.inLibrary = inLibrary
             variant.librarySelected = inLibrary
         }
+        selectedGame.isInLibrary = Self.gameHasOwnedVariant(selectedGame)
     }
 
     private func updateGameFavoriteState(identity: String, isFavorited: Bool) {
@@ -2427,6 +2427,14 @@ final class CatalogViewModel: ObservableObject {
         if let index = game.variants.firstIndex(where: { $0.librarySelected }) { return index }
         if let index = game.variants.firstIndex(where: { $0.inLibrary }) { return index }
         return game.variants.isEmpty ? -1 : 0
+    }
+
+    static func variantIsOwned(_ variant: OPNCatalogGameVariantObject, in game: OPNCatalogGameObject) -> Bool {
+        variant.inLibrary || variant.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch(variant.serviceStatus) || (game.variants.count == 1 && game.isInLibrary)
+    }
+
+    static func gameHasOwnedVariant(_ game: OPNCatalogGameObject) -> Bool {
+        game.variants.contains { $0.inLibrary || $0.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch($0.serviceStatus) }
     }
 
     private static func parseStoreAccounts(_ account: NSDictionary) -> [CatalogStoreAccount] {

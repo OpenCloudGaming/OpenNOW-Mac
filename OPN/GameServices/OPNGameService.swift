@@ -308,34 +308,71 @@ final class OPNGameService: @unchecked Sendable {
         let locale = Self.currentGFNCatalogLocale()
         getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
-            var result = OPNCatalogBrowseResult()
-            result.selectedSortId = Self.defaultBrowseSortId
-            result.selectedFilterIds = [Self.libraryCatalogFilterId]
-            let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
-                accountIdentifier: accountIdentifier,
-                searchQuery: "",
-                sortId: Self.defaultBrowseSortId,
-                filterIds: result.selectedFilterIds,
-                fetchCount: 200,
-                locale: locale,
-                providerStreamingBaseUrl: providerBaseUrl,
-                vpcId: resolvedVpcId
-            )
-            self.fetchCatalogPages(
-                baseResult: result,
-                query: Self.catalogQuery,
-                vpcId: resolvedVpcId,
-                locale: locale,
-                sortString: "sortName:ASC",
-                fetchCount: 200,
-                searchString: "",
-                filters: Self.libraryCatalogFilter,
-                catalogCacheKey: catalogCacheKey,
-                deliveredCachedResult: AtomicFlag()
-            ) { [weak self] success, browseResult, error in
-                self?.dispatchCatalog(completion, success, browseResult.games, error)
+            self.fetchDefaultLibrarySort(locale: locale) { [weak self] selectedSort in
+                guard let self else { return }
+                var result = OPNCatalogBrowseResult()
+                result.selectedSortId = selectedSort.id
+                result.sortOptions = [selectedSort]
+                result.selectedFilterIds = [Self.libraryCatalogFilterId]
+                let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
+                    accountIdentifier: accountIdentifier,
+                    searchQuery: "",
+                    sortId: selectedSort.id,
+                    filterIds: result.selectedFilterIds,
+                    fetchCount: 200,
+                    locale: locale,
+                    providerStreamingBaseUrl: providerBaseUrl,
+                    vpcId: resolvedVpcId
+                )
+                self.fetchCatalogPages(
+                    baseResult: result,
+                    query: Self.catalogQuery,
+                    vpcId: resolvedVpcId,
+                    locale: locale,
+                    sortString: selectedSort.orderBy,
+                    fetchCount: 200,
+                    searchString: "",
+                    filters: Self.libraryCatalogFilter,
+                    catalogCacheKey: catalogCacheKey,
+                    deliveredCachedResult: AtomicFlag()
+                ) { [weak self] success, browseResult, error in
+                    self?.dispatchCatalog(completion, success, browseResult.games, error)
+                }
             }
         }
+    }
+
+    private func fetchDefaultLibrarySort(locale: String, completion: @escaping @Sendable (OPNCatalogSortOption) -> Void) {
+        let fallback = Self.defaultSortOption(searchQuery: "")
+        OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
+            guard let self else { return }
+            if let cachedDefinitions {
+                completion(self.defaultLibrarySort(from: cachedDefinitions, fallback: fallback))
+                return
+            }
+
+            let query = """
+            query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
+                filterGroupDefinitions(language: $locale) { id label filters { id label filters } }
+                sortOrderDefinitions(language: $locale) { id label orderBy }
+            }
+            """
+            self.postGraphQlJson(query: query, variables: ["locale": locale] as NSDictionary) { [weak self] data, error in
+                guard let self else { return }
+                if error.isEmpty, let data {
+                    OPNGameDataCache.shared.saveCatalogDefinitionsAsync(locale: locale, definitions: data)
+                    completion(self.defaultLibrarySort(from: data, fallback: fallback))
+                } else {
+                    completion(fallback)
+                }
+            }
+        }
+    }
+
+    private func defaultLibrarySort(from definitionsData: NSDictionary, fallback: OPNCatalogSortOption) -> OPNCatalogSortOption {
+        var result = OPNCatalogBrowseResult()
+        _ = parseCatalogDefinitions(definitionsData, result: &result)
+        return result.sortOptions.first { $0.id == Self.defaultBrowseSortId } ?? fallback
     }
 
     func fetchFavoriteGames(completion: @escaping OPNCatalogCallback) {
@@ -1201,7 +1238,7 @@ final class OPNGameService: @unchecked Sendable {
                 }
                 if let gfn = item["gfn"] as? NSDictionary {
                     variant.serviceStatus = safeString(gfn["status"]) ?? ""
-                    variant.isPatching = isAppPatchingStatus(gfn["status"]) || isAppPatchingStatus(gfn["playabilityState"]) || isAppPatchingStatus(gfn["stateDetails"])
+                    variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
                     let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
                     variant.patchStatusPrimaryText = patchText.primary
                     variant.patchStatusSecondaryText = patchText.secondary
@@ -1215,7 +1252,7 @@ final class OPNGameService: @unchecked Sendable {
                         variant.libraryInstalled = safeBool(library["installed"])
                         variant.librarySubscription = safeString(library["subscription"]) ?? ""
                         variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
-                        variant.isPatching = variant.isPatching || isAppPatchingStatus(library["status"])
+                        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: gfn["stateDetails"])
                         if variant.patchStatusPrimaryText.isEmpty {
                             let patchText = patchStatusText(status: library["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
                             variant.patchStatusPrimaryText = patchText.primary
@@ -1423,7 +1460,7 @@ final class OPNGameService: @unchecked Sendable {
                 guard !variantId.isEmpty else { continue }
                 let gfn = variantData["gfn"] as? NSDictionary
                 let library = gfn?["library"] as? NSDictionary
-                let variantIsPatching = isAppPatchingStatus(gfn?["status"]) || isAppPatchingStatus(gfn?["stateDetails"]) || isAppPatchingStatus(library?["status"])
+                let variantIsPatching = currentStatusIsPatching(status: gfn?["status"], playabilityState: gfn?["playabilityState"], libraryStatus: library?["status"], stateDetails: gfn?["stateDetails"])
                 status.variantPatchingById[variantId] = variantIsPatching
                 let patchText = patchStatusText(status: gfn?["status"] ?? library?["status"], stateDetails: gfn?["stateDetails"], isPatching: variantIsPatching)
                 if !patchText.primary.isEmpty { status.primaryTextByVariantId[variantId] = patchText.primary }
@@ -1670,6 +1707,12 @@ final class OPNGameService: @unchecked Sendable {
             return dictionary.allValues.contains { isAppPatchingStatus($0) }
         }
         return false
+    }
+
+    private func currentStatusIsPatching(status: Any?, playabilityState: Any?, libraryStatus: Any?, stateDetails: Any?) -> Bool {
+        if isAppPatchingStatus(status) || isAppPatchingStatus(playabilityState) || isAppPatchingStatus(libraryStatus) { return true }
+        let hasExplicitStatus = safeString(status) != nil || safeString(playabilityState) != nil || safeString(libraryStatus) != nil
+        return hasExplicitStatus ? false : isAppPatchingStatus(stateDetails)
     }
 
     private func patchStatusText(status: Any?, stateDetails: Any?, isPatching: Bool) -> (primary: String, secondary: String) {

@@ -20,13 +20,13 @@ private enum ControllerDetailAction: Equatable {
         switch self {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
-            if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "Play" }
+            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Play" }
             if selectedVariant != nil { return "Mark Owned" }
             return "Play"
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
         case .store: return "Change Store"
         case .ownership:
-            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary { return "Unmark Owned" }
+            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Unmark Owned" }
             return "Mark Owned"
         case .share: return "Share"
         case .shortcut: return "Add Shortcut"
@@ -590,7 +590,7 @@ struct ControllerCatalogView: View {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true {
                 viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
-            } else if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
+            } else if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true || selectedVariant == nil {
                 viewModel.launchSelectedGame()
             } else {
                 viewModel.handleUnownedSelectedVariantPrimaryAction()
@@ -600,7 +600,7 @@ struct ControllerCatalogView: View {
         case .store:
             viewModel.changeSelectedGameStore()
         case .ownership:
-            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true {
                 viewModel.removeSelectedVariantOwned()
             } else {
                 viewModel.markSelectedVariantOwned()
@@ -1380,7 +1380,7 @@ private struct ControllerGameDetailOverlay: View {
 
     private var detailSubtitle: String {
         let store = selectedVariant.map { viewModel.displayName(forVariant: $0) } ?? game.primaryStoreLabel
-        let ownership = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true ? "Owned" : "Ownership required"
+        let ownership = selectedVariant.map { CatalogViewModel.variantIsOwned($0, in: game) } == true ? "Owned" : "Ownership required"
         return [store, ownership].filter { !$0.isEmpty }.joined(separator: " • ")
     }
 
