@@ -593,7 +593,7 @@ struct ControllerCatalogView: View {
             } else if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
                 viewModel.launchSelectedGame()
             } else {
-                viewModel.markSelectedVariantOwned()
+                viewModel.handleUnownedSelectedVariantPrimaryAction()
             }
         case .favorite:
             viewModel.toggleFavoriteSelectedGame()
@@ -1145,7 +1145,7 @@ private struct ControllerGameTile: View {
     }
 
     private var subtitle: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "Queued for patch completion" : "Patching" }
+        if game.isLaunchPatching { return isQueuedForPatching ? "Queued for patch completion" : game.patchStatusPrimaryDisplayText }
         if game.isInLibrary { return "In Library" }
         if !game.primaryStoreLabel.isEmpty { return game.primaryStoreLabel }
         return game.supportsGamepad ? "Gamepad supported" : "Cloud ready"
@@ -1379,7 +1379,7 @@ private struct ControllerGameDetailOverlay: View {
     }
 
     private var detailSubtitle: String {
-        let store = selectedVariant?.appStoreLabel.isEmpty == false ? selectedVariant?.appStoreLabel ?? "" : game.primaryStoreLabel
+        let store = selectedVariant.map { viewModel.displayName(forVariant: $0) } ?? game.primaryStoreLabel
         let ownership = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true ? "Owned" : "Ownership required"
         return [store, ownership].filter { !$0.isEmpty }.joined(separator: " • ")
     }

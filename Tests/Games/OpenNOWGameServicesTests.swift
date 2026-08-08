@@ -354,6 +354,10 @@ import Foundation
         #expect(result.2.isEmpty)
         #expect(game?.displaysOwnRatingDuringGameplay == true)
         #expect(game?.isFavorited == true)
+        #expect(game?.skuPlayabilityText == "Included with membership")
+        #expect(game?.skuUnplayableDialogHeader == "Upgrade required")
+        #expect(game?.skuUnplayableDialogBody == "Upgrade to play")
+        #expect(game?.skuUnplayableDialogBodyEcommerceRestricted == "Upgrade in your account")
         #expect(game?.supportedControls == ["KEYBOARD_MOUSE"])
         #expect(game?.ratingCategoryKey == "TEEN")
         let variant = game?.variants.first
@@ -400,7 +404,11 @@ import Foundation
                     "id": "featured-section",
                     "title": "Featured",
                     "seeMoreInfo": ["filterIds": ["genre-action", "store-steam"], "sortOrderId": "release_date", "title": "Show all featured"],
-                    "items": [["__typename": "GameItem", "app": catalogGraphQLGame(id: "panel-game")]],
+                    "items": [
+                        ["__typename": "GameItem", "app": catalogGraphQLGame(id: "panel-game")],
+                        ["__typename": "FilterItem", "id": "filter-action", "title": "Action Games", "image": "https://assets.example.invalid/filter.jpg", "filterIds": ["genre-action"], "sortOrderId": "release_date"],
+                        ["__typename": "MarketingItem", "id": "marketing-tile", "title": "Membership Deal", "subTitle": "Limited", "body": "Play more", "images": ["HERO_IMAGE": ["https://assets.example.invalid/marketing.jpg"]], "action": ["uri": "https://play.geforcenow.com/deal", "label": "Learn More"]],
+                    ],
                 ]],
             ]]]])
         }
@@ -409,15 +417,133 @@ import Foundation
         let result = await withCheckedContinuation { continuation in
             OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
                 let section = panels.first?.sections.first
-                continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", error))
+                let tiles = section?.tiles ?? []
+                continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", tiles.map(\.kind), tiles.first?.filterIds ?? [], tiles.last?.actionUrl ?? "", error))
             }
         }
 
         #expect(result.0 == true)
-        #expect(result.4.isEmpty)
+        #expect(result.7.isEmpty)
         #expect(result.1 == ["genre-action", "store-steam"])
         #expect(result.2 == "release_date")
         #expect(result.3 == "Show all featured")
+        #expect(result.4 == ["filter", "marketing"])
+        #expect(result.5 == ["genre-action"])
+        #expect(result.6 == "https://play.geforcenow.com/deal")
+    }
+}
+
+@Test func libraryPatchStatusFetchUsesVendorOwnedFilterAndClearsEndedPatch() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("library-patch-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("library-patch-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(query.contains("GetAppsPatchInfoWithLibraryFilter"))
+            #expect((variables["filters"] as? [String: Any]) != nil)
+            #expect(variables["fetchCount"] as? Int == 749)
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": 1,
+                "pageInfo": ["hasNextPage": false, "endCursor": "", "totalCount": 1],
+                "items": [[
+                    "id": "ended-patch-game",
+                    "variants": [["id": "123456", "gfn": ["status": "AVAILABLE", "library": ["status": "MANUAL"]]]],
+                ]],
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchLibraryPatchStatuses { success, statuses, error in
+                continuation.resume(returning: (success, statuses["ended-patch-game"], error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.2.isEmpty)
+        #expect(result.1?.isPatching == false)
+        #expect(result.1?.variantPatchingById["123456"] == false)
+    }
+}
+
+@Test func cmsMetadataLookupUsesVendorVariantIdsQuery() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("cms-metadata-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("cms-metadata-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(query.contains("GetAppDataQueryForCmsId"))
+            #expect(variables["cmsIds"] as? [Int] == [145491])
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "genshin-impact", title: "Genshin Impact", variantId: "145491", favorited: true)]]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId("145491") { success, game, error in
+                continuation.resume(returning: (success, game?.title ?? "", game?.variants.first?.id ?? "", game?.isFavorited ?? false, error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.1 == "Genshin Impact")
+        #expect(result.2 == "145491")
+        #expect(result.3 == true)
+        #expect(result.4.isEmpty)
+    }
+}
+
+@Test func subscriptionDefinitionsFetchParsesVendorFields() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("subscription-definitions-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("subscription-definitions-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(query.contains("subscriptionDefinitions"))
+            #expect(variables["locale"] as? String == OPNLocale.currentGFNCatalogLocale())
+            return SessionManagerURLProtocol.response(json: ["data": ["subscriptionDefinitions": [[
+                "subscription": "ubisoft_plus",
+                "label": "Ubisoft+",
+                "logoURL": "https://assets.example.invalid/ubisoft-plus.svg",
+                "primaryStore": "UBISOFT_CONNECT",
+            ]]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { success, definitions, error in
+                let definition = definitions.first
+                continuation.resume(returning: (
+                    success,
+                    definition?["subscription"] as? String ?? "",
+                    definition?["label"] as? String ?? "",
+                    definition?["logoURL"] as? String ?? "",
+                    definition?["primaryStore"] as? String ?? "",
+                    error
+                ))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.5.isEmpty)
+        #expect(result.1 == "ubisoft_plus")
+        #expect(result.2 == "Ubisoft+")
+        #expect(result.3 == "https://assets.example.invalid/ubisoft-plus.svg")
+        #expect(result.4 == "UBISOFT_CONNECT")
     }
 }
 
@@ -683,12 +809,12 @@ import Foundation
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
     #expect(requestData["clientPlatformName"] as? String == "browser")
-    #expect(requestData["clientDisplayHdrCapabilities"] is [String: Any])
+    #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
     #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
     #expect(requestData["accountLinked"] as? Bool == true)
     #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
-    #expect(requestData["partnerCustomData"] as? String == "")
-    #expect(requestData["userAge"] as? Int == 26)
+    #expect(requestData["partnerCustomData"] as? String == "partner-data")
+    #expect(requestData["userAge"] as? Int == 21)
     #expect(requestData["secureRTSPSupported"] as? Bool == false)
     #expect(requestData["transport"] == nil)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
@@ -971,6 +1097,10 @@ import Foundation
     #expect(claimRequestData?["clientPlatformName"] as? String == "browser")
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
+    #expect(claimRequestData?["clientDisplayHdrCapabilities"] is NSNull)
+    #expect(claimRequestData?["enablePersistingInGameSettings"] as? Bool == false)
+    #expect(claimRequestData?["partnerCustomData"] as? String == "")
+    #expect(claimRequestData?["userAge"] as? Int == 0)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
     #expect(claimRequestData?["transport"] == nil)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
@@ -1331,7 +1461,7 @@ private func limitedModeSessionResponse() -> [String: Any] {
     ]
 }
 
-private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false) -> [String: Any] {
+private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false, freeToPlay: Bool = false) -> [String: Any] {
     [
         "id": id,
         "title": title ?? "Catalog Game \(id)",
@@ -1356,7 +1486,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
             "streetDate": "2026-07-17",
             "supportedControls": ["GAMEPAD"],
             "subscriptions": ["sub-ultimate"],
-            "paymentModels": [["__typename": "IncludedWithSubscription"]],
+            "paymentModels": [["__typename": freeToPlay ? "FreeToPlay" : "IncludedWithSubscription"]],
             "minimumSizeInBytes": 42_000_000,
             "cloudSaveSupported": true,
             "gfn": [
@@ -1367,7 +1497,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
                 "library": ["status": libraryStatus, "selected": librarySelected, "playStatus": "PLAYABLE", "installed": true, "subscription": "GFN_PREMIUM"],
             ],
         ]],
-        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME"],
+        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME", "catalogSkuStrings": ["SKU_BASED_TAG": ["NEW_ON_GFN"], "SKU_BASED_PLAYABILITY_TEXT": "Included with membership", "SKU_BASED_UNPLAYABLE_DIALOG_HEADER": "Upgrade required", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE": "Upgrade to play", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE_ECOMM_RESTRICTED": "Upgrade in your account"]],
         "itemMetadata": ["campaignIds": []],
     ]
 }

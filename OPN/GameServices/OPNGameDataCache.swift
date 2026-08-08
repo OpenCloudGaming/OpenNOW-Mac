@@ -6,7 +6,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
     static let shared = OPNGameDataCache()
 
-    private static let catalogCacheVersion = 10
+    private static let catalogCacheVersion = 12
     private static let catalogDefinitionsCacheVersion = "v2"
 
     private let rootPath: String
@@ -314,10 +314,17 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putString(game.promoTag, key: "pr", into: &dictionary)
         putArray(game.campaignIds, key: "ci", into: &dictionary)
         putArray(game.skuTags, key: "sk", into: &dictionary)
+        putString(game.skuPlayabilityText, key: "spt", into: &dictionary)
+        putString(game.skuUnplayableDialogHeader, key: "suh", into: &dictionary)
+        putString(game.skuUnplayableDialogBody, key: "sub", into: &dictionary)
+        putString(game.skuUnplayableDialogBodyEcommerceRestricted, key: "sue", into: &dictionary)
         if game.displaysOwnRatingDuringGameplay { dictionary["or"] = true }
         if game.isFavorited { dictionary["fv"] = true }
         if game.isInLibrary { dictionary["il"] = true }
         if game.isPatching { dictionary["ip"] = true }
+        if game.isFreeToPlay { dictionary["fp"] = true }
+        putString(game.patchStatusPrimaryText, key: "pp", into: &dictionary)
+        putString(game.patchStatusSecondaryText, key: "ps2", into: &dictionary)
         if !game.variants.isEmpty { dictionary["z"] = game.variants.map(variantDictionary) }
         return dictionary
     }
@@ -360,10 +367,17 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         game.promoTag = dictionary["pr"] as? String ?? ""
         game.campaignIds = dictionary["ci"] as? [String] ?? []
         game.skuTags = dictionary["sk"] as? [String] ?? []
+        game.skuPlayabilityText = dictionary["spt"] as? String ?? ""
+        game.skuUnplayableDialogHeader = dictionary["suh"] as? String ?? ""
+        game.skuUnplayableDialogBody = dictionary["sub"] as? String ?? ""
+        game.skuUnplayableDialogBodyEcommerceRestricted = dictionary["sue"] as? String ?? ""
         game.displaysOwnRatingDuringGameplay = (dictionary["or"] as? NSNumber)?.boolValue ?? false
         game.isFavorited = (dictionary["fv"] as? NSNumber)?.boolValue ?? false
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false
         game.isPatching = (dictionary["ip"] as? NSNumber)?.boolValue ?? false
+        game.isFreeToPlay = (dictionary["fp"] as? NSNumber)?.boolValue ?? false
+        game.patchStatusPrimaryText = dictionary["pp"] as? String ?? ""
+        game.patchStatusSecondaryText = dictionary["ps2"] as? String ?? ""
         game.variants = (dictionary["z"] as? [Any] ?? []).map(gameVariant)
         return game
     }
@@ -393,6 +407,8 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putArray(variant.supportedLanguages, key: "sl", into: &dictionary)
         putArray(variant.gfnFeatureLabels, key: "gf", into: &dictionary)
         if variant.isPatching { dictionary["p"] = true }
+        putString(variant.patchStatusPrimaryText, key: "pp", into: &dictionary)
+        putString(variant.patchStatusSecondaryText, key: "ps2", into: &dictionary)
         if variant.librarySelected { dictionary["l"] = true }
         if variant.inLibrary { dictionary["b"] = true }
         return dictionary
@@ -424,6 +440,8 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
             supportedLanguages: dictionary["sl"] as? [String] ?? [],
             gfnFeatureLabels: dictionary["gf"] as? [String] ?? [],
             isPatching: (dictionary["p"] as? NSNumber)?.boolValue ?? false,
+            patchStatusPrimaryText: dictionary["pp"] as? String ?? "",
+            patchStatusSecondaryText: dictionary["ps2"] as? String ?? "",
             librarySelected: (dictionary["l"] as? NSNumber)?.boolValue ?? false,
             inLibrary: (dictionary["b"] as? NSNumber)?.boolValue ?? false
         )

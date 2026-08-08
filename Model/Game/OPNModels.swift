@@ -49,6 +49,8 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var supportedLanguages: [String] = []
     public var gfnFeatureLabels: [String] = []
     public var isPatching = false
+    public var patchStatusPrimaryText = ""
+    public var patchStatusSecondaryText = ""
     public var librarySelected = false
     public var inLibrary = false
 }
@@ -96,6 +98,13 @@ public struct OPNStoreDefinition: Equatable, Sendable {
     public var accountLinkingMetadata = OPNStoreAccountLinkingMetadata()
 }
 
+public struct OPNSubscriptionDefinition: Equatable, Sendable {
+    public var subscription = ""
+    public var label = ""
+    public var logoURL = ""
+    public var primaryStore = ""
+}
+
 public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var id = ""
     public var uuid = ""
@@ -132,10 +141,17 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var promoTag = ""
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
+    public var skuPlayabilityText = ""
+    public var skuUnplayableDialogHeader = ""
+    public var skuUnplayableDialogBody = ""
+    public var skuUnplayableDialogBodyEcommerceRestricted = ""
     public var displaysOwnRatingDuringGameplay = false
     public var isFavorited = false
     public var isInLibrary = false
     public var isPatching = false
+    public var isFreeToPlay = false
+    public var patchStatusPrimaryText = ""
+    public var patchStatusSecondaryText = ""
     public var variants: [OPNGameVariant] = []
 }
 
@@ -157,8 +173,9 @@ public struct OPNPanelSection: Equatable, Sendable {
     public var seeMoreSortId = ""
     public var seeMoreTitle = ""
     public var games: [OPNGameInfo] = []
+    public var tiles: [OPNPanelTile] = []
 
-    public init(id: String = "", title: String = "", typename: String = "", seeMoreFilterIds: [String] = [], seeMoreSortId: String = "", seeMoreTitle: String = "", games: [OPNGameInfo] = []) {
+    public init(id: String = "", title: String = "", typename: String = "", seeMoreFilterIds: [String] = [], seeMoreSortId: String = "", seeMoreTitle: String = "", games: [OPNGameInfo] = [], tiles: [OPNPanelTile] = []) {
         self.id = id
         self.title = title
         self.typename = typename
@@ -166,7 +183,21 @@ public struct OPNPanelSection: Equatable, Sendable {
         self.seeMoreSortId = seeMoreSortId
         self.seeMoreTitle = seeMoreTitle
         self.games = games
+        self.tiles = tiles
     }
+}
+
+public struct OPNPanelTile: Equatable, Sendable {
+    public var id = ""
+    public var kind = ""
+    public var title = ""
+    public var subtitle = ""
+    public var body = ""
+    public var imageUrl = ""
+    public var actionUrl = ""
+    public var actionLabel = ""
+    public var filterIds: [String] = []
+    public var sortId = ""
 }
 
 public struct OPNPanelResult: Equatable, Sendable {
@@ -339,6 +370,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var supportedLanguages: [String]
     public var gfnFeatureLabels: [String]
     public var isPatching: Bool
+    public var patchStatusPrimaryText: String
+    public var patchStatusSecondaryText: String
     public var librarySelected: Bool
     public var inLibrary: Bool
 
@@ -370,6 +403,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
         supportedLanguages = variant.supportedLanguages
         gfnFeatureLabels = variant.gfnFeatureLabels
         isPatching = variant.isPatching
+        patchStatusPrimaryText = variant.patchStatusPrimaryText
+        patchStatusSecondaryText = variant.patchStatusSecondaryText
         librarySelected = variant.librarySelected
         inLibrary = variant.inLibrary
         super.init()
@@ -400,6 +435,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
             supportedLanguages: supportedLanguages,
             gfnFeatureLabels: gfnFeatureLabels,
             isPatching: isPatching,
+            patchStatusPrimaryText: patchStatusPrimaryText,
+            patchStatusSecondaryText: patchStatusSecondaryText,
             librarySelected: librarySelected,
             inLibrary: inLibrary
         )
@@ -444,10 +481,17 @@ public final class OPNCatalogGameObject: NSObject {
     public var promoTag: String
     public var campaignIds: [String]
     public var skuTags: [String]
+    public var skuPlayabilityText: String
+    public var skuUnplayableDialogHeader: String
+    public var skuUnplayableDialogBody: String
+    public var skuUnplayableDialogBodyEcommerceRestricted: String
     public var displaysOwnRatingDuringGameplay: Bool
     public var isFavorited: Bool
     public var isInLibrary: Bool
     public var isPatching: Bool
+    public var isFreeToPlay: Bool
+    public var patchStatusPrimaryText: String
+    public var patchStatusSecondaryText: String
     public var variants: [OPNCatalogGameVariantObject]
 
     public override convenience init() {
@@ -490,10 +534,17 @@ public final class OPNCatalogGameObject: NSObject {
         promoTag = game.promoTag
         campaignIds = game.campaignIds
         skuTags = game.skuTags
+        skuPlayabilityText = game.skuPlayabilityText
+        skuUnplayableDialogHeader = game.skuUnplayableDialogHeader
+        skuUnplayableDialogBody = game.skuUnplayableDialogBody
+        skuUnplayableDialogBodyEcommerceRestricted = game.skuUnplayableDialogBodyEcommerceRestricted
         displaysOwnRatingDuringGameplay = game.displaysOwnRatingDuringGameplay
         isFavorited = game.isFavorited
         isInLibrary = game.isInLibrary
         isPatching = game.isPatching
+        isFreeToPlay = game.isFreeToPlay
+        patchStatusPrimaryText = game.patchStatusPrimaryText
+        patchStatusSecondaryText = game.patchStatusSecondaryText
         variants = game.variants.map(OPNCatalogGameVariantObject.init)
         super.init()
     }
@@ -535,10 +586,17 @@ public final class OPNCatalogGameObject: NSObject {
         game.promoTag = promoTag
         game.campaignIds = campaignIds
         game.skuTags = skuTags
+        game.skuPlayabilityText = skuPlayabilityText
+        game.skuUnplayableDialogHeader = skuUnplayableDialogHeader
+        game.skuUnplayableDialogBody = skuUnplayableDialogBody
+        game.skuUnplayableDialogBodyEcommerceRestricted = skuUnplayableDialogBodyEcommerceRestricted
         game.displaysOwnRatingDuringGameplay = displaysOwnRatingDuringGameplay
         game.isFavorited = isFavorited
         game.isInLibrary = isInLibrary
         game.isPatching = isPatching
+        game.isFreeToPlay = isFreeToPlay
+        game.patchStatusPrimaryText = patchStatusPrimaryText
+        game.patchStatusSecondaryText = patchStatusSecondaryText
         game.variants = variants.map(\.swiftValue)
         return game
     }
@@ -566,6 +624,7 @@ public final class OPNCatalogPanelSectionObject: NSObject {
     public var seeMoreSortId: String
     public var seeMoreTitle: String
     public var games: [OPNCatalogGameObject]
+    public var tiles: [OPNCatalogPanelTileObject]
 
     public override convenience init() {
         self.init(section: OPNPanelSection())
@@ -579,11 +638,49 @@ public final class OPNCatalogPanelSectionObject: NSObject {
         seeMoreSortId = section.seeMoreSortId
         seeMoreTitle = section.seeMoreTitle
         games = section.games.map(OPNCatalogGameObject.init)
+        tiles = section.tiles.map(OPNCatalogPanelTileObject.init)
         super.init()
     }
 
     public var swiftValue: OPNPanelSection {
-        OPNPanelSection(id: id, title: title, typename: typeName, seeMoreFilterIds: seeMoreFilterIds, seeMoreSortId: seeMoreSortId, seeMoreTitle: seeMoreTitle, games: games.map(\.swiftValue))
+        OPNPanelSection(id: id, title: title, typename: typeName, seeMoreFilterIds: seeMoreFilterIds, seeMoreSortId: seeMoreSortId, seeMoreTitle: seeMoreTitle, games: games.map(\.swiftValue), tiles: tiles.map(\.swiftValue))
+    }
+}
+
+@objc(OPNCatalogPanelTileObject)
+@objcMembers
+public final class OPNCatalogPanelTileObject: NSObject {
+    public var id: String
+    public var kind: String
+    public var title: String
+    public var subtitle: String
+    public var body: String
+    public var imageUrl: String
+    public var actionUrl: String
+    public var actionLabel: String
+    public var filterIds: [String]
+    public var sortId: String
+
+    public override convenience init() {
+        self.init(tile: OPNPanelTile())
+    }
+
+    public init(tile: OPNPanelTile) {
+        id = tile.id
+        kind = tile.kind
+        title = tile.title
+        subtitle = tile.subtitle
+        body = tile.body
+        imageUrl = tile.imageUrl
+        actionUrl = tile.actionUrl
+        actionLabel = tile.actionLabel
+        filterIds = tile.filterIds
+        sortId = tile.sortId
+        super.init()
+    }
+
+    public var swiftValue: OPNPanelTile {
+        OPNPanelTile(id: id, kind: kind, title: title, subtitle: subtitle, body: body, imageUrl: imageUrl, actionUrl: actionUrl, actionLabel: actionLabel, filterIds: filterIds, sortId: sortId)
     }
 }
 

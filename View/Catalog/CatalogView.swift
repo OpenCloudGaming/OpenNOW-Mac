@@ -1840,12 +1840,11 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func storeTitle(_ variant: OPNCatalogGameVariantObject) -> String {
-        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
-        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+        viewModel.displayName(forVariant: variant)
     }
 
     private func storeIconURL(_ variant: OPNCatalogGameVariantObject) -> String {
-        variant.appStoreSmallImageUrl
+        viewModel.iconURL(forVariant: variant)
     }
 
     private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> String {
@@ -2606,12 +2605,19 @@ private struct CatalogRailView: View {
                                     onPlay: { viewModel.launch(game: game) },
                                     onMarkOwned: {
                                         viewModel.selectGame(game, inSection: section.id)
-                                        viewModel.markSelectedVariantOwned()
+                                        viewModel.handleUnownedSelectedVariantPrimaryAction()
                                     },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
                                     .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
+                            }
+                            ForEach(Array(section.tiles.enumerated()), id: \.offset) { _, tile in
+                                CatalogPanelActionTile(
+                                    tile: tile,
+                                    imageURL: viewModel.optimizedImageURL(tile.imageUrl, width: 620),
+                                    action: { viewModel.openPanelTile(tile) }
+                                )
                             }
                             if canShowAll {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
@@ -2675,6 +2681,9 @@ private struct CatalogRailView: View {
             appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+        }
+        for tile in section.tiles.prefix(4) {
+            appendPrefetchURL(tile.imageUrl, width: 620, urls: &urls, seen: &seen)
         }
         CatalogImageCache.shared.prefetch(urls)
     }
@@ -2767,7 +2776,7 @@ private struct CatalogDestinationGridView: View {
                         onPlay: { viewModel.launch(game: game) },
                         onMarkOwned: {
                             viewModel.selectGame(game, inSection: section.id)
-                            viewModel.markSelectedVariantOwned()
+                            viewModel.handleUnownedSelectedVariantPrimaryAction()
                         },
                         onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                     )
@@ -2852,6 +2861,60 @@ private struct CatalogSeeMoreTile: View {
     }
 }
 
+private struct CatalogPanelActionTile: View {
+    let tile: OPNCatalogPanelTileObject
+    let imageURL: URL?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                    .clipped()
+                LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 5) {
+                    if !tile.subtitle.isEmpty {
+                        Text(tile.subtitle.uppercased())
+                            .font(.nvidia(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(Color.openNowGreen)
+                            .lineLimit(1)
+                    }
+                    Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
+                        .font(.nvidia(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Text(actionLabel)
+                        .font(.nvidia(size: 11, weight: .bold))
+                        .tracking(0.7)
+                        .foregroundStyle(.black.opacity(0.88))
+                        .padding(.horizontal, 10)
+                        .frame(height: 25)
+                        .background(Color.openNowGreen)
+                }
+                .padding(14)
+            }
+            .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+            .overlay { Rectangle().stroke(isHovering ? Color.openNowGreen : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovering)
+            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+            .padding(.top, CatalogVendorLayout.tileTopMargin)
+            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(tile.title.isEmpty ? actionLabel : tile.title)
+    }
+
+    private var actionLabel: String {
+        if !tile.actionLabel.isEmpty { return tile.actionLabel.uppercased() }
+        return tile.kind == "filter" ? "BROWSE" : "OPEN"
+    }
+}
+
 private struct CatalogShowAllOverlay: View {
     @ObservedObject var viewModel: CatalogViewModel
     let section: CatalogSectionModel
@@ -2932,7 +2995,7 @@ private struct CatalogShowAllOverlay: View {
                                     onPlay: { viewModel.launch(game: game) },
                                     onMarkOwned: {
                                         onSelect(game)
-                                        viewModel.markSelectedVariantOwned()
+                                        viewModel.handleUnownedSelectedVariantPrimaryAction()
                                     },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
@@ -3774,6 +3837,7 @@ private struct GameDetailPanel: View {
 
     private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
         var labels: [String] = []
+        if !game.skuPlayabilityText.isEmpty { labels.append(game.skuPlayabilityText) }
         if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
         for technology in supportedTechnologyLabels(game: game).prefix(2) { appendUnique(technology, to: &labels) }
         if labels.isEmpty { labels.append("Cloud Ready") }
@@ -3888,7 +3952,8 @@ private struct GameDetailPanel: View {
             if viewModel.isQueuedForPatching(game) {
                 return "Queued to launch automatically after GeForce NOW finishes patching this game."
             }
-            return "GeForce NOW is patching this game. Launch will be available after patching finishes."
+            let secondary = game.patchStatusSecondaryDisplayText
+            return secondary.isEmpty ? "GeForce NOW is \(game.patchStatusPrimaryDisplayText.lowercased()). Launch will be available after patching finishes." : secondary
         }
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true {
             return "Access unlocked with your membership. Game ownership required to play."
@@ -4072,7 +4137,7 @@ private struct GameDetailPanel: View {
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
             viewModel.launchSelectedGame()
         } else {
-            viewModel.markSelectedVariantOwned()
+            viewModel.handleUnownedSelectedVariantPrimaryAction()
         }
     }
 
@@ -4110,8 +4175,7 @@ private struct GameDetailPanel: View {
     }
 
     private func storePickerTitle(variant: OPNCatalogGameVariantObject) -> String {
-        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
-        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+        viewModel.displayName(forVariant: variant)
     }
 
     private func storeAccountStatus(store: String) -> some View {
@@ -4799,12 +4863,22 @@ extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
     var cardBadgeLabel: String? {
-        if isLaunchPatching { return "Patching" }
+        if isLaunchPatching { return patchStatusPrimaryDisplayText }
         return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
     }
 
     var isLaunchPatching: Bool {
         isPatching || variants.contains { $0.isPatching }
+    }
+
+    var patchStatusPrimaryDisplayText: String {
+        if !patchStatusPrimaryText.isEmpty { return patchStatusPrimaryText }
+        return variants.first { !$0.patchStatusPrimaryText.isEmpty }?.patchStatusPrimaryText ?? "Patching"
+    }
+
+    var patchStatusSecondaryDisplayText: String {
+        if !patchStatusSecondaryText.isEmpty { return patchStatusSecondaryText }
+        return variants.first { !$0.patchStatusSecondaryText.isEmpty }?.patchStatusSecondaryText ?? ""
     }
 
     var cardPrimaryActionIsLaunchable: Bool {
@@ -4979,6 +5053,7 @@ extension OPNCatalogGameObject {
     var detailChips: [String] {
         var chips: [String] = []
         if isInLibrary { chips.append("IN LIBRARY") }
+        if !skuPlayabilityText.isEmpty { chips.append(skuPlayabilityText.uppercased()) }
         if !membershipTierLabel.isEmpty { chips.append(membershipTierLabel.uppercased()) }
         if !playabilityState.isEmpty { chips.append(playabilityState.replacingOccurrences(of: "_", with: " ").uppercased()) }
         chips.append(contentsOf: genres.prefix(3).map { $0.uppercased() })
