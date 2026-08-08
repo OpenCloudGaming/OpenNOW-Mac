@@ -194,7 +194,10 @@ final class CatalogViewModel: ObservableObject {
     let onRefreshAuth: () -> Void
 
     var isFreeTierAccount: Bool {
-        OPNCatalogGameObject.isFreeMembershipTier(account.membershipTier)
+        if subscriptionStatus.isAvailable {
+            return subscriptionStatus.isFreeTierAccount
+        }
+        return OPNCatalogGameObject.isFreeMembershipTier(account.membershipTier)
     }
 
     private var hasLoaded = false
@@ -1856,7 +1859,12 @@ final class CatalogViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 if success {
-                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscriptionBox.value)
+                    let subscription = subscriptionBox.value
+                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
+                    let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !membershipTier.isEmpty {
+                        self.account.membershipTier = membershipTier
+                    }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.subscriptionStatus = .unavailable
                 }
@@ -2396,6 +2404,10 @@ struct CatalogSubscriptionStatus: Equatable {
     let remainingPlaytimeText: String
     let usageText: String
     let isAvailable: Bool
+
+    var isFreeTierAccount: Bool {
+        OPNCatalogGameObject.isFreeMembershipTier(membershipTier)
+    }
 
     init(membershipTier: String, remainingPlaytimeText: String, usageText: String, isAvailable: Bool) {
         self.membershipTier = membershipTier.isEmpty ? "Performance" : membershipTier
