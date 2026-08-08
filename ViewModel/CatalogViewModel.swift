@@ -194,10 +194,7 @@ final class CatalogViewModel: ObservableObject {
     let onRefreshAuth: () -> Void
 
     var isFreeTierAccount: Bool {
-        if subscriptionStatus.isAvailable {
-            return subscriptionStatus.isFreeTierAccount
-        }
-        return OPNCatalogGameObject.isFreeMembershipTier(account.membershipTier)
+        subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
     }
 
     private var hasLoaded = false
