@@ -365,7 +365,6 @@ public enum OPNStreamPreferences {
 
     private static let nvClientId = GFNClientMetadata.clientId
     private static let nvCloudVariablesClientVersion = GFNClientMetadata.appVersion
-    private static let nvWebRTCClientVersion = GFNClientMetadata.webRTCClientVersion
     private static let defaultUpscalingTargetIndex = 1
     private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
@@ -1283,7 +1282,7 @@ public enum OPNStreamPreferences {
     }
 
     private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
-        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, clientVersion: nvWebRTCClientVersion, userAgent: browserUserAgent())
+        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, userAgent: browserUserAgent())
         var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: headers, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         return request

@@ -131,8 +131,8 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
 
     public static let nativeGFNPC = CloudMatchClientHeaders()
 
-    public static func browserWebRTC(clientId: String = GFNClientMetadata.clientId, clientVersion: String = GFNClientMetadata.webRTCClientVersion, userAgent: String = GFNClientMetadata.browserMacUserAgent) -> CloudMatchClientHeaders {
-        CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "WINDOWS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
+    public static func browserWebRTC(clientId: String = GFNClientMetadata.clientId, clientVersion: String = GFNClientMetadata.appVersion, userAgent: String = GFNClientMetadata.browserMacUserAgent) -> CloudMatchClientHeaders {
+        CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "MACOS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
     }
 
     public static func streamSession(transportMode: String) -> CloudMatchClientHeaders {

@@ -6,7 +6,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
     static let shared = OPNGameDataCache()
 
-    private static let catalogCacheVersion = 9
+    private static let catalogCacheVersion = 10
     private static let catalogDefinitionsCacheVersion = "v2"
 
     private let rootPath: String
@@ -315,6 +315,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putArray(game.campaignIds, key: "ci", into: &dictionary)
         putArray(game.skuTags, key: "sk", into: &dictionary)
         if game.displaysOwnRatingDuringGameplay { dictionary["or"] = true }
+        if game.isFavorited { dictionary["fv"] = true }
         if game.isInLibrary { dictionary["il"] = true }
         if game.isPatching { dictionary["ip"] = true }
         if !game.variants.isEmpty { dictionary["z"] = game.variants.map(variantDictionary) }
@@ -360,6 +361,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         game.campaignIds = dictionary["ci"] as? [String] ?? []
         game.skuTags = dictionary["sk"] as? [String] ?? []
         game.displaysOwnRatingDuringGameplay = (dictionary["or"] as? NSNumber)?.boolValue ?? false
+        game.isFavorited = (dictionary["fv"] as? NSNumber)?.boolValue ?? false
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false
         game.isPatching = (dictionary["ip"] as? NSNumber)?.boolValue ?? false
         game.variants = (dictionary["z"] as? [Any] ?? []).map(gameVariant)

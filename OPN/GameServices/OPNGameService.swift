@@ -348,7 +348,11 @@ final class OPNGameService: @unchecked Sendable {
                     self.dispatchCatalog(completion, false, [], "No panels in favorites response")
                     return
                 }
-                let games = self.parsePanelResults(panels).flatMap { $0.sections }.flatMap { $0.games }
+                let games = self.parsePanelResults(panels).flatMap { $0.sections }.flatMap { $0.games }.map { game in
+                    var favoritedGame = game
+                    favoritedGame.isFavorited = true
+                    return favoritedGame
+                }
                 self.enrichGames(games, vpcId: resolvedVpcId) { enriched in
                     self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
                 }
@@ -892,6 +896,7 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.ratingImageUrl.isEmpty { merged.ratingImageUrl = metadataGame.ratingImageUrl }
                 if merged.nvidiaTech.isEmpty { merged.nvidiaTech = metadataGame.nvidiaTech }
                 if !merged.displaysOwnRatingDuringGameplay { merged.displaysOwnRatingDuringGameplay = metadataGame.displaysOwnRatingDuringGameplay }
+                if !merged.isFavorited { merged.isFavorited = metadataGame.isFavorited }
                 return merged
             }
             self.fetchCampaignPromoTags(vpcId: vpcId, locale: Self.currentGFNCatalogLocale()) { tagsByCampaignId in
@@ -1015,6 +1020,9 @@ final class OPNGameService: @unchecked Sendable {
             if let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary {
                 appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
             }
+        }
+        if let library = app["library"] as? NSDictionary {
+            game.isFavorited = safeBool(library["favorited"])
         }
         if let images = app["images"] as? NSDictionary {
             for case let key as String in images.allKeys {

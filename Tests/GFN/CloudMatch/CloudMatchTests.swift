@@ -43,8 +43,8 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.webRTCClientVersion)
-    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "WINDOWS")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
+    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "MACOS")
 }
 
 @Test func cloudMatchBuildsSessionRequests() throws {

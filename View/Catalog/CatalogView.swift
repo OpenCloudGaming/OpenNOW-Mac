@@ -2604,6 +2604,10 @@ private struct CatalogRailView: View {
                                     showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },
+                                    onMarkOwned: {
+                                        viewModel.selectGame(game, inSection: section.id)
+                                        viewModel.markSelectedVariantOwned()
+                                    },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
@@ -2761,6 +2765,10 @@ private struct CatalogDestinationGridView: View {
                         showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                         onSelect: { viewModel.selectGame(game, inSection: section.id) },
                         onPlay: { viewModel.launch(game: game) },
+                        onMarkOwned: {
+                            viewModel.selectGame(game, inSection: section.id)
+                            viewModel.markSelectedVariantOwned()
+                        },
                         onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                     )
                 }
@@ -2922,6 +2930,10 @@ private struct CatalogShowAllOverlay: View {
                                     showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { onSelect(game) },
                                     onPlay: { viewModel.launch(game: game) },
+                                    onMarkOwned: {
+                                        onSelect(game)
+                                        viewModel.markSelectedVariantOwned()
+                                    },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                             }
@@ -3303,6 +3315,7 @@ private struct CatalogGameTile: View {
     let showsFreeAccountAccessBadges: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
+    let onMarkOwned: () -> Void
     let onQueueForPatching: () -> Void
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
@@ -3335,11 +3348,11 @@ private struct CatalogGameTile: View {
     }
 
     private var playButton: some View {
-        Button(action: game.isLaunchPatching ? onQueueForPatching : onPlay) {
+        Button(action: primaryAction) {
             HStack(spacing: 7) {
-                Image(systemName: game.isLaunchPatching ? (isQueuedForPatching ? "clock.fill" : "plus.circle.fill") : "play.fill")
+                Image(systemName: primaryIconName)
                     .font(.nvidia(size: 10, weight: .bold))
-                Text(game.isLaunchPatching ? (isQueuedForPatching ? "QUEUED" : "QUEUE") : "PLAY")
+                Text(primaryTitle)
                     .font(.nvidia(size: 11, weight: .bold))
                     .tracking(0.9)
             }
@@ -3352,7 +3365,33 @@ private struct CatalogGameTile: View {
         }
         .buttonStyle(.plain)
         .disabled(game.isLaunchPatching && isQueuedForPatching)
-        .accessibilityLabel(game.isLaunchPatching ? (isQueuedForPatching ? "Queued \(game.title.isEmpty ? "game" : game.title)" : "Queue \(game.title.isEmpty ? "game" : game.title) after patching") : "Play \(game.title.isEmpty ? "game" : game.title)")
+        .accessibilityLabel(primaryAccessibilityLabel)
+    }
+
+    private var primaryTitle: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "QUEUED" : "QUEUE" }
+        return game.cardPrimaryActionIsLaunchable ? "PLAY" : "MARK OWNED"
+    }
+
+    private var primaryIconName: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "plus.circle.fill" }
+        return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
+    }
+
+    private func primaryAction() {
+        if game.isLaunchPatching {
+            onQueueForPatching()
+        } else if game.cardPrimaryActionIsLaunchable {
+            onPlay()
+        } else {
+            onMarkOwned()
+        }
+    }
+
+    private var primaryAccessibilityLabel: String {
+        let title = game.title.isEmpty ? "game" : game.title
+        if game.isLaunchPatching { return isQueuedForPatching ? "Queued \(title)" : "Queue \(title) after patching" }
+        return game.cardPrimaryActionIsLaunchable ? "Play \(title)" : "Mark \(title) as owned"
     }
 
     private var tileContent: some View {
@@ -4766,6 +4805,10 @@ extension OPNCatalogGameObject {
 
     var isLaunchPatching: Bool {
         isPatching || variants.contains { $0.isPatching }
+    }
+
+    var cardPrimaryActionIsLaunchable: Bool {
+        isInLibrary || variants.contains { $0.inLibrary || $0.librarySelected } || variants.isEmpty
     }
 
     var bestHeroImageURL: String {

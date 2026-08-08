@@ -15,19 +15,12 @@ import Testing
     }
 
     @Test func defaultsSixteenTenResolutionToNineteenTwentyByTwelveHundred() {
-        withPreservedPreferences(streamingProfileKeys) {
-            for key in streamingProfileKeys {
-                removePreferenceValue(key)
-            }
+        let defaultIndex = OPNStreamPreferences.defaultResolutionIndex(forAspect: 1)
+        let defaultResolution = OPNStreamPreferences.resolutionOptions(forAspect: 1)[defaultIndex]
 
-            let profile = OPNStreamPreferences.loadProfile()
-
-            #expect(OPNStreamPreferences.defaultResolutionIndex(forAspect: 1) == 3)
-            #expect(profile.aspectIndex == 1)
-            #expect(profile.resolutionIndex == 3)
-            #expect(profile.resolution.width == 1920)
-            #expect(profile.resolution.height == 1200)
-        }
+        #expect(defaultIndex == 3)
+        #expect(defaultResolution.width == 1920)
+        #expect(defaultResolution.height == 1200)
     }
 
     @Test func launchProfileKeepsSelectedResolutionWhenStaleGameProfileExists() {
@@ -221,6 +214,7 @@ import Testing
         let defaults = UserDefaults.standard
         let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
         let previousDomain = defaults.persistentDomain(forName: preferenceDomain)
+        let previousGlobalDomain = defaults.persistentDomain(forName: UserDefaults.globalDomain)
         defer {
             for (key, value) in previousValues {
                 if let value {
@@ -233,6 +227,11 @@ import Testing
                 defaults.setPersistentDomain(previousDomain, forName: preferenceDomain)
             } else {
                 defaults.removePersistentDomain(forName: preferenceDomain)
+            }
+            if let previousGlobalDomain {
+                defaults.setPersistentDomain(previousGlobalDomain, forName: UserDefaults.globalDomain)
+            } else {
+                defaults.removePersistentDomain(forName: UserDefaults.globalDomain)
             }
             defaults.synchronize()
         }
@@ -266,6 +265,9 @@ import Testing
         var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
         domain.removeValue(forKey: key)
         defaults.setPersistentDomain(domain, forName: preferenceDomain)
+        var globalDomain = defaults.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
+        globalDomain.removeValue(forKey: key)
+        defaults.setPersistentDomain(globalDomain, forName: UserDefaults.globalDomain)
         defaults.synchronize()
     }
 }

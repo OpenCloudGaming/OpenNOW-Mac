@@ -133,6 +133,7 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
     public var displaysOwnRatingDuringGameplay = false
+    public var isFavorited = false
     public var isInLibrary = false
     public var isPatching = false
     public var variants: [OPNGameVariant] = []
@@ -444,6 +445,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var campaignIds: [String]
     public var skuTags: [String]
     public var displaysOwnRatingDuringGameplay: Bool
+    public var isFavorited: Bool
     public var isInLibrary: Bool
     public var isPatching: Bool
     public var variants: [OPNCatalogGameVariantObject]
@@ -489,6 +491,7 @@ public final class OPNCatalogGameObject: NSObject {
         campaignIds = game.campaignIds
         skuTags = game.skuTags
         displaysOwnRatingDuringGameplay = game.displaysOwnRatingDuringGameplay
+        isFavorited = game.isFavorited
         isInLibrary = game.isInLibrary
         isPatching = game.isPatching
         variants = game.variants.map(OPNCatalogGameVariantObject.init)
@@ -533,6 +536,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.campaignIds = campaignIds
         game.skuTags = skuTags
         game.displaysOwnRatingDuringGameplay = displaysOwnRatingDuringGameplay
+        game.isFavorited = isFavorited
         game.isInLibrary = isInLibrary
         game.isPatching = isPatching
         game.variants = variants.map(\.swiftValue)

@@ -295,6 +295,7 @@ import Foundation
     var game = OPNGameInfo()
     game.id = "game-id"
     game.launchAppId = "123"
+    game.isFavorited = true
     game.isPatching = true
     game.variants = [OPNGameVariant(id: "123", appStore: "STEAM", serviceStatus: "APP_PATCHING_STATUS", isPatching: true)]
 
@@ -302,8 +303,10 @@ import Foundation
     let roundTrip = object.swiftValue
 
     #expect(object.isPatching == true)
+    #expect(object.isFavorited == true)
     #expect(object.variants.first?.isPatching == true)
     #expect(roundTrip.isPatching == true)
+    #expect(roundTrip.isFavorited == true)
     #expect(roundTrip.variants.first?.isPatching == true)
 }
 
@@ -318,6 +321,7 @@ import Foundation
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
+            let absoluteURL = request.url?.absoluteString ?? ""
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let query = body["query"] as? String ?? ""
             let variables = body["variables"] as? [String: Any] ?? [:]
@@ -327,8 +331,8 @@ import Foundation
             if query.contains("campaigns") || query.contains("ratingDefinitions") {
                 return SessionManagerURLProtocol.response(json: ["data": [:]])
             }
-            if variables["appIds"] != nil {
-                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456")]]]])
+            if variables["appIds"] != nil || absoluteURL.contains("requestType=appMetaData") {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456", favorited: true)]]]])
             }
             return SessionManagerURLProtocol.response(json: ["data": ["apps": [
                 "numberReturned": 1,
@@ -349,6 +353,7 @@ import Foundation
         #expect(result.0 == true)
         #expect(result.2.isEmpty)
         #expect(game?.displaysOwnRatingDuringGameplay == true)
+        #expect(game?.isFavorited == true)
         #expect(game?.supportedControls == ["KEYBOARD_MOUSE"])
         #expect(game?.ratingCategoryKey == "TEEN")
         let variant = game?.variants.first
@@ -669,7 +674,8 @@ import Foundation
     #expect(result.1.isEmpty)
     #expect(request.url?.query?.contains("keyboardLayout=us") == true)
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.webRTCClientVersion)
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
+    #expect(requestData["clientVersion"] as? String == GFNClientMetadata.webRTCClientVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == nil)
@@ -956,7 +962,8 @@ import Foundation
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.webRTCClientVersion)
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
+    #expect(claimRequestData?["clientVersion"] as? String == GFNClientMetadata.webRTCClientVersion)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
@@ -1324,7 +1331,7 @@ private func limitedModeSessionResponse() -> [String: Any] {
     ]
 }
 
-private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil) -> [String: Any] {
+private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false) -> [String: Any] {
     [
         "id": id,
         "title": title ?? "Catalog Game \(id)",
@@ -1337,6 +1344,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
         "displaysOwnRatingDuringGameplay": true,
         "genres": ["ACTION"],
         "contentRatings": [["categoryKey": "TEEN", "contentDescriptorKeys": ["VIOLENCE"], "interactiveElementKeys": ["USERS_INTERACT"], "type": "ESRB"]],
+        "library": ["favorited": favorited],
         "images": ["TV_BANNER": ["https://assets.example.invalid/\(id).jpg"]],
         "variants": [[
             "id": variantId ?? "1\(abs(id.hashValue % 1_000_000))",

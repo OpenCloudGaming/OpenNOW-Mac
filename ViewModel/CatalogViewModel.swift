@@ -1165,7 +1165,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func isFavorite(_ game: OPNCatalogGameObject) -> Bool {
-        favoriteGameIdentities.contains(Self.identity(for: game))
+        game.isFavorited || favoriteGameIdentities.contains(Self.identity(for: game))
     }
 
     func toggleFavoriteSelectedGame() {
@@ -1176,9 +1176,10 @@ final class CatalogViewModel: ObservableObject {
         let previousGames = CatalogSendableValue(favoriteGames)
         let previousIdentities = favoriteGameIdentities
         let selfBox = CatalogWeakObject(self)
-        if favoriteGameIdentities.contains(identity) {
+        if isFavorite(selectedGame) {
             favoriteGameIdentities.remove(identity)
             favoriteGames.removeAll { Self.identity(for: $0) == identity }
+            updateGameFavoriteState(identity: identity, isFavorited: false)
             actionMessage = "Removing from favorites..."
             OPNGameServiceSwiftAdapter.removeFavoriteApp(appId) { success, error in
                 Task { @MainActor in
@@ -1189,6 +1190,7 @@ final class CatalogViewModel: ObservableObject {
                     } else {
                         self.favoriteGames = previousGames.value
                         self.favoriteGameIdentities = previousIdentities
+                        self.updateGameFavoriteState(identity: identity, isFavorited: true)
                         if self.refreshAuthIfNeeded(error: error) { return }
                         self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
                     }
@@ -1196,7 +1198,10 @@ final class CatalogViewModel: ObservableObject {
             }
         } else {
             favoriteGameIdentities.insert(identity)
-            favoriteGames.insert(Self.snapshotObject(for: selectedGame), at: 0)
+            updateGameFavoriteState(identity: identity, isFavorited: true)
+            let favoriteSnapshot = Self.snapshotObject(for: selectedGame)
+            favoriteSnapshot.isFavorited = true
+            favoriteGames.insert(favoriteSnapshot, at: 0)
             actionMessage = "Adding to favorites..."
             OPNGameServiceSwiftAdapter.addFavoriteApp(appId) { success, error in
                 Task { @MainActor in
@@ -1207,6 +1212,7 @@ final class CatalogViewModel: ObservableObject {
                     } else {
                         self.favoriteGames = previousGames.value
                         self.favoriteGameIdentities = previousIdentities
+                        self.updateGameFavoriteState(identity: identity, isFavorited: false)
                         if self.refreshAuthIfNeeded(error: error) { return }
                         self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
                     }
@@ -1819,6 +1825,7 @@ final class CatalogViewModel: ObservableObject {
         for game in games {
             let identity = Self.identity(for: game)
             guard !identity.isEmpty, identities.insert(identity).inserted else { continue }
+            game.isFavorited = true
             uniqueGames.append(game)
         }
         favoriteGames = uniqueGames
@@ -2033,6 +2040,22 @@ final class CatalogViewModel: ObservableObject {
             variant.inLibrary = inLibrary
             variant.librarySelected = inLibrary
         }
+    }
+
+    private func updateGameFavoriteState(identity: String, isFavorited: Bool) {
+        guard !identity.isEmpty else { return }
+        func update(_ games: [OPNCatalogGameObject]) {
+            for game in games where Self.identity(for: game) == identity {
+                game.isFavorited = isFavorited
+            }
+        }
+        if selectedGame.map(Self.identity(for:)) == identity { selectedGame?.isFavorited = isFavorited }
+        update(catalogGames)
+        update(libraryGames)
+        update(favoriteGames)
+        update(marqueeGames)
+        update(mainPanelGames)
+        for games in fullSectionGames.values { update(games) }
     }
 
     private func setActionMessage(_ message: String) {
