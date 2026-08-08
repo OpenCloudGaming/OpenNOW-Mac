@@ -13,8 +13,15 @@ public protocol WebRTCStreamTransport: Sendable {
     func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer
     func addRemoteIceCandidate(_ candidate: StreamIceCandidate) async throws
     func localIceCandidates() -> AsyncStream<StreamIceCandidate>
+    func sessionLimitUpdates() -> AsyncStream<StreamSessionLimitUpdate>
     func send(_ event: UserInputEvent) async throws
     func disconnect() async
+}
+
+public extension WebRTCStreamTransport {
+    func sessionLimitUpdates() -> AsyncStream<StreamSessionLimitUpdate> {
+        AsyncStream { continuation in continuation.finish() }
+    }
 }
 
 public protocol StreamSignalingChannel: Sendable {

@@ -538,6 +538,18 @@ public final class OPNCatalogGameObject: NSObject {
         game.variants = variants.map(\.swiftValue)
         return game
     }
+
+    public static func isFreeMembershipTier(_ membershipTier: String) -> Bool {
+        let normalized = membershipTier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "free" || normalized == "free tier" || normalized == "free-tier"
+    }
+
+    public func freeAccountAccessBadgeLabel(isFreeTierAccount: Bool) -> String? {
+        guard isFreeTierAccount else { return nil }
+        let tier = membershipTierLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tier.isEmpty, !Self.isFreeMembershipTier(tier) else { return nil }
+        return "Membership Required"
+    }
 }
 
 @objc(OPNCatalogPanelSectionObject)

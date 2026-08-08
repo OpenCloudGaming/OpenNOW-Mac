@@ -176,6 +176,11 @@ private struct WebRTCMediaSessionLimit: Equatable {
         self.durationSeconds = duration
     }
 
+    init?(update: StreamSessionLimitUpdate, receivedAt: Date = Date()) {
+        self.startedAt = receivedAt.addingTimeInterval(-Double(3600 - update.remainingSeconds))
+        self.durationSeconds = 3600
+    }
+
     func remainingSeconds(at now: Date) -> Int {
         max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
     }
@@ -215,6 +220,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
     @State private var statsTask: Task<Void, Never>?
+    @State private var sessionLimitUpdateTask: Task<Void, Never>?
     @State private var startTask: Task<Void, Never>?
     @State private var nativeView: NativeWebRTCStreamView?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
@@ -1591,6 +1597,7 @@ public struct WebRTCMediaStreamSurface: View {
         self.transport = transport
         self.path = path
         startStatsPolling(transport: transport)
+        startSessionLimitUpdatePolling(transport: transport)
         do {
             let session = try await path.start(configuration: configuration) { progress in
                 await MainActor.run {
@@ -1629,6 +1636,21 @@ public struct WebRTCMediaStreamSurface: View {
                 latestStats = snapshot
             }
         }
+    }
+
+    private func startSessionLimitUpdatePolling(transport: NativeWebRTCTransport) {
+        sessionLimitUpdateTask?.cancel()
+        sessionLimitUpdateTask = Task {
+            for await update in transport.sessionLimitUpdates() {
+                await MainActor.run { applySessionLimitUpdate(update) }
+            }
+        }
+    }
+
+    private func applySessionLimitUpdate(_ update: StreamSessionLimitUpdate) {
+        guard let limit = WebRTCMediaSessionLimit(update: update) else { return }
+        sessionLimit = limit
+        WebRTCMediaTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
     }
 
     private func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
@@ -2020,6 +2042,8 @@ public struct WebRTCMediaStreamSurface: View {
         guard shouldFinish else { return fallbackReport }
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil
+        sessionLimitUpdateTask?.cancel()
+        sessionLimitUpdateTask = nil
         let remoteNeutralEvents = await stopRemoteCoOpSession()
         remoteNeutralEvents.forEach { transport?.sendNow($0) }
         remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
@@ -2041,6 +2065,8 @@ public struct WebRTCMediaStreamSurface: View {
         startTask = nil
         statsTask?.cancel()
         statsTask = nil
+        sessionLimitUpdateTask?.cancel()
+        sessionLimitUpdateTask = nil
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil
         recordingNotificationTask?.cancel()

@@ -2573,6 +2573,7 @@ private struct CatalogRailView: View {
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                    showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
@@ -2729,6 +2730,7 @@ private struct CatalogDestinationGridView: View {
                         isSelected: isSelected(game),
                         isSelectionActive: viewModel.selectedGame != nil,
                         isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                        showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                         onSelect: { viewModel.selectGame(game, inSection: section.id) },
                         onPlay: { viewModel.launch(game: game) },
                         onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
@@ -2889,6 +2891,7 @@ private struct CatalogShowAllOverlay: View {
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                    showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { onSelect(game) },
                                     onPlay: { viewModel.launch(game: game) },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
@@ -3269,6 +3272,7 @@ private struct CatalogGameTile: View {
     let isSelected: Bool
     let isSelectionActive: Bool
     let isQueuedForPatching: Bool
+    let showsFreeAccountAccessBadges: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
     let onQueueForPatching: () -> Void
@@ -3337,7 +3341,7 @@ private struct CatalogGameTile: View {
                 if let badge = game.cardBadgeLabel {
                     CatalogGameCardBadge(label: badge)
                 }
-                if let badge = game.freeAccountAccessBadgeLabel {
+                if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
                     CatalogGameAccessBadge(label: badge)
                         .padding(8)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight, alignment: .topTrailing)
@@ -4730,12 +4734,6 @@ extension OPNCatalogGameObject {
     var cardBadgeLabel: String? {
         if isLaunchPatching { return "Patching" }
         return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
-    }
-
-    var freeAccountAccessBadgeLabel: String? {
-        let tier = membershipTierLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tier.isEmpty, tier.caseInsensitiveCompare("Free") != .orderedSame else { return nil }
-        return "Membership Required"
     }
 
     var isLaunchPatching: Bool {

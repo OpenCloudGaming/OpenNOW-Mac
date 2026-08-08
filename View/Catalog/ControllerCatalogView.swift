@@ -1045,6 +1045,7 @@ private struct ControllerGameRail: View {
                             imageURL: viewModel.optimizedImageURL(item.game.bestWideImageURL, width: 720),
                             isFocused: isFocused && selectedIndex == item.index,
                             isQueuedForPatching: viewModel.isQueuedForPatching(item.game),
+                            showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                             tileSize: metrics.tileSize,
                             action: { openDetails(item.game) }
                         )
@@ -1094,6 +1095,7 @@ private struct ControllerGameTile: View {
     let imageURL: URL?
     let isFocused: Bool
     let isQueuedForPatching: Bool
+    let showsFreeAccountAccessBadges: Bool
     let tileSize: CGSize
     let action: () -> Void
 
@@ -1108,7 +1110,7 @@ private struct ControllerGameTile: View {
                     CatalogGameCardBadge(label: badge)
                         .scaleEffect(0.92, anchor: .topLeading)
                 }
-                if let badge = game.freeAccountAccessBadgeLabel {
+                if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
                     CatalogGameAccessBadge(label: badge)
                         .scaleEffect(0.92, anchor: .topTrailing)
                         .padding(9)

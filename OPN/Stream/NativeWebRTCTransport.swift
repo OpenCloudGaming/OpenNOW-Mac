@@ -19,7 +19,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private var broadcastStatusObserverID: UUID?
     private let continuationLock = NSLock()
     private let localIceLock = NSLock()
+    private let sessionLimitLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
+    private var sessionLimitContinuation: AsyncStream<StreamSessionLimitUpdate>.Continuation?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
     private var answerTimeoutTask: Task<Void, Never>?
     private var statsTelemetryTask: Task<Void, Never>?
@@ -43,6 +45,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 pasteboard.clearContents()
                 pasteboard.setString(text, forType: .string)
             }
+        }
+        session.onSessionLimitUpdate = { [weak self] update in
+            guard let self else { return }
+            sessionLimitLock.withLock { _ = sessionLimitContinuation?.yield(update) }
         }
         updateEnhancedVideoFrameCapture()
     }
@@ -134,6 +140,15 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         }
     }
 
+    public func sessionLimitUpdates() -> AsyncStream<StreamSessionLimitUpdate> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            sessionLimitLock.withLock { sessionLimitContinuation = continuation }
+            continuation.onTermination = { [weak self] _ in
+                self?.sessionLimitLock.withLock { self?.sessionLimitContinuation = nil }
+            }
+        }
+    }
+
     public func send(_ event: UserInputEvent) async throws {
         sendNow(event)
     }
@@ -204,6 +219,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         localIceLock.withLock {
             localIceContinuation?.finish()
             localIceContinuation = nil
+        }
+        sessionLimitLock.withLock {
+            sessionLimitContinuation?.finish()
+            sessionLimitContinuation = nil
         }
         session.stop()
         pendingContinuation?.resume(throwing: CancellationError())

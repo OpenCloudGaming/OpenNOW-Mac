@@ -843,6 +843,43 @@ import Foundation
     #expect(parsed.remainingSessionLimitSeconds == 1794)
 }
 
+@Test func streamSessionLimitUpdateParsesVendorClientMessage() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "event": "STREAMING_CLIENT_MESSAGE",
+        "message": [
+            "messageType": "SESSION_LENGTH_TIMER",
+            "timerData": [
+                "beforeEventMS": 1_200_000,
+                "presentDurationMS": 30_000,
+                "timerType": "SmallMarquee",
+            ],
+        ],
+    ])
+
+    let update = try #require(StreamSessionLimitUpdate.parse(from: data))
+    #expect(update.remainingSeconds == 1200)
+    #expect(update.presentDurationSeconds == 30)
+    #expect(update.timerType == "SmallMarquee")
+
+    let maintenanceData = try JSONSerialization.data(withJSONObject: [
+        "message": [
+            "messageType": "ZONE_MAINTENANCE_TIMER",
+            "timerData": ["beforeEventMS": 900_000],
+        ],
+    ])
+    #expect(StreamSessionLimitUpdate.parse(from: maintenanceData) == nil)
+}
+
+@Test func membershipRequiredBadgeOnlyShowsForFreeTierAccount() {
+    let game = OPNCatalogGameObject()
+    game.membershipTierLabel = "Ultimate"
+
+    #expect(OPNCatalogGameObject.isFreeMembershipTier("Free"))
+    #expect(!OPNCatalogGameObject.isFreeMembershipTier("Priority"))
+    #expect(game.freeAccountAccessBadgeLabel(isFreeTierAccount: true) == "Membership Required")
+    #expect(game.freeAccountAccessBadgeLabel(isFreeTierAccount: false) == nil)
+}
+
 @Test func sessionManagerCarriesRemainingSessionLimitSeconds() async {
     await networkTestIsolationLock.withLock {
     let host = "session-limit-timer.example.test"

@@ -55,6 +55,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     var onGameAudioFrame: ((UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
     var onMicrophoneAudioFrame: ((UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
     var onClipboardText: ((String) -> Void)?
+    var onSessionLimitUpdate: ((StreamSessionLimitUpdate) -> Void)?
     var onMicrophoneLevel: ((Double) -> Void)?
 
     override init() {
@@ -438,6 +439,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func handleVideoFrame(_ frame: UnsafeMutableRawPointer?) { onVideoFrame?(frame) }
     func handleEnhancedVideoFrame(_ pixelBuffer: CVPixelBuffer?) { if let pixelBuffer { onEnhancedVideoFrame?(Unmanaged.passUnretained(pixelBuffer).toOpaque()) } }
     func handleClipboardText(_ text: String) { onClipboardText?(text) }
+    func handleSessionLimitUpdate(_ update: StreamSessionLimitUpdate) { onSessionLimitUpdate?(update) }
     func handleCapturedMicrophoneLevel(_ level: Double) { handleMicrophoneLevel(level * microphoneVolume) }
     func handleMicrophoneLevel(_ level: Double) { onMicrophoneLevel?(level) }
     func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) { onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels) }

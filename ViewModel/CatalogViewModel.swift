@@ -193,6 +193,10 @@ final class CatalogViewModel: ObservableObject {
     let session: LoginSession
     let onRefreshAuth: () -> Void
 
+    var isFreeTierAccount: Bool {
+        OPNCatalogGameObject.isFreeMembershipTier(account.membershipTier)
+    }
+
     private var hasLoaded = false
     private var browseGeneration = 0
     private var authRefreshInFlight = false
