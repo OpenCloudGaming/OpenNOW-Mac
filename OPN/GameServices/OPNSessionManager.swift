@@ -594,6 +594,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "remainingSessionLimitSeconds": 0,
             "clientId": clientId,
             "deviceId": deviceId,
+            "rawSessionJSON": rawSessionJSON(session),
         ]
         let progress = OPNSessionJSONParser.parseSessionProgress(from: session as NSDictionary)
         info["queuePosition"] = progress.queuePosition
@@ -609,6 +610,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
         }
         return info
+    }
+
+    private func rawSessionJSON(_ session: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(session),
+              let data = try? JSONSerialization.data(withJSONObject: session),
+              let string = String(data: data, encoding: .utf8) else { return "{}" }
+        return string
     }
 
     private func applyConnectionInfo(_ session: [String: Any], to info: inout [String: Any]) {

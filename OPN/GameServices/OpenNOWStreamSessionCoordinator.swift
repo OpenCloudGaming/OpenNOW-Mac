@@ -11,6 +11,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let mediaPort: Int
     public let settingsJSON: String
     public let sessionInfoJSON: String
+    public let rawSessionJSON: String
 
     public init(session: StreamSessionDescriptor,
                 signalingServer: String,
@@ -21,7 +22,8 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
                 mediaHost: String,
                 mediaPort: Int,
                 settingsJSON: String,
-                sessionInfoJSON: String) {
+                sessionInfoJSON: String,
+                rawSessionJSON: String) {
         self.session = session
         self.signalingServer = signalingServer
         self.signalingURL = signalingURL
@@ -32,6 +34,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
         self.mediaPort = max(0, mediaPort)
         self.settingsJSON = settingsJSON.isEmpty ? "{}" : settingsJSON
         self.sessionInfoJSON = sessionInfoJSON.isEmpty ? "{}" : sessionInfoJSON
+        self.rawSessionJSON = rawSessionJSON.isEmpty ? "{}" : rawSessionJSON
     }
 }
 
@@ -115,7 +118,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             mediaHost: sessionInfo.mediaConnectionHost,
             mediaPort: sessionInfo.mediaConnectionPort,
             settingsJSON: jsonString(launch.settings),
-            sessionInfoJSON: sessionInfo.rawJSON
+            sessionInfoJSON: sessionInfo.rawJSON,
+            rawSessionJSON: sessionInfo.rawSessionJSON
         )
     }
 
@@ -741,6 +745,7 @@ private struct AllocatedStreamSession: Sendable {
     let remainingSessionLimitSeconds: Int
     let pendingAd: AllocatedSessionAd?
     let rawJSON: String
+    let rawSessionJSON: String
 
     var isReady: Bool {
         (status == 2 || status == 3) && !sessionId.isEmpty && !serverIp.isEmpty
@@ -774,6 +779,7 @@ private struct AllocatedStreamSession: Sendable {
         requiredAdGateObserved = Self.bool(info["requiredAdGateObserved"])
         remainingSessionLimitSeconds = Self.int(info["remainingSessionLimitSeconds"])
         pendingAd = Self.pendingAd(from: adState)
+        rawSessionJSON = Self.string(info["rawSessionJSON"], fallback: "{}")
         rawJSON = Self.jsonString(info)
     }
 
@@ -805,11 +811,11 @@ private struct AllocatedStreamSession: Sendable {
         return string
     }
 
-    private static func string(_ value: Any?) -> String {
-        if let value = value as? String { return value }
-        if let value = value as? NSString { return value as String }
+    private static func string(_ value: Any?, fallback: String = "") -> String {
+        if let value = value as? String { return value.isEmpty ? fallback : value }
+        if let value = value as? NSString { let string = value as String; return string.isEmpty ? fallback : string }
         if let value = value as? NSNumber { return value.stringValue }
-        return ""
+        return fallback
     }
 
     private static func int(_ value: Any?) -> Int {

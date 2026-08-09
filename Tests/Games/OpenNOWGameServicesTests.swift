@@ -964,6 +964,47 @@ import Foundation
     }
 }
 
+@Test func sessionManagerPreservesRawSessionJSONForNativeNVST() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "raw-session-preserve.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host, extraSession: [
+            "tokenType": "JWT",
+            "token": "session-token",
+            "serverAddress": "rtsps://raw-session.example.test:443",
+            "streamingProfile": ["streamingProfileGuid": "profile-guid"],
+        ]))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["transportMode"] = "nvst"
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, info, error in
+            continuation.resume(returning: (success, info, error))
+        }
+    }
+
+    let rawSessionJSON = try #require(result.1["rawSessionJSON"] as? String)
+    let rawSessionData = try #require(rawSessionJSON.data(using: .utf8))
+    let rawSession = try #require(JSONSerialization.jsonObject(with: rawSessionData) as? [String: Any])
+    let streamingProfile = try #require(rawSession["streamingProfile"] as? [String: Any])
+
+    #expect(result.0 == true)
+    #expect(result.2.isEmpty)
+    #expect(rawSession["tokenType"] as? String == "JWT")
+    #expect(rawSession["token"] as? String == "session-token")
+    #expect(rawSession["serverAddress"] as? String == "rtsps://raw-session.example.test:443")
+    #expect(streamingProfile["streamingProfileGuid"] as? String == "profile-guid")
+    }
+}
+
 @Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async {
     await networkTestIsolationLock.withLock {
     let host = "bundle-media.example.test"

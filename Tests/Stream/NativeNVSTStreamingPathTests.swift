@@ -163,6 +163,7 @@ private func nativeAllocation() -> NativeNVSTSessionAllocation {
         mediaHost: "media.example.test",
         mediaPort: 47998,
         settingsJSON: "{\"transportMode\":\"nvst\"}",
-        sessionInfoJSON: "{\"sessionId\":\"native-session\"}"
+        sessionInfoJSON: "{\"sessionId\":\"native-session\"}",
+        rawSessionJSON: "{\"sessionId\":\"native-session\"}"
     )
 }
