@@ -74,7 +74,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
-    @State private var streamWindowTopInset: CGFloat = 0
+    @State private var windowTopInset = CatalogVendorLayout.windowTopInset
 
     init(
         account: LoginAccount,
@@ -101,9 +101,9 @@ struct CatalogView: View {
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in
-                    let topInset = min(max(streamWindowTopInset, 0), proxy.size.height)
+                    let topInset = boundedWindowTopInset(for: proxy.size.height)
                     let contentHeight = max(proxy.size.height - topInset, 0)
-                    let streamSize = streamContentSize(availableWidth: proxy.size.width, availableHeight: contentHeight, topInset: topInset)
+                    let streamSize = streamContentSize(availableWidth: proxy.size.width, availableHeight: contentHeight)
                     VStack(spacing: 0) {
                         Color.black
                             .frame(height: topInset)
@@ -122,13 +122,11 @@ struct CatalogView: View {
                                 )
                                 .id(streamConfiguration.id)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
 
                                 if viewModel.isStreamLaunchLoadingVisible {
                                     VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
                                         .transition(.opacity)
                                         .zIndex(10)
-                                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                                 }
                             }
                             .frame(width: streamSize.width, height: streamSize.height)
@@ -137,7 +135,6 @@ struct CatalogView: View {
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                 }
-                .background(StreamWindowTopInsetReader { streamWindowTopInset = $0 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .transition(.opacity)
@@ -146,21 +143,30 @@ struct CatalogView: View {
                     ControllerCatalogView(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                         .transition(.opacity)
                 } else {
-                    VStack(spacing: 0) {
-                        CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                        if viewModel.selectedMainPage == .settings {
-                            SettingsView(viewModel: viewModel)
-                        } else if viewModel.selectedMainPage == .recordings {
-                            RecordingsView()
-                        } else {
-                            CatalogContentView(viewModel: viewModel)
+                    GeometryReader { proxy in
+                        let topInset = boundedWindowTopInset(for: proxy.size.height)
+                        let contentHeight = max(proxy.size.height - topInset, 0)
+                        VStack(spacing: 0) {
+                            Color.clear
+                                .frame(height: topInset)
+                            VStack(spacing: 0) {
+                                CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                                if viewModel.selectedMainPage == .settings {
+                                    SettingsView(viewModel: viewModel)
+                                } else if viewModel.selectedMainPage == .recordings {
+                                    RecordingsView()
+                                } else {
+                                    CatalogContentView(viewModel: viewModel)
+                                }
+                            }
+                            .frame(width: proxy.size.width, height: contentHeight, alignment: .top)
                         }
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                     }
-                    .padding(.top, CatalogVendorLayout.windowTopInset)
                     .transition(.opacity)
 
                     if showsMainMenu {
-                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
+                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut, windowTopInset: windowTopInset)
                             .transition(.opacity)
                             .zIndex(12)
                     }
@@ -184,6 +190,7 @@ struct CatalogView: View {
             }
         }
         .background(Color.gfnBackgroundGreen)
+        .background(WindowTopInsetReader { windowTopInset = $0 })
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: true))
         .task { @MainActor in
             viewModel.loadIfNeeded()
@@ -196,8 +203,12 @@ struct CatalogView: View {
         .preferredColorScheme(.dark)
     }
 
-    private func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat, topInset: CGFloat) -> CGSize {
-        guard topInset > 0, availableWidth > 0, availableHeight > 0 else {
+    private func boundedWindowTopInset(for height: CGFloat) -> CGFloat {
+        min(max(windowTopInset, 0), max(height, 0))
+    }
+
+    private func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat) -> CGSize {
+        guard availableWidth > 0, availableHeight > 0 else {
             return CGSize(width: availableWidth, height: availableHeight)
         }
         let aspectRatio = CGFloat(viewModel.streamProfile.aspectRatio)
@@ -255,7 +266,7 @@ private struct VendorLaunchFlowOverlay: View {
     }
 }
 
-private struct StreamWindowTopInsetReader: NSViewRepresentable {
+private struct WindowTopInsetReader: NSViewRepresentable {
     let onChange: @MainActor (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -1283,16 +1294,18 @@ private struct CatalogMainMenuOverlay: View {
     @ObservedObject var viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let onSignOut: () -> Void
+    let windowTopInset: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
+            let boundedTopInset = min(max(windowTopInset, 0), max(proxy.size.height, 0))
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.001)
                     .ignoresSafeArea()
                     .onTapGesture { isPresented = false }
 
-                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight - CatalogVendorLayout.windowTopInset))
-                    .padding(.top, CatalogVendorLayout.appBarHeight + CatalogVendorLayout.windowTopInset)
+                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(0, proxy.size.height - CatalogVendorLayout.appBarHeight - boundedTopInset))
+                    .padding(.top, CatalogVendorLayout.appBarHeight + boundedTopInset)
                     .padding(.leading, 0)
             }
         }

@@ -194,27 +194,16 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var statsHUD: some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            statsInlineRow("NET", [
-                compactStatValue(formatted(latestStats?.latencyMs, suffix: "ms")),
-                compactStatValue(formatted(latestStats?.packetLossPercent, suffix: "%")),
-                compactStatValue(formatted(latestStats?.jitterMs, suffix: "ms")),
-            ])
-            statsInlineRow("VID", [
-                compactStatValue(formatted(latestStats?.renderFps, suffix: "fps")),
-                compactStatValue(formatted(latestStats?.inboundBitrateMbps, suffix: "Mbps")),
-                compactStatValue(latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-"),
-            ])
-            statsInlineRow("DEC", [
-                compactStatValue(formatted(latestStats?.decodeTimeMs, suffix: "ms")),
-                compactStatValue("drop \(latestStats?.framesDropped ?? 0)"),
-                compactStatValue(latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-"),
-            ])
-        }
-        .font(.streamNvidia(size: 12, weight: .bold))
-        .padding(.top, 18)
-        .padding(.trailing, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        Text(statsHUDLine)
+            .font(.streamNvidia(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.86)
+            .shadow(color: .black, radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.9), radius: 5, x: 0, y: 0)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 
@@ -230,7 +219,6 @@ public struct WebRTCMediaStreamSurface: View {
                     VStack(alignment: .leading, spacing: 14) {
                         hudStatusPanel
                         hudControlsPanel
-                        hudInputPanel
                         hudNetworkPanel
                         if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
                             hudRemoteCoOpPanel
@@ -264,40 +252,26 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudDockHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("GFN")
-                        .font(.streamNvidia(size: 11, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                    Text("HUD")
-                        .font(.streamNvidia(size: 20, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Button(action: { setUnifiedHUDVisible(false) }) {
-                    Image(systemName: "xmark")
-                        .font(.streamNvidia(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.08))
-                        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close stream HUD")
-            }
-
+        HStack(spacing: 10) {
             Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                .font(.streamNvidia(size: 13, weight: .medium))
+                .font(.streamNvidia(size: 12, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            Spacer(minLength: 0)
+            Button(action: { setUnifiedHUDVisible(false) }) {
+                Image(systemName: "xmark")
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.08))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close stream HUD")
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background(WebRTCMediaStreamTheme.appBar)
     }
 
@@ -394,47 +368,6 @@ public struct WebRTCMediaStreamSurface: View {
                     action: toggleStatsHUD
                 )
             }
-        }
-    }
-
-    private var hudInputPanel: some View {
-        hudSection(label: "INPUT", spacing: 8) {
-            HStack(spacing: 8) {
-                StreamHUDActionRow(
-                    title: "Paste Clipboard",
-                    subtitle: "Send text to stream",
-                    systemName: "doc.on.clipboard",
-                    isActive: false,
-                    isDisabled: !clipboardTextAvailable || !isStreamReady,
-                    action: pasteClipboardIntoStream
-                )
-                StreamHUDActionRow(
-                    title: pointerLocked ? "Release Mouse" : "Capture Mouse",
-                    subtitle: pointerLocked ? "Pointer locked" : "Click stream also captures",
-                    systemName: pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
-                    isActive: pointerLocked,
-                    isDisabled: !isStreamReady || !runtimeSettings.directMouseInput,
-                    action: togglePointerLockFromHUD
-                )
-                StreamHUDActionRow(
-                    title: "Toggle Full Screen",
-                    subtitle: "Window full screen",
-                    systemName: "arrow.up.left.and.arrow.down.right",
-                    isActive: nativeView?.window?.styleMask.contains(.fullScreen) == true,
-                    isDisabled: nativeView?.window == nil,
-                    action: toggleFullScreenFromHUD
-                )
-                StreamHUDActionRow(
-                    title: "Quit Menu",
-                    subtitle: "End session",
-                    systemName: "power",
-                    isActive: false,
-                    isDisabled: false,
-                    action: { showQuitMenu() }
-                )
-            }
-            settingsRow("Mouse", pointerLocked ? "Captured" : (runtimeSettings.directMouseInput ? "Available" : "Relative input off"))
-            settingsRow("Clipboard", clipboardTextAvailable ? "Ready" : "Empty")
         }
     }
 
@@ -761,6 +694,23 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private var statsHUDLine: String {
+        [
+            "Transport \(latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")",
+            "Latency \(formatted(latestStats?.latencyMs, suffix: " ms"))",
+            "Jitter \(formatted(latestStats?.jitterMs, suffix: " ms"))",
+            "Bitrate \(formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))",
+            "Loss \(formatted(latestStats?.packetLossPercent, suffix: "%"))",
+            "FPS \(formatted(latestStats?.renderFps, suffix: ""))",
+            "Decode \(formatted(latestStats?.decodeTimeMs, suffix: " ms"))",
+            "Drops \(latestStats?.framesDropped ?? 0)",
+            "Frame Δ \(formatted(latestStats?.videoFrameIntervalMs, suffix: " ms"))",
+            "Max Δ \(formatted(latestStats?.videoMaxFrameIntervalMs, suffix: " ms"))",
+            "Codec \(latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")",
+            "Resolution \(latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")",
+        ].joined(separator: "  |  ")
+    }
+
     private func sessionLimitHUDText(at date: Date) -> String {
         guard let sessionLimit else { return "Unlimited" }
         return sessionLimitDurationText(sessionLimit.remainingSeconds(at: date))
@@ -1065,23 +1015,6 @@ public struct WebRTCMediaStreamSurface: View {
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
     }
 
-    private func statsInlineRow(_ label: String, _ values: [String]) -> some View {
-        HStack(spacing: 7) {
-            Text(label)
-                .foregroundStyle(WebRTCMediaStreamTheme.accent)
-            Text(values.joined(separator: "  "))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .shadow(color: .black, radius: 2, x: 0, y: 1)
-        .shadow(color: .black.opacity(0.85), radius: 5, x: 0, y: 0)
-    }
-
-    private func compactStatValue(_ value: String) -> String {
-        value.replacingOccurrences(of: " ", with: "")
-    }
-
     private func settingsRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
@@ -1130,11 +1063,6 @@ public struct WebRTCMediaStreamSurface: View {
         )
     }
 
-    private var clipboardTextAvailable: Bool {
-        guard let text = NSPasteboard.general.string(forType: .string) else { return false }
-        return !text.isEmpty
-    }
-
     private var networkHealthText: String {
         guard let latestStats, latestStats.available else { return "No stats" }
         return networkWarningText.isEmpty ? "Good" : "Watch"
@@ -1159,29 +1087,6 @@ public struct WebRTCMediaStreamSurface: View {
     private func toggleStatsHUD() {
         statsVisible.toggle()
         WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
-    }
-
-    private func pasteClipboardIntoStream() {
-        guard isStreamReady, !isEndingStream, !didEndStream else { return }
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            showTransientStreamMessage("Clipboard is empty")
-            return
-        }
-        transport?.sendNow(.text(deviceID: "keyboard", value: text, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
-        lastAcceptedStreamInputAt = Date()
-        showTransientStreamMessage("Clipboard sent")
-        WebRTCMediaTelemetry.capture("webrtc.ui.clipboard.paste", level: .info, message: "Clipboard text sent to stream.", attributes: ["applicationID": configuration.applicationID, "characters": String(text.count)])
-    }
-
-    private func togglePointerLockFromHUD() {
-        guard isStreamReady, runtimeSettings.directMouseInput else { return }
-        nativeView?.setPointerLocked(!pointerLocked)
-    }
-
-    private func toggleFullScreenFromHUD() {
-        guard let window = nativeView?.window else { return }
-        window.toggleFullScreen(nil)
-        showTransientStreamMessage(window.styleMask.contains(.fullScreen) ? "Leaving full screen" : "Entering full screen")
     }
 
     private func formatted(_ value: Double?, suffix: String) -> String {
