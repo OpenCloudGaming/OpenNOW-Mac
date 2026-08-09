@@ -1,8 +1,4 @@
-vendor/*
-!vendor/gfn-web/
-vendor/gfn-web/*
-!vendor/gfn-web/source-readable/
-!vendor/gfn-web/source-readable/**
+vendor/
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
