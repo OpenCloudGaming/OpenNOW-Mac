@@ -1876,10 +1876,10 @@ private struct AboutSettingsPage: View {
     }
 
     private var diagnosticsText: String {
-        diagnosticsText(logURL: nil, uploadError: "")
+        diagnosticsText(logURL: nil, uploadError: "", inlineLog: "")
     }
 
-    private func diagnosticsText(logURL: URL?, uploadError: String) -> String {
+    private func diagnosticsText(logURL: URL?, uploadError: String, inlineLog: String) -> String {
         var lines = [
             "OpenNOW Mac Diagnostics",
             "Version: \(SettingsAppMetadata.versionWithBuild)",
@@ -1894,6 +1894,9 @@ private struct AboutSettingsPage: View {
         ]
         if !uploadError.isEmpty {
             lines.append("Upload Error: \(uploadError)")
+        }
+        if !inlineLog.isEmpty {
+            lines.append(contentsOf: ["", "Inline Logs:", inlineLog])
         }
         return lines.joined(separator: "\n")
     }
@@ -1922,15 +1925,15 @@ private struct AboutSettingsPage: View {
             do {
                 let logURL = try await OPNSentry.uploadDiagnosticsLog(logText)
                 diagnosticsState = .copying
-                copy(diagnosticsText(logURL: logURL, uploadError: ""), key: "diagnostics")
+                copy(diagnosticsText(logURL: logURL, uploadError: "", inlineLog: ""), key: "diagnostics")
                 diagnosticsState = .copied(logURL.absoluteString)
                 OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Uploaded sanitized diagnostics log url=\(logURL.absoluteString)"))
             } catch {
                 let message = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
                 diagnosticsState = .copying
-                copy(diagnosticsText(logURL: nil, uploadError: message), key: "diagnostics")
+                copy(diagnosticsText(logURL: nil, uploadError: message, inlineLog: logText), key: "diagnostics")
                 diagnosticsState = .failed(message)
-                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed; copied local diagnostics error=\(message)"))
+                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed; copied local diagnostics with inline logs error=\(message)"))
             }
         }
     }
@@ -2063,9 +2066,9 @@ private enum AboutDiagnosticsState: Equatable {
         case .preparing: return "Preparing diagnostics metadata..."
         case .readingLog: return "Reading sanitized current-run log..."
         case .uploading: return "Uploading sanitized logs to paste.c-net.org..."
-        case .copying: return "Copying diagnostics and uploaded log link to clipboard..."
+        case .copying: return "Copying diagnostics to clipboard..."
         case .copied(let url): return "Diagnostics copied. Uploaded log: \(url)"
-        case .failed(let reason): return "Upload failed, but local diagnostics were copied: \(reason)"
+        case .failed(let reason): return "Upload failed, but local diagnostics and inline logs were copied: \(reason)"
         }
     }
 
