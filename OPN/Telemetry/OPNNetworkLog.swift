@@ -104,7 +104,13 @@ public enum OPNNetworkLog {
     }
 
     public static func webSocketError(_ event: String, url: URL?, error: Error?) {
-        OPNSentry.logErrorMessage(logMessage(level: "error", area: "WebSocket", message: "Event \(event) failed url=\(sanitizedURL(url)) error=\(error?.localizedDescription ?? "unknown")"))
+        let level = failureLogLevel(operation: "websocket.\(event)", error: error)
+        let message = logMessage(level: level, area: "WebSocket", message: "Event \(event) failed url=\(sanitizedURL(url)) error=\(error?.localizedDescription ?? "unknown")")
+        if level == "error" {
+            OPNSentry.logErrorMessage(message)
+        } else {
+            OPNSentry.logWarningMessage(message)
+        }
     }
 
     private static func startContext(_ request: URLRequest, operation: String, trace: OPNSentryTransaction?) -> OPNNetworkLogContext {
@@ -187,8 +193,9 @@ public enum OPNNetworkLog {
         return true
     }
 
-    private static func failureLogLevel(operation: String, error: Error) -> String {
+    private static func failureLogLevel(operation: String, error: Error?) -> String {
         if operation == "stream.measureRegion" { return "warning" }
+        guard let error else { return "warning" }
         let urlErrorCode = (error as? URLError)?.code
         if urlErrorCode == .cancelled { return "warning" }
         if urlErrorCode == .timedOut { return "warning" }
@@ -196,6 +203,11 @@ public enum OPNNetworkLog {
         if urlErrorCode == .cannotConnectToHost { return "warning" }
         if urlErrorCode == .networkConnectionLost { return "warning" }
         if urlErrorCode == .notConnectedToInternet { return "warning" }
+        if urlErrorCode == .serverCertificateUntrusted { return "warning" }
+        if urlErrorCode == .serverCertificateHasBadDate { return "warning" }
+        if urlErrorCode == .serverCertificateHasUnknownRoot { return "warning" }
+        if urlErrorCode == .serverCertificateNotYetValid { return "warning" }
+        if urlErrorCode == .secureConnectionFailed { return "warning" }
         if urlErrorCode == .badURL { return "warning" }
         return "error"
     }
