@@ -19,20 +19,8 @@ struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
 
     private static func sentryLevel(for event: WebRTCMediaTelemetryEvent) -> WebRTCMediaTelemetryLevel {
         guard event.level == .error else { return event.level }
-        let message = event.message.lowercased()
         if event.name == "webrtc.path.session_provider.error" { return .warning }
-        if event.name == "webrtc.broadcast.rtmp.failed", isExpectedNetworkFailure(message) { return .warning }
-        if event.name == "webrtc.broadcast.status", isExpectedNetworkFailure(message) { return .warning }
         return event.level
-    }
-
-    private static func isExpectedNetworkFailure(_ message: String) -> Bool {
-        message.contains("socket is not connected")
-            || message.contains("connection reset by peer")
-            || message.contains("rtmp connection closed")
-            || message.contains("rtmp receive timed out")
-            || message.contains("nwerror error 57")
-            || message.contains("nwerror error 54")
     }
 
     func record(_ metric: WebRTCMediaTelemetryMetric) {

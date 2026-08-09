@@ -71,7 +71,6 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
-    @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
@@ -193,9 +192,6 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
-        .onChange(of: viewModel.twitchAccountStatus.isConnected) { _, isConnected in
-            if isConnected { twitchRealtime.restart() } else { twitchRealtime.stop() }
-        }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }
@@ -1349,10 +1345,6 @@ private struct CatalogMainMenuPanel: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
-                        CatalogMainMenuRow(title: catalogBroadcastMenuTitle, subtitle: catalogBroadcastMenuSubtitle, systemImage: "dot.radiowaves.left.and.right", isActive: viewModel.catalogBroadcastStatus.isBroadcasting) {
-                            viewModel.toggleCatalogTwitchBroadcast()
-                            isPresented = false
-                        }
                         CatalogMainMenuRow(title: viewModel.isCatalogRefreshInProgress ? "Refreshing Catalog" : "Refresh Catalog", subtitle: viewModel.isCatalogRefreshInProgress ? "Fetching latest panels and game metadata" : "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false, isLoading: viewModel.isCatalogRefreshInProgress) {
                             viewModel.refresh()
                         }
@@ -1400,34 +1392,12 @@ private struct CatalogMainMenuPanel: View {
         case .account: return "person.crop.circle.fill"
         case .interface: return "gamecontroller.fill"
         case .connections: return "link"
-        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .experimentalFeatures: return "testtube.2"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"
         case .about: return "info.circle.fill"
-        }
-    }
-
-    private var catalogBroadcastMenuTitle: String {
-        switch viewModel.catalogBroadcastStatus {
-        case .idle: return "Start Twitch Broadcast"
-        case .connecting: return "Connecting Twitch"
-        case .publishing, .live: return "Stop Twitch Broadcast"
-        case .stopping: return "Stopping Twitch"
-        case .failed: return "Retry Twitch Broadcast"
-        }
-    }
-
-    private var catalogBroadcastMenuSubtitle: String {
-        switch viewModel.catalogBroadcastStatus {
-        case .idle: return "Stream this session to Twitch"
-        case .connecting: return "Preparing the live broadcast"
-        case .publishing: return "Publishing stream; Twitch confirmation pending"
-        case .live: return "Channel is live"
-        case .stopping: return "Stopping the broadcast"
-        case .failed(let message): return message.isEmpty ? "Broadcast failed" : message
         }
     }
 

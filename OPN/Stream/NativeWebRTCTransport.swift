@@ -6,17 +6,14 @@ import Foundation
 public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unchecked Sendable {
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
     public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: WebRTCStreamRecordingStatus) -> Void)?
-    public var onBroadcastStatusChanged: (@MainActor @Sendable (_ status: WebRTCLiveBroadcastStatus) -> Void)?
 
     private let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
-    private let broadcaster = WebRTCLiveBroadcastController.shared
     private weak var nativeView: NativeWebRTCStreamView?
     private let remoteCoOpVideoRelayLock = NSLock()
     private var remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay?
     private let remoteCoOpAudioRelayLock = NSLock()
     private var remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay?
-    private var broadcastStatusObserverID: UUID?
     private let continuationLock = NSLock()
     private let localIceLock = NSLock()
     private let sessionLimitLock = NSLock()
@@ -35,10 +32,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             self?.updateEnhancedVideoFrameCapture()
             self?.onRecordingStatusChanged?(status)
         }
-        broadcastStatusObserverID = broadcaster.addStatusObserver { [weak self] status in
-            self?.updateEnhancedVideoFrameCapture()
-            self?.onBroadcastStatusChanged?(status)
-        }
         session.onClipboardText = { text in
             Task { @MainActor in
                 let pasteboard = NSPasteboard.general
@@ -53,14 +46,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         updateEnhancedVideoFrameCapture()
     }
 
-    deinit {
-        if let broadcastStatusObserverID {
-            broadcaster.removeStatusObserver(broadcastStatusObserverID)
-        }
-    }
-
     private func updateEnhancedVideoFrameCapture() {
-        session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo || broadcaster.wantsEnhancedVideo)
+        session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo)
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
@@ -75,22 +62,16 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 guard let framePointer else { return }
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
                 self?.recorder.appendVideoFrame(frame)
-                self?.broadcaster.appendVideoFrame(frame)
                 self?.currentRemoteCoOpVideoRelay()?.renderVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
                 guard let pixelBufferPointer else { return }
                 let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeUnretainedValue()
                 self?.recorder.appendEnhancedPixelBuffer(pixelBuffer)
-                self?.broadcaster.appendEnhancedPixelBuffer(pixelBuffer)
             }
             self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
-                self?.broadcaster.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
                 self?.currentRemoteCoOpAudioRelay()?.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
-            }
-            self.session.onMicrophoneAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
-                self?.broadcaster.appendMicrophoneAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             var sessionInfo = offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata
@@ -184,22 +165,12 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func startRecording(configuration: WebRTCStreamRecordingConfiguration) {
-        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled || broadcaster.wantsEnhancedVideo)
+        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled)
         recorder.start(configuration: configuration)
     }
 
     public func stopRecording() {
         recorder.stop()
-        session.setEnhancedVideoFrameCaptureEnabled(broadcaster.wantsEnhancedVideo)
-    }
-
-    public func startBroadcast(configuration: WebRTCLiveBroadcastConfiguration) {
-        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled || recorder.wantsEnhancedVideo)
-        broadcaster.start(configuration: configuration)
-    }
-
-    public func stopBroadcast() {
-        broadcaster.stop()
         session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo)
     }
 
@@ -212,7 +183,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         statsTelemetryTask = nil
         let pendingContinuation = takeContinuation()
         recorder.stop()
-        broadcaster.resumeUICapture()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         setRemoteCoOpVideoRelay(nil)
         setRemoteCoOpAudioRelay(nil)

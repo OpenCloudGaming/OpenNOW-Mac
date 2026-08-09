@@ -205,7 +205,6 @@ private struct SettingsSidebar: View {
         case .account: return "person.crop.circle.fill"
         case .interface: return "gamecontroller.fill"
         case .connections: return "link"
-        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .experimentalFeatures: return "testtube.2"
         case .serverLocation: return "network"
@@ -248,8 +247,6 @@ private struct SettingsContent: View {
             InterfaceSettingsPage(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsPage(viewModel: viewModel)
-        case .twitch:
-            TwitchSettingsPage(viewModel: viewModel)
         case .gameplay:
             GameplaySettingsPage(viewModel: viewModel)
         case .experimentalFeatures:
@@ -270,7 +267,6 @@ private struct SettingsContent: View {
         case .account: return "Membership, profile, and current NVIDIA session details."
         case .interface: return "Choose the desktop catalog or controller-first TV interface."
         case .connections: return "Manage store accounts used for library sync and ownership detection."
-        case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
         case .experimentalFeatures: return "Opt in to alpha, beta, and test features before they appear elsewhere."
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
@@ -819,138 +815,6 @@ private struct ConnectionsSettingsPage: View {
         "stove",
         "unknown"
     ]
-}
-
-private struct TwitchSettingsPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
-    @State private var primaryStreamKeyDraft = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingsCard(title: "Twitch Account") {
-                HStack(alignment: .center, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(viewModel.twitchAccountStatus.summary)
-                            .font(.settingsNvidia(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(accountSubtitle)
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.58))
-                    }
-                    Spacer(minLength: 12)
-                    SettingsStatusPill(title: viewModel.twitchAccountStatus.isConnected ? "CONNECTED" : "OFFLINE", value: viewModel.twitchAccountStatus.streamKeyAvailable ? "READY" : "SETUP", positive: viewModel.twitchAccountStatus.isConnected)
-                }
-                SettingsDivider()
-                SettingsSecureTextFieldRow(title: "Primary Stream Key", subtitle: "Paste the Primary Stream Key from Twitch Creator Dashboard. It is stored in Keychain and is enough to broadcast.", text: $primaryStreamKeyDraft, placeholder: streamKeyPlaceholder)
-                HStack(spacing: 10) {
-                    SettingsActionButton(title: "SAVE STREAM KEY", minimumWidth: 140) { viewModel.saveTwitchPrimaryStreamKey(primaryStreamKeyDraft); primaryStreamKeyDraft = "" }
-                        .disabled(primaryStreamKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    SettingsActionButton(title: "CLEAR STREAM KEY", tone: .secondary, minimumWidth: 140) { viewModel.clearTwitchPrimaryStreamKey() }
-                        .disabled(!viewModel.twitchPrimaryStreamKeySaved)
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 10)
-                SettingsDivider()
-                TwitchAuthorizationInfoRow(isConnected: viewModel.twitchAccountStatus.isConnected)
-                SettingsDivider()
-                HStack(spacing: 10) {
-                    SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
-                        .disabled(viewModel.isConnectingTwitch || viewModel.twitchAccountStatus.isConnected)
-                    SettingsActionButton(title: "DISCONNECT", tone: .secondary, minimumWidth: 120) { viewModel.disconnectTwitch() }
-                        .disabled(!viewModel.twitchAccountStatus.isConnected)
-                    Spacer(minLength: 0)
-                }
-            }
-
-            SettingsCard(title: "Broadcast") {
-                SettingsOptionRow(title: "Ingest", subtitle: "Choose the Twitch ingest endpoint used by the native RTMP publisher.", options: TwitchBroadcastPreferences.IngestRegion.allCases.map(\.label), selectedIndex: selectedIngestIndex, action: viewModel.setTwitchIngestRegion)
-                if viewModel.twitchPreferences.ingestRegion == .custom {
-                    SettingsDivider()
-                    SettingsTextFieldRow(title: "Custom RTMP URL", subtitle: "Use a full RTMP endpoint without the stream key.", text: viewModel.twitchPreferences.customRTMPURL, placeholder: "rtmp://host/app", action: viewModel.setTwitchCustomRTMPURL)
-                }
-                SettingsDivider()
-                SettingsOptionRow(title: "Resolution", subtitle: "Downscale the broadcast independently from the gameplay stream.", options: TwitchBroadcastPreferences.Resolution.allCases.map(\.label), selectedIndex: selectedResolutionIndex, action: viewModel.setTwitchResolution)
-                SettingsDivider()
-                SettingsOptionRow(title: "Frame Rate", subtitle: "Twitch recommends 60 FPS for high-motion gameplay when bandwidth allows.", options: ["60 FPS", "30 FPS"], selectedIndex: viewModel.twitchPreferences.fps == 30 ? 1 : 0, action: viewModel.setTwitchFPS)
-                SettingsDivider()
-                SettingsSliderRow(title: "Video Bitrate", valueText: "\(viewModel.twitchPreferences.videoBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.videoBitrateKbps), range: 500...8_000, step: 100, action: viewModel.setTwitchVideoBitrateKbps)
-                SettingsDivider()
-                SettingsSliderRow(title: "Audio Bitrate", valueText: "\(viewModel.twitchPreferences.audioBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.audioBitrateKbps), range: 64...320, step: 16, action: viewModel.setTwitchAudioBitrateKbps)
-                SettingsDivider()
-                SettingsToggleRow(title: "Use Enhanced Video", subtitle: "Broadcast the upscaled/enhanced frame when available, with decoded stream frames as fallback.", isOn: viewModel.twitchPreferences.useEnhancedVideo, action: viewModel.setTwitchUseEnhancedVideo)
-            }
-
-            SettingsCard(title: "Automation & Overlay") {
-                SettingsToggleRow(title: "Auto Title From Game", subtitle: "Use the active game title when preparing Twitch broadcast metadata.", isOn: viewModel.twitchPreferences.autoTitleFromGame, action: viewModel.setTwitchAutoTitleFromGame)
-                SettingsDivider()
-                SettingsToggleRow(title: "Chat Overlay", subtitle: "Show Twitch chat controls inside the stream overlay.", isOn: viewModel.twitchPreferences.chatOverlayEnabled, action: viewModel.setTwitchChatOverlayEnabled)
-                SettingsDivider()
-                SettingsToggleRow(title: "Event Alerts", subtitle: "Show follows, subscriptions, raids, and channel events over the stream.", isOn: viewModel.twitchPreferences.eventAlertsEnabled, action: viewModel.setTwitchEventAlertsEnabled)
-            }
-
-            SettingsCard(title: "In-Stream Hotkeys") {
-                SettingsInfoRow(label: "Command-G", value: "Show or hide the unified stream HUD")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-N", value: "Show or hide stream stats")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-M", value: "Toggle microphone")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-R", value: "Toggle recording")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-K", value: "Toggle Anti-AFK")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-Q", value: "Open stream quit controls")
-            }
-        }
-    }
-
-    private var accountSubtitle: String {
-        if viewModel.twitchPrimaryStreamKeySaved, !viewModel.twitchAccountStatus.isConnected {
-            return "Primary Stream Key is saved. Connect OAuth for channel metadata, markers, chat, and event features."
-        }
-        if viewModel.twitchAccountStatus.isConnected {
-            return viewModel.twitchAccountStatus.streamKeyAvailable ? "Stream key is available for RTMP publishing." : "Connected, but stream key has not been fetched yet."
-        }
-        return "Paste your Primary Stream Key to broadcast immediately, or connect Twitch for metadata and chat features."
-    }
-
-    private var streamKeyPlaceholder: String {
-        viewModel.twitchPrimaryStreamKeySaved ? "Saved in Keychain" : "live_..."
-    }
-
-    private var selectedIngestIndex: Int {
-        TwitchBroadcastPreferences.IngestRegion.allCases.firstIndex(of: viewModel.twitchPreferences.ingestRegion) ?? 0
-    }
-
-    private var selectedResolutionIndex: Int {
-        TwitchBroadcastPreferences.Resolution.allCases.firstIndex(of: viewModel.twitchPreferences.resolution) ?? 0
-    }
-}
-
-private struct TwitchAuthorizationInfoRow: View {
-    let isConnected: Bool
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Rectangle()
-                .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
-                .frame(width: 4, height: 48)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Browser authorization")
-                    .font(.settingsNvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("Connect Twitch to enable channel metadata, stream markers, chat, and event features.")
-                    .font(.settingsNvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
-            SettingsStatusPill(title: "OAUTH", value: isConnected ? "Linked" : "Optional", positive: isConnected)
-        }
-        .padding(12)
-        .background(SettingsVendorLayout.row)
-        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
-    }
 }
 
 private struct StoreConnectionsOverview: View {

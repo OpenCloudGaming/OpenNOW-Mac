@@ -52,7 +52,6 @@ private enum ControllerDetailAction: Equatable {
 private enum ControllerActionMenuItem {
     case refresh
     case clearSearch
-    case twitch
     case home
     case library
     case favorites
@@ -65,7 +64,6 @@ private enum ControllerActionMenuItem {
         switch self {
         case .refresh: return "Refresh Catalog"
         case .clearSearch: return "Clear Search and Filters"
-        case .twitch: return "Toggle Twitch Broadcast"
         case .home: return "Go to Home"
         case .library: return "Go to Library"
         case .favorites: return "Go to Favorites"
@@ -87,7 +85,6 @@ private enum ControllerActionMenuItem {
         switch self {
         case .refresh: return "arrow.clockwise"
         case .clearSearch: return "line.3.horizontal.decrease.circle"
-        case .twitch: return "dot.radiowaves.left.and.right"
         case .home: return "gamecontroller.fill"
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
@@ -305,7 +302,6 @@ struct ControllerCatalogView: View {
     private var actionMenuItems: [ControllerActionMenuItem] {
         var items: [ControllerActionMenuItem] = [.refresh]
         if viewModel.isBrowseMode { items.append(.clearSearch) }
-        items.append(.twitch)
         items.append(contentsOf: [.home, .library, .favorites, .recordings, .settings])
         for account in accounts where account.id != viewModel.account.id {
             items.append(.switchAccount(account))
@@ -688,8 +684,6 @@ struct ControllerCatalogView: View {
             viewModel.refresh()
         case .clearSearch:
             viewModel.clearSearchAndFilters()
-        case .twitch:
-            viewModel.toggleCatalogTwitchBroadcast()
         case .home:
             viewModel.showCatalogDestination(.home)
         case .library:

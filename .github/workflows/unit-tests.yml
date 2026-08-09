@@ -64,7 +64,6 @@ jobs:
             OPN.Common
             OPN.GameServices
             OPN.Telemetry
-            OPN.Twitch
             OPN.WebRTC.Media
           )
 
