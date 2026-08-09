@@ -195,13 +195,13 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var statsHUD: some View {
         Text(statsHUDLine)
-            .font(.streamNvidia(size: 11, weight: .bold))
+            .font(.streamNvidia(size: 10, weight: .bold))
             .foregroundStyle(.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.86)
+            .fixedSize(horizontal: true, vertical: false)
             .shadow(color: .black, radius: 2, x: 0, y: 1)
             .shadow(color: .black.opacity(0.9), radius: 5, x: 0, y: 0)
-            .padding(.horizontal, 8)
+            .padding(.leading, 8)
             .padding(.top, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
@@ -696,19 +696,23 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var statsHUDLine: String {
         [
-            "Transport \(latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")",
-            "Latency \(formatted(latestStats?.latencyMs, suffix: " ms"))",
-            "Jitter \(formatted(latestStats?.jitterMs, suffix: " ms"))",
-            "Bitrate \(formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))",
-            "Loss \(formatted(latestStats?.packetLossPercent, suffix: "%"))",
-            "FPS \(formatted(latestStats?.renderFps, suffix: ""))",
-            "Decode \(formatted(latestStats?.decodeTimeMs, suffix: " ms"))",
-            "Drops \(latestStats?.framesDropped ?? 0)",
-            "Frame Δ \(formatted(latestStats?.videoFrameIntervalMs, suffix: " ms"))",
-            "Max Δ \(formatted(latestStats?.videoMaxFrameIntervalMs, suffix: " ms"))",
-            "Codec \(latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")",
-            "Resolution \(latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")",
-        ].joined(separator: "  |  ")
+            "T:\(compactStat(latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-"))",
+            "L:\(compactStat(formatted(latestStats?.latencyMs, suffix: "ms")))",
+            "J:\(compactStat(formatted(latestStats?.jitterMs, suffix: "ms")))",
+            "B:\(compactStat(formatted(latestStats?.inboundBitrateMbps, suffix: "Mb")))",
+            "P:\(compactStat(formatted(latestStats?.packetLossPercent, suffix: "%")))",
+            "F:\(compactStat(formatted(latestStats?.renderFps, suffix: "")))",
+            "D:\(compactStat(formatted(latestStats?.decodeTimeMs, suffix: "ms")))",
+            "Dr:\(latestStats?.framesDropped ?? 0)",
+            "Δ:\(compactStat(formatted(latestStats?.videoFrameIntervalMs, suffix: "ms")))",
+            "MΔ:\(compactStat(formatted(latestStats?.videoMaxFrameIntervalMs, suffix: "ms")))",
+            "C:\(compactStat(latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-"))",
+            "R:\(compactStat(latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-"))",
+        ].joined(separator: " ")
+    }
+
+    private func compactStat(_ value: String) -> String {
+        value.replacingOccurrences(of: " ", with: "")
     }
 
     private func sessionLimitHUDText(at date: Date) -> String {
