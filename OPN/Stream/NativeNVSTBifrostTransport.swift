@@ -31,6 +31,21 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let status = try await prepare()
         guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
         guard !allocation.signalingURL.isEmpty || !allocation.signalingServer.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing signaling endpoint data.") }
+        if let bridge {
+            let endpoint = try bridge.prepareSignalingServerEndpoint(host: signalingHost(allocation), port: signalingPort(allocation))
+            let videoConfig = try bridge.initializeStreamConfig(mediaType: .video, direction: .receiver)
+            let audioConfig = try bridge.initializeStreamConfig(mediaType: .audio, direction: .receiver)
+            WebRTCMediaTelemetry.capture("nvst.bifrost.abi_probe.ready", level: .info, message: "Verified Bifrost endpoint and stream config initialization ABI.", attributes: [
+                "sessionId": allocation.session.id,
+                "endpointHost": endpoint.host,
+                "endpointPort": String(endpoint.port),
+                "endpointTransferProtocol": String(endpoint.transferProtocol),
+                "endpointPortUsage": String(endpoint.portUsage),
+                "version": bridge.runtimeVersion(),
+                "videoConfigBytes": String(videoConfig.nonZeroByteCount),
+                "audioConfigBytes": String(audioConfig.nonZeroByteCount),
+            ])
+        }
         let message = "Bundled Bifrost loaded, but OpenNOW has not recovered the private nvstCreateClient/nvstConnectToServer configuration and callback ABI needed to start media safely."
         WebRTCMediaTelemetry.capture("nvst.bifrost.abi_unavailable", level: .error, message: message, attributes: ["sessionId": allocation.session.id, "library": status.libraryURL.lastPathComponent])
         throw NativeNVSTError.privateABIUnavailable(message)
@@ -45,5 +60,23 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     public func disconnect() async {
         activeConnection = nil
         encodedInputEvents.removeAll()
+    }
+
+    private func signalingHost(_ allocation: NativeNVSTSessionAllocation) -> String {
+        if let host = URL(string: allocation.signalingURL)?.host, !host.isEmpty { return host }
+        if let host = URLComponents(string: "wss://\(allocation.signalingServer)")?.host, !host.isEmpty { return host }
+        if !allocation.signalingServer.isEmpty { return allocation.signalingServer }
+        return allocation.session.serverAddress
+    }
+
+    private func signalingPort(_ allocation: NativeNVSTSessionAllocation) -> UInt16 {
+        if let url = URL(string: allocation.signalingURL), let port = url.port, let exactPort = UInt16(exactly: port) {
+            return exactPort
+        }
+        if let port = URLComponents(string: "wss://\(allocation.signalingServer)")?.port, let exactPort = UInt16(exactly: port) {
+            return exactPort
+        }
+        if let scheme = URL(string: allocation.signalingURL)?.scheme?.lowercased(), scheme == "http" { return 80 }
+        return 443
     }
 }

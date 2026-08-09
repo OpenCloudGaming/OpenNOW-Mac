@@ -42,6 +42,43 @@ import Testing
     }
 }
 
+@Test func nvstNativeBridgeReadsVersionAndPreparesSignalingEndpoint() throws {
+    let bridge = try vendoredBridge()
+
+    let endpoint = try bridge.prepareSignalingServerEndpoint(host: "stream.example.test", port: 443)
+
+    #expect(bridge.runtimeVersion() == "14")
+    #expect(endpoint.host == "stream.example.test")
+    #expect(endpoint.port == 443)
+    #expect(endpoint.transferProtocol == 5)
+    #expect(endpoint.portUsage == 5)
+}
+
+@Test func nvstNativeBridgeInitializesVideoAndAudioStreamConfigs() throws {
+    let bridge = try vendoredBridge()
+
+    let video = try bridge.initializeStreamConfig(mediaType: .video, direction: .receiver)
+    let audio = try bridge.initializeStreamConfig(mediaType: .audio, direction: .receiver)
+
+    #expect(video.storedMediaType == NVSTNativeStreamMediaType.video.rawValue)
+    #expect(audio.storedMediaType == NVSTNativeStreamMediaType.audio.rawValue)
+    #expect(video.nonZeroByteCount > 0)
+    #expect(audio.nonZeroByteCount > 0)
+}
+
+@Test func nvstNativeBridgeRejectsInvalidSignalingEndpoint() throws {
+    let bridge = try vendoredBridge()
+
+    #expect(throws: NVSTNativeBridgeError.invalidEndpoint("Native NVST signaling endpoint is missing a host.")) {
+        _ = try bridge.prepareSignalingServerEndpoint(host: " ", port: 443)
+    }
+}
+
+private func vendoredBridge() throws -> NVSTNativeBridge {
+    let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
+    return try NVSTNativeBridge(configuration: NVSTNativeBridgeConfiguration(frameworksDirectory: frameworksDirectory))
+}
+
 private func repoRoot() -> URL {
     URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
