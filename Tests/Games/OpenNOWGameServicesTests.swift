@@ -78,6 +78,50 @@ import Foundation
     }
 }
 
+@Test func streamCoordinatorNativeNVSTRejectsZeroApplicationIdBeforeNetworkWork() async {
+    let coordinator = OpenNOWStreamSessionCoordinator()
+    let configuration = StreamLaunchConfiguration(
+        title: "Invalid Native Launch",
+        applicationID: "0",
+        accessToken: "token",
+        accountLinked: true,
+        selectedStore: "Steam"
+    )
+
+    do {
+        _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
+        Issue.record("Expected native NVST coordinator to reject appId 0 before session allocation")
+    } catch let error as OpenNOWStreamSessionError {
+        #expect(error.errorDescription == "This game does not include a launchable GeForce NOW app id.")
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
+
+@Test func streamCoordinatorNativeNVSTRequiresNVSTTransportSelectionBeforeNetworkWork() async {
+    let originalTransportModeIndex = OPNStreamPreferences.loadProfile().transportModeIndex
+    OPNStreamPreferences.saveNVSTTransportEnabled(false)
+    defer { OPNStreamPreferences.saveTransportModeIndex(originalTransportModeIndex) }
+
+    let coordinator = OpenNOWStreamSessionCoordinator()
+    let configuration = StreamLaunchConfiguration(
+        title: "WebRTC Selected",
+        applicationID: "987654321",
+        accessToken: "",
+        accountLinked: true,
+        selectedStore: "Steam"
+    )
+
+    do {
+        _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
+        Issue.record("Expected native NVST coordinator to reject WebRTC transport selection")
+    } catch let error as OpenNOWStreamSessionError {
+        #expect(error.errorDescription == "Native NVST session requested while WebRTC transport is selected.")
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
+
 @Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"

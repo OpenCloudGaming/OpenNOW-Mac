@@ -1,4 +1,7 @@
-vendor/
+vendor/*
+!vendor/gfn-runtime/
+!vendor/gfn-runtime/Frameworks/
+!vendor/gfn-runtime/Frameworks/libBifrost2.dylib
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
@@ -49,6 +52,7 @@ DerivedData/
 # Compiled Dynamic libraries
 *.so
 *.dylib
+!vendor/gfn-runtime/Frameworks/libBifrost2.dylib
 *.dll
 *.so.*
 

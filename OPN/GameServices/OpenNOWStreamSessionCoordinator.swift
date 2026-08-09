@@ -1,5 +1,40 @@
 import Foundation
 
+public struct NativeNVSTSessionAllocation: Equatable, Sendable {
+    public let session: StreamSessionDescriptor
+    public let signalingServer: String
+    public let signalingURL: String
+    public let signalingQueryParameters: String
+    public let signalingHeaders: [String]
+    public let streamingBaseURL: String
+    public let mediaHost: String
+    public let mediaPort: Int
+    public let settingsJSON: String
+    public let sessionInfoJSON: String
+
+    public init(session: StreamSessionDescriptor,
+                signalingServer: String,
+                signalingURL: String,
+                signalingQueryParameters: String,
+                signalingHeaders: [String],
+                streamingBaseURL: String,
+                mediaHost: String,
+                mediaPort: Int,
+                settingsJSON: String,
+                sessionInfoJSON: String) {
+        self.session = session
+        self.signalingServer = signalingServer
+        self.signalingURL = signalingURL
+        self.signalingQueryParameters = signalingQueryParameters
+        self.signalingHeaders = signalingHeaders
+        self.streamingBaseURL = streamingBaseURL
+        self.mediaHost = mediaHost
+        self.mediaPort = max(0, mediaPort)
+        self.settingsJSON = settingsJSON.isEmpty ? "{}" : settingsJSON
+        self.sessionInfoJSON = sessionInfoJSON.isEmpty ? "{}" : sessionInfoJSON
+    }
+}
+
 public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
     private static let maxBufferedIceCandidates = 120
 
@@ -46,6 +81,42 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             }
             throw error
         }
+    }
+
+    public func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
+        guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
+        }
+        let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
+        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        guard profile.transportMode.value.caseInsensitiveCompare("nvst") == .orderedSame else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+        }
+        let launch = await prepareLaunch(configuration: configuration)
+        guard string(launch.settings["transportMode"]).caseInsensitiveCompare("nvst") == .orderedSame else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+        }
+        try Task.checkCancellation()
+        let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
+        let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
+        if Task.isCancelled {
+            try? await finishSession(descriptor, reason: .userRequested)
+            throw CancellationError()
+        }
+        activeSession = descriptor
+        return NativeNVSTSessionAllocation(
+            session: descriptor,
+            signalingServer: sessionInfo.signalingServer,
+            signalingURL: sessionInfo.signalingUrl,
+            signalingQueryParameters: sessionInfo.signalingQueryParameters,
+            signalingHeaders: sessionInfo.signalingHeaders,
+            streamingBaseURL: sessionInfo.streamingBaseUrl,
+            mediaHost: sessionInfo.mediaConnectionHost,
+            mediaPort: sessionInfo.mediaConnectionPort,
+            settingsJSON: jsonString(launch.settings),
+            sessionInfoJSON: sessionInfo.rawJSON
+        )
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
@@ -658,6 +729,8 @@ private struct AllocatedStreamSession: Sendable {
     let signalingQueryParameters: String
     let signalingHeaders: [String]
     let streamingBaseUrl: String
+    let mediaConnectionHost: String
+    let mediaConnectionPort: Int
     let deviceId: String
     let status: Int
     let queuePosition: Int
@@ -688,6 +761,9 @@ private struct AllocatedStreamSession: Sendable {
         signalingQueryParameters = Self.string(info["signalingQueryParameters"])
         signalingHeaders = Self.stringArray(info["signalingHeaders"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
+        let mediaConnectionInfo = info["mediaConnectionInfo"] as? [String: Any]
+        mediaConnectionHost = Self.string(mediaConnectionInfo?["ip"])
+        mediaConnectionPort = Self.int(mediaConnectionInfo?["port"])
         deviceId = Self.string(info["deviceId"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
