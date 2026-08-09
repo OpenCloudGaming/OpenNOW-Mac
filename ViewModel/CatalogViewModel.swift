@@ -193,7 +193,7 @@ final class CatalogViewModel: ObservableObject {
 
     let account: LoginAccount
     let session: LoginSession
-    let onRefreshAuth: () -> Void
+    let onRefreshAuth: () async -> Bool
 
     var isFreeTierAccount: Bool {
         subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
@@ -220,7 +220,7 @@ final class CatalogViewModel: ObservableObject {
     private let catalogBroadcastController = WebRTCLiveBroadcastController.shared
     private var catalogBroadcastObserverID: UUID?
 
-    init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
+    init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
@@ -2398,7 +2398,19 @@ final class CatalogViewModel: ObservableObject {
         isLoading = false
         isLoadingPanels = false
         errorMessage = "Refreshing NVIDIA session..."
-        onRefreshAuth()
+        Task { [weak self] in
+            guard let self else { return }
+            let refreshed = await onRefreshAuth()
+            await MainActor.run {
+                self.authRefreshInFlight = false
+                guard refreshed else {
+                    self.errorMessage = "NVIDIA session refresh failed. Sign in again or refresh the catalog after reconnecting."
+                    return
+                }
+                self.errorMessage = ""
+                self.refresh()
+            }
+        }
         return true
     }
 

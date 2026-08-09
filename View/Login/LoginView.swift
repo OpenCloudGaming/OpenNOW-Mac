@@ -27,7 +27,7 @@ struct LoginView: View {
                     onSwitch: viewModel.activateAccount,
                     onSignOut: viewModel.signOut,
                     onForget: viewModel.forgetAccount,
-                    onRefreshAuth: viewModel.refreshActiveSession,
+                    onRefreshAuth: viewModel.refreshActiveSessionIfPossible,
                     onWindowTitleChange: onWindowTitleChange
                 )
                 .id(activeSession.id)

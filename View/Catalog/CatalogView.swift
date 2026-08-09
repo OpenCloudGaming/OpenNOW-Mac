@@ -66,7 +66,7 @@ struct CatalogView: View {
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
-    let onRefreshAuth: () -> Void
+    let onRefreshAuth: () async -> Bool
     let onWindowTitleChange: (String?) -> Void
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
@@ -85,7 +85,7 @@ struct CatalogView: View {
         onSwitch: @escaping (LoginAccount) -> Void,
         onSignOut: @escaping () -> Void,
         onForget: @escaping (LoginAccount) -> Void,
-        onRefreshAuth: @escaping () -> Void,
+        onRefreshAuth: @escaping () async -> Bool,
         onWindowTitleChange: @escaping (String?) -> Void
     ) {
         self.accounts = accounts
