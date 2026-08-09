@@ -102,6 +102,11 @@ Testing/
 .opencode
 .playwright-mcp/
 
+# Local Sentry access config
+.sentryclirc
+.env.sentry
+sentry.properties
+
 # Remote Co-Op local service state and secrets
 RemoteCoOp/panel/state/*
 !RemoteCoOp/panel/state/.gitkeep
