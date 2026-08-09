@@ -1312,23 +1312,6 @@ private struct CatalogMainMenuPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("GEFORCE NOW")
-                    .font(.nvidia(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundStyle(Color.openNowGreen)
-                Text("OpenNOW Menu")
-                    .font(.nvidia(size: 20, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.96))
-            }
-            .padding(.horizontal, 22)
-            .padding(.top, 20)
-            .padding(.bottom, 18)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
