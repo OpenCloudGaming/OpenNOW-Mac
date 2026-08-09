@@ -147,11 +147,48 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(encoded[3].partiallyReliable == true)
 }
 
+@Test func nativeNVSTSessionPayloadExtractsVerifiedStartFieldsWithoutLoggingToken() throws {
+    let allocation = nativeAllocation(rawSessionJSON: """
+    {
+      "serverAddress": "rtsps://native.example.test:443",
+      "tokenType": "JWT",
+      "token": "private-session-token",
+      "session": "native-session-key",
+      "sessionRequestData": { "appId": 123 },
+      "streamingProfile": { "streamingProfileGuid": "profile-guid" },
+      "audioModeFormat": "stereo"
+    }
+    """)
+
+    let payload = NativeNVSTSessionPayload(allocation: allocation)
+
+    #expect(payload.effectiveServerAddress == "rtsps://native.example.test:443")
+    #expect(payload.tokenType == "JWT")
+    #expect(payload.hasToken == true)
+    #expect(payload.appID == "123")
+    #expect(payload.sessionIdentifier == "native-session-key")
+    #expect(payload.streamingProfileGUID == "profile-guid")
+    #expect(payload.audioModeFormat == "stereo")
+    #expect(payload.missingStartFields.isEmpty)
+    #expect(payload.telemetryAttributes.values.contains("private-session-token") == false)
+}
+
+@Test func nativeNVSTSessionPayloadReportsMissingPrivateStartFields() throws {
+    let allocation = nativeAllocation(rawSessionJSON: "{}")
+
+    let payload = NativeNVSTSessionPayload(allocation: allocation)
+
+    #expect(payload.effectiveServerAddress == "server.example.test")
+    #expect(payload.appID == "123")
+    #expect(payload.sessionIdentifier == "native-session")
+    #expect(payload.missingStartFields == ["tokenType", "token", "streamingProfile.streamingProfileGuid"])
+}
+
 private func nativeConfiguration() -> StreamLaunchConfiguration {
     StreamLaunchConfiguration(title: "Native Test", applicationID: "123", accessToken: "token", accountLinked: true, selectedStore: "Steam")
 }
 
-private func nativeAllocation() -> NativeNVSTSessionAllocation {
+private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}") -> NativeNVSTSessionAllocation {
     let session = StreamSessionDescriptor(id: "native-session", applicationID: "123", serverAddress: "server.example.test", title: "Native Test", metadata: ["transport": "nvst"])
     return NativeNVSTSessionAllocation(
         session: session,
@@ -164,6 +201,6 @@ private func nativeAllocation() -> NativeNVSTSessionAllocation {
         mediaPort: 47998,
         settingsJSON: "{\"transportMode\":\"nvst\"}",
         sessionInfoJSON: "{\"sessionId\":\"native-session\"}",
-        rawSessionJSON: "{\"sessionId\":\"native-session\"}"
+        rawSessionJSON: rawSessionJSON
     )
 }

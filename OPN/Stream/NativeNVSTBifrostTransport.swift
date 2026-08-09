@@ -32,10 +32,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
         guard !allocation.signalingURL.isEmpty || !allocation.signalingServer.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing signaling endpoint data.") }
         if let bridge {
+            let sessionPayload = NativeNVSTSessionPayload(allocation: allocation)
             let endpoint = try bridge.prepareSignalingServerEndpoint(host: signalingHost(allocation), port: signalingPort(allocation))
             let videoConfig = try bridge.initializeStreamConfig(mediaType: .video, direction: .receiver)
             let audioConfig = try bridge.initializeStreamConfig(mediaType: .audio, direction: .receiver)
-            WebRTCMediaTelemetry.capture("nvst.bifrost.abi_probe.ready", level: .info, message: "Verified Bifrost endpoint and stream config initialization ABI.", attributes: [
+            var attributes = sessionPayload.telemetryAttributes
+            attributes.merge([
                 "sessionId": allocation.session.id,
                 "endpointHost": endpoint.host,
                 "endpointPort": String(endpoint.port),
@@ -44,7 +46,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 "version": bridge.runtimeVersion(),
                 "videoConfigBytes": String(videoConfig.nonZeroByteCount),
                 "audioConfigBytes": String(audioConfig.nonZeroByteCount),
-            ])
+            ]) { _, new in new }
+            WebRTCMediaTelemetry.capture("nvst.bifrost.abi_probe.ready", level: .info, message: "Verified Bifrost endpoint, stream config initialization ABI, and native session payload fields.", attributes: attributes)
         }
         let message = "Bundled Bifrost loaded, but OpenNOW has not recovered the private nvstCreateClient/nvstConnectToServer configuration and callback ABI needed to start media safely."
         WebRTCMediaTelemetry.capture("nvst.bifrost.abi_unavailable", level: .error, message: message, attributes: ["sessionId": allocation.session.id, "library": status.libraryURL.lastPathComponent])
