@@ -13,11 +13,13 @@ public struct NVSTNativeBridgeConfiguration: Equatable, Sendable {
 
 public struct NVSTNativeBridgeStatus: Equatable, Sendable {
     public let libraryURL: URL
+    public let bundledArtifactURLs: [URL]
     public let resolvedSymbols: [String]
     public let runtimeAvailable: Bool
 
-    public init(libraryURL: URL, resolvedSymbols: [String], runtimeAvailable: Bool) {
+    public init(libraryURL: URL, bundledArtifactURLs: [URL], resolvedSymbols: [String], runtimeAvailable: Bool) {
         self.libraryURL = libraryURL
+        self.bundledArtifactURLs = bundledArtifactURLs
         self.resolvedSymbols = resolvedSymbols
         self.runtimeAvailable = runtimeAvailable
     }
@@ -95,7 +97,7 @@ public final class NVSTNativeBridge: @unchecked Sendable {
     public init(configuration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration()) throws {
         do {
             runtime = try NVSTNativeRuntime(frameworksDirectory: configuration.frameworksDirectory, libraryName: configuration.libraryName)
-            status = NVSTNativeBridgeStatus(libraryURL: runtime.status.libraryURL, resolvedSymbols: runtime.status.resolvedSymbols, runtimeAvailable: true)
+            status = NVSTNativeBridgeStatus(libraryURL: runtime.status.libraryURL, bundledArtifactURLs: runtime.status.bundledArtifactURLs, resolvedSymbols: runtime.status.resolvedSymbols, runtimeAvailable: true)
         } catch let error as NVSTNativeRuntimeLoadError {
             throw NVSTNativeBridgeError.runtimeUnavailable(error)
         }

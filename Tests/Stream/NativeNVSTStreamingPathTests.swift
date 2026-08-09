@@ -48,7 +48,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         if case .prepareFailure = mode {
             throw NativeNVSTError.runtimeUnavailable("runtime missing")
         }
-        return NVSTNativeBridgeStatus(libraryURL: URL(fileURLWithPath: "/tmp/libBifrost2.dylib"), resolvedSymbols: ["nvstCreateClient"], runtimeAvailable: true)
+        let libraryURL = URL(fileURLWithPath: "/tmp/libBifrost2.dylib")
+        return NVSTNativeBridgeStatus(libraryURL: libraryURL, bundledArtifactURLs: [libraryURL], resolvedSymbols: ["nvstCreateClient"], runtimeAvailable: true)
     }
 
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {

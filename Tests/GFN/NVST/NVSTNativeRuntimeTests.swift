@@ -8,6 +8,9 @@ import Testing
     let runtime = try NVSTNativeRuntime(frameworksDirectory: frameworksDirectory)
 
     #expect(runtime.status.libraryURL.lastPathComponent == "libBifrost2.dylib")
+    #expect(runtime.status.bundledArtifactURLs.map(\.lastPathComponent).contains("libGeronimo.dylib"))
+    #expect(runtime.status.bundledArtifactURLs.map(\.lastPathComponent).contains("libGsAudioWebRTC.dylib"))
+    #expect(runtime.status.bundledArtifactURLs.contains { $0.path.hasSuffix("SDL2.framework/Versions/A/SDL2") })
     #expect(runtime.status.resolvedSymbols == NVSTNativeSymbol.allCases.map(\.rawValue))
     for symbol in NVSTNativeSymbol.allCases {
         #expect(runtime.symbolAddress(symbol) != 0)
@@ -35,6 +38,7 @@ import Testing
     if case let .success(status) = result {
         #expect(status.runtimeAvailable)
         #expect(status.libraryURL.lastPathComponent == "libBifrost2.dylib")
+        #expect(status.bundledArtifactURLs.count >= 4)
         #expect(status.resolvedSymbols.contains("nvstCreateClient"))
         #expect(status.resolvedSymbols.contains("nvstConnectToServer"))
     } else {

@@ -2,6 +2,10 @@ vendor/*
 !vendor/gfn-runtime/
 !vendor/gfn-runtime/Frameworks/
 !vendor/gfn-runtime/Frameworks/libBifrost2.dylib
+!vendor/gfn-runtime/Frameworks/libGeronimo.dylib
+!vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib
+!vendor/gfn-runtime/Frameworks/SDL2.framework/
+!vendor/gfn-runtime/Frameworks/SDL2.framework/**
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
@@ -53,6 +57,8 @@ DerivedData/
 *.so
 *.dylib
 !vendor/gfn-runtime/Frameworks/libBifrost2.dylib
+!vendor/gfn-runtime/Frameworks/libGeronimo.dylib
+!vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib
 *.dll
 *.so.*
 

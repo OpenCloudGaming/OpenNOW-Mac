@@ -41,16 +41,23 @@ public enum NVSTNativeRuntimeLoadError: LocalizedError, Equatable, Sendable {
 
 public struct NVSTNativeRuntimeStatus: Equatable, Sendable {
     public let libraryURL: URL
+    public let bundledArtifactURLs: [URL]
     public let resolvedSymbols: [String]
 
-    public init(libraryURL: URL, resolvedSymbols: [String]) {
+    public init(libraryURL: URL, bundledArtifactURLs: [URL], resolvedSymbols: [String]) {
         self.libraryURL = libraryURL
+        self.bundledArtifactURLs = bundledArtifactURLs
         self.resolvedSymbols = resolvedSymbols
     }
 }
 
 public final class NVSTNativeRuntime: @unchecked Sendable {
     public static let bundledLibraryName = "libBifrost2.dylib"
+    public static let bundledAuxiliaryArtifactPaths = [
+        "libGeronimo.dylib",
+        "libGsAudioWebRTC.dylib",
+        "SDL2.framework/Versions/A/SDL2",
+    ]
 
     private let handle: UnsafeMutableRawPointer
     private let symbols: [NVSTNativeSymbol: UnsafeMutableRawPointer]
@@ -66,6 +73,7 @@ public final class NVSTNativeRuntime: @unchecked Sendable {
         guard FileManager.default.isReadableFile(atPath: libraryURL.path) else {
             throw NVSTNativeRuntimeLoadError.missingLibrary(libraryURL.path)
         }
+        let auxiliaryArtifactURLs = try Self.validatedAuxiliaryArtifacts(in: directory)
         guard let handle = dlopen(libraryURL.path, RTLD_NOW | RTLD_LOCAL) else {
             throw NVSTNativeRuntimeLoadError.loadFailed(path: libraryURL.path, reason: Self.currentDLError())
         }
@@ -85,7 +93,7 @@ public final class NVSTNativeRuntime: @unchecked Sendable {
 
         self.handle = handle
         self.symbols = resolvedSymbols
-        status = NVSTNativeRuntimeStatus(libraryURL: libraryURL, resolvedSymbols: NVSTNativeSymbol.allCases.map(\.rawValue))
+        status = NVSTNativeRuntimeStatus(libraryURL: libraryURL, bundledArtifactURLs: [libraryURL] + auxiliaryArtifactURLs, resolvedSymbols: NVSTNativeSymbol.allCases.map(\.rawValue))
     }
 
     deinit {
@@ -122,6 +130,16 @@ public final class NVSTNativeRuntime: @unchecked Sendable {
             throw NVSTNativeRuntimeLoadError.missingFrameworksDirectory(directory.path)
         }
         return directory
+    }
+
+    private static func validatedAuxiliaryArtifacts(in directory: URL) throws -> [URL] {
+        try bundledAuxiliaryArtifactPaths.map { relativePath in
+            let url = directory.appendingPathComponent(relativePath, isDirectory: false)
+            guard FileManager.default.isReadableFile(atPath: url.path) else {
+                throw NVSTNativeRuntimeLoadError.missingLibrary(url.path)
+            }
+            return url
+        }
     }
 
     private static func currentDLError() -> String {
