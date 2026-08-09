@@ -173,6 +173,26 @@ public struct GDNClientContext: Equatable, Sendable {
             item.value?.isEmpty == false
         }
     }
+
+    public var sdkQueryItems: [URLQueryItem] {
+        [
+            URLQueryItem(name: "clientId", value: clientId),
+            URLQueryItem(name: "clientVer", value: clientVersion),
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "idpId", value: idpId),
+            URLQueryItem(name: "deviceId", value: deviceId),
+            URLQueryItem(name: "clientVariant", value: clientVariant),
+            URLQueryItem(name: "deviceOS", value: deviceOS),
+            URLQueryItem(name: "deviceType", value: deviceType),
+            URLQueryItem(name: "deviceMake", value: deviceMake),
+            URLQueryItem(name: "deviceModel", value: deviceModel),
+            URLQueryItem(name: "deviceOSVersion", value: deviceOSVersion),
+            URLQueryItem(name: "clientType", value: clientType),
+            URLQueryItem(name: "browserType", value: browserType),
+        ].filter { item in
+            item.value?.isEmpty == false
+        }
+    }
 }
 
 public struct GDNCloudVariable: Equatable, Sendable {
@@ -266,6 +286,20 @@ public enum GDNRequestFactory {
         items.append(contentsOf: additionalItems)
         return cloudVariablesRequest(queryItems: items, configuration: configuration, timeoutInterval: timeoutInterval)
     }
+
+    public static func cloudVariableSDKRequest(names: [String], context: GDNClientContext, clientParams: [String: Any] = [:], additionalItems: [URLQueryItem] = [], configuration: GDNConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        var items = [URLQueryItem(name: "cvName", value: names.joined(separator: ","))] + context.sdkQueryItems
+        if let clientParamsJSON = jsonString(clientParams) {
+            items.append(URLQueryItem(name: "clientParams", value: clientParamsJSON))
+        }
+        items.append(contentsOf: additionalItems)
+        return cloudVariablesRequest(queryItems: items, configuration: configuration, timeoutInterval: timeoutInterval)
+    }
+
+    private static func jsonString(_ value: [String: Any]) -> String? {
+        guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
+    }
 }
 
 public protocol GDNHTTPTransport: Sendable {
@@ -313,9 +347,9 @@ public struct GDNService<Transport: GDNHTTPTransport>: Sendable {
         return try await performJSONRequest(request)
     }
 
-    public func fetchCloudVariable(name: String, context: GDNClientContext, additionalItems: [URLQueryItem] = []) async throws -> GDNCloudVariable {
+    public func fetchCloudVariable(name: String, context: GDNClientContext, clientParams: [String: Any] = [:], additionalItems: [URLQueryItem] = []) async throws -> GDNCloudVariable {
         guard context.hasVendorRequiredFields else { throw GDNServiceError.missingClientContext }
-        guard let request = GDNRequestFactory.cloudVariableRequest(name: name, context: context, additionalItems: additionalItems, configuration: configuration) else { throw GDNServiceError.invalidCloudVariablesURL }
+        guard let request = GDNRequestFactory.cloudVariableSDKRequest(names: [name], context: context, clientParams: clientParams, additionalItems: additionalItems, configuration: configuration) else { throw GDNServiceError.invalidCloudVariablesURL }
         return GDNCloudVariableParser.parse(try await performJSONRequest(request), requestedName: name)
     }
 

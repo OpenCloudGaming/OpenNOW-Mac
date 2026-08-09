@@ -15,6 +15,7 @@ public extension Starfleet {
     enum Endpoint: String, CaseIterable, Sendable {
         case authorize = "/authorize"
         case token = "/token"
+        case deviceAuthorize = "/device/authorize"
         case userInfo = "/userinfo"
         case clientToken = "/client_token"
         case logout = "/logout"
@@ -26,6 +27,7 @@ public extension Starfleet {
         case authorizationCode = "authorization_code"
         case refreshToken = "refresh_token"
         case clientToken = "urn:ietf:params:oauth:grant-type:client_token"
+        case deviceCode = "urn:ietf:params:oauth:grant-type:device_code"
     }
 }
 
@@ -46,6 +48,7 @@ public struct StarfleetOAuthState: Equatable, Sendable {
 public struct StarfleetOAuthConfiguration: Equatable, Sendable {
     public let authorizeURLString: String
     public let tokenURLString: String
+    public let deviceAuthorizeURLString: String
     public let userInfoURLString: String
     public let clientTokenURLString: String
     public let logoutURLString: String
@@ -60,6 +63,7 @@ public struct StarfleetOAuthConfiguration: Equatable, Sendable {
     public init(
         authorizeURLString: String = Starfleet.Endpoint.authorize.urlString,
         tokenURLString: String = Starfleet.Endpoint.token.urlString,
+        deviceAuthorizeURLString: String = Starfleet.Endpoint.deviceAuthorize.urlString,
         userInfoURLString: String = Starfleet.Endpoint.userInfo.urlString,
         clientTokenURLString: String = Starfleet.Endpoint.clientToken.urlString,
         logoutURLString: String = Starfleet.Endpoint.logout.urlString,
@@ -73,6 +77,7 @@ public struct StarfleetOAuthConfiguration: Equatable, Sendable {
     ) {
         self.authorizeURLString = authorizeURLString
         self.tokenURLString = tokenURLString
+        self.deviceAuthorizeURLString = deviceAuthorizeURLString
         self.userInfoURLString = userInfoURLString
         self.clientTokenURLString = clientTokenURLString
         self.logoutURLString = logoutURLString
@@ -86,6 +91,91 @@ public struct StarfleetOAuthConfiguration: Equatable, Sendable {
     }
 
     public static let gfnPC = StarfleetOAuthConfiguration()
+}
+
+public struct StarfleetOAuthWindowParameters: Equatable, Sendable {
+    public var width: Int
+    public var height: Int
+    public var left: Int
+    public var top: Int
+    public var resizable: Bool
+    public var scrollbars: Bool
+
+    public init(width: Int = 480, height: Int = 720, left: Int = 0, top: Int = 0, resizable: Bool = true, scrollbars: Bool = true) {
+        self.width = width
+        self.height = height
+        self.left = left
+        self.top = top
+        self.resizable = resizable
+        self.scrollbars = scrollbars
+    }
+
+    public var featureString: String {
+        [
+            "width=\(width)",
+            "height=\(height)",
+            "left=\(left)",
+            "top=\(top)",
+            "resizable=\(resizable ? "yes" : "no")",
+            "scrollbars=\(scrollbars ? "yes" : "no")",
+        ].joined(separator: ",")
+    }
+}
+
+public struct StarfleetOAuthLoginRequest: Equatable, Sendable {
+    public let url: URL
+    public let popUpWindowName: String
+    public let windowParameters: StarfleetOAuthWindowParameters
+    public let useAppURL: Bool
+    public let state: StarfleetOAuthState
+
+    public init(url: URL, popUpWindowName: String = "app_oauth_window_with_back_button", windowParameters: StarfleetOAuthWindowParameters = StarfleetOAuthWindowParameters(), useAppURL: Bool = false, state: StarfleetOAuthState) {
+        self.url = url
+        self.popUpWindowName = popUpWindowName
+        self.windowParameters = windowParameters
+        self.useAppURL = useAppURL
+        self.state = state
+    }
+}
+
+public struct StarfleetOAuthCallback: Equatable, Sendable {
+    public let code: String
+    public let state: String
+    public let error: String
+    public let errorDescription: String
+
+    public init(code: String = "", state: String = "", error: String = "", errorDescription: String = "") {
+        self.code = code
+        self.state = state
+        self.error = error
+        self.errorDescription = errorDescription
+    }
+
+    public var isSuccess: Bool { !code.isEmpty && error.isEmpty && errorDescription.isEmpty }
+    public var resolvedError: String { errorDescription.isEmpty ? error : errorDescription }
+}
+
+public struct StarfleetDeviceAuthorizationResponse: Equatable, Sendable {
+    public let deviceCode: String
+    public let userCode: String
+    public let verificationURI: String
+    public let verificationURIComplete: String
+    public let expiresIn: Int64
+    public let interval: Int64
+    public let issuedAt: Date
+
+    public init(deviceCode: String = "", userCode: String = "", verificationURI: String = "", verificationURIComplete: String = "", expiresIn: Int64 = 0, interval: Int64 = 5, issuedAt: Date = Date()) {
+        self.deviceCode = deviceCode
+        self.userCode = userCode
+        self.verificationURI = verificationURI
+        self.verificationURIComplete = verificationURIComplete
+        self.expiresIn = expiresIn
+        self.interval = interval <= 0 ? 5 : interval
+        self.issuedAt = issuedAt
+    }
+
+    public var expiresAt: Date { issuedAt.addingTimeInterval(TimeInterval(max(0, expiresIn))) }
+    public var verificationURL: URL? { URL(string: verificationURIComplete.isEmpty ? verificationURI : verificationURIComplete) }
 }
 
 public enum StarfleetOAuthRequestFactory {
@@ -141,6 +231,39 @@ public enum StarfleetOAuthRequestFactory {
         ])
     }
 
+    public static func deviceAuthorizeBody(deviceId: String, displayName: String = "", providerIdpId: String = "", configuration: StarfleetOAuthConfiguration = .gfnPC) -> String {
+        var items = [
+            ("client_id", configuration.clientId),
+            ("scope", configuration.scope),
+            ("device_id", deviceId),
+        ]
+        if !displayName.isEmpty { items.append(("display_name", displayName)) }
+        let idpId = providerIdpId.isEmpty ? configuration.defaultIdpId : providerIdpId
+        if !idpId.isEmpty { items.append(("idp_id", idpId)) }
+        return formBody(items)
+    }
+
+    public static func deviceCodeTokenBody(deviceCode: String, configuration: StarfleetOAuthConfiguration = .gfnPC) -> String {
+        formBody([
+            ("grant_type", Starfleet.GrantType.deviceCode.rawValue),
+            ("device_code", deviceCode),
+            ("client_id", configuration.clientId),
+        ])
+    }
+
+    public static func deviceAuthorizeRequest(body: String, configuration: StarfleetOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        guard let url = URL(string: configuration.deviceAuthorizeURLString) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(configuration.origin, forHTTPHeaderField: "Origin")
+        request.setValue(configuration.referer, forHTTPHeaderField: "Referer")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = body.data(using: .utf8)
+        return request
+    }
+
     public static func tokenRequest(body: String, configuration: StarfleetOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
         guard let url = URL(string: configuration.tokenURLString) else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
@@ -162,12 +285,14 @@ public enum StarfleetOAuthRequestFactory {
         authenticatedGetRequest(urlString: configuration.clientTokenURLString, accessToken: accessToken, accept: "application/json, text/plain, */*", configuration: configuration, timeoutInterval: timeoutInterval)
     }
 
-    public static func logoutURL(idToken: String, locale: String, configuration: StarfleetOAuthConfiguration = .gfnPC) -> URL? {
+    public static func logoutURL(idToken: String, locale: String, postLogoutRedirectURI: String = "", configuration: StarfleetOAuthConfiguration = .gfnPC) -> URL? {
         var components = URLComponents(string: configuration.logoutURLString)
-        components?.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "id_token_hint", value: idToken),
             URLQueryItem(name: "ui_locales", value: locale),
         ]
+        if !postLogoutRedirectURI.isEmpty { queryItems.append(URLQueryItem(name: "post_logout_redirect_uri", value: postLogoutRedirectURI)) }
+        components?.queryItems = queryItems
         return components?.url
     }
 
@@ -190,6 +315,23 @@ public enum StarfleetOAuthRequestFactory {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+}
+
+public enum StarfleetOAuthCallbackParser {
+    public static func parse(query: String?) -> StarfleetOAuthCallback {
+        let params = StarfleetTokenParser.parseQueryString(query)
+        return StarfleetOAuthCallback(
+            code: params["code"] ?? "",
+            state: params["state"] ?? "",
+            error: params["error"] ?? "",
+            errorDescription: params["error_description"] ?? ""
+        )
+    }
+
+    public static func parseCallbackPath(_ path: String) -> StarfleetOAuthCallback {
+        let query = path.split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
+        return parse(query: query)
     }
 }
 
@@ -366,16 +508,25 @@ public enum StarfleetAuthFailureCategory: String, CaseIterable, Sendable {
 }
 
 public enum StarfleetAuthError: Error, Equatable, Sendable {
+    case invalidOAuthURL
     case invalidTokenURL
+    case invalidDeviceAuthorizeURL
     case invalidUserInfoURL
     case invalidClientTokenURL
     case invalidHTTPResponse
     case invalidJSONResponse
     case httpStatus(Int)
+    case oauthError(String)
+    case stateMismatch
+    case missingAuthorizationCode
     case noSavedSession
     case noRefreshMechanism
     case missingAccessToken
     case missingClientToken
+    case missingDeviceCode
+    case deviceAuthorizationPending
+    case deviceAuthorizationSlowDown
+    case deviceAuthorizationExpired
     case transportFailure(String, StarfleetAuthFailureCategory)
 
     public static func transportFailure(_ error: Error) -> StarfleetAuthError {
@@ -387,12 +538,18 @@ public enum StarfleetAuthError: Error, Equatable, Sendable {
 
     public var category: StarfleetAuthFailureCategory {
         switch self {
-        case .invalidTokenURL, .invalidUserInfoURL, .invalidClientTokenURL, .invalidHTTPResponse:
+        case .invalidOAuthURL, .invalidTokenURL, .invalidDeviceAuthorizeURL, .invalidUserInfoURL, .invalidClientTokenURL, .invalidHTTPResponse, .missingAuthorizationCode, .stateMismatch, .missingDeviceCode:
             .invalidRequest
         case .invalidJSONResponse:
             .parsing
         case .httpStatus(let status):
             Self.category(forHTTPStatus: status)
+        case .oauthError:
+            .authorization
+        case .deviceAuthorizationPending, .deviceAuthorizationSlowDown:
+            .unavailable
+        case .deviceAuthorizationExpired:
+            .authorization
         case .noSavedSession, .noRefreshMechanism, .missingAccessToken, .missingClientToken:
             .missingData
         case .transportFailure(_, let category):
@@ -429,16 +586,25 @@ public enum StarfleetAuthError: Error, Equatable, Sendable {
 extension StarfleetAuthError: LocalizedError {
     public var errorDescription: String? {
         switch self {
+        case .invalidOAuthURL: "Invalid Starfleet OAuth URL"
         case .invalidTokenURL: "Invalid Starfleet token URL"
+        case .invalidDeviceAuthorizeURL: "Invalid Starfleet device authorization URL"
         case .invalidUserInfoURL: "Invalid Starfleet user info URL"
         case .invalidClientTokenURL: "Invalid Starfleet client token URL"
         case .invalidHTTPResponse: "Invalid Starfleet HTTP response"
         case .invalidJSONResponse: "Invalid Starfleet JSON response"
         case .httpStatus(let status): "Starfleet HTTP status \(status)"
+        case .oauthError(let message): message.isEmpty ? "Starfleet OAuth failed" : message
+        case .stateMismatch: "Starfleet OAuth state mismatch"
+        case .missingAuthorizationCode: "Missing Starfleet authorization code"
         case .noSavedSession: "No saved Starfleet session"
         case .noRefreshMechanism: "No Starfleet refresh mechanism"
         case .missingAccessToken: "Missing Starfleet access token"
         case .missingClientToken: "Missing Starfleet client_token"
+        case .missingDeviceCode: "Missing Starfleet device code"
+        case .deviceAuthorizationPending: "Starfleet device authorization is pending"
+        case .deviceAuthorizationSlowDown: "Starfleet device authorization polling slowed down"
+        case .deviceAuthorizationExpired: "Starfleet device authorization expired"
         case .transportFailure(let message, _): message
         }
     }
@@ -613,6 +779,63 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
         cachedUser = StarfleetUserInfo()
     }
 
+    public func createOAuthLoginRequest(deviceId: String, redirectURI: String, locale: String, oauthState: StarfleetOAuthState, providerIdpId: String, windowParameters: StarfleetOAuthWindowParameters = StarfleetOAuthWindowParameters(), useAppURL: Bool = false) throws -> StarfleetOAuthLoginRequest {
+        guard let url = StarfleetOAuthRequestFactory.authorizationURL(configuration: configuration, deviceId: deviceId, redirectURI: redirectURI, locale: locale, oauthState: oauthState, providerIdpId: providerIdpId) else {
+            throw StarfleetAuthError.invalidOAuthURL
+        }
+        return StarfleetOAuthLoginRequest(url: url, windowParameters: windowParameters, useAppURL: useAppURL, state: oauthState)
+    }
+
+    public func parseCallback(query: String?, expectedState: String) throws -> StarfleetOAuthCallback {
+        let parsed = StarfleetOAuthCallbackParser.parse(query: query)
+        if !parsed.error.isEmpty || !parsed.errorDescription.isEmpty { throw StarfleetAuthError.oauthError(parsed.resolvedError) }
+        guard parsed.state == expectedState else { throw StarfleetAuthError.stateMismatch }
+        guard !parsed.code.isEmpty else { throw StarfleetAuthError.missingAuthorizationCode }
+        return parsed
+    }
+
+    public func requestDeviceAuthorization(deviceId: String, displayName: String = "", providerIdpId: String = "") async throws -> StarfleetDeviceAuthorizationResponse {
+        let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: deviceId, displayName: displayName, providerIdpId: providerIdpId, configuration: configuration)
+        guard let request = StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body, configuration: configuration) else { throw StarfleetAuthError.invalidDeviceAuthorizeURL }
+        return parseDeviceAuthorizationResponse(try await performJSONRequest(request))
+    }
+
+    public func exchangeDeviceCode(deviceCode: String) async throws -> StarfleetSession {
+        guard !deviceCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StarfleetAuthError.missingDeviceCode }
+        let span = telemetry.startSpan(name: "Starfleet_Get_Session_Token", attributes: ["grant_type": Starfleet.GrantType.deviceCode.rawValue])
+        do {
+            let body = StarfleetOAuthRequestFactory.deviceCodeTokenBody(deviceCode: deviceCode, configuration: configuration)
+            var exchanged = try await requestDeviceCodeSession(body: body)
+            if exchanged.idpId.isEmpty { exchanged.idpId = configuration.defaultIdpId }
+            let enriched = try await ensureClientToken(exchanged)
+            session = enriched
+            telemetry.recordCounter(name: "starfleet.auth.device_code.count", attributes: ["outcome": "success"])
+            span.finish(success: true)
+            return enriched
+        } catch {
+            telemetry.recordError(error, attributes: ["phase": "device_code_exchange"])
+            telemetry.recordCounter(name: "starfleet.auth.device_code.count", attributes: ["outcome": "failure"])
+            span.finish(success: false)
+            throw error
+        }
+    }
+
+    public func pollDeviceAuthorization(deviceCode: String, interval: TimeInterval = 5, timeout: TimeInterval = 900) async throws -> StarfleetSession {
+        let startedAt = Date()
+        var delay = max(0, interval)
+        while Date().timeIntervalSince(startedAt) < timeout {
+            do {
+                return try await exchangeDeviceCode(deviceCode: deviceCode)
+            } catch StarfleetAuthError.deviceAuthorizationPending {
+                if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            } catch StarfleetAuthError.deviceAuthorizationSlowDown {
+                delay += 5
+                if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            }
+        }
+        throw StarfleetAuthError.deviceAuthorizationExpired
+    }
+
     public func exchangeAuthorizationCode(authCode: String, redirectURI: String, codeVerifier: String, providerIdpId: String = "") async throws -> StarfleetSession {
         let span = telemetry.startSpan(name: "Starfleet_Get_Session_Token", attributes: ["grant_type": Starfleet.GrantType.authorizationCode.rawValue])
         do {
@@ -713,6 +936,13 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
         return StarfleetSessionParser.parseTokenResponse(try await performJSONRequest(request), defaultIdpId: configuration.defaultIdpId)
     }
 
+    private func requestDeviceCodeSession(body: String) async throws -> StarfleetSession {
+        guard let request = StarfleetOAuthRequestFactory.tokenRequest(body: body, configuration: configuration) else {
+            throw StarfleetAuthError.invalidTokenURL
+        }
+        return StarfleetSessionParser.parseTokenResponse(try await performDeviceCodeJSONRequest(request), defaultIdpId: configuration.defaultIdpId)
+    }
+
     private func ensureClientToken(_ current: StarfleetSession) async throws -> StarfleetSession {
         guard current.isAuthenticated, current.isAccessTokenValid, shouldRefreshClientToken(current) else { return current }
         let result = try await fetchClientToken(accessToken: current.accessToken)
@@ -784,6 +1014,36 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
         return json
     }
 
+    private func performDeviceCodeJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+        let (data, response) = try await transport.send(request)
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if response.statusCode == 200 {
+            guard let json else { throw StarfleetAuthError.invalidJSONResponse }
+            return json
+        }
+        let error = (json?["error"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        switch error {
+        case "authorization_pending": throw StarfleetAuthError.deviceAuthorizationPending
+        case "slow_down": throw StarfleetAuthError.deviceAuthorizationSlowDown
+        case "expired_token": throw StarfleetAuthError.deviceAuthorizationExpired
+        default:
+            if !error.isEmpty { throw StarfleetAuthError.oauthError(json?["error_description"] as? String ?? error) }
+            throw StarfleetAuthError.httpStatus(response.statusCode)
+        }
+    }
+
+    private func parseDeviceAuthorizationResponse(_ json: [String: Any], issuedAt: Date = Date()) -> StarfleetDeviceAuthorizationResponse {
+        StarfleetDeviceAuthorizationResponse(
+            deviceCode: starfleetStringValue(json["device_code"]) ?? starfleetStringValue(json["deviceCode"]) ?? "",
+            userCode: starfleetStringValue(json["user_code"]) ?? starfleetStringValue(json["userCode"]) ?? "",
+            verificationURI: starfleetStringValue(json["verification_uri"]) ?? starfleetStringValue(json["verificationUri"]) ?? starfleetStringValue(json["verification_url"]) ?? "",
+            verificationURIComplete: starfleetStringValue(json["verification_uri_complete"]) ?? starfleetStringValue(json["verificationUriComplete"]) ?? "",
+            expiresIn: StarfleetTokenParser.int64Value(json["expires_in"] ?? json["expiresIn"]) ?? 0,
+            interval: StarfleetTokenParser.int64Value(json["interval"]) ?? 5,
+            issuedAt: issuedAt
+        )
+    }
+
     private func parseUserInfo(_ json: [String: Any], isNetworkCall: Bool) -> StarfleetUserInfo {
         let userId = json["sub"] as? String ?? (json["userId"] as? String ?? "")
         let displayName = json["name"] as? String ?? (json["preferred_username"] as? String ?? "")
@@ -798,4 +1058,10 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
             isNetworkCall: isNetworkCall
         )
     }
+}
+
+private func starfleetStringValue(_ value: Any?) -> String? {
+    if let string = value as? String { return string }
+    if let number = value as? NSNumber { return number.stringValue }
+    return nil
 }

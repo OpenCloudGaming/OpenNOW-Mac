@@ -5,6 +5,27 @@ import Foundation
 
 public typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
+public typealias OPNDeviceCodeChallengeCallback = @Sendable (_ challenge: OPNDeviceCodeLoginChallenge) -> Void
+
+public struct OPNDeviceCodeLoginChallenge: Equatable, Sendable {
+    public let userCode: String
+    public let verificationURI: String
+    public let verificationURIComplete: String
+    public let expiresAt: Date
+    public let interval: TimeInterval
+
+    public init(response: StarfleetDeviceAuthorizationResponse) {
+        self.userCode = response.userCode
+        self.verificationURI = response.verificationURI
+        self.verificationURIComplete = response.verificationURIComplete
+        self.expiresAt = response.expiresAt
+        self.interval = TimeInterval(response.interval)
+    }
+
+    public var verificationURL: URL? {
+        URL(string: verificationURIComplete.isEmpty ? verificationURI : verificationURIComplete)
+    }
+}
 
 public final class OPNAuthService: @unchecked Sendable {
     public static let shared = OPNAuthService()
@@ -131,6 +152,35 @@ public final class OPNAuthService: @unchecked Sendable {
         }
     }
 
+    public func startStarfleetDeviceCodeLogin(providerIdpId: String = OPNAuthService.defaultIdpId, challengeHandler: @escaping OPNDeviceCodeChallengeCallback, completion: @escaping OPNAuthCallback) {
+        let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
+        let deviceId = generateOpenNOWDeviceId()
+        let displayName = Host.current().localizedName ?? "OpenNOW Mac"
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = await self.jarvisAuthService.sameTabAuthStarted()
+                let response = try await self.starfleetService.requestDeviceAuthorization(deviceId: deviceId, displayName: displayName, providerIdpId: selectedProviderIdpId)
+                let challenge = OPNDeviceCodeLoginChallenge(response: response)
+                await MainActor.run {
+                    challengeHandler(challenge)
+                    if let verificationURL = challenge.verificationURL {
+                        NSWorkspace.shared.open(verificationURL)
+                    }
+                }
+                let session = Self.opnSession(from: try await self.starfleetService.pollDeviceAuthorization(deviceCode: response.deviceCode, interval: challenge.interval, timeout: max(1, response.expiresAt.timeIntervalSinceNow)))
+                await self.jarvisAuthService.setSession(session)
+                self.saveSession(session)
+                _ = await self.jarvisAuthService.finishLogin(success: true)
+                DispatchQueue.main.async { completion(true, session, "") }
+            } catch {
+                _ = await self.jarvisAuthService.finishLogin(success: false)
+                await self.handleStarfleetFailure(error)
+                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+            }
+        }
+    }
+
     func refreshSession(completion: @escaping OPNAuthCallback, forceRefresh: Bool = false) {
         let session = loadSavedSession()
         guard session.isAuthenticated else {
@@ -191,7 +241,7 @@ public final class OPNAuthService: @unchecked Sendable {
             return
         }
         let resolvedLocale = locale.isEmpty ? Locale.current.identifier.replacingOccurrences(of: "-", with: "_") : locale
-        guard let url = StarfleetOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, configuration: .gfnPC) else {
+        guard let url = StarfleetOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, postLogoutRedirectURI: Self.oAuthRedirectURI, configuration: .gfnPC) else {
             clearSession()
             completion(false, "Invalid logout URL")
             return

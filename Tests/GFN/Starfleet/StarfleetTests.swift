@@ -40,8 +40,10 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
 @Test func starfleetEndpointNamesMatchVendorBackend() {
     #expect(Starfleet.systemName == "Starfleet")
     #expect(Starfleet.Endpoint.token.urlString == "https://login.nvidia.com/token")
+    #expect(Starfleet.Endpoint.deviceAuthorize.urlString == "https://login.nvidia.com/device/authorize")
     #expect(Starfleet.Endpoint.clientToken.urlString == "https://login.nvidia.com/client_token")
     #expect(Starfleet.GrantType.clientToken.rawValue == "urn:ietf:params:oauth:grant-type:client_token")
+    #expect(Starfleet.GrantType.deviceCode.rawValue == "urn:ietf:params:oauth:grant-type:device_code")
 }
 
 @Test func starfleetBuildsTokenGrantRequests() throws {
@@ -55,6 +57,48 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(request.httpMethod == "POST")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://nvfile")
     #expect(request.value(forHTTPHeaderField: "Referer") == "https://nvfile/")
+}
+
+@Test func starfleetBuildsOAuthLoginAndCallbackObjects() throws {
+    let state = StarfleetOAuthState(codeVerifier: "verifier", codeChallenge: "challenge", state: "state", nonce: "nonce")
+    let service = StarfleetService(transport: MockStarfleetTransport { _ in [:] })
+    let request = try service.createOAuthLoginRequest(deviceId: "device", redirectURI: "http://localhost:2259", locale: "en_US", oauthState: state, providerIdpId: "idp")
+    #expect(request.url.absoluteString.contains("response_type=code"))
+    #expect(request.url.absoluteString.contains("code_challenge=challenge"))
+    #expect(request.url.absoluteString.contains("idp_id=idp"))
+
+    let callback = try service.parseCallback(query: "code=abc&state=state", expectedState: "state")
+    #expect(callback.code == "abc")
+    #expect(callback.isSuccess)
+    #expect(throws: StarfleetAuthError.stateMismatch) {
+        _ = try service.parseCallback(query: "code=abc&state=wrong", expectedState: "state")
+    }
+}
+
+@Test func starfleetBuildsDeviceAuthorizationRequests() throws {
+    let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
+    #expect(body.contains("client_id=ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ"))
+    #expect(body.contains("scope=openid%20consent%20email%20tk_client%20age"))
+    #expect(body.contains("device_id=device"))
+    #expect(body.contains("display_name=OpenNOW"))
+    #expect(body.contains("idp_id=idp"))
+
+    let request = try #require(StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body))
+    #expect(request.url?.absoluteString == "https://login.nvidia.com/device/authorize")
+    #expect(request.httpMethod == "POST")
+    #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded; charset=UTF-8")
+}
+
+@Test func starfleetBuildsDeviceCodeAndLogoutRequests() throws {
+    let body = StarfleetOAuthRequestFactory.deviceCodeTokenBody(deviceCode: "device-code")
+    #expect(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"))
+    #expect(body.contains("device_code=device-code"))
+    #expect(body.contains("client_id=ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ"))
+
+    let logout = try #require(StarfleetOAuthRequestFactory.logoutURL(idToken: "id", locale: "en_US", postLogoutRedirectURI: "opennow://logout"))
+    #expect(logout.absoluteString.contains("id_token_hint=id"))
+    #expect(logout.absoluteString.contains("ui_locales=en_US"))
+    #expect(logout.absoluteString.contains("post_logout_redirect_uri=opennow://logout"))
 }
 
 @Test func starfleetParsesTokenResponseExpiry() {
@@ -121,6 +165,33 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(session.refreshToken == "refresh")
     #expect(session.clientToken == "client")
     #expect(session.idpId == "idp")
+}
+
+@Test func starfleetServiceRequestsAndPollsDeviceAuthorization() async throws {
+    let transport = SequencedStarfleetTransport([
+        .success((status: 200, json: [
+            "device_code": "device-code",
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://login.nvidia.com/device",
+            "verification_uri_complete": "https://login.nvidia.com/device?user_code=ABCD-EFGH",
+            "expires_in": 600,
+            "interval": 0,
+        ])),
+        .success((status: 400, json: ["error": "authorization_pending"])),
+        .success((status: 200, json: ["access_token": "access", "refresh_token": "refresh", "expires_in": 120])),
+        .success((status: 200, json: ["client_token": "client", "expires_in": 240])),
+    ])
+    let service = StarfleetService(transport: transport)
+    let response = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
+    #expect(response.deviceCode == "device-code")
+    #expect(response.userCode == "ABCD-EFGH")
+    #expect(response.interval == 5)
+
+    let session = try await service.pollDeviceAuthorization(deviceCode: response.deviceCode, interval: 0, timeout: 1)
+    #expect(session.accessToken == "access")
+    #expect(session.refreshToken == "refresh")
+    #expect(session.clientToken == "client")
+    #expect(await transport.requestCount == 4)
 }
 
 @Test func starfleetServiceRefreshesWithClientTokenGrant() async throws {

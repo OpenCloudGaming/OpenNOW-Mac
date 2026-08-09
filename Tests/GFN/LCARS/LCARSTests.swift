@@ -74,6 +74,14 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
     #expect(request.value(forHTTPHeaderField: "NV-Env") == "green")
 }
 
+@Test func lcarsBuildsPersistedGraphQLRequestWithNullVariablesWhenAbsent() throws {
+    let request = try #require(LCARSRequestFactory.persistedQueryRequest(operationName: "panels/MainV2", queryHash: "hash", variables: nil, configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example")))
+    let url = try #require(request.url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
+    #expect(items["variables"] == "null")
+}
+
 @Test func lcarsPreviewHeadersForceNoCacheWithoutBypass() throws {
     let configuration = LCARSConfiguration(baseURLString: "https://api.gfn.example", cascadePreviewToken: "preview-token", previewTime: "123")
     let request = try #require(LCARSRequestFactory.graphQLRequest(requestType: .panels, configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true)))
@@ -144,4 +152,17 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
     #expect(requests.first?.httpMethod == "GET")
     #expect(requests.last?.httpMethod == "POST")
     #expect(requests.last?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+}
+
+@Test func lcarsServiceBypassesCacheAfterFirstFetchOfSameKey() async throws {
+    let transport = SequencedLCARSTransport([
+        (status: 200, json: ["data": ["panels": []]]),
+        (status: 200, json: ["data": ["panels": []]]),
+    ])
+    let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: transport)
+    _ = try await service.fetch(requestType: .panels)
+    _ = try await service.fetch(requestType: .panels)
+    let requests = await transport.requests
+    #expect(requests.first?.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == nil)
+    #expect(requests.last?.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == "true")
 }

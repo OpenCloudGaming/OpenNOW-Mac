@@ -64,6 +64,18 @@ private struct MockGDNTransport: GDNHTTPTransport {
     #expect(items["locale"] == "en_US")
 }
 
+@Test func gdnBuildsVendorSDKCloudVariableRequest() throws {
+    let context = GDNClientContext(clientId: "client", clientVersion: "version", userId: "user", idpId: "idp", deviceId: "device", clientVariant: "Release", clientType: "Browser", deviceOS: "MacOS", deviceOSVersion: "14.0.0", deviceType: "Desktop", deviceModel: "Mac", deviceMake: "APPLE", browserType: "Chrome")
+    let request = try #require(GDNRequestFactory.cloudVariableSDKRequest(names: ["feature", "other"], context: context, clientParams: ["variant": "Release", "userDefaultUILanguage": "en"]))
+    let url = try #require(request.url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
+    #expect(items["product"] == nil)
+    #expect(items["cvName"] == "feature,other")
+    #expect(items["clientId"] == "client")
+    #expect(items["clientParams"]?.contains("userDefaultUILanguage") == true)
+}
+
 @Test func gdnParsesVendorCloudVariablePayload() {
     let variable = GDNCloudVariableParser.parse([
         "variables": [[
@@ -99,7 +111,7 @@ private struct MockGDNTransport: GDNHTTPTransport {
 
 @Test func gdnServiceFetchesSingleCloudVariable() async throws {
     let service = GDNService(transport: MockGDNTransport { request in
-        #expect(request.url?.absoluteString.contains("product=NVIDIAGDN") == true)
+        #expect(request.url?.absoluteString.contains("product=NVIDIAGDN") == false)
         #expect(request.url?.absoluteString.contains("cvName=feature") == true)
         #expect(request.url?.absoluteString.contains("clientId=client") == true)
         return ["cloudVariable": ["name": "feature", "variation": "on", "value": true, "state": "Active"]]

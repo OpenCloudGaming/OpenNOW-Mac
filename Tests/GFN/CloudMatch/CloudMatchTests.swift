@@ -51,7 +51,8 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     let create = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
     #expect(create.url?.absoluteString == "https://cloudmatch.example.test/v2/session?keyboardLayout=us&languageCode=en_US")
     #expect(create.httpMethod == "POST")
-    #expect(create.value(forHTTPHeaderField: "Origin") == nil)
+    #expect(create.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+    #expect(create.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
     #expect(create.httpBody == Data("{}".utf8))
 
     let webRTCCreate = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession(transportMode: "webrtc")))

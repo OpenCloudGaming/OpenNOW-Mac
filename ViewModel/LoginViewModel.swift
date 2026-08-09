@@ -36,6 +36,8 @@ final class LoginViewModel: ObservableObject {
     @Published var requestedFocus: LoginField?
     @Published var currentAuthorizationURL = ""
     @Published var pendingGameShortcut: GFNGameShortcut?
+    @Published var deviceCodeUserCode = ""
+    @Published var deviceCodeVerificationURI = ""
 
     private let authService = OPNAuthService.shared
     private let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
@@ -115,6 +117,10 @@ final class LoginViewModel: ObservableObject {
 
     func launchOAuth() {
         Task { await beginOAuth() }
+    }
+
+    func launchDeviceCodeOAuth() {
+        Task { await beginDeviceCodeOAuth() }
     }
 
     func completeOAuthWithCallbackText() {
@@ -206,6 +212,56 @@ final class LoginViewModel: ObservableObject {
                 self.validationMessage = ""
                 self.successMessage = "\(loginProvider.title) account connected. Client token and session metadata are ready."
                 OpenNOWLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
+            }
+        }
+    }
+
+    private func beginDeviceCodeOAuth() async {
+        validationMessage = ""
+        successMessage = ""
+        deviceCodeUserCode = ""
+        deviceCodeVerificationURI = ""
+        let loginProvider = selectedProvider
+        OpenNOWLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
+
+        guard acceptedTerms else {
+            OpenNOWLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
+            validationMessage = "Accept account terms and local session storage before continuing."
+            return
+        }
+
+        isLaunchingOAuth = true
+        validationMessage = "Enter the device code in your browser to connect \(loginProvider.title)."
+
+        authService.startStarfleetDeviceCodeLogin(providerIdpId: loginProvider.idpId) { [weak self] challenge in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.deviceCodeUserCode = challenge.userCode
+                self.deviceCodeVerificationURI = challenge.verificationURIComplete.isEmpty ? challenge.verificationURI : challenge.verificationURIComplete
+                self.validationMessage = "Enter code \(challenge.userCode) at \(self.deviceCodeVerificationURI)."
+            }
+        } completion: { [weak self] success, session, error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.selectedProvider = loginProvider
+                self.isLaunchingOAuth = false
+                self.currentAuthorizationURL = ""
+                self.clearPendingOAuthState()
+                self.oauthCallbackText = ""
+
+                guard success else {
+                    self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : error
+                    OpenNOWLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                    return
+                }
+
+                await self.jarvisAuthService.setSession(session)
+                self.persistSignedInSession(session: session, userInfo: nil, authMethod: "Starfleet_Device_Code")
+                self.validationMessage = ""
+                self.successMessage = "\(loginProvider.title) account connected with device code."
+                self.deviceCodeUserCode = ""
+                self.deviceCodeVerificationURI = ""
+                OpenNOWLog.info(.auth, "Device-code OAuth completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -439,6 +495,8 @@ final class LoginViewModel: ObservableObject {
         primaryDevice.pendingOAuthCodeVerifier = ""
         primaryDevice.pendingOAuthProviderIdpId = ""
         primaryDevice.pendingOAuthRedirectURI = ""
+        deviceCodeUserCode = ""
+        deviceCodeVerificationURI = ""
     }
 
     private func ensureDeviceRegistration() {

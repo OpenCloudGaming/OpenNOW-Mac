@@ -209,7 +209,7 @@ public enum LCARSRequestFactory {
             URLQueryItem(name: "extensions", value: jsonString(extensions) ?? "{}"),
         ]
         if !resolvedHuId.isEmpty { queryItems.append(URLQueryItem(name: "huId", value: resolvedHuId)) }
-        queryItems.append(URLQueryItem(name: "variables", value: jsonString(variables) ?? "{}"))
+        queryItems.append(URLQueryItem(name: "variables", value: variables == nil ? "null" : (jsonString(variables) ?? "{}")))
         var components = URLComponents(string: options.useCDN && accessToken.isEmpty ? configuration.cdnGraphQLURLString : configuration.graphQLURLString)
         components?.queryItems = queryItems
         guard let url = components?.url else { return nil }
@@ -317,9 +317,10 @@ public enum LCARSServiceError: LocalizedError, Equatable, Sendable {
     }
 }
 
-public struct LCARSService<Transport: LCARSHTTPTransport>: Sendable {
+public actor LCARSService<Transport: LCARSHTTPTransport> {
     private let configuration: LCARSConfiguration
     private let transport: Transport
+    private var fetchedKeys = Set<String>()
 
     public init(configuration: LCARSConfiguration, transport: Transport) {
         self.configuration = configuration
@@ -327,19 +328,27 @@ public struct LCARSService<Transport: LCARSHTTPTransport>: Sendable {
     }
 
     public func fetch(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
-        guard let request = LCARSRequestFactory.graphQLRequest(requestType: requestType, accessToken: accessToken, queryItems: queryItems, configuration: configuration, options: options) else { throw LCARSServiceError.invalidGraphQLURL(requestType) }
+        let resolvedOptions = optionsForFetch(key: requestType.rawValue, options: options)
+        guard let request = LCARSRequestFactory.graphQLRequest(requestType: requestType, accessToken: accessToken, queryItems: queryItems, configuration: configuration, options: resolvedOptions) else { throw LCARSServiceError.invalidGraphQLURL(requestType) }
         return try await performJSONRequest(request)
     }
 
     public func fetchPersistedQuery(operationName: String, queryHash: String, query: String = "", variables: Any? = nil, accessToken: String = "", userId: String = "", options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
-        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: configuration, options: options, userId: userId) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
+        let resolvedOptions = optionsForFetch(key: operationName, options: options)
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: configuration, options: resolvedOptions, userId: userId) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
         let (data, response) = try await transport.send(request)
         if response.statusCode == 400 {
             guard !query.isEmpty else { throw LCARSServiceError.missingFallbackQuery }
-            guard let fallback = LCARSRequestFactory.inlineGraphQLRequest(query: query, variables: variables, accessToken: accessToken, configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true, notifyFetch: options.notifyFetch, useCDN: options.useCDN)) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
+            guard let fallback = LCARSRequestFactory.inlineGraphQLRequest(query: query, variables: variables, accessToken: accessToken, configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true, notifyFetch: resolvedOptions.notifyFetch, useCDN: resolvedOptions.useCDN)) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
             return try await performJSONRequest(fallback)
         }
         return try decodeJSON(data: data, response: response)
+    }
+
+    private func optionsForFetch(key: String, options: LCARSRequestOptions) -> LCARSRequestOptions {
+        let shouldBypass = options.forceCacheBypass || fetchedKeys.contains(key)
+        fetchedKeys.insert(key)
+        return LCARSRequestOptions(forceCacheBypass: shouldBypass, notifyFetch: options.notifyFetch, useCDN: options.useCDN)
     }
 
     private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {

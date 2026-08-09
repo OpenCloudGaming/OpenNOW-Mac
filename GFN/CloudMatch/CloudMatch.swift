@@ -191,7 +191,7 @@ public enum CloudMatchRequestFactory {
 
     public static func createSessionRequest(baseURLString: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
         let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
-        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: false, timeoutInterval: timeoutInterval, headers: headers)
+        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: true, timeoutInterval: timeoutInterval, headers: headers)
     }
 
     public static func pollSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
