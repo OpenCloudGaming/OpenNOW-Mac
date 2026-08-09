@@ -151,6 +151,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var hasMoreCatalogResults = false
     @Published var expandedSectionIds: Set<String> = []
     @Published var accountStores: [CatalogStoreAccount] = []
+    @Published var accountSubscriptions: [String] = []
     @Published var storeDefinitions: [CatalogStoreDefinition] = []
     @Published var subscriptionDefinitions: [CatalogSubscriptionDefinition] = []
     @Published var selectedGame: OPNCatalogGameObject?
@@ -1286,17 +1287,26 @@ final class CatalogViewModel: ObservableObject {
 
     func selectGameStoreVariant(at index: Int) {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
-        selectedVariantIndex = index
-        let variant = selectedGame.variants[index]
-        if Self.variantIsOwned(variant, in: selectedGame) {
+        focusGameStoreVariant(at: index)
+        guard let option = platformOptions(for: selectedGame).first(where: { $0.variantIndex == index }) else { return }
+        if option.isOwned {
+            let variant = selectedGame.variants[index]
             selectOwnedVariant(variant)
-            ownershipFlowStage = .storeSelection
+            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
+            ownershipFlowMessage = ""
+        } else if option.hasAccess {
+            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
             ownershipFlowMessage = ""
         } else if ownershipFlowStage != .hidden {
             ownershipFlowStage = .manualMark
             ownershipFlowMessage = ""
         }
-        actionMessage = "Changed store to \(displayName(forStore: variant.appStore))."
+        actionMessage = "Changed store to \(option.title)."
+    }
+
+    func focusGameStoreVariant(at index: Int) {
+        guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
+        selectedVariantIndex = index
     }
 
     func cycleSelectedGameStore() {
@@ -1469,7 +1479,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func syncSelectedStoreAccount() {
-        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        guard let store = selectedPlatformOption(in: selectedGame)?.accountStore, !store.isEmpty else { return }
         syncStoreAccount(store)
     }
 
@@ -1493,7 +1503,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func linkSelectedStoreAccount() {
-        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        guard let store = selectedPlatformOption(in: selectedGame)?.accountStore, !store.isEmpty else { return }
         linkStoreAccount(store)
     }
 
@@ -1521,6 +1531,55 @@ final class CatalogViewModel: ObservableObject {
         let index = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: game)
         guard index >= 0, index < game.variants.count else { return nil }
         return game.variants[index]
+    }
+
+    func selectedPlatformOption(in game: OPNCatalogGameObject?) -> CatalogPlatformOption? {
+        let options = platformOptions(for: game)
+        return options.first(where: { $0.isSelected }) ?? options.first
+    }
+
+    func selectedPlatformHasAccess(in game: OPNCatalogGameObject?) -> Bool {
+        selectedPlatformOption(in: game)?.hasAccess == true
+    }
+
+    func platformOptions(for game: OPNCatalogGameObject?) -> [CatalogPlatformOption] {
+        guard let game else { return [] }
+        let selectedIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: game)
+        return game.variants.enumerated().map { index, variant in
+            let subscriptionIds = Self.visibleSubscriptionIds(for: variant)
+            let subscriptionDefinition = subscriptionDefinition(for: subscriptionIds)
+            let accountStore = subscriptionDefinition?.primaryStore.isEmpty == false ? subscriptionDefinition?.primaryStore ?? "" : variant.appStore
+            let account = accountStatus(forStore: accountStore)
+            let storeDefinition = storeDefinition(forStore: accountStore)
+            let isOwned = Self.variantIsOwned(variant, in: game)
+            let hasSubscriptionEntitlement = subscriptionIds.contains { accountHasSubscription($0) }
+            let isUnavailable = Self.variantIsUnavailable(variant)
+            let isSubscription = !subscriptionIds.isEmpty
+            let title = displayName(forVariant: variant)
+            let iconURL = iconURL(forVariant: variant)
+            let canLink = account == nil && storeDefinition?.isAccountLinkingSupported == true
+            let canSync = account?.hasAccountSyncingData == true
+            return CatalogPlatformOption(
+                id: variant.id.isEmpty ? "\(index)-\(variant.appStore)-\(title)" : variant.id,
+                variantIndex: index,
+                variant: variant,
+                title: title,
+                iconURL: iconURL,
+                store: variant.appStore,
+                subscriptionIds: subscriptionIds,
+                primaryStore: accountStore,
+                isSubscription: isSubscription,
+                isOwned: isOwned,
+                hasSubscriptionEntitlement: hasSubscriptionEntitlement,
+                hasAccess: isOwned || hasSubscriptionEntitlement,
+                isSelected: selectedIndex == index,
+                isUnavailable: isUnavailable,
+                canLink: canLink,
+                canSync: canSync,
+                accountDisplayName: account?.userDisplayName ?? "",
+                status: platformStatusLabel(isOwned: isOwned, hasSubscriptionEntitlement: hasSubscriptionEntitlement, isUnavailable: isUnavailable, isSubscription: isSubscription, account: account, canLink: canLink, canSync: canSync)
+            )
+        }
     }
 
     func displayName(forStore store: String) -> String {
@@ -1557,6 +1616,34 @@ final class CatalogViewModel: ObservableObject {
 
     func accountStatus(forStore store: String) -> CatalogStoreAccount? {
         accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
+    private func accountHasSubscription(_ subscription: String) -> Bool {
+        accountSubscriptions.contains { $0.caseInsensitiveCompare(subscription) == .orderedSame }
+    }
+
+    private func storeDefinition(forStore store: String) -> CatalogStoreDefinition? {
+        storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
+    private func subscriptionDefinition(for subscriptionIds: [String]) -> CatalogSubscriptionDefinition? {
+        for subscription in subscriptionIds {
+            if let definition = subscriptionDefinitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }) {
+                return definition
+            }
+        }
+        return nil
+    }
+
+    private func platformStatusLabel(isOwned: Bool, hasSubscriptionEntitlement: Bool, isUnavailable: Bool, isSubscription: Bool, account: CatalogStoreAccount?, canLink: Bool, canSync: Bool) -> String {
+        if isOwned { return "Owned" }
+        if hasSubscriptionEntitlement { return "Subscribed" }
+        if isUnavailable { return "Game not found" }
+        if canSync { return "Sync available" }
+        if account?.hasAccountLinkingData == true { return "Connected" }
+        if canLink { return "Connect" }
+        if isSubscription { return "Subscription required" }
+        return ""
     }
 
     var streamingQualityProfileAllowsCustomization: Bool {
@@ -1949,8 +2036,10 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.accountStores = Self.parseStoreAccounts(accountBox.value)
+                    self.accountSubscriptions = Self.parseAccountSubscriptions(accountBox.value)
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.accountStores = []
+                    self.accountSubscriptions = []
                 }
             }
         }
@@ -2441,6 +2530,15 @@ final class CatalogViewModel: ObservableObject {
         uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).filter { $0.caseInsensitiveCompare("NONE") != .orderedSame }
     }
 
+    static func variantIsUnavailable(_ variant: OPNCatalogGameVariantObject) -> Bool {
+        let status = variant.serviceStatus.lowercased()
+        return status.contains("not") || status.contains("unavailable") || status.contains("unsupported")
+    }
+
+    private static func parseAccountSubscriptions(_ account: NSDictionary) -> [String] {
+        uniqueNonEmpty(account["subscriptions"] as? [String] ?? [])
+    }
+
     private static func parseStoreAccounts(_ account: NSDictionary) -> [CatalogStoreAccount] {
         guard let stores = account["stores"] as? [NSDictionary] else { return [] }
         return stores.map { store in
@@ -2542,6 +2640,29 @@ struct CatalogSubscriptionDefinition: Identifiable, Equatable {
     let label: String
     let logoURL: String
     let primaryStore: String
+}
+
+struct CatalogPlatformOption: Identifiable {
+    let id: String
+    let variantIndex: Int
+    let variant: OPNCatalogGameVariantObject
+    let title: String
+    let iconURL: String
+    let store: String
+    let subscriptionIds: [String]
+    let primaryStore: String
+    let isSubscription: Bool
+    let isOwned: Bool
+    let hasSubscriptionEntitlement: Bool
+    let hasAccess: Bool
+    let isSelected: Bool
+    let isUnavailable: Bool
+    let canLink: Bool
+    let canSync: Bool
+    let accountDisplayName: String
+    let status: String
+
+    var accountStore: String { primaryStore.isEmpty ? store : primaryStore }
 }
 
 struct CatalogPlaytimeStatistics: Codable, Equatable {

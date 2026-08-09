@@ -20,7 +20,7 @@ private enum ControllerDetailAction: Equatable {
         switch self {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
-            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Play" }
+            if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
             if selectedVariant != nil { return "Mark Owned" }
             return "Play"
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
@@ -590,7 +590,7 @@ struct ControllerCatalogView: View {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true {
                 viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
-            } else if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true || selectedVariant == nil {
+            } else if viewModel.selectedPlatformHasAccess(in: game) || selectedVariant == nil {
                 viewModel.launchSelectedGame()
             } else {
                 viewModel.handleUnownedSelectedVariantPrimaryAction()
@@ -708,18 +708,20 @@ struct ControllerCatalogView: View {
     }
 
     private func moveSelectedStore(delta: Int) {
-        guard let game = viewModel.selectedGame, game.variants.count > 1 else { return }
+        guard let game = viewModel.selectedGame else { return }
+        let options = viewModel.platformOptions(for: game)
+        guard options.count > 1 else { return }
         let currentIndex = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-        let nextIndex = min(max(currentIndex + delta, 0), game.variants.count - 1)
-        viewModel.selectGameStoreVariant(at: nextIndex)
+        let currentOptionIndex = options.firstIndex { $0.variantIndex == currentIndex } ?? 0
+        let nextOptionIndex = min(max(currentOptionIndex + delta, 0), options.count - 1)
+        viewModel.focusGameStoreVariant(at: options[nextOptionIndex].variantIndex)
     }
 
     private func confirmStorePickerStage() {
         switch viewModel.ownershipFlowStage {
         case .storeSelection, .hidden:
-            guard let game = viewModel.selectedGame else { return }
-            let index = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-            viewModel.selectGameStoreVariant(at: index)
+            guard let option = viewModel.selectedPlatformOption(in: viewModel.selectedGame) else { return }
+            viewModel.selectGameStoreVariant(at: option.variantIndex)
         case .manualMark:
             viewModel.confirmSelectedVariantOwned()
         case .success:
@@ -1323,6 +1325,7 @@ private struct ControllerGameDetailOverlay: View {
     let close: () -> Void
 
     private var selectedVariant: OPNCatalogGameVariantObject? { viewModel.selectedVariant(in: game) }
+    private var selectedPlatformOption: CatalogPlatformOption? { viewModel.selectedPlatformOption(in: game) }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1379,8 +1382,8 @@ private struct ControllerGameDetailOverlay: View {
     }
 
     private var detailSubtitle: String {
-        let store = selectedVariant.map { viewModel.displayName(forVariant: $0) } ?? game.primaryStoreLabel
-        let ownership = selectedVariant.map { CatalogViewModel.variantIsOwned($0, in: game) } == true ? "Owned" : "Ownership required"
+        let store = selectedPlatformOption?.title ?? game.primaryStoreLabel
+        let ownership = selectedPlatformOption?.hasAccess == true ? "Ready" : (selectedPlatformOption?.status.isEmpty == false ? selectedPlatformOption?.status ?? "Ownership required" : "Ownership required")
         return [store, ownership].filter { !$0.isEmpty }.joined(separator: " • ")
     }
 
