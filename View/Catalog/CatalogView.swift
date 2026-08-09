@@ -4302,7 +4302,9 @@ private struct CatalogHeroRemoteImage: View {
             image = cached.image
             hasFailed = false
             isLoading = false
-            onScrimColorChange(CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black)
+            let scrimColor = await CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black
+            guard !Task.isCancelled else { return }
+            onScrimColorChange(scrimColor)
         } else {
             guard !Task.isCancelled else { return }
             image = nil
@@ -4423,7 +4425,13 @@ private enum CatalogHeroImageMetadata {
         let bottom: String?
     }
 
-    static func scrimColor(from data: Data) -> CatalogMarqueeScrimColor? {
+    static func scrimColor(from data: Data) async -> CatalogMarqueeScrimColor? {
+        await Task.detached(priority: .userInitiated) {
+            scrimColorSynchronously(from: data)
+        }.value
+    }
+
+    private static func scrimColorSynchronously(from data: Data) -> CatalogMarqueeScrimColor? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         if let metadataColor = metadataScrimColor(from: source) {
             return metadataColor
