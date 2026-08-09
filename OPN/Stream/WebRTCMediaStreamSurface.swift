@@ -194,17 +194,91 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var statsHUD: some View {
-        Text(statsHUDLine)
-            .font(.streamNvidia(size: 10, weight: .bold))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .shadow(color: .black, radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.9), radius: 5, x: 0, y: 0)
-            .padding(.leading, 8)
-            .padding(.top, 2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                statsCompactBox(value: "--", label: "FPS", color: WebRTCMediaStreamTheme.textPrimary)
+                statsVerticalDivider
+                statsCompactBox(value: wholeNumber(latestStats?.renderFps), label: "FPS", color: fpsColor)
+                statsVerticalDivider
+                statsCompactBox(value: wholeNumber(latestStats?.latencyMs), label: "MS", color: latencyColor)
+            }
+            .frame(height: 48)
+
+            statsHorizontalDivider
+
+            VStack(alignment: .leading, spacing: 5) {
+                statsStandardRow(label: "Frame Loss", value: String(latestStats?.framesDropped ?? 0), detail: "(0 Total)", color: frameLossColor)
+                statsStandardRow(label: "Packet Loss", value: percentage(latestStats?.packetLossPercent), detail: packetLossTotalText, color: packetLossColor)
+                statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Server Location", value: "--", detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+            }
+        }
+        .padding(10)
+        .frame(width: 244, alignment: .topLeading)
+        .background(Color.black.opacity(0.90))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(WebRTCMediaStreamTheme.accent)
+                .frame(height: 2)
+        }
+        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+        .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
+        .padding(.top, 5)
+        .padding(.trailing, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(false)
+    }
+
+    private func statsCompactBox(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.streamNvidia(size: 22, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+            Text(label)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.055))
+    }
+
+    private var statsVerticalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(width: 1)
+            .padding(.vertical, 4)
+    }
+
+    private var statsHorizontalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(height: 1)
+    }
+
+    private func statsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            if let detail {
+                Text(detail)
+                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
     }
 
     private var unifiedHUD: some View {
@@ -694,25 +768,52 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private var statsHUDLine: String {
-        [
-            "T:\(compactStat(latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-"))",
-            "L:\(compactStat(formatted(latestStats?.latencyMs, suffix: "ms")))",
-            "J:\(compactStat(formatted(latestStats?.jitterMs, suffix: "ms")))",
-            "B:\(compactStat(formatted(latestStats?.inboundBitrateMbps, suffix: "Mb")))",
-            "P:\(compactStat(formatted(latestStats?.packetLossPercent, suffix: "%")))",
-            "F:\(compactStat(formatted(latestStats?.renderFps, suffix: "")))",
-            "D:\(compactStat(formatted(latestStats?.decodeTimeMs, suffix: "ms")))",
-            "Dr:\(latestStats?.framesDropped ?? 0)",
-            "Δ:\(compactStat(formatted(latestStats?.videoFrameIntervalMs, suffix: "ms")))",
-            "MΔ:\(compactStat(formatted(latestStats?.videoMaxFrameIntervalMs, suffix: "ms")))",
-            "C:\(compactStat(latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-"))",
-            "R:\(compactStat(latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-"))",
-        ].joined(separator: " ")
+    private var fpsColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestStats.renderFps >= 55 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
     }
 
-    private func compactStat(_ value: String) -> String {
-        value.replacingOccurrences(of: " ", with: "")
+    private var latencyColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        if latestStats.latencyMs >= 120 { return WebRTCMediaStreamTheme.danger }
+        if latestStats.latencyMs >= 90 { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
+    private var frameLossColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestStats.framesDropped == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private var packetLossColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        if latestStats.packetLossPercent >= 2 { return WebRTCMediaStreamTheme.danger }
+        if latestStats.packetLossPercent >= 1 { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
+    private var packetLossTotalText: String {
+        "(\(latestStats?.packetsLost ?? 0) Total)"
+    }
+
+    private func wholeNumber(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.0f", value)
+    }
+
+    private func percentage(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.1f%%", value)
+    }
+
+    private func megabits(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.1f", value)
+    }
+
+    private func nonEmpty(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "--" }
+        return value
     }
 
     private func sessionLimitHUDText(at date: Date) -> String {
