@@ -2574,10 +2574,6 @@ private struct CatalogRailView: View {
     let section: CatalogSectionModel
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
-    @State private var tileFrames: [String: CGRect] = [:]
-    @State private var viewportWidth: CGFloat = 0
-
-    private var coordinateSpaceName: String { "catalog-rail-\(section.id)" }
 
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
@@ -2629,7 +2625,6 @@ private struct CatalogRailView: View {
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
-                                    .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
                             }
                             ForEach(Array(section.tiles.enumerated()), id: \.offset) { _, tile in
                                 CatalogPanelActionTile(
@@ -2644,18 +2639,6 @@ private struct CatalogRailView: View {
                         }
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
                         .padding(.bottom, 4)
-                    }
-                    .coordinateSpace(name: coordinateSpaceName)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear
-                                .onAppear { viewportWidth = proxy.size.width }
-                                .onChange(of: proxy.size.width) { _, width in viewportWidth = width }
-                        }
-                    )
-                    .onPreferenceChange(CatalogRailTileFramePreferenceKey.self) { frames in
-                        tileFrames = frames
-                        revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest)
                     }
                     if games.count > 3 {
                         HStack {
@@ -2672,7 +2655,6 @@ private struct CatalogRailView: View {
                 }
                 .onAppear { revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
                 .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
-                .onChange(of: viewportWidth) { _, _ in revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
             }
         }
         .onAppear { prefetchNearVisibleImages() }
@@ -2718,44 +2700,12 @@ private struct CatalogRailView: View {
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
         guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
         guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
-        revealSelectedGameIfNeeded(proxy: proxy, identity: request.gameIdentity, remainingDeferredPasses: 3)
-    }
-
-    private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, identity: String, remainingDeferredPasses: Int) {
         DispatchQueue.main.async {
-            guard games.contains(where: { $0.catalogIdentity == identity }) else { return }
-            guard !isTileFullyVisible(identity) else { return }
+            guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
             withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(identity, anchor: .center)
-            }
-            if remainingDeferredPasses > 0 {
-                revealSelectedGameIfNeeded(proxy: proxy, identity: identity, remainingDeferredPasses: remainingDeferredPasses - 1)
+                proxy.scrollTo(request.gameIdentity, anchor: .center)
             }
         }
-    }
-
-    private func isTileFullyVisible(_ identity: String) -> Bool {
-        guard viewportWidth > 0, let frame = tileFrames[identity] else { return false }
-        return frame.minX >= 0 && frame.maxX <= viewportWidth
-    }
-}
-
-private struct CatalogRailTileFrameReader: View {
-    let identity: String
-    let coordinateSpaceName: String
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: CatalogRailTileFramePreferenceKey.self, value: [identity: proxy.frame(in: .named(coordinateSpaceName))])
-        }
-    }
-}
-
-private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
     }
 }
 

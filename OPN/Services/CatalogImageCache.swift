@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -21,7 +22,7 @@ actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
     private let memoryCache = NSCache<NSURL, CatalogCachedImageBox>()
-    private let containerStore = CatalogImageCacheContainerStore()
+    private let cacheDirectory: URL
     private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
     private var prefetchQueue: [URL] = []
@@ -32,13 +33,13 @@ actor CatalogImageCache {
     private let maximumStoredEntries = 2_000
 
     private init() {
+        cacheDirectory = Self.defaultCacheDirectory()
         memoryCache.countLimit = 512
         memoryCache.totalCostLimit = 128 * 1024 * 1024
+        Self.ensureCacheDirectory(at: cacheDirectory)
     }
 
-    nonisolated func configure(container: ModelContainer) {
-        containerStore.configure(container: container)
-    }
+    nonisolated func configure(container _: ModelContainer) {}
 
     nonisolated func prefetch(_ urls: [URL]) {
         Task(priority: .background) { [weak self] in
@@ -66,21 +67,14 @@ actor CatalogImageCache {
     }
 
     func statistics() -> CatalogImageCacheStatistics {
-        guard let context = makeContext() else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
-        guard let entries = try? context.fetch(descriptor) else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
-        return CatalogImageCacheStatistics(entryCount: entries.count, totalBytes: entries.reduce(0) { $0 + $1.byteCount })
+        let metadata = storedMetadata()
+        return CatalogImageCacheStatistics(entryCount: metadata.count, totalBytes: metadata.reduce(0) { $0 + $1.byteCount })
     }
 
     func clear() -> Bool {
-        guard let context = makeContext() else { return false }
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
-        guard let entries = try? context.fetch(descriptor) else { return false }
-        for entry in entries {
-            context.delete(entry)
-        }
         do {
-            try context.save()
+            try FileManager.default.removeItem(at: cacheDirectory)
+            ensureCacheDirectory()
             memoryCache.removeAllObjects()
             prefetchQueue.removeAll()
             queuedPrefetchURLs.removeAll()
@@ -140,18 +134,23 @@ actor CatalogImageCache {
     }
 
     private func loadStoredImage(for url: URL) -> StoredImage? {
-        guard let context = makeContext() else { return nil }
-        let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
-        guard let entry = try? context.fetch(descriptor).first,
-              let image = NSImage(data: entry.data) else { return nil }
-        entry.lastAccessedAt = Date()
-        entry.hitCount += 1
-        try? context.save()
-        let imageData = CatalogCachedImageData(data: entry.data, image: image)
-        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: entry.byteCount)
-        return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(entry.updatedAt) < maximumCacheAge, eTag: entry.eTag, lastModified: entry.lastModified)
+        let key = cacheKey(for: url)
+        let dataURL = imageFileURL(for: key)
+        let metadataURL = metadataFileURL(for: key)
+        guard let data = try? Data(contentsOf: dataURL),
+              var metadata = readMetadata(at: metadataURL),
+              metadata.url == url.absoluteString,
+              let image = NSImage(data: data) else {
+            removeStoredImage(for: key)
+            return nil
+        }
+        metadata.lastAccessedAt = Date()
+        metadata.hitCount += 1
+        metadata.byteCount = data.count
+        writeMetadata(metadata, to: metadataURL)
+        let imageData = CatalogCachedImageData(data: data, image: image)
+        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: data.count)
+        return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(metadata.updatedAt) < maximumCacheAge, eTag: metadata.eTag, lastModified: metadata.lastModified)
     }
 
     private func refreshStoredImage(for url: URL, eTag: String, lastModified: String) {
@@ -204,44 +203,48 @@ actor CatalogImageCache {
     }
 
     private func markStoredImageFresh(for url: URL) {
-        guard let context = makeContext() else { return }
-        let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
-        guard let entry = try? context.fetch(descriptor).first else { return }
+        let key = cacheKey(for: url)
+        let metadataURL = metadataFileURL(for: key)
+        guard var metadata = readMetadata(at: metadataURL) else { return }
         let now = Date()
-        entry.updatedAt = now
-        entry.lastAccessedAt = now
-        try? context.save()
+        metadata.updatedAt = now
+        metadata.lastAccessedAt = now
+        writeMetadata(metadata, to: metadataURL)
     }
 
     private func store(imageData: CatalogCachedImageData, response: HTTPURLResponse, for url: URL) {
-        guard let context = makeContext() else { return }
-        let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
+        ensureCacheDirectory()
+        let key = cacheKey(for: url)
+        let dataURL = imageFileURL(for: key)
+        let metadataURL = metadataFileURL(for: key)
         let now = Date()
-        let entry = (try? context.fetch(descriptor).first) ?? CatalogImageCacheEntry(url: key, data: imageData.data)
-        if entry.modelContext == nil {
-            context.insert(entry)
+        let previous = readMetadata(at: metadataURL)
+        let metadata = StoredImageMetadata(
+            url: url.absoluteString,
+            mimeType: response.mimeType ?? "",
+            eTag: response.value(forHTTPHeaderField: "ETag") ?? "",
+            lastModified: response.value(forHTTPHeaderField: "Last-Modified") ?? "",
+            byteCount: imageData.data.count,
+            createdAt: previous?.createdAt ?? now,
+            updatedAt: now,
+            lastAccessedAt: now,
+            hitCount: previous?.hitCount ?? 0
+        )
+        do {
+            try imageData.data.write(to: dataURL, options: .atomic)
+            writeMetadata(metadata, to: metadataURL)
+        } catch {
+            removeStoredImage(for: key)
+            return
         }
-        entry.data = imageData.data
-        entry.mimeType = response.mimeType ?? ""
-        entry.eTag = response.value(forHTTPHeaderField: "ETag") ?? ""
-        entry.lastModified = response.value(forHTTPHeaderField: "Last-Modified") ?? ""
-        entry.byteCount = imageData.data.count
-        entry.updatedAt = now
-        entry.lastAccessedAt = now
         memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.data.count)
-        try? context.save()
-        pruneIfNeeded(context: context)
+        pruneIfNeeded()
     }
 
-    private func pruneIfNeeded(context: ModelContext) {
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>(sortBy: [SortDescriptor(\CatalogImageCacheEntry.lastAccessedAt, order: .reverse)])
-        guard let entries = try? context.fetch(descriptor) else { return }
+    private func pruneIfNeeded() {
+        let entries = storedMetadata().sorted { $0.lastAccessedAt > $1.lastAccessedAt }
         var totalBytes = 0
-        var entriesToDelete: [CatalogImageCacheEntry] = []
+        var entriesToDelete: [StoredImageMetadata] = []
         for (index, entry) in entries.enumerated() {
             totalBytes += entry.byteCount
             if index >= maximumStoredEntries || totalBytes > maximumStoredBytes {
@@ -250,14 +253,57 @@ actor CatalogImageCache {
         }
         guard !entriesToDelete.isEmpty else { return }
         for entry in entriesToDelete {
-            context.delete(entry)
+            removeStoredImage(for: cacheKey(for: entry.url))
         }
-        try? context.save()
     }
 
-    private func makeContext() -> ModelContext? {
-        guard let modelContainer = containerStore.container() else { return nil }
-        return ModelContext(modelContainer)
+    private func storedMetadata() -> [StoredImageMetadata] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil) else { return [] }
+        return urls.filter { $0.pathExtension == "json" }.compactMap { readMetadata(at: $0) }
+    }
+
+    private func readMetadata(at url: URL) -> StoredImageMetadata? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(StoredImageMetadata.self, from: data)
+    }
+
+    private func writeMetadata(_ metadata: StoredImageMetadata, to url: URL) {
+        guard let data = try? JSONEncoder().encode(metadata) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private func removeStoredImage(for key: String) {
+        try? FileManager.default.removeItem(at: imageFileURL(for: key))
+        try? FileManager.default.removeItem(at: metadataFileURL(for: key))
+    }
+
+    private func imageFileURL(for key: String) -> URL {
+        cacheDirectory.appendingPathComponent(key, isDirectory: false).appendingPathExtension("img")
+    }
+
+    private func metadataFileURL(for key: String) -> URL {
+        cacheDirectory.appendingPathComponent(key, isDirectory: false).appendingPathExtension("json")
+    }
+
+    private func cacheKey(for url: URL) -> String {
+        cacheKey(for: url.absoluteString)
+    }
+
+    private func cacheKey(for value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func ensureCacheDirectory() {
+        Self.ensureCacheDirectory(at: cacheDirectory)
+    }
+
+    private static func ensureCacheDirectory(at url: URL) {
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    private static func defaultCacheDirectory() -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("CatalogImageCache", isDirectory: true)
     }
 
     private struct StoredImage {
@@ -266,20 +312,17 @@ actor CatalogImageCache {
         let eTag: String
         let lastModified: String
     }
-}
 
-nonisolated private final class CatalogImageCacheContainerStore: @unchecked Sendable {
-    private let lock = NSLock()
-    private var modelContainer: ModelContainer?
-
-    func configure(container: ModelContainer) {
-        lock.withLock {
-            modelContainer = container
-        }
-    }
-
-    func container() -> ModelContainer? {
-        lock.withLock { modelContainer }
+    private struct StoredImageMetadata: Codable, Sendable {
+        let url: String
+        let mimeType: String
+        let eTag: String
+        let lastModified: String
+        var byteCount: Int
+        let createdAt: Date
+        var updatedAt: Date
+        var lastAccessedAt: Date
+        var hitCount: Int
     }
 }
 

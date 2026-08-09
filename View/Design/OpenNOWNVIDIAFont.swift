@@ -9,8 +9,20 @@ public enum OpenNOWNVIDIAFont {
         case bold
     }
 
+    private nonisolated(unsafe) static let descriptors: [Weight: CTFontDescriptor] = {
+        var result: [Weight: CTFontDescriptor] = [:]
+        result[.regular] = loadDescriptor(named: "NVIDIASans_W_Rg")
+        result[.medium] = loadDescriptor(named: "NVIDIASans_W_Md")
+        result[.bold] = loadDescriptor(named: "NVIDIASans_W_Bd")
+        return result
+    }()
+
     public static func font(size: CGFloat, weight: Weight = .regular) -> Font {
         Font(nsFont(size: size, weight: weight))
+    }
+
+    public static func prepare() {
+        _ = descriptors
     }
 
     public static func nsFont(size: CGFloat, weight: Weight = .regular) -> NSFont {
@@ -29,11 +41,7 @@ public enum OpenNOWNVIDIAFont {
     }
 
     private static func descriptor(weight: Weight) -> CTFontDescriptor? {
-        switch weight {
-        case .regular: return loadDescriptor(named: "NVIDIASans_W_Rg")
-        case .medium: return loadDescriptor(named: "NVIDIASans_W_Md")
-        case .bold: return loadDescriptor(named: "NVIDIASans_W_Bd")
-        }
+        descriptors[weight]
     }
 
     private static func loadDescriptor(named name: String) -> CTFontDescriptor? {

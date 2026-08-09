@@ -86,6 +86,7 @@ struct OpenNOWApp: App {
     init() {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
+        Task.detached(priority: .userInitiated) { OpenNOWNVIDIAFont.prepare() }
         OpenNOWLog.info(.app, "OpenNOW application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container
