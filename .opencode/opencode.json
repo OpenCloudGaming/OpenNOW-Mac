@@ -22,9 +22,20 @@
       "oauth": false
     },
     "sentry": {
-      "type": "remote",
-      "url": "https://mcp.sentry.dev/mcp",
-      "enabled": true
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@sentry/mcp-server@0.37.0",
+        "--organization-slug",
+        "interlaced-pixel",
+        "--project-slug",
+        "opennow-mac",
+        "--skills",
+        "inspect,triage,project-management"
+      ],
+      "enabled": true,
+      "timeout": 60000
     }
   }
 }
