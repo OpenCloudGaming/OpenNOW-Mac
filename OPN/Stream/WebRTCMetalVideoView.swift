@@ -118,6 +118,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        resetDrawCadence()
         drawableSizeDirty = true
         updateDrawableSizeForCurrentBackingScale()
     }
@@ -130,6 +131,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.drawableSizeDirty = true
+            self.resetDrawCadence()
             self.updateDrawableSizeForCurrentBackingScale()
         }
     }
@@ -216,6 +218,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         let currentSize = metalView.drawableSize
         if Int(currentSize.width.rounded()) != Int(drawableSize.width.rounded()) || Int(currentSize.height.rounded()) != Int(drawableSize.height.rounded()) {
             metalView.drawableSize = drawableSize
+            resetDrawCadence()
         }
         drawableSizeDirty = false
     }
@@ -447,6 +450,13 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         guard drawIntervalCount > 0 else { return }
         diagnostics.frameIntervalMs = drawIntervalTotalMs / Double(drawIntervalCount)
         diagnostics.maxFrameIntervalMs = drawIntervalMaxMs
+        drawIntervalTotalMs = 0
+        drawIntervalMaxMs = 0
+        drawIntervalCount = 0
+    }
+
+    private func resetDrawCadence() {
+        lastDrawCadenceTime = 0
         drawIntervalTotalMs = 0
         drawIntervalMaxMs = 0
         drawIntervalCount = 0
