@@ -381,7 +381,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 "usage": 14,
                 "ip": signalingHost,
                 "port": signalingPort(sessionInfo: sessionInfo, allocation: allocation),
-                "protocol": "",
+                "protocol": 2,
                 "resourcePath": signalingResourcePath(sessionInfo: sessionInfo),
                 "appLevelProtocol": 5,
             ])
@@ -389,7 +389,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let mediaHost = firstNonEmpty(string((sessionInfo["mediaConnectionInfo"] as? [String: Any])?["ip"], fallback: ""), allocation.mediaHost)
         let mediaPort = int((sessionInfo["mediaConnectionInfo"] as? [String: Any])?["port"]) > 0 ? int((sessionInfo["mediaConnectionInfo"] as? [String: Any])?["port"]) : Int(allocation.mediaPort)
         if !mediaHost.isEmpty, mediaPort > 0 {
-            connections.append(["usage": 2, "ip": mediaHost, "port": mediaPort, "protocol": "", "resourcePath": "", "appLevelProtocol": 2])
+            connections.append(["usage": 2, "ip": mediaHost, "port": mediaPort, "protocol": 2, "resourcePath": "", "appLevelProtocol": 2])
         }
         return connections
     }
@@ -400,10 +400,20 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "usage": int(source["usage"]),
             "ip": string(source["ip"], fallback: ""),
             "port": int(source["port"]),
-            "protocol": string(source["protocol"], fallback: ""),
+            "protocol": connectionProtocol(source["protocol"]),
             "resourcePath": string(source["resourcePath"], fallback: ""),
             "appLevelProtocol": int(source["appLevelProtocol"]),
         ]
+    }
+
+    private static func connectionProtocol(_ value: Any?) -> Int {
+        let numeric = int(value)
+        if numeric > 0 { return numeric }
+        switch string(value, fallback: "").lowercased() {
+        case "tcp": return 1
+        case "udp": return 2
+        default: return 2
+        }
     }
 
     private static func normalizedMonitorSettings(rawSession: [String: Any], requestData: [String: Any], settings: [String: Any], streamingProfileJSON: String) -> [Any] {

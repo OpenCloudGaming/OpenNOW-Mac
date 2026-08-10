@@ -298,6 +298,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(monitorSettings[0]["widthInPixels"] as? Int == 1920)
     #expect(connectionInfo.count == 2)
     #expect(connectionInfo.contains { $0["usage"] as? Int == 17 } == false)
+    #expect(connectionInfo.allSatisfy { $0["protocol"] as? Int == 2 })
     #expect(features["bitDepth"] as? Int == 8)
 }
 

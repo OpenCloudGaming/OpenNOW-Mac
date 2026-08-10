@@ -153,8 +153,8 @@ int main(int argc, char **argv) {
         }
       }],
       "connectionInfo": [
-        { "usage": 14, "ip": "signaling.example.test", "port": 443, "protocol": "", "resourcePath": "/nvst/", "appLevelProtocol": 5 },
-        { "usage": 2, "ip": "video.example.test", "port": 47998, "protocol": "", "resourcePath": "", "appLevelProtocol": 2 }
+        { "usage": 14, "ip": "signaling.example.test", "port": 443, "protocol": 2, "resourcePath": "/nvst/", "appLevelProtocol": 5 },
+        { "usage": 2, "ip": "video.example.test", "port": 47998, "protocol": 2, "resourcePath": "", "appLevelProtocol": 2 }
       ],
       "finalizedStreamingFeatures": {
         "reflex": false,
