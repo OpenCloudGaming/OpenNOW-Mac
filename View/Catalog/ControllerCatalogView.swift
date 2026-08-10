@@ -188,8 +188,6 @@ struct ControllerCatalogView: View {
                         filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                         resultIndex: controllerViewModel.searchResultIndex,
                         layout: layout,
-                        selectSort: { index in setSort(at: index) },
-                        selectFilter: { group, index in setFilterOption(group: group, index: index) },
                         selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
                         close: { closeSearchOverlay() },
                         clear: { viewModel.clearSearchAndFilters() }
@@ -210,7 +208,7 @@ struct ControllerCatalogView: View {
                         close: closeDetails
                     )
                     .transition(.opacity)
-                    .zIndex(28)
+                    .zIndex(35)
                 }
 
             }
@@ -611,27 +609,18 @@ struct ControllerCatalogView: View {
     }
 
     private var searchRowCount: Int {
-        2 + viewModel.visibleFilterGroups.count + (viewModel.catalogGames.isEmpty ? 0 : 1)
+        2 + (viewModel.catalogGames.isEmpty ? 0 : 1)
     }
 
     private func moveSearchSelection(delta: Int) {
         if controllerViewModel.searchRowIndex == 1 {
-            let count = viewModel.sortOptions.count
-            guard count > 0 else { return }
-            let index = selectedSortIndex()
-            setSort(at: min(max(index + delta, 0), count - 1))
+            let chipCount = 1 + viewModel.visibleFilterGroups.count + (viewModel.selectedFilterCount > 0 ? 1 : 0)
+            let currentChip = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
+            let next = min(max(currentChip + delta, 0), chipCount - 1)
+            controllerViewModel.searchFilterOptionIndices["_barIndex"] = next
             return
         }
-        let filterStart = 2
-        let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
-            guard !group.options.isEmpty else { return }
-            let index = min(max((controllerViewModel.searchFilterOptionIndices[group.id] ?? 0) + delta, 0), group.options.count - 1)
-            controllerViewModel.searchFilterOptionIndices[group.id] = index
-            return
-        }
-        if controllerViewModel.searchRowIndex == filterEnd, !viewModel.catalogGames.isEmpty {
+        if controllerViewModel.searchRowIndex == 2, !viewModel.catalogGames.isEmpty {
             controllerViewModel.searchResultIndex = min(max(controllerViewModel.searchResultIndex + delta, 0), viewModel.catalogGames.count - 1)
         }
     }
@@ -642,36 +631,36 @@ struct ControllerCatalogView: View {
             return
         }
         if controllerViewModel.searchRowIndex == 1 {
-            setSort(at: selectedSortIndex())
+            let chipIndex = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
+            if chipIndex == 0 {
+                cycleSortNavigation()
+            } else if chipIndex <= viewModel.visibleFilterGroups.count {
+                let group = viewModel.visibleFilterGroups[chipIndex - 1]
+                cycleFilterNavigation(group: group)
+            } else {
+                viewModel.clearSearchAndFilters()
+            }
             return
         }
-        let filterStart = 2
-        let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
-            let index = controllerViewModel.searchFilterOptionIndices[group.id] ?? 0
-            guard group.options.indices.contains(index) else { return }
-            viewModel.toggleFilter(group.options[index].id)
-            return
-        }
-        if controllerViewModel.searchRowIndex == filterEnd, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
+        if controllerViewModel.searchRowIndex == 2, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
             openDetails(viewModel.catalogGames[controllerViewModel.searchResultIndex], sectionId: "catalog-results")
         }
     }
 
-    private func selectedSortIndex() -> Int {
-        viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+    private func cycleSortNavigation() {
+        let count = viewModel.sortOptions.count
+        guard count > 0 else { return }
+        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+        let next = (current + 1) % count
+        viewModel.setSort(viewModel.sortOptions[next].id)
     }
 
-    private func setSort(at index: Int) {
-        guard viewModel.sortOptions.indices.contains(index) else { return }
-        viewModel.setSort(viewModel.sortOptions[index].id)
-    }
-
-    private func setFilterOption(group: OPNCatalogFilterGroupObject, index: Int) {
-        guard group.options.indices.contains(index) else { return }
-        controllerViewModel.searchFilterOptionIndices[group.id] = index
-        viewModel.toggleFilter(group.options[index].id)
+    private func cycleFilterNavigation(group: OPNCatalogFilterGroupObject) {
+        guard !group.options.isEmpty else { return }
+        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
+        let next = (current + 1) % group.options.count
+        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
+        viewModel.toggleFilter(group.options[next].id)
     }
 
     private func executeActionMenuItem(_ item: ControllerActionMenuItem) {
@@ -861,11 +850,6 @@ private struct ControllerGamesPage: View {
                                 .frame(width: layout.contentWidth)
                         }
 
-                        if viewModel.isBrowseMode {
-                            ControllerBrowseSummary(viewModel: viewModel)
-                                .frame(width: layout.contentWidth)
-                        }
-
                         ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                             ControllerGameRail(
                                 viewModel: viewModel,
@@ -980,31 +964,6 @@ private struct ControllerHeroBillboard: View {
         if !description.isEmpty { return description }
         let genre = game.genres.prefix(2).joined(separator: ", ")
         return genre.isEmpty ? "Play instantly with GeForce NOW cloud streaming." : "\(genre) available on GeForce NOW."
-    }
-}
-
-private struct ControllerBrowseSummary: View {
-    let viewModel: CatalogViewModel
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(viewModel.resultSummary.uppercased())
-                .nvidiaFont(size: 12, weight: .bold)
-                .foregroundStyle(.white.opacity(0.66))
-            Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
-                .nvidiaFont(size: 12, weight: .bold)
-                .foregroundStyle(Color.openNowGreen.opacity(0.90))
-            if viewModel.selectedFilterCount > 0 {
-                Text("\(viewModel.selectedFilterCount) FILTER\(viewModel.selectedFilterCount == 1 ? "" : "S")")
-                    .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.66))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 40)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
     }
 }
 
@@ -1197,8 +1156,6 @@ private struct ControllerSearchOverlay: View {
     let filterOptionIndices: [String: Int]
     let resultIndex: Int
     let layout: ControllerLayoutMetrics
-    let selectSort: (Int) -> Void
-    let selectFilter: (OPNCatalogFilterGroupObject, Int) -> Void
     let selectResult: (OPNCatalogGameObject) -> Void
     let close: () -> Void
     let clear: () -> Void
@@ -1219,12 +1176,11 @@ private struct ControllerSearchOverlay: View {
         GeometryReader { proxy in
             let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250, spacing: 14)
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90)
-                VStack(alignment: .leading, spacing: 18) {
+                Color.black
+                VStack(alignment: .leading, spacing: 16) {
                     ControllerOverlayHeader(title: pageTitle, subtitle: pageSubtitle, glyphs: glyphs, close: close)
                     searchField
-                    sortRow
-                    filterRows
+                    filterBar
                     resultsGrid(columns: columns)
                 }
                 .frame(width: layout.contentWidth, alignment: .leading)
@@ -1261,48 +1217,91 @@ private struct ControllerSearchOverlay: View {
         .overlay { Rectangle().stroke(rowIndex == 0 ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: rowIndex == 0 ? 2 : 1) }
     }
 
-    private var sortRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ControllerOverlaySectionTitle("Sort")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(Array(viewModel.sortOptions.enumerated()), id: \.element.id) { index, option in
-                        ControllerOptionChip(
-                            title: option.label.isEmpty ? option.id : option.label,
-                            isSelected: option.id == viewModel.selectedSortId,
-                            isFocused: rowIndex == 1 && selectedSortIndex == index,
-                            action: { selectSort(index) }
-                        )
-                    }
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                sortChip
+                ForEach(Array(viewModel.visibleFilterGroups.enumerated()), id: \.element.id) { groupIndex, group in
+                    filterChip(for: group, groupIndex: groupIndex)
+                }
+                if viewModel.selectedFilterCount > 0 {
+                    clearFiltersChip
                 }
             }
+            .padding(.vertical, 4)
         }
     }
 
-    private var filterRows: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(viewModel.visibleFilterGroups.enumerated()), id: \.element.id) { groupIndex, group in
-                VStack(alignment: .leading, spacing: 10) {
-                    ControllerOverlaySectionTitle(group.label.isEmpty ? group.id : group.label)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(Array(group.options.enumerated()), id: \.element.id) { optionIndex, option in
-                                ControllerOptionChip(
-                                    title: option.label.isEmpty ? option.id : option.label,
-                                    isSelected: viewModel.selectedFilterIds.contains(option.id),
-                                    isFocused: rowIndex == 2 + groupIndex && (filterOptionIndices[group.id] ?? 0) == optionIndex,
-                                    action: { selectFilter(group, optionIndex) }
-                                )
-                            }
-                        }
-                    }
-                }
+    private var sortChip: some View {
+        let sortLabel = viewModel.sortOptions.first { $0.id == viewModel.selectedSortId }?.label ?? viewModel.selectedSortLabel
+        let isFocused = rowIndex == 1
+        return Button {
+            cycleSort()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .nvidiaFont(size: 11, weight: .bold)
+                Text("SORT: \(sortLabel.uppercased())")
+                    .nvidiaFont(size: 12, weight: .bold)
+                    .tracking(0.6)
             }
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(isFocused ? Color.openNowGreen : Color.white.opacity(0.075))
+            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : Color.white.opacity(0.12), lineWidth: isFocused ? 2 : 1) }
         }
+        .buttonStyle(.plain)
+    }
+
+    private func filterChip(for group: OPNCatalogFilterGroupObject, groupIndex: Int) -> some View {
+        let selectedOption = group.options.first { viewModel.selectedFilterIds.contains($0.id) }
+        let label = selectedOption?.label ?? group.label
+        let isSelected = selectedOption != nil
+        let isFocused = rowIndex == 2 && (filterOptionIndices[group.id] ?? 0) >= 0
+        return Button {
+            cycleFilter(group: group)
+        } label: {
+            HStack(spacing: 8) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .nvidiaFont(size: 10, weight: .bold)
+                }
+                Text("\(group.label.uppercased()): \(label.uppercased())")
+                    .nvidiaFont(size: 12, weight: .bold)
+                    .tracking(0.6)
+            }
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? Color.openNowGreen : .white.opacity(0.82)))
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(isFocused ? Color.openNowGreen : (isSelected ? Color.openNowGreen.opacity(0.15) : Color.white.opacity(0.075)))
+            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? Color.openNowGreen : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var clearFiltersChip: some View {
+        Button {
+            viewModel.clearSearchAndFilters()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "xmark.circle.fill")
+                    .nvidiaFont(size: 12, weight: .bold)
+                Text("CLEAR FILTERS")
+                    .nvidiaFont(size: 11, weight: .bold)
+                    .tracking(0.6)
+            }
+            .foregroundStyle(.white.opacity(0.72))
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(Color.white.opacity(0.05))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
     }
 
     private func resultsGrid(columns: Int) -> some View {
-        let isResultsRowFocused = rowIndex == 2 + viewModel.visibleFilterGroups.count
+        let isResultsRowFocused = rowIndex == 2
         return VStack(alignment: .leading, spacing: 10) {
             ControllerOverlaySectionTitle(viewModel.resultSummary.isEmpty ? "Results" : viewModel.resultSummary)
             ScrollView(.vertical, showsIndicators: false) {
@@ -1324,8 +1323,20 @@ private struct ControllerSearchOverlay: View {
         }
     }
 
-    private var selectedSortIndex: Int {
-        viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+    private func cycleSort() {
+        let count = viewModel.sortOptions.count
+        guard count > 0 else { return }
+        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+        let next = (current + 1) % count
+        viewModel.setSort(viewModel.sortOptions[next].id)
+    }
+
+    private func cycleFilter(group: OPNCatalogFilterGroupObject) {
+        guard !group.options.isEmpty else { return }
+        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
+        let next = (current + 1) % group.options.count
+        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
+        viewModel.toggleFilter(group.options[next].id)
     }
 }
 
@@ -1346,12 +1357,7 @@ private struct ControllerGameDetailOverlay: View {
         GeometryReader { proxy in
             let panelWidth = min(layout.contentWidth * 0.62, 900)
             ZStack {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                Color.black.opacity(0.58)
-                LinearGradient(colors: [.clear, .black.opacity(0.74), .black.opacity(0.74), .clear], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, .black.opacity(0.72)], startPoint: .top, endPoint: .bottom)
+                Color.black.ignoresSafeArea()
 
                 VStack(alignment: .leading, spacing: 18) {
                     ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
