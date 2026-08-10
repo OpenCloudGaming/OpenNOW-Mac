@@ -9,6 +9,8 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let streamingBaseURL: String
     public let mediaHost: String
     public let mediaPort: Int
+    public let authTokenType: String
+    public let authToken: String
     public let settingsJSON: String
     public let sessionInfoJSON: String
     public let rawSessionJSON: String
@@ -21,6 +23,8 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
                 streamingBaseURL: String,
                 mediaHost: String,
                 mediaPort: Int,
+                authTokenType: String = "",
+                authToken: String = "",
                 settingsJSON: String,
                 sessionInfoJSON: String,
                 rawSessionJSON: String) {
@@ -32,6 +36,8 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
         self.streamingBaseURL = streamingBaseURL
         self.mediaHost = mediaHost
         self.mediaPort = max(0, mediaPort)
+        self.authTokenType = authTokenType.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.authToken = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
         self.settingsJSON = settingsJSON.isEmpty ? "{}" : settingsJSON
         self.sessionInfoJSON = sessionInfoJSON.isEmpty ? "{}" : sessionInfoJSON
         self.rawSessionJSON = rawSessionJSON.isEmpty ? "{}" : rawSessionJSON
@@ -117,6 +123,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             streamingBaseURL: sessionInfo.streamingBaseUrl,
             mediaHost: sessionInfo.mediaConnectionHost,
             mediaPort: sessionInfo.mediaConnectionPort,
+            authTokenType: "JWT_GFN",
+            authToken: configuration.accessToken,
             settingsJSON: jsonString(launch.settings),
             sessionInfoJSON: sessionInfo.rawJSON,
             rawSessionJSON: sessionInfo.rawSessionJSON

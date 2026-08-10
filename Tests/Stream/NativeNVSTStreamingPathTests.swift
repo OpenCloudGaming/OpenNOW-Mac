@@ -246,6 +246,36 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(payload.telemetryAttributes.values.contains("private-session-token") == false)
 }
 
+@Test func nativeNVSTLaunchPayloadUsesAllocationAuthWhenSessionOmitsTokenFields() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264" }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    let allocation = nativeAllocation(
+        rawSessionJSON: """
+        {
+          "serverAddress": "control.example.test",
+          "networkSessionId": "network-session",
+          "sessionRequestData": { "appId": 123, "deviceHashId": "device-id" },
+          "audioModeFormat": "stereo"
+        }
+        """,
+        authTokenType: "JWT_GFN",
+        authToken: "private-access-token"
+    )
+
+    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "2.0.87.131")
+
+    try payload.validate()
+    #expect(payload.prepare.tokenType == "JWT_GFN")
+    #expect(payload.prepare.hasToken)
+    #expect(payload.telemetryAttributes.values.contains("private-access-token") == false)
+}
+
 @Test func nativeNVSTLaunchPayloadRejectsMissingVerifiedStartFields() throws {
     let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}"), streamingProfileJSON: "{}", clientAppVersion: "OpenNOW")
 
@@ -430,7 +460,7 @@ private func nativeConfiguration() -> StreamLaunchConfiguration {
     StreamLaunchConfiguration(title: "Native Test", applicationID: "123", accessToken: "token", accountLinked: true, selectedStore: "Steam")
 }
 
-private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}") -> NativeNVSTSessionAllocation {
+private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", authTokenType: String = "", authToken: String = "") -> NativeNVSTSessionAllocation {
     let session = StreamSessionDescriptor(id: "native-session", applicationID: "123", serverAddress: "server.example.test", title: "Native Test", metadata: ["transport": "nvst"])
     return NativeNVSTSessionAllocation(
         session: session,
@@ -441,6 +471,8 @@ private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-
         streamingBaseURL: "https://stream.example.test/",
         mediaHost: "media.example.test",
         mediaPort: 47998,
+        authTokenType: authTokenType,
+        authToken: authToken,
         settingsJSON: "{\"transportMode\":\"nvst\"}",
         sessionInfoJSON: "{\"sessionId\":\"native-session\"}",
         rawSessionJSON: rawSessionJSON
