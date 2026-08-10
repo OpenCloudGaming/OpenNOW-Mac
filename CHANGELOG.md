@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.10.0](https://github.com/anderson-oki/macforce-now/compare/v0.9.0...v0.10.0) (2026-08-10)
+
+
+### Features
+
+* add Starfleet device code auth parity ([5cce21e](https://github.com/anderson-oki/macforce-now/commit/5cce21e2646e3bb27864ed399e2f239e5cbc1407))
+* expand stream hud controls ([8f86437](https://github.com/anderson-oki/macforce-now/commit/8f86437f99678ee01f5fa14e5553c44bc50c48b0))
+
+
+### Bug Fixes
+
+* align CloudMatch session create handling ([3e904fa](https://github.com/anderson-oki/macforce-now/commit/3e904faa16aa972a159dd65af6577d6228c3cd6c))
+* align GFN catalog and client parity ([07d381a](https://github.com/anderson-oki/macforce-now/commit/07d381aa76abd5051758729f0380d8423192e4ad))
+* align GFN client metadata with vendor ([89c720e](https://github.com/anderson-oki/macforce-now/commit/89c720eaf5f8dda53e3e95573d3cb5e5564e1275))
+* apply live session timers ([bab26db](https://github.com/anderson-oki/macforce-now/commit/bab26db20a9fee2a1d10722adbfb1930af4d188c))
+* catalog scale ([f9ccdc0](https://github.com/anderson-oki/macforce-now/commit/f9ccdc012b1d386cff1a046708f4749b17f4e920))
+* complete catalog store parity ([82618f1](https://github.com/anderson-oki/macforce-now/commit/82618f15d52cf80b431f511048df1c4613264878))
+* complete GFN catalog parity gaps ([e6d768e](https://github.com/anderson-oki/macforce-now/commit/e6d768ee1ebe92acf5f0402935a9edfc4c1e822f))
+* copy diagnostics logs on upload failure ([ed226ea](https://github.com/anderson-oki/macforce-now/commit/ed226ead6e0dc61211dd86062d9dbb4696b7c6ea))
+* downgrade expected network telemetry ([4defe0d](https://github.com/anderson-oki/macforce-now/commit/4defe0d81fcbb2d99060d82afd95c891ee9ad017))
+* embed required session ads ([ecafc3f](https://github.com/anderson-oki/macforce-now/commit/ecafc3fe0602d6207a9d2faaaf8374484a4ed37e))
+* gate membership badges by subscription tier ([f2d9d7d](https://github.com/anderson-oki/macforce-now/commit/f2d9d7d3e1b52f72201e6b195893ed81895af7bc))
+* handle CloudMatch limited mode failures ([db1950c](https://github.com/anderson-oki/macforce-now/commit/db1950cfdc2a1e810e3cfc28e4d84f2f081c8133))
+* honor server session limit timers ([766ed3a](https://github.com/anderson-oki/macforce-now/commit/766ed3ae4d3e33893bbcd8933f51e48ba8d7d30a))
+* match GFN store picker layout ([0f1abbd](https://github.com/anderson-oki/macforce-now/commit/0f1abbd362457937670bb5ee987fad64302dc393))
+* move catalog scrim sampling off main thread ([df79358](https://github.com/anderson-oki/macforce-now/commit/df793584e34602093559ce5c113499297054b0f0))
+* parse nested session ads ([79b5342](https://github.com/anderson-oki/macforce-now/commit/79b5342e2354fe39fd1f449e61a76aa926c5007c))
+* persist free tier session timer ([b265ccb](https://github.com/anderson-oki/macforce-now/commit/b265ccbbb0f5dd749150f27b40de68fdd18ad779))
+* play required session ads ([4c70a87](https://github.com/anderson-oki/macforce-now/commit/4c70a878653e0bcb7fd8c83b088fc31c94801970))
+* reduce catalog hangs and cache crashes ([9e14f8c](https://github.com/anderson-oki/macforce-now/commit/9e14f8c20b3f28d3fc15004bb887e3b95e4ebd89))
+* require confirmed free tier for badges ([ec8c8a7](https://github.com/anderson-oki/macforce-now/commit/ec8c8a790a2de5dcaafb2a7723cacb237bbeafa2))
+* retry catalog load after auth refresh ([0383549](https://github.com/anderson-oki/macforce-now/commit/0383549716938fb653f268135025367d1c52803a))
+* satisfy xcode shortcut concurrency checks ([5f372a6](https://github.com/anderson-oki/macforce-now/commit/5f372a62e9e92dd2311c78c6bb551ca6eb2b76e1))
+* show current session timer in sidebar ([158d02c](https://github.com/anderson-oki/macforce-now/commit/158d02c1a198e7fb1cf1d53e8346481bff0259dd))
+* show free tier session countdown ([ba5fa70](https://github.com/anderson-oki/macforce-now/commit/ba5fa7087ce227422ef89f57bbebd41b81655a6d))
+* show locked badge for paid membership games ([c341956](https://github.com/anderson-oki/macforce-now/commit/c3419568087d30b07ab322120e06de3b4b9eac85))
+* unify catalog platform selection state ([978e1c6](https://github.com/anderson-oki/macforce-now/commit/978e1c6bf1ea0cce83463b2806d9af6da196494f))
+
 ## [0.9.0](https://github.com/anderson-oki/macforce-now/compare/v0.8.1...v0.9.0) (2026-08-02)
 
 
