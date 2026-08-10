@@ -2,11 +2,15 @@
 
 #include <stdint.h>
 #include <dlfcn.h>
+#include <mach/mach.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include <atomic>
 #include <cctype>
+#include <mutex>
 #include <new>
 #include <string>
 #include <vector>
@@ -180,6 +184,8 @@ using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, co
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
 using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t);
 using NVbCallbackFunction = void (*)(void *, uint32_t, void *);
+using SDLWindowManagerInitialize = bool (*)(void *, const void *);
+using SDLWindowManagerCreateManagedWindow = void *(*)(void *, void *, void *, bool, bool);
 
 struct NVbResult_t {
     int32_t code = 0;
@@ -190,6 +196,8 @@ using NVbRegisterCallback = NVbResult_t (*)(void *, void *, NVbCallbackFunction)
 
 constexpr size_t NvstInputEventSize = 0x48;
 constexpr size_t GridAppBifrostClientOffset = 0x18;
+constexpr size_t SDLWindowInitParamsCreateFromHandleOffset = 0x70;
+constexpr size_t SDLWindowManagerStoredCreateFromHandleOffset = 0x90;
 constexpr uint32_t NVbCallbackTypeEvent = 2;
 constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
 
@@ -227,7 +235,13 @@ struct OpenNOWNativeNVSTGeronimoSession {
     std::string deviceId;
     std::string osVersion;
     std::string platform;
+    void *videoSurfaceHandle = nullptr;
 };
+
+std::atomic<void *> gOpenNOWVideoSurfaceHandle{nullptr};
+std::mutex gSDLWindowManagerHookMutex;
+SDLWindowManagerInitialize gOriginalSDLWindowManagerInitialize = nullptr;
+SDLWindowManagerCreateManagedWindow gOriginalSDLWindowManagerCreateManagedWindow = nullptr;
 
 void setError(char *buffer, size_t length, const char *message) {
     if (buffer == nullptr || length == 0) { return; }
@@ -259,6 +273,91 @@ T loadUnaligned(const void *base, size_t offset) {
     T value{};
     if (base != nullptr) { memcpy(&value, static_cast<const uint8_t *>(base) + offset, sizeof(T)); }
     return value;
+}
+
+template <typename T>
+void storeUnaligned(void *base, size_t offset, T value) {
+    if (base != nullptr) { memcpy(static_cast<uint8_t *>(base) + offset, &value, sizeof(T)); }
+}
+
+void injectCreateFromHandle(void *initParams) {
+    void *handle = gOpenNOWVideoSurfaceHandle.load(std::memory_order_acquire);
+    if (handle != nullptr && initParams != nullptr) {
+        storeUnaligned<void *>(initParams, SDLWindowInitParamsCreateFromHandleOffset, handle);
+    }
+}
+
+bool openNOWSDLWindowManagerInitialize(void *manager, const void *initParams) {
+    injectCreateFromHandle(const_cast<void *>(initParams));
+    bool result = gOriginalSDLWindowManagerInitialize(manager, initParams);
+    void *handle = gOpenNOWVideoSurfaceHandle.load(std::memory_order_acquire);
+    if (result && handle != nullptr && manager != nullptr) {
+        storeUnaligned<void *>(manager, SDLWindowManagerStoredCreateFromHandleOffset, handle);
+    }
+    return result;
+}
+
+void *openNOWSDLWindowManagerCreateManagedWindow(void *manager, void *initParams, void *metadata, bool registerWindow, bool visible) {
+    injectCreateFromHandle(initParams);
+    return gOriginalSDLWindowManagerCreateManagedWindow(manager, initParams, metadata, registerWindow, visible);
+}
+
+bool makeWritable(void *address, size_t length) {
+    long pageSize = sysconf(_SC_PAGESIZE);
+    if (address == nullptr || pageSize <= 0) { return false; }
+    uintptr_t start = reinterpret_cast<uintptr_t>(address) & ~static_cast<uintptr_t>(pageSize - 1);
+    uintptr_t end = (reinterpret_cast<uintptr_t>(address) + length + static_cast<uintptr_t>(pageSize - 1)) & ~static_cast<uintptr_t>(pageSize - 1);
+    return vm_protect(mach_task_self(), static_cast<vm_address_t>(start), static_cast<vm_size_t>(end - start), false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY) == KERN_SUCCESS;
+}
+
+void **sdlWindowManagerVTableEntries(void *libraryHandle) {
+    dlerror();
+    auto **vtableSymbol = reinterpret_cast<void **>(dlsym(libraryHandle, "_ZTV16SDLWindowManager"));
+    if (vtableSymbol == nullptr) { return nullptr; }
+    return vtableSymbol + 2;
+}
+
+int32_t installSDLWindowManagerHook(void *libraryHandle, char *errorBuffer, size_t errorBufferLength) {
+    std::lock_guard<std::mutex> lock(gSDLWindowManagerHookMutex);
+    if (gOriginalSDLWindowManagerInitialize != nullptr && gOriginalSDLWindowManagerCreateManagedWindow != nullptr) { return 0; }
+    void **entries = sdlWindowManagerVTableEntries(libraryHandle);
+    if (entries == nullptr) {
+        setDLError(errorBuffer, errorBufferLength, "_ZTV16SDLWindowManager");
+        return -1;
+    }
+    void **initializeSlot = entries + 2;
+    void **createManagedWindowSlot = entries + 5;
+    if (*initializeSlot == nullptr || *createManagedWindowSlot == nullptr) {
+        setError(errorBuffer, errorBufferLength, "SDLWindowManager vtable slots are unavailable for native video surface binding.");
+        return -2;
+    }
+    if (!makeWritable(initializeSlot, sizeof(void *) * 4)) {
+        setError(errorBuffer, errorBufferLength, "SDLWindowManager vtable is not writable for native video surface binding.");
+        return -3;
+    }
+    gOriginalSDLWindowManagerInitialize = reinterpret_cast<SDLWindowManagerInitialize>(*initializeSlot);
+    gOriginalSDLWindowManagerCreateManagedWindow = reinterpret_cast<SDLWindowManagerCreateManagedWindow>(*createManagedWindowSlot);
+    *initializeSlot = reinterpret_cast<void *>(&openNOWSDLWindowManagerInitialize);
+    *createManagedWindowSlot = reinterpret_cast<void *>(&openNOWSDLWindowManagerCreateManagedWindow);
+    return 0;
+}
+
+void uninstallSDLWindowManagerHook(void *libraryHandle) {
+    std::lock_guard<std::mutex> lock(gSDLWindowManagerHookMutex);
+    if (gOriginalSDLWindowManagerInitialize == nullptr || gOriginalSDLWindowManagerCreateManagedWindow == nullptr) { return; }
+    void **entries = sdlWindowManagerVTableEntries(libraryHandle);
+    if (entries == nullptr) { return; }
+    void **initializeSlot = entries + 2;
+    void **createManagedWindowSlot = entries + 5;
+    if (!makeWritable(initializeSlot, sizeof(void *) * 4)) { return; }
+    if (*initializeSlot == reinterpret_cast<void *>(&openNOWSDLWindowManagerInitialize)) {
+        *initializeSlot = reinterpret_cast<void *>(gOriginalSDLWindowManagerInitialize);
+    }
+    if (*createManagedWindowSlot == reinterpret_cast<void *>(&openNOWSDLWindowManagerCreateManagedWindow)) {
+        *createManagedWindowSlot = reinterpret_cast<void *>(gOriginalSDLWindowManagerCreateManagedWindow);
+    }
+    gOriginalSDLWindowManagerInitialize = nullptr;
+    gOriginalSDLWindowManagerCreateManagedWindow = nullptr;
 }
 
 void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_t callbackType, uint32_t clientEvent, uint32_t notification, int32_t resultCode) {
@@ -508,6 +607,26 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetEventHandler(void *sessionPointer
 
     emitEvent(session, 20, 0, 0, 0, 0);
     return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer,
+                                                              void *nativeHandle,
+                                                              char *errorBuffer,
+                                                              size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->libraryHandle == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for video surface binding.");
+        return -1;
+    }
+    if (nativeHandle == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo video surface handle is null.");
+        return -2;
+    }
+    session->videoSurfaceHandle = nativeHandle;
+    gOpenNOWVideoSurfaceHandle.store(nativeHandle, std::memory_order_release);
+    int32_t result = installSDLWindowManagerHook(session->libraryHandle, errorBuffer, errorBufferLength);
+    if (result == 0) { emitEvent(session, 22, 0, 0, 0, 0); }
+    return result;
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
@@ -785,6 +904,13 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
         session->platformStarted = false;
     }
     if (session->libraryHandle != nullptr) {
+        void *surfaceHandle = session->videoSurfaceHandle;
+        if (surfaceHandle != nullptr) {
+            void *expected = surfaceHandle;
+            gOpenNOWVideoSurfaceHandle.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+            session->videoSurfaceHandle = nullptr;
+        }
+        uninstallSDLWindowManagerHook(session->libraryHandle);
         dlclose(session->libraryHandle);
         session->libraryHandle = nullptr;
     }

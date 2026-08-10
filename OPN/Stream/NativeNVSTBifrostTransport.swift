@@ -5,6 +5,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
+    private let nativeVideoSurfaceHandle: UInt?
     private var bridge: NVSTNativeBridge?
     private var activeConnection: NativeNVSTTransportConnection?
     private var geronimoSessionAddress: UInt?
@@ -12,9 +13,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var encodedInputEvents: [NativeNVSTEncodedInputEvent] = []
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
-                inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder()) {
+                inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
+                nativeVideoSurfaceHandle: UInt? = nil) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
+        self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
     }
 
     public func prepare() async throws -> NVSTNativeBridgeStatus {
@@ -53,7 +56,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             ]) { _, new in new }
             WebRTCMediaTelemetry.capture("nvst.bifrost.abi_probe.ready", level: .info, message: "Verified Bifrost endpoint, stream config initialization ABI, and native session payload fields.", attributes: attributes)
         }
-        let started = try await Self.startGeronimoOnMainActor(allocation: allocation, status: status)
+        let started = try await Self.startGeronimoOnMainActor(allocation: allocation, status: status, nativeVideoSurfaceHandle: nativeVideoSurfaceHandle)
         let connection = started.connection
         geronimoSessionAddress = started.sessionAddress
         geronimoEventSink = started.eventSink
@@ -83,7 +86,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         try await Self.pauseGeronimoOnMainActor(sessionAddress: sessionAddress)
     }
 
-    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink) {
+    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
             throw NativeNVSTError.runtimeUnavailable("Native Geronimo frameworks path could not be encoded.")
         }
@@ -108,6 +111,19 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             attributes["error"] = message
             WebRTCMediaTelemetry.capture("nvst.geronimo.create.failed", level: .error, message: message, attributes: attributes)
             throw NativeNVSTError.runtimeUnavailable(message)
+        }
+        if let nativeVideoSurfaceHandle, let nativeVideoSurface = UnsafeMutableRawPointer(bitPattern: nativeVideoSurfaceHandle) {
+            let surfaceResult = OpenNOWNativeNVSTGeronimoSetVideoSurface(session, nativeVideoSurface, errorBuffer, 1024)
+            guard surfaceResult == 0 else {
+                let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo video surface binding failed with result \(surfaceResult).")
+                var attributes = startAttributes
+                attributes["result"] = String(surfaceResult)
+                attributes["error"] = message
+                WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: attributes)
+                OpenNOWNativeNVSTGeronimoDestroy(session)
+                throw NativeNVSTError.privateABIUnavailable(message)
+            }
+            WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.bound", level: .info, message: "Native Geronimo video surface bound for SDL window creation.", attributes: startAttributes)
         }
         let eventSink = NativeNVSTGeronimoEventSink(sessionId: allocation.session.id, telemetryAttributes: startAttributes)
         let eventContext = Unmanaged.passUnretained(eventSink).toOpaque()
@@ -745,6 +761,9 @@ private func OpenNOWNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CCh
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetEventHandler")
 private func OpenNOWNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRawPointer?, _ eventHandler: NativeNVSTGeronimoEventHandler?, _ eventContext: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
+private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoStart")
 private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

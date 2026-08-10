@@ -85,7 +85,9 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     @State private var path: NativeNVSTStreamingPath?
     @State private var startTask: Task<Void, Never>?
+    @State private var nativeView: NativeWebRTCStreamView?
     @State private var statusMessage = "Starting native NVST transport..."
+    @State private var isConnected = false
     @State private var isEnding = false
     @State private var didEnd = false
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
@@ -93,21 +95,29 @@ private struct NativeNVSTMediaStreamSurface: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 14) {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(Color.openNowGreen)
-                Text("NATIVE NVST")
-                    .font(OpenNOWNVIDIAFont.font(size: 13, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen)
-                    .tracking(1.4)
-                Text(statusMessage)
-                    .font(OpenNOWNVIDIAFont.font(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 520)
+            NativeNVSTStreamHostView { view in
+                nativeView = view
+                configureInput(for: view)
+                startIfNeeded()
             }
-            .padding(28)
+            .ignoresSafeArea()
+            if !isConnected {
+                VStack(spacing: 14) {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Color.openNowGreen)
+                    Text("NATIVE NVST")
+                        .font(OpenNOWNVIDIAFont.font(size: 13, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(1.4)
+                    Text(statusMessage)
+                        .font(OpenNOWNVIDIAFont.font(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 520)
+                }
+                .padding(28)
+            }
         }
         .onAppear {
             WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
@@ -118,10 +128,15 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func startIfNeeded() {
         guard startTask == nil, path == nil, !didEnd else { return }
+        guard let nativeView, let nativeWindowHandle = Self.nativeWindowHandle(for: nativeView) else {
+            statusMessage = "Preparing native NVST video surface..."
+            return
+        }
         beginStreamingPerformanceMode()
-        let transport = NativeNVSTBifrostTransport()
+        let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeWindowHandle)
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
         self.path = path
+        configureInput(for: nativeView)
         WebRTCMediaStreamLifecycle.activate(
             configuration.id,
             quitRequestHandler: { completion in
@@ -140,6 +155,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     }
                 }
                 await MainActor.run {
+                    isConnected = true
                     statusMessage = "Connected over native NVST."
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
@@ -158,6 +174,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         let message = Self.message(for: error)
         statusMessage = message
+        isConnected = false
         endStreamingPerformanceMode()
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"]))
     }
@@ -169,6 +186,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         endStreamingPerformanceMode()
         guard !didEnd else { return }
         didEnd = true
+        nativeView?.onInputEvent = nil
         if let path {
             Task { try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.") }
         }
@@ -189,8 +207,22 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
         didEnd = true
+        isConnected = false
+        nativeView?.onInputEvent = nil
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         onEnd(report.success, report.message, report)
+    }
+
+    private func configureInput(for view: NativeWebRTCStreamView) {
+        view.onInputEvent = { [path] event in
+            guard let path else { return }
+            Task { try? await path.send(event) }
+        }
+    }
+
+    private static func nativeWindowHandle(for view: NativeWebRTCStreamView) -> UInt? {
+        guard let window = view.window else { return nil }
+        return UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
     }
 
     private func beginStreamingPerformanceMode() {
@@ -211,6 +243,47 @@ private struct NativeNVSTMediaStreamSurface: View {
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription.isEmpty ? "Native NVST stream request failed." : error.localizedDescription
+    }
+}
+
+private struct NativeNVSTStreamHostView: NSViewRepresentable {
+    let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
+
+    func makeNSView(context: Context) -> NativeNVSTContainerView {
+        let view = NativeNVSTContainerView(frame: .zero)
+        view.onResolve = { streamView in
+            Task { @MainActor in onResolve(streamView) }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {}
+
+    final class NativeNVSTContainerView: NSView {
+        let streamView = NativeWebRTCStreamView(frame: .zero)
+        var onResolve: ((NativeWebRTCStreamView) -> Void)?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.black.cgColor
+            addSubview(streamView)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { onResolve?(streamView) }
+        }
+
+        override func layout() {
+            super.layout()
+            streamView.frame = bounds
+        }
     }
 }
 
