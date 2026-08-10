@@ -198,6 +198,9 @@ constexpr size_t NvstInputEventSize = 0x48;
 constexpr size_t GridAppBifrostClientOffset = 0x18;
 constexpr size_t SDLWindowInitParamsCreateFromHandleOffset = 0x70;
 constexpr size_t SDLWindowManagerStoredCreateFromHandleOffset = 0x90;
+constexpr uintptr_t GetStreamStartParametersJSONStringOffset = 0x767b4;
+constexpr uintptr_t ConvertToStreamingParamsOffset = 0x8a060;
+constexpr uintptr_t FreeStreamingParamsOffset = 0x89a88;
 constexpr uint32_t NVbCallbackTypeEvent = 2;
 constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
 
@@ -482,6 +485,21 @@ void *resolve(void *handle, const char *symbol, char *errorBuffer, size_t errorB
     if (address == nullptr) { setDLError(errorBuffer, errorBufferLength, symbol); }
     return address;
 }
+
+void *resolvePrivateFromImage(void *anchorSymbol, uintptr_t anchorOffset, uintptr_t targetOffset) {
+    if (anchorSymbol == nullptr || anchorOffset == 0 || targetOffset == 0) { return nullptr; }
+    uintptr_t imageBase = reinterpret_cast<uintptr_t>(anchorSymbol) - anchorOffset;
+    return reinterpret_cast<void *>(imageBase + targetOffset);
+}
+
+void *resolvePrivateNskSymbol(void *handle, void *anchorSymbol, const char *symbol, uintptr_t targetOffset, char *errorBuffer, size_t errorBufferLength) {
+    dlerror();
+    void *address = dlsym(handle, symbol);
+    if (address != nullptr) { return address; }
+    address = resolvePrivateFromImage(anchorSymbol, GetStreamStartParametersJSONStringOffset, targetOffset);
+    if (address == nullptr) { setDLError(errorBuffer, errorBufferLength, symbol); }
+    return address;
+}
 }
 
 extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, char *errorBuffer, size_t errorBufferLength) {
@@ -648,8 +666,8 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     auto prepare = reinterpret_cast<GridAppPrepare>(resolve(session->libraryHandle, "_ZN7GridApp7prepareERKN14SessionControl17PrepareParametersE", errorBuffer, errorBufferLength));
     auto setAuthInfo = reinterpret_cast<GridAppSetAuthInfo>(resolve(session->libraryHandle, "_ZN7GridApp11setAuthInfoER13NVbAuthInfo_t", errorBuffer, errorBufferLength));
     auto start = reinterpret_cast<GridAppStart>(resolve(session->libraryHandle, "_ZN7GridApp5startERKN14SessionControl17SessionParametersERK19NVbTracingContext_t", errorBuffer, errorBufferLength));
-    auto convertToStreamingParams = reinterpret_cast<ConvertToStreamingParams>(resolve(session->libraryHandle, "_ZN3Nsk24convertToStreamingParamsERKNS_21StreamStartParametersERKNS_22VideoDecoderInitParamsER20NVbStreamingParams_t", errorBuffer, errorBufferLength));
-    auto freeStreamingParams = reinterpret_cast<FreeStreamingParams>(resolve(session->libraryHandle, "_ZN3Nsk4freeER20NVbStreamingParams_t", errorBuffer, errorBufferLength));
+    auto convertToStreamingParams = reinterpret_cast<ConvertToStreamingParams>(resolvePrivateNskSymbol(session->libraryHandle, reinterpret_cast<void *>(getParameters), "_ZN3Nsk24convertToStreamingParamsERKNS_21StreamStartParametersERKNS_22VideoDecoderInitParamsER20NVbStreamingParams_t", ConvertToStreamingParamsOffset, errorBuffer, errorBufferLength));
+    auto freeStreamingParams = reinterpret_cast<FreeStreamingParams>(resolvePrivateNskSymbol(session->libraryHandle, reinterpret_cast<void *>(getParameters), "_ZN3Nsk4freeER20NVbStreamingParams_t", FreeStreamingParamsOffset, errorBuffer, errorBufferLength));
     if (getParameters == nullptr || prepare == nullptr || setAuthInfo == nullptr || start == nullptr || convertToStreamingParams == nullptr || freeStreamingParams == nullptr) { return -2; }
 
     std::string rawSession = stringOrEmpty(rawSessionJSON);
