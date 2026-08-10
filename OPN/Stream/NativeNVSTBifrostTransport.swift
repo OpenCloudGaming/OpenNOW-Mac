@@ -244,7 +244,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
               let string = String(data: data, encoding: .utf8), !string.isEmpty else {
             throw NativeNVSTError.invalidSession("Native NVST session is missing a complete streaming profile.")
         }
-        return string
+        return geronimoModeSelectionJSON(string)
     }
 
     static func geronimoSessionJSON(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) throws -> String {
@@ -337,6 +337,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "mode": int(source?["mode"]),
             "scxQpDelta": double(source?["scxQpDelta"]),
         ]
+    }
+
+    private static func geronimoModeSelectionJSON(_ json: String) -> String {
+        let pattern = "(\\\"(?:denoiseLevel|scxQpDelta)\\\"\\s*:\\s*)(-?\\d+)([},])"
+        return json.replacingOccurrences(of: pattern, with: "$1$2.0$3", options: .regularExpression)
     }
 
     private static func videoDimensions(from profile: [String: Any]) -> (width: Int, height: Int)? {

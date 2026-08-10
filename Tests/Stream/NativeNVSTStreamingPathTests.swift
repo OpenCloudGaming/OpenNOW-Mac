@@ -433,6 +433,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let selectedEncodeMode = try #require(profile["selectedEncodeMode"] as? [String: Any])
     let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
 
+    #expect(profileJSON.contains("\"denoiseLevel\":0.0"))
+    #expect(profileJSON.contains("\"scxQpDelta\":0.0"))
     #expect(selectedVideoMode["width"] as? Int == 1920)
     #expect(selectedVideoMode["height"] as? Int == 1080)
     #expect(selectedVideoMode["fps"] as? Int == 60)
@@ -504,6 +506,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let selectedEncodeMode = try #require(profile["selectedEncodeMode"] as? [String: Any])
     let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
 
+    #expect(profileJSON.contains("\"denoiseLevel\":0.0"))
+    #expect(profileJSON.contains("\"scxQpDelta\":0.0"))
     #expect(selectedVideoMode["width"] as? Int == 2560)
     #expect(selectedVideoMode["height"] as? Int == 1440)
     #expect(selectedVideoMode["fps"] as? Int == 120)
