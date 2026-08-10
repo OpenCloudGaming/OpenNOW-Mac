@@ -13,12 +13,10 @@ public enum SteamControllerPreference {
     }
 }
 
+/// Superseded by per-pad `SteamControllerPadSettings` in `SteamControllerMappingProfile`.
+/// `key` stays just long enough for `SteamControllerMappingStore`'s one-time migration.
 public enum SteamControllerTrackpadMousePreference {
     public static let key = "MacForceNow.Input.SteamControllerTrackpadMouseEnabled"
-
-    public static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: key) == nil ? true : UserDefaults.standard.bool(forKey: key)
-    }
 }
 
 public enum SteamControllerPermissionError: Error, LocalizedError {
@@ -141,12 +139,13 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         devices.values.first { $0.deviceID == deviceID }?.mergedSnapshot
     }
 
-    /// Re-applies the capture configuration after the trackpad mouse preference
-    /// changes, so toggling it mid-stream takes effect immediately.
-    public func refreshTrackpadMouseMode() {
+    /// Re-applies the capture configuration after the active mapping profile changes, so
+    /// editing trackpad behavior mid-stream takes effect immediately.
+    public func refreshCaptureConfiguration() {
         guard isInputCaptureActive else { return }
+        let wantsRawTrackpadCapture = SteamControllerMappingStore.shared.activeProfile?.wantsRawTrackpadCapture ?? false
         for context in devices.values {
-            if SteamControllerTrackpadMousePreference.isEnabled {
+            if wantsRawTrackpadCapture {
                 guard !context.isSeized else { continue }
                 configureCapture(for: context)
             } else if context.isSeized {
@@ -724,13 +723,14 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         }
     }
 
-    /// Capture with the trackpad mouse preference on: the vendor interface is
+    /// Capture with a trackpad bound to mouse/scroll behavior: the vendor interface is
     /// seized so the firmware's lizard mouse/keyboard events never reach macOS,
     /// while the firmware profile itself stays enabled — the pads keep their
     /// native haptics and the raw reports drive the stream. When seizing fails
-    /// (or the preference is off) the firmware emulation is disabled instead.
+    /// (or no trackpad wants raw capture) the firmware emulation is disabled instead.
     private func configureCapture(for context: DeviceContext) {
-        if SteamControllerTrackpadMousePreference.isEnabled, reopenVendorDevice(context, seize: true) {
+        let wantsRawTrackpadCapture = SteamControllerMappingStore.shared.activeProfile?.wantsRawTrackpadCapture ?? false
+        if wantsRawTrackpadCapture, reopenVendorDevice(context, seize: true) {
             context.isSeized = true
             enableLizardMode(for: context)
         } else {

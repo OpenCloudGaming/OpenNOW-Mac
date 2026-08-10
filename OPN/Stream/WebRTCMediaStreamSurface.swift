@@ -290,6 +290,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var twitchMarkerDraft = ""
     @State private var twitchChatDraft = ""
     @State private var quitMenuVisible = false
+    @State private var showingControllerMapping = false
     @State private var isEndingStream = false
     @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
@@ -391,6 +392,14 @@ public struct WebRTCMediaStreamSurface: View {
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
         .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
+        .sheet(isPresented: $showingControllerMapping) {
+            SteamControllerMappingView()
+        }
+    }
+
+    private func openControllerMapping() {
+        setUnifiedHUDVisible(false)
+        showingControllerMapping = true
     }
 
     @ViewBuilder
@@ -700,6 +709,15 @@ public struct WebRTCMediaStreamSurface: View {
                     isActive: nativeView?.window?.styleMask.contains(.fullScreen) == true,
                     isDisabled: nativeView?.window == nil,
                     action: toggleFullScreenFromHUD
+                )
+                StreamHUDActionRow(
+                    title: "Controller Mapping",
+                    subtitle: "Steam Controller grip binds",
+                    systemName: "gamecontroller",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "controller-mapping",
+                    action: openControllerMapping
                 )
                 StreamHUDActionRow(
                     title: "Quit Menu",
@@ -1655,6 +1673,7 @@ public struct WebRTCMediaStreamSurface: View {
             StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
             StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
         ]
         if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
