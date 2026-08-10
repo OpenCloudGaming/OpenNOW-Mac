@@ -144,8 +144,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                         clientVersion.withCString { versionPointer in
                             gameLanguage.withCString { localePointer in
                                 launchPayload.prepare.traceParent.withCString { traceParentPointer in
-                                    allocation.rawSessionJSON.withCString { cloudSessionPointer in
-                                        OpenNOWNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, errorBuffer, 1024)
+                                    allocation.authTokenType.withCString { authTokenTypePointer in
+                                        allocation.authToken.withCString { authTokenPointer in
+                                            allocation.rawSessionJSON.withCString { cloudSessionPointer in
+                                                OpenNOWNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, errorBuffer, 1024)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -845,7 +849,7 @@ private func OpenNOWNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRa
 private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoStart")
-private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoPause")
 private func OpenNOWNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

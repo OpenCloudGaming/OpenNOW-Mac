@@ -655,6 +655,8 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
                                                     const char *clientAppVersion,
                                                     const char *clientLocale,
                                                     const char *traceParent,
+                                                    const char *authTokenType,
+                                                    const char *authToken,
                                                     char *errorBuffer,
                                                     size_t errorBufferLength) {
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
@@ -705,8 +707,10 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
     const char *const serverPaths[] = { "serverAddress", "sessionControlInfo.ip", "zoneAddress" };
     const char *const sessionPaths[] = { "session", "sessionId" };
-    session->authToken = firstNonEmptyString(cloud, geronimo, tokenPaths, sizeof(tokenPaths) / sizeof(tokenPaths[0]));
-    std::string tokenType = firstNonEmptyString(cloud, geronimo, tokenTypePaths, sizeof(tokenTypePaths) / sizeof(tokenTypePaths[0]));
+    session->authToken = stringOrEmpty(authToken);
+    if (session->authToken.empty()) { session->authToken = firstNonEmptyString(cloud, geronimo, tokenPaths, sizeof(tokenPaths) / sizeof(tokenPaths[0])); }
+    std::string tokenType = stringOrEmpty(authTokenType);
+    if (tokenType.empty()) { tokenType = firstNonEmptyString(cloud, geronimo, tokenTypePaths, sizeof(tokenTypePaths) / sizeof(tokenTypePaths[0])); }
     std::string serverAddress = firstNonEmptyString(cloud, geronimo, serverPaths, sizeof(serverPaths) / sizeof(serverPaths[0]));
     session->sessionId = firstNonEmptyString(cloud, geronimo, sessionPaths, sizeof(sessionPaths) / sizeof(sessionPaths[0]));
     uint32_t appId = static_cast<uint32_t>(jsonIntAtPath(cloud, "sessionRequestData.appId"));
