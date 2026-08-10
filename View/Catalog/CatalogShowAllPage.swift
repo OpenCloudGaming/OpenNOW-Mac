@@ -58,7 +58,7 @@ struct CatalogShowAllPage: View {
                         Image(systemName: "chevron.left")
                         Text("BACK")
                     }
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.84))
                 }
                 .buttonStyle(.plain)
@@ -69,7 +69,7 @@ struct CatalogShowAllPage: View {
 
             HStack(spacing: 12) {
                 Text(resultCount)
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.62))
                 Spacer(minLength: 0)
             }
@@ -90,7 +90,7 @@ struct CatalogShowAllPage: View {
                 Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                 Image(systemName: "chevron.down")
             }
-            .font(.nvidia(size: 12, weight: .bold))
+            .nvidiaFont(size: 12, weight: .bold)
             .foregroundStyle(.white.opacity(0.88))
             .padding(.horizontal, 12)
             .frame(height: 34)
@@ -138,12 +138,12 @@ private struct CatalogSortDropdownPanel: View {
                 } label: {
                     HStack(spacing: 12) {
                         Text(label)
-                            .font(.nvidia(size: 14, weight: selected ? .bold : .medium))
+                            .nvidiaFont(size: 14, weight: selected ? .bold : .medium)
                             .foregroundStyle(.white.opacity(selected ? 0.96 : 0.84))
                         Spacer(minLength: 0)
                         if selected {
                             Image(systemName: "checkmark")
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .foregroundStyle(Color.openNowGreen)
                         }
                     }
@@ -177,12 +177,12 @@ private struct CatalogShowAllFilterPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("FILTER")
-                    .font(.nvidia(size: 14, weight: .bold))
+                    .nvidiaFont(size: 14, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
                 Spacer()
                 Button("CLEAR ALL") { viewModel.clearSearchAndFilters() }
                     .buttonStyle(.plain)
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
                     .disabled(!viewModel.isBrowseMode)
             }
@@ -195,7 +195,7 @@ private struct CatalogShowAllFilterPanel: View {
                     ForEach(viewModel.visibleFilterGroups, id: \.id) { group in
                         VStack(alignment: .leading, spacing: 10) {
                             Text((group.label.isEmpty ? group.id : group.label).uppercased())
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.56))
                             ForEach(group.options, id: \.id) { option in
                                 filterRow(option: option)
@@ -215,10 +215,10 @@ private struct CatalogShowAllFilterPanel: View {
         return Button { viewModel.toggleFilter(option.id) } label: {
             HStack(spacing: 12) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
-                    .font(.nvidia(size: 15, weight: .bold))
+                    .nvidiaFont(size: 15, weight: .bold)
                     .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.72))
                 Text(option.label.isEmpty ? option.id : option.label)
-                    .font(.nvidia(size: 13, weight: .medium))
+                    .nvidiaFont(size: 13, weight: .medium)
                     .foregroundStyle(.white.opacity(0.88))
                     .lineLimit(1)
                 Spacer(minLength: 0)

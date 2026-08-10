@@ -740,16 +740,17 @@ private struct ControllerHeader: View {
     let viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("GEFORCE NOW")
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.6)
                 Text(headerTitle)
-                    .font(.nvidia(size: 24, weight: .bold))
+                    .nvidiaFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
             Spacer(minLength: 0)
@@ -758,7 +759,7 @@ private struct ControllerHeader: View {
         }
         .frame(width: layout.contentWidth)
         .frame(height: 72)
-        .padding(.top, CatalogVendorLayout.windowTopInset)
+        .padding(.top, CatalogVendorLayout.windowTopInset(scale: uiScale))
         .background {
             Color.black.opacity(0.24)
             WindowDragArea()
@@ -780,10 +781,10 @@ private struct ControllerDeviceBadge: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
-                .font(.nvidia(size: 13, weight: .bold))
+                .nvidiaFont(size: 13, weight: .bold)
                 .foregroundStyle(Color.openNowGreen)
             Text(glyphs.deviceName)
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.white.opacity(0.72))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -814,9 +815,9 @@ private struct ControllerNavigationBar: View {
                     Button { select(item) } label: {
                         HStack(spacing: 9) {
                             Image(systemName: item.icon)
-                                .font(.nvidia(size: 14, weight: .bold))
+                                .nvidiaFont(size: 14, weight: .bold)
                             Text(item.title.uppercased())
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .tracking(0.8)
                         }
                         .foregroundStyle(selected || active ? .black.opacity(0.86) : .white.opacity(0.78))
@@ -940,11 +941,11 @@ private struct ControllerHeroBillboard: View {
                 LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 9) {
                     Text("NOW PLAYING IN THE CLOUD")
-                        .font(.nvidia(size: 11, weight: .bold))
+                        .nvidiaFont(size: 11, weight: .bold)
                         .tracking(1.6)
                         .foregroundStyle(Color.openNowGreen)
                     Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                        .font(.nvidia(size: height < 260 ? 31 : 36, weight: .bold))
+                        .nvidiaFont(size: height < 260 ? 31 : 36, weight: .bold)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
@@ -955,7 +956,7 @@ private struct ControllerHeroBillboard: View {
                         if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
                     }
                     Text(heroDescription(game))
-                        .font(.nvidia(size: 13, weight: .medium))
+                        .nvidiaFont(size: 13, weight: .medium)
                         .foregroundStyle(.white.opacity(0.74))
                         .lineLimit(height < 260 ? 1 : 2)
                         .frame(maxWidth: 650, alignment: .leading)
@@ -988,14 +989,14 @@ private struct ControllerBrowseSummary: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(viewModel.resultSummary.uppercased())
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.white.opacity(0.66))
             Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(Color.openNowGreen.opacity(0.90))
             if viewModel.selectedFilterCount > 0 {
                 Text("\(viewModel.selectedFilterCount) FILTER\(viewModel.selectedFilterCount == 1 ? "" : "S")")
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.66))
             }
             Spacer(minLength: 0)
@@ -1024,16 +1025,16 @@ private struct ControllerGameRail: View {
         VStack(alignment: .leading, spacing: layout.compactHeight ? 10 : 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(section.title)
-                    .font(.nvidia(size: isFocused ? 24 : 21, weight: .bold))
+                    .nvidiaFont(size: isFocused ? 24 : 21, weight: .bold)
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
                 Text("\(section.games.count) games".uppercased())
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen.opacity(0.82))
                 Spacer(minLength: 0)
                 if canShowAll {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
-                        .font(.nvidia(size: 12, weight: .bold))
+                        .nvidiaFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.82))
                 }
             }
@@ -1124,16 +1125,16 @@ private struct ControllerGameTile: View {
                     HStack(spacing: 8) {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .foregroundStyle(Color.openNowGreen)
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .font(.nvidia(size: 16, weight: .bold))
+                            .nvidiaFont(size: 16, weight: .bold)
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     }
                     Text(subtitle)
-                        .font(.nvidia(size: 11, weight: .bold))
+                        .nvidiaFont(size: 11, weight: .bold)
                         .foregroundStyle(.white.opacity(0.62))
                         .lineLimit(1)
                 }
@@ -1172,11 +1173,11 @@ private struct ControllerEmbeddedPage<Content: View>: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.4)
                 Text(subtitle)
-                    .font(.nvidia(size: 15, weight: .medium))
+                    .nvidiaFont(size: 15, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
             }
             .frame(width: layout.contentWidth, alignment: .leading)
@@ -1240,17 +1241,17 @@ private struct ControllerSearchOverlay: View {
     private var searchField: some View {
         HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
-                .font(.nvidia(size: 18, weight: .bold))
+                .nvidiaFont(size: 18, weight: .bold)
                 .foregroundStyle(rowIndex == 0 ? Color.openNowGreen : .white.opacity(0.62))
             TextField("Search games, stores, genres, publishers, controls, ratings, or tags", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .font(.nvidia(size: 20, weight: .medium))
+                .nvidiaFont(size: 20, weight: .medium)
                 .foregroundStyle(.white)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
                 Button("CLEAR", action: { viewModel.searchQuery = "" })
                     .buttonStyle(.plain)
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
             }
         }
@@ -1356,7 +1357,7 @@ private struct ControllerGameDetailOverlay: View {
                     ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
                     detailMetadata
                     Text(detailDescription)
-                        .font(.nvidia(size: 18, weight: .medium))
+                        .nvidiaFont(size: 18, weight: .medium)
                         .foregroundStyle(.white.opacity(0.82))
                         .lineSpacing(4)
                         .lineLimit(5)
@@ -1367,9 +1368,9 @@ private struct ControllerGameDetailOverlay: View {
                             Button { perform(action) } label: {
                                 HStack(spacing: 9) {
                                     Image(systemName: action.icon)
-                                        .font(.nvidia(size: 14, weight: .bold))
+                                        .nvidiaFont(size: 14, weight: .bold)
                                     Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
-                                        .font(.nvidia(size: 12, weight: .bold))
+                                        .nvidiaFont(size: 12, weight: .bold)
                                         .tracking(0.8)
                                 }
                                 .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
@@ -1447,6 +1448,7 @@ private struct ControllerActionMenuOverlay: View {
     let isRefreshingCatalog: Bool
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -1454,7 +1456,7 @@ private struct ControllerActionMenuOverlay: View {
             VStack(alignment: .leading, spacing: 0) {
                 ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
                     .padding(.horizontal, 22)
-                    .padding(.top, 22 + CatalogVendorLayout.windowTopInset)
+                    .padding(.top, 22 + CatalogVendorLayout.windowTopInset(scale: uiScale))
                     .padding(.bottom, 12)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 8) {
@@ -1469,12 +1471,12 @@ private struct ControllerActionMenuOverlay: View {
                                             .frame(width: 28)
                                     } else {
                                         Image(systemName: item.icon)
-                                            .font(.nvidia(size: 15, weight: .bold))
+                                            .nvidiaFont(size: 15, weight: .bold)
                                             .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
                                             .frame(width: 28)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
-                                        .font(.nvidia(size: 15, weight: .bold))
+                                        .nvidiaFont(size: 15, weight: .bold)
                                         .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
@@ -1514,11 +1516,11 @@ private struct ControllerOverlayHeader: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.nvidia(size: 27, weight: .bold))
+                    .nvidiaFont(size: 27, weight: .bold)
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.nvidia(size: 14, weight: .medium))
+                    .nvidiaFont(size: 14, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(2)
             }
@@ -1526,12 +1528,12 @@ private struct ControllerOverlayHeader: View {
             HStack(spacing: 8) {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(.white.opacity(0.62))
             }
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.nvidia(size: 16, weight: .bold))
+                    .nvidiaFont(size: 16, weight: .bold)
                     .foregroundStyle(.white.opacity(0.80))
                     .frame(width: 38, height: 38)
                     .background(Color.white.opacity(0.08))
@@ -1570,11 +1572,11 @@ private struct ControllerCompactGameCard: View, Equatable {
                         }
                     }
                 Text(title)
-                    .font(.nvidia(size: 14, weight: .bold))
+                    .nvidiaFont(size: 14, weight: .bold)
                     .foregroundStyle(.white.opacity(0.94))
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen.opacity(0.84))
                     .lineLimit(1)
             }
@@ -1595,7 +1597,7 @@ private struct ControllerOptionChip: View {
     var body: some View {
         Button(action: action) {
             Text(title.uppercased())
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .tracking(0.6)
                 .foregroundStyle(isSelected || isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
                 .padding(.horizontal, 13)
@@ -1614,7 +1616,7 @@ private struct ControllerOverlaySectionTitle: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.nvidia(size: 12, weight: .bold))
+            .nvidiaFont(size: 12, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(Color.openNowGreen.opacity(0.86))
     }
@@ -1626,7 +1628,7 @@ private struct ControllerMetadataPill: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.nvidia(size: 11, weight: .bold))
+            .nvidiaFont(size: 11, weight: .bold)
             .tracking(0.7)
             .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
             .padding(.horizontal, 10)
@@ -1644,12 +1646,12 @@ private struct ControllerDetailRow: View {
         if !value.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 Text(label.uppercased())
-                    .font(.nvidia(size: 10, weight: .bold))
+                    .nvidiaFont(size: 10, weight: .bold)
                     .tracking(0.7)
                     .foregroundStyle(.white.opacity(0.42))
                     .frame(width: 96, alignment: .leading)
                 Text(value)
-                    .font(.nvidia(size: 13, weight: .bold))
+                    .nvidiaFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(2)
             }
@@ -1679,7 +1681,7 @@ private struct ControllerHintBar: View {
             }
             Spacer(minLength: 0)
             Text(glyphs.usesControllerGlyphs ? "Controller mode" : "Keyboard fallback")
-                .font(.nvidia(size: 11, weight: .bold))
+                .nvidiaFont(size: 11, weight: .bold)
                 .foregroundStyle(.white.opacity(0.38))
                 .tracking(0.8)
                 .lineLimit(1)
@@ -1706,7 +1708,7 @@ private struct ControllerHintItem: View {
                 }
             }
             Text(title)
-                .font(.nvidia(size: 10, weight: .bold))
+                .nvidiaFont(size: 10, weight: .bold)
                 .foregroundStyle(.white.opacity(0.64))
                 .tracking(0.5)
         }
@@ -1745,11 +1747,11 @@ private struct ControllerGlyphPill: View {
         HStack(spacing: compact ? 0 : 5) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
-                    .font(.nvidia(size: compact ? 11 : 12, weight: .bold))
+                    .nvidiaFont(size: compact ? 11 : 12, weight: .bold)
             }
             if shouldShowText {
                 Text(glyph.fallbackText)
-                    .font(.nvidia(size: compact ? 0 : 9, weight: .bold))
+                    .nvidiaFont(size: compact ? 0 : 9, weight: .bold)
                     .lineLimit(1)
             }
         }
@@ -1779,7 +1781,7 @@ private struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.down.symbolName)
             Image(systemName: glyphs.right.symbolName)
         }
-        .font(.nvidia(size: 11, weight: .bold))
+        .nvidiaFont(size: 11, weight: .bold)
         .foregroundStyle(Color.openNowGreen)
         .padding(.horizontal, 8)
         .frame(height: 22)

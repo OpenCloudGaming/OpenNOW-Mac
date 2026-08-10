@@ -64,22 +64,26 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         context.coordinator.lastWidth = width
         collectionView.frame.size.width = width
 
+        let scale = context.environment.opnUIScale
+        let scaleChanged = context.coordinator.scale != scale
+        context.coordinator.scale = scale
+
         layout.minTileWidth = 230
         layout.spacing = 12
         context.coordinator.lastViewportHeight = nsView.contentView.bounds.height
-        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height)
+        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height, scale: scale)
 
         let selectedIdentity = selectedGame?.catalogIdentity
         let selectedIndex = games.firstIndex { $0.catalogIdentity == selectedIdentity }
         let selectedIndexChanged = layout.selectedItemIndex != selectedIndex
         layout.selectedItemIndex = selectedIndex
 
-        let needsFullReload = context.coordinator.needsIdentityUpdate(for: games)
+        let needsFullReload = scaleChanged || context.coordinator.needsIdentityUpdate(for: games)
         if needsFullReload {
             let renderStart = CFAbsoluteTimeGetCurrent()
             context.coordinator.updateGameIdentities(from: games)
             collectionView.reloadData()
-            if widthChanged {
+            if widthChanged || scaleChanged {
                 layout.invalidateLayout()
             }
             collectionView.layoutSubtreeIfNeeded()
@@ -127,6 +131,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var selectedIdentity: String?
     var lastWidth: CGFloat = 0
     var lastViewportHeight: CGFloat = 0
+    var scale: CGFloat = 1.0
     nonisolated(unsafe) var frameObserver: (any NSObjectProtocol)?
     private var gameCount = 0
     private var firstIdentity: String = ""
@@ -150,7 +155,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
               let layout = collectionView.collectionViewLayout as? CatalogShowAllGridLayout else { return }
         let width = scrollView.contentView.bounds.width
         let viewportHeight = scrollView.contentView.bounds.height
-        let detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight)
+        let detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight, scale: scale)
         guard width > 0, width != lastWidth || detailRowHeight != layout.detailRowHeight else { return }
         lastWidth = width
         lastViewportHeight = viewportHeight
@@ -177,6 +182,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
                 availableWidth: lastWidth,
                 viewportHeight: lastViewportHeight
             )
+            .environment(\.opnUIScale, scale)
         )
     }
 
@@ -220,6 +226,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             imageURL: parent.imageURL(game),
             isSelected: selectedIdentity == game.catalogIdentity,
             isQueuedForPatching: parent.isQueuedForPatching(game),
+            scale: scale,
             onSelect: { [weak self] in self?.parent.onSelect(game) },
             onPlay: { [weak self] in self?.parent.onPlay(game) },
             onQueueForPatching: { [weak self] in self?.parent.onQueueForPatching(game) }
@@ -246,7 +253,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
 final class CatalogShowAllGridItem: NSCollectionViewItem {
     static let reuseIdentifier = "CatalogShowAllGridItem"
 
-    private var hostingView: NSHostingView<CatalogShowAllGridTile>?
+    private var hostingView: NSHostingView<AnyView>?
 
     override func loadView() {
         let view = NSView()
@@ -259,18 +266,22 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         imageURL: URL?,
         isSelected: Bool,
         isQueuedForPatching: Bool,
+        scale: CGFloat,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onQueueForPatching: @escaping () -> Void
     ) {
-        let tile = CatalogShowAllGridTile(
-            game: game,
-            imageURL: imageURL,
-            isSelected: isSelected,
-            isQueuedForPatching: isQueuedForPatching,
-            onSelect: onSelect,
-            onPlay: onPlay,
-            onQueueForPatching: onQueueForPatching
+        let tile = AnyView(
+            CatalogShowAllGridTile(
+                game: game,
+                imageURL: imageURL,
+                isSelected: isSelected,
+                isQueuedForPatching: isQueuedForPatching,
+                onSelect: onSelect,
+                onPlay: onPlay,
+                onQueueForPatching: onQueueForPatching
+            )
+            .environment(\.opnUIScale, scale)
         )
         if let hostingView = hostingView {
             hostingView.rootView = tile
@@ -298,6 +309,7 @@ struct CatalogShowAllGridTile: View {
     let onPlay: () -> Void
     let onQueueForPatching: () -> Void
     @State private var isHovering = false
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -323,14 +335,14 @@ struct CatalogShowAllGridTile: View {
         Button(action: game.isLaunchPatching ? onQueueForPatching : onPlay) {
             HStack(spacing: 7) {
                 Image(systemName: game.isLaunchPatching ? (isQueuedForPatching ? "clock.fill" : "plus.circle.fill") : "play.fill")
-                    .font(.nvidia(size: 10, weight: .bold))
+                    .nvidiaFont(size: 10, weight: .bold)
                 Text(game.isLaunchPatching ? (isQueuedForPatching ? "QUEUED" : "QUEUE") : "PLAY")
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
             .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
-            .padding(.horizontal, 13)
-            .frame(height: 30)
+            .padding(.horizontal, 13 * uiScale)
+            .frame(height: 30 * uiScale)
             .background(game.isLaunchPatching ? Color.black.opacity(0.62) : Color.openNowGreen)
             .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.55) : Color.white.opacity(0.30)) : Color.openNowGreen, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
@@ -356,12 +368,12 @@ struct CatalogShowAllGridTile: View {
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                            .nvidiaFont(size: 12, weight: isSelected ? .medium : .regular)
                             .lineLimit(1)
                             .foregroundStyle(.white.opacity(0.90))
                         Spacer(minLength: 0)
                         Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                            .font(.nvidia(size: 10, weight: .bold))
+                            .nvidiaFont(size: 10, weight: .bold)
                             .foregroundStyle(.white.opacity(0.76))
                     }
                     .padding(.horizontal, 16)
@@ -388,7 +400,7 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
 
     var minTileWidth: CGFloat = 230
     var spacing: CGFloat = 12
-    var detailRowHeight: CGFloat = CatalogVendorLayout.detailPanelMinHeight
+    var detailRowHeight: CGFloat = CatalogVendorLayout.detailPanelMinHeight(scale: 1.0)
     var selectedItemIndex: Int?
 
     private var itemAttributes: [IndexPath: NSCollectionViewLayoutAttributes] = [:]

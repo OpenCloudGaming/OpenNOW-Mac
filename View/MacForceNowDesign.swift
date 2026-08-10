@@ -55,6 +55,18 @@ extension View {
     }
 }
 
+/// Real content-size UI scale for Catalog views (replaces the visual scaleEffect hack for that surface only).
+private struct OPNUIScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1.0
+}
+
+extension EnvironmentValues {
+    var opnUIScale: CGFloat {
+        get { self[OPNUIScaleKey.self] }
+        set { self[OPNUIScaleKey.self] = newValue }
+    }
+}
+
 private struct MacForceNowInterfaceScaleModifier: ViewModifier {
     let scale: CGFloat
 
