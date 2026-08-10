@@ -20,7 +20,8 @@ let package = Package(
         .target(
             name: "OpenNOW",
             dependencies: [
-                .product(name: "Sentry", package: "sentry-cocoa")
+                .product(name: "Sentry", package: "sentry-cocoa"),
+                "OpenNOWNativeGeronimoShim"
             ],
             path: ".",
             exclude: [
@@ -30,6 +31,7 @@ let package = Package(
                 "OpenNOWApp.swift",
                 "OPN/Stream/WebRTCMediaStreamSurface.swift",
                 "OpenNOW.xcodeproj",
+                "OPN/NativeGeronimo",
                 "Resources",
                 "Tests",
                 "View",
@@ -51,6 +53,12 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags(["-F", packageRoot, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", packageRoot])
             ]
+        ),
+        .target(
+            name: "OpenNOWNativeGeronimoShim",
+            path: "OPN/NativeGeronimo",
+            sources: ["NativeNVSTGeronimoShim.mm"],
+            publicHeadersPath: "."
         ),
         .testTarget(
             name: "OpenNOWTests",

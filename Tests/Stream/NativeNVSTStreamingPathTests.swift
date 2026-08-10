@@ -184,6 +184,247 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(payload.missingStartFields == ["tokenType", "token", "streamingProfile.streamingProfileGuid"])
 }
 
+@Test func nativeNVSTGeronimoStartFailureMessageDoesNotExposePrivateABI() {
+    let message = NativeNVSTBifrostTransport.geronimoStartFailureMessage
+
+    #expect(message.contains("Nsk::") == false)
+    #expect(message.contains("0x80f10005") == false)
+    #expect(message.contains("WebRTC") == false)
+    #expect(message.contains("diagnostics"))
+}
+
+@Test func nativeNVSTLaunchPayloadModelsVerifiedGeForceNOWStartFields() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264", "audioMode": "surround51" }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    let allocation = nativeAllocation(rawSessionJSON: """
+    {
+      "serverAddress": "control.example.test",
+      "serverType": 52,
+      "tokenType": "9",
+      "token": "private-session-token",
+      "networkSessionId": "network-session",
+      "audioModeFormat": "surround51",
+      "zoneName": "US-WEST",
+      "userAge": 18,
+      "summaryStatsEnabled": true,
+      "sessionRequestData": {
+        "appId": 123,
+        "appName": "Game",
+        "appLaunchMode": 2,
+        "deviceHashId": "device-id",
+        "gameShortName": "game",
+        "maxLocalPlayers": 4,
+        "advancedLatencyOptimization": true,
+        "frameLossWarningTimeout": 500,
+        "frameLossErrorTimeout": 30000,
+        "supportedControls": ["KeyboardMouse", "Gamepad"],
+        "contentRating": [{"system": "ESRB", "rating": "T"}],
+        "spanData": { "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" }
+      }
+    }
+    """)
+
+    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "2.0.87.131")
+
+    try payload.validate()
+    #expect(payload.prepare.address == "control.example.test")
+    #expect(payload.prepare.tokenType == "9")
+    #expect(payload.prepare.hasToken)
+    #expect(payload.prepare.traceParent == "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01")
+    #expect(payload.start.serverType == 52)
+    #expect(payload.start.appId == 123)
+    #expect(payload.start.networkSessionId == "network-session")
+    #expect(payload.start.audioModeFormat == "surround51")
+    #expect(payload.start.supportedControlsCount == 2)
+    #expect(payload.start.contentRatingCount == 1)
+    #expect(payload.telemetryAttributes.values.contains("private-session-token") == false)
+}
+
+@Test func nativeNVSTLaunchPayloadRejectsMissingVerifiedStartFields() throws {
+    let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}"), streamingProfileJSON: "{}", clientAppVersion: "OpenNOW")
+
+    #expect(payload.missingFields.contains("tokenType"))
+    #expect(payload.missingFields.contains("token"))
+    #expect(payload.missingFields.contains("streamingProfile"))
+}
+
+@Test func nativeNVSTGeronimoSessionJSONPromotesCloudSessionFields() throws {
+    let streamingProfileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264" }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(
+        allocation: nativeAllocation(rawSessionJSON: """
+        {
+          "sessionId": "native-session",
+          "status": 2,
+          "gpuType": "L40",
+          "sessionRequestData": { "appId": 123, "appLaunchMode": 3, "deviceHashId": "device" },
+          "sessionControlInfo": { "ip": "control.example.test", "port": 443 },
+          "connectionInfo": [
+            { "usage": 14, "ip": "signaling.example.test", "port": 443, "resourcePath": "/nvst/" },
+            { "usage": 2, "ip": "video.example.test", "port": 47998, "resourcePath": "" },
+            { "usage": 17, "ip": "bundle.example.test", "port": 47998, "resourcePath": "" }
+          ],
+          "monitorSettings": [
+            { "widthInPixels": 1920, "heightInPixels": 1080, "framesPerSecond": 60, "dpi": 96 }
+          ],
+          "finalizedStreamingFeatures": { "bitDepth": 8, "reflex": false }
+        }
+        """),
+        streamingProfileJSON: streamingProfileJSON
+    )
+    let object = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+    let monitorSettings = try #require(object["monitorSettings"] as? [[String: Any]])
+    let connectionInfo = try #require(object["connectionInfo"] as? [[String: Any]])
+    let features = try #require(object["finalizedStreamingFeatures"] as? [String: Any])
+
+    #expect(object["sessionId"] as? String == "native-session")
+    #expect(object["appId"] as? Int == 123)
+    #expect(object["appLaunchMode"] as? Int == 2)
+    #expect(object["zoneAddress"] as? String == "control.example.test")
+    #expect(object["zoneName"] as? String == "CONTROL")
+    #expect(monitorSettings.count == 1)
+    #expect(monitorSettings[0]["widthInPixels"] as? Int == 1920)
+    #expect(connectionInfo.count == 2)
+    #expect(connectionInfo.contains { $0["usage"] as? Int == 17 } == false)
+    #expect(features["bitDepth"] as? Int == 8)
+}
+
+@Test func nativeNVSTGeronimoSessionJSONGeneratesMissingMonitorSettings() throws {
+    let streamingProfileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "2560x1440", "fps": 120, "codec": "H264" }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(
+        allocation: nativeAllocation(rawSessionJSON: """
+        {
+          "sessionId": "native-session",
+          "sessionRequestData": { "appId": 123 },
+          "sessionControlInfo": { "ip": "control.example.test" }
+        }
+        """),
+        streamingProfileJSON: streamingProfileJSON
+    )
+    let object = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+    let monitorSettings = try #require(object["monitorSettings"] as? [[String: Any]])
+
+    #expect(monitorSettings.count == 1)
+    #expect(monitorSettings[0]["widthInPixels"] as? Int == 2560)
+    #expect(monitorSettings[0]["heightInPixels"] as? Int == 1440)
+    #expect(monitorSettings[0]["framesPerSecond"] as? Int == 120)
+}
+
+@Test func nativeNVSTBifrostTransportUsesRawStreamingProfileWhenPresent() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "fps": 60 },
+          "negotiatedStreamProfile": { "fps": 30 }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: "{\"resolution\":\"1920x1080\",\"codec\":\"H264\"}"
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedVideoMode = try #require(profile["selectedVideoMode"] as? [String: Any])
+    let selectedEncodeMode = try #require(profile["selectedEncodeMode"] as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
+    #expect(selectedVideoMode["width"] as? Int == 1920)
+    #expect(selectedVideoMode["height"] as? Int == 1080)
+    #expect(selectedVideoMode["fps"] as? Int == 60)
+    #expect(selectedVideoMode["scaleFactor"] as? Int == 1)
+    #expect(selectedEncodeMode["width"] as? Int == 1920)
+    #expect(selectedEncodeMode["height"] as? Int == 1080)
+    #expect(selectedEncodeMode["fps"] as? Int == 60)
+    #expect(selectedFeatures["audioChannelCount"] as? Int == 2)
+    #expect(selectedFeatures.keys.contains("prefilterParams"))
+    #expect(selectedFeatures.keys.contains("hudStreamingParams"))
+}
+
+@Test func nativeNVSTBifrostTransportFallsBackToSessionInfoNegotiatedProfile() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "sessionId": "native-session",
+          "status": 2
+        }
+        """,
+        sessionInfoJSON: """
+        {
+          "negotiatedStreamProfile": {
+            "resolution": "1920x1080",
+            "fps": 60,
+            "codec": "h264",
+            "colorQuality": "SDR"
+          }
+        }
+        """
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedVideoMode = try #require(profile["selectedVideoMode"] as? [String: Any])
+    let selectedEncodeMode = try #require(profile["selectedEncodeMode"] as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
+    #expect(selectedVideoMode["width"] as? Int == 1920)
+    #expect(selectedVideoMode["height"] as? Int == 1080)
+    #expect(selectedVideoMode["fps"] as? Int == 60)
+    #expect(selectedEncodeMode["fps"] as? Int == 60)
+    #expect(selectedFeatures["hdr"] as? Bool == false)
+    #expect(selectedFeatures["bitDepth"] as? Int == 8)
+}
+
+@Test func nativeNVSTBifrostTransportCompletesInvalidProfileFieldsFromSettings() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": {
+            "streamingProfileGuid": "profile-guid",
+            "resolution": "",
+            "fps": 0,
+            "codec": "",
+            "colorQuality": "8bit_420"
+          }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: """
+        {
+          "resolution": "2560x1440",
+          "fps": 120,
+          "codec": "auto"
+        }
+        """
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedVideoMode = try #require(profile["selectedVideoMode"] as? [String: Any])
+    let selectedEncodeMode = try #require(profile["selectedEncodeMode"] as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
+    #expect(selectedVideoMode["width"] as? Int == 2560)
+    #expect(selectedVideoMode["height"] as? Int == 1440)
+    #expect(selectedVideoMode["fps"] as? Int == 120)
+    #expect(selectedEncodeMode["width"] as? Int == 2560)
+    #expect(selectedEncodeMode["height"] as? Int == 1440)
+    #expect(selectedEncodeMode["fps"] as? Int == 120)
+    #expect(selectedFeatures["bitDepth"] as? Int == 8)
+}
+
 private func nativeConfiguration() -> StreamLaunchConfiguration {
     StreamLaunchConfiguration(title: "Native Test", applicationID: "123", accessToken: "token", accountLinked: true, selectedStore: "Steam")
 }

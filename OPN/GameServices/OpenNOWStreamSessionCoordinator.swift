@@ -566,7 +566,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     private func shouldReportFinishedSession(_ reason: StreamEndReason) -> Bool {
-        reason == .userRequested || reason == .completed || reason == .remoteEnded
+        reason == .userRequested || reason == .completed || reason == .remoteEnded || reason == .failed
     }
 
     private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
