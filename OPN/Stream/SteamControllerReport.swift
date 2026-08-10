@@ -116,6 +116,7 @@ public enum SteamControllerReport {
     private static let defaultDigitalMappingsCommand: UInt8 = 0x85
     private static let setSettingsCommand: UInt8 = 0x87
     private static let defaultSettingsCommand: UInt8 = 0x8e
+    private static let rumbleCommand: UInt8 = 0x8f
     private static let powerOffCommand: UInt8 = 0x9f
     private static let rightPadModeRegister: UInt8 = 0x08
     private static let rightPadModeOff: UInt8 = 0x07
@@ -250,6 +251,19 @@ public enum SteamControllerReport {
         switch model {
         case .legacy: legacyFeatureReport([powerOffCommand, 0x00])
         case .triton: tritonCommandReport(powerOffCommand)
+        }
+    }
+
+    public static func rumbleReport(model: SteamControllerModel, leftAmplitude: UInt16, rightAmplitude: UInt16) -> SteamControllerFeatureReport {
+        switch model {
+        case .legacy:
+            legacyFeatureReport([
+                rumbleCommand, 0x00,
+                UInt8(leftAmplitude & 0xff), UInt8((leftAmplitude >> 8) & 0xff),
+                UInt8(rightAmplitude & 0xff), UInt8((rightAmplitude >> 8) & 0xff),
+            ])
+        case .triton:
+            tritonRumbleReport(leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
         }
     }
 
@@ -513,6 +527,17 @@ public enum SteamControllerReport {
         buffer[3] = tritonLizardModeSetting
         buffer[4] = value
         buffer[5] = 0x00
+        return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
+    }
+
+    private static func tritonRumbleReport(leftAmplitude: UInt16, rightAmplitude: UInt16) -> SteamControllerFeatureReport {
+        var buffer = [UInt8](repeating: 0, count: reportLength)
+        buffer[0] = UInt8(tritonFeatureReportID)
+        buffer[1] = rumbleCommand
+        buffer[2] = UInt8(leftAmplitude & 0xff)
+        buffer[3] = UInt8((leftAmplitude >> 8) & 0xff)
+        buffer[4] = UInt8(rightAmplitude & 0xff)
+        buffer[5] = UInt8((rightAmplitude >> 8) & 0xff)
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }
 }

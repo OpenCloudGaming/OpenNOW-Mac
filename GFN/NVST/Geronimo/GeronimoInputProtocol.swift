@@ -7,6 +7,7 @@ public enum GeronimoInputEventType: UInt32, CaseIterable, Sendable {
     case mouseButtonUp = 9
     case mouseWheel = 10
     case gamepad = 12
+    case haptic = 15
     case utf8Text = 23
 }
 

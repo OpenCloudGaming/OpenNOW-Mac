@@ -813,6 +813,12 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         }
     }
 
+    public func sendRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16) {
+        guard let context = devices.values.first(where: { $0.deviceID == deviceID }) else { return }
+        let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+        sendFeatureReport(report, to: context.device, attempts: 3)
+    }
+
     private func intProperty(_ device: IOHIDDevice, key: String) -> Int? {
         (IOHIDDeviceGetProperty(device, key as CFString) as? NSNumber)?.intValue
     }

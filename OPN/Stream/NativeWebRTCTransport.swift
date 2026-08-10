@@ -50,6 +50,13 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             guard let self else { return }
             sessionLimitLock.withLock { _ = sessionLimitContinuation?.yield(update) }
         }
+        session.onHapticEvent = { deviceIndex, leftAmplitude, rightAmplitude in
+            Task { @MainActor in
+                let deviceIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
+                guard deviceIndex >= 0, deviceIndex < deviceIDs.count else { return }
+                SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceIDs[deviceIndex], leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+            }
+        }
         updateEnhancedVideoFrameCapture()
     }
 

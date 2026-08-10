@@ -219,6 +219,14 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             WebRTCMediaTelemetry.capture("webrtc.native.input.session_limit", level: .info, message: "Remote session length timer received.", attributes: ["remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
             return
         }
+        if payload.count >= 12, payload.readUInt32LE(at: 0) == GeronimoInputEventType.haptic.rawValue {
+            let deviceIndex = Int(payload.readUInt16LE(at: 4))
+            let leftAmplitude = payload.readUInt16LE(at: 6)
+            let rightAmplitude = payload.readUInt16LE(at: 8)
+            owner?.handleHapticEvent(deviceIndex: deviceIndex, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.haptic", level: .debug, message: "Remote haptic event received.", attributes: ["deviceIndex": String(deviceIndex), "leftAmplitude": String(leftAmplitude), "rightAmplitude": String(rightAmplitude)])
+            return
+        }
         if clipboardText.isEmpty, let first = payload.first, first == UInt8(ascii: "{") || first == UInt8(ascii: "[") {
             clipboardText = clipboardTextFromJSON(payload)
         }
@@ -281,5 +289,10 @@ private extension Data {
     func readUInt32LE(at offset: Int) -> UInt32 {
         guard offset >= 0, offset + 3 < count else { return 0 }
         return UInt32(self[offset]) | (UInt32(self[offset + 1]) << 8) | (UInt32(self[offset + 2]) << 16) | (UInt32(self[offset + 3]) << 24)
+    }
+
+    func readUInt16LE(at offset: Int) -> UInt16 {
+        guard offset >= 0, offset + 1 < count else { return 0 }
+        return UInt16(self[offset]) | (UInt16(self[offset + 1]) << 8)
     }
 }
