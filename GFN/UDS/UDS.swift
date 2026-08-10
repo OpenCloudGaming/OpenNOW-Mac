@@ -197,16 +197,16 @@ public struct UDSClientHeaders: Equatable, Sendable {
     public let browserType: String
     public let userAgent: String
 
-    public init(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab",
+    public init(clientId: String = GFNClientMetadata.clientId,
                 clientType: String = "NATIVE",
-                clientVersion: String = "2.0.80.173",
+                clientVersion: String = GFNClientMetadata.appVersion,
                 clientStreamer: String = "NVIDIA-CLASSIC",
                 deviceOS: String = "MACOS",
                 deviceType: String = "DESKTOP",
                 deviceMake: String = "UNKNOWN",
                 deviceModel: String = "UNKNOWN",
                 browserType: String = "CHROME",
-                userAgent: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173") {
+                userAgent: String = GFNClientMetadata.nativeMacUserAgent) {
         self.clientId = clientId
         self.clientType = clientType
         self.clientVersion = clientVersion

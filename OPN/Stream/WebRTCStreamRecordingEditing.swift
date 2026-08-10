@@ -207,8 +207,7 @@ public extension WebRTCStreamRecordingLibrary {
             let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
             let presetName = await compatiblePreset(for: normalizedRequest.exportPreset, asset: build.composition)
             guard let exportSession = AVAssetExportSession(asset: build.composition, presetName: presetName) else { throw WebRTCStreamRecordingEditorError.unableToCreateExportSession }
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = try compatibleMP4FileType(for: exportSession)
+            let outputFileType = try compatibleMP4FileType(for: exportSession)
             exportSession.shouldOptimizeForNetworkUse = false
             exportSession.timeRange = CMTimeRange(start: .zero, duration: build.duration)
             exportSession.audioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
@@ -216,7 +215,7 @@ public extension WebRTCStreamRecordingLibrary {
                 exportSession.videoComposition = try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
             }
             await progressHandler?(0)
-            try await runExportSession(exportSession, progressHandler: progressHandler)
+            try await runExportSession(exportSession, outputURL: outputURL, outputFileType: outputFileType, progressHandler: progressHandler)
             await progressHandler?(1)
             let attributes = try FileManager.default.attributesOfItem(atPath: outputURL.path)
             let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
@@ -366,7 +365,7 @@ public extension WebRTCStreamRecordingLibrary {
         return mix
     }
 
-    private static func runExportSession(_ exportSession: AVAssetExportSession, progressHandler: (@MainActor @Sendable (Double) -> Void)?) async throws {
+    private static func runExportSession(_ exportSession: AVAssetExportSession, outputURL: URL, outputFileType: AVFileType, progressHandler: (@MainActor @Sendable (Double) -> Void)?) async throws {
         let box = WebRTCStreamRecordingExportSessionBox(session: exportSession)
         let progressTask = Task.detached(priority: .utility) {
             for await state in box.session.states(updateInterval: 0.15) {
@@ -380,9 +379,6 @@ public extension WebRTCStreamRecordingLibrary {
         }
         defer { progressTask.cancel() }
         try await withTaskCancellationHandler {
-            guard let outputURL = box.session.outputURL, let outputFileType = box.session.outputFileType else {
-                throw WebRTCStreamRecordingEditorError.unableToCreateExportSession
-            }
             do {
                 try await box.session.export(to: outputURL, as: outputFileType)
             } catch {

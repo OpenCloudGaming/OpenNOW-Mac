@@ -86,6 +86,7 @@ struct MacForceNowApp: App {
     init() {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
+        Task.detached(priority: .userInitiated) { MacForceNowNVIDIAFont.prepare() }
         MacForceNowLog.info(.app, "MacForce Now application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container

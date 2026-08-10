@@ -295,6 +295,7 @@ import Foundation
     var game = OPNGameInfo()
     game.id = "game-id"
     game.launchAppId = "123"
+    game.isFavorited = true
     game.isPatching = true
     game.variants = [OPNGameVariant(id: "123", appStore: "STEAM", serviceStatus: "APP_PATCHING_STATUS", isPatching: true)]
 
@@ -302,8 +303,10 @@ import Foundation
     let roundTrip = object.swiftValue
 
     #expect(object.isPatching == true)
+    #expect(object.isFavorited == true)
     #expect(object.variants.first?.isPatching == true)
     #expect(roundTrip.isPatching == true)
+    #expect(roundTrip.isFavorited == true)
     #expect(roundTrip.variants.first?.isPatching == true)
 }
 
@@ -318,6 +321,7 @@ import Foundation
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
+            let absoluteURL = request.url?.absoluteString ?? ""
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let query = body["query"] as? String ?? ""
             let variables = body["variables"] as? [String: Any] ?? [:]
@@ -327,8 +331,8 @@ import Foundation
             if query.contains("campaigns") || query.contains("ratingDefinitions") {
                 return SessionManagerURLProtocol.response(json: ["data": [:]])
             }
-            if variables["appIds"] != nil {
-                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456")]]]])
+            if variables["appIds"] != nil || absoluteURL.contains("requestType=appMetaData") {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456", favorited: true)]]]])
             }
             return SessionManagerURLProtocol.response(json: ["data": ["apps": [
                 "numberReturned": 1,
@@ -349,6 +353,11 @@ import Foundation
         #expect(result.0 == true)
         #expect(result.2.isEmpty)
         #expect(game?.displaysOwnRatingDuringGameplay == true)
+        #expect(game?.isFavorited == true)
+        #expect(game?.skuPlayabilityText == "Included with membership")
+        #expect(game?.skuUnplayableDialogHeader == "Upgrade required")
+        #expect(game?.skuUnplayableDialogBody == "Upgrade to play")
+        #expect(game?.skuUnplayableDialogBodyEcommerceRestricted == "Upgrade in your account")
         #expect(game?.supportedControls == ["KEYBOARD_MOUSE"])
         #expect(game?.ratingCategoryKey == "TEEN")
         let variant = game?.variants.first
@@ -395,7 +404,11 @@ import Foundation
                     "id": "featured-section",
                     "title": "Featured",
                     "seeMoreInfo": ["filterIds": ["genre-action", "store-steam"], "sortOrderId": "release_date", "title": "Show all featured"],
-                    "items": [["__typename": "GameItem", "app": catalogGraphQLGame(id: "panel-game")]],
+                    "items": [
+                        ["__typename": "GameItem", "app": catalogGraphQLGame(id: "panel-game")],
+                        ["__typename": "FilterItem", "id": "filter-action", "title": "Action Games", "image": "https://assets.example.invalid/filter.jpg", "filterIds": ["genre-action"], "sortOrderId": "release_date"],
+                        ["__typename": "MarketingItem", "id": "marketing-tile", "title": "Membership Deal", "subTitle": "Limited", "body": "Play more", "images": ["HERO_IMAGE": ["https://assets.example.invalid/marketing.jpg"]], "action": ["uri": "https://play.geforcenow.com/deal", "label": "Learn More"]],
+                    ],
                 ]],
             ]]]])
         }
@@ -412,15 +425,135 @@ import Foundation
                 deliveryCount += 1
                 guard deliveryCount == 2 else { return }
                 let section = panels.first?.sections.first
-                continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", error))
+                let tiles = section?.tiles ?? []
+                continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", tiles.map(\.kind), tiles.first?.filterIds ?? [], tiles.last?.actionUrl ?? "", error))
             }
         }
 
         #expect(result.0 == true)
-        #expect(result.4.isEmpty)
+        #expect(result.7.isEmpty)
         #expect(result.1 == ["genre-action", "store-steam"])
         #expect(result.2 == "release_date")
         #expect(result.3 == "Show all featured")
+        #expect(result.4 == ["filter", "marketing"])
+        #expect(result.5 == ["genre-action"])
+        #expect(result.6 == "https://play.geforcenow.com/deal")
+    }
+}
+
+@Test func libraryPatchStatusFetchUsesVendorOwnedFilterAndClearsEndedPatch() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("library-patch-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("library-patch-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(query.contains("GetAppsPatchInfoWithLibraryFilter"))
+            #expect((variables["filters"] as? [String: Any]) != nil)
+            #expect(variables["fetchCount"] as? Int == 749)
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": 1,
+                "pageInfo": ["hasNextPage": false, "endCursor": "", "totalCount": 1],
+                "items": [[
+                    "id": "ended-patch-game",
+                    "variants": [["id": "123456", "gfn": ["status": "AVAILABLE", "library": ["status": "MANUAL"]]]],
+                ]],
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchLibraryPatchStatuses { success, statuses, error in
+                continuation.resume(returning: (success, statuses["ended-patch-game"], error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.2.isEmpty)
+        #expect(result.1?.isPatching == false)
+        #expect(result.1?.variantPatchingById["123456"] == false)
+    }
+}
+
+@Test func cmsMetadataLookupUsesVendorVariantIdsQuery() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("cms-metadata-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("cms-metadata-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            guard query.contains("GetAppDataQueryForCmsId") else {
+                return SessionManagerURLProtocol.response(json: ["data": [:]])
+            }
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(variables["cmsIds"] as? [Int] == [145491])
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "genshin-impact", title: "Genshin Impact", variantId: "145491", favorited: true)]]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId("145491") { success, game, error in
+                continuation.resume(returning: (success, game?.title ?? "", game?.variants.first?.id ?? "", game?.isFavorited ?? false, error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.1 == "Genshin Impact")
+        #expect(result.2 == "145491")
+        #expect(result.3 == true)
+        #expect(result.4.isEmpty)
+    }
+}
+
+@Test func subscriptionDefinitionsFetchParsesVendorFields() async {
+    await networkTestIsolationLock.withLock {
+        let host = "*"
+        OPNGameServiceSwiftAdapter.setAccessToken("subscription-definitions-token-\(UUID().uuidString)")
+        OPNGameServiceSwiftAdapter.setUserId("subscription-definitions-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            #expect(query.contains("subscriptionDefinitions"))
+            #expect(variables["locale"] as? String == OPNLocale.currentGFNCatalogLocale())
+            return SessionManagerURLProtocol.response(json: ["data": ["subscriptionDefinitions": [[
+                "subscription": "ubisoft_plus",
+                "label": "Ubisoft+",
+                "logoURL": "https://assets.example.invalid/ubisoft-plus.svg",
+                "primaryStore": "UBISOFT_CONNECT",
+            ]]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { success, definitions, error in
+                let definition = definitions.first
+                continuation.resume(returning: (
+                    success,
+                    definition?["subscription"] as? String ?? "",
+                    definition?["label"] as? String ?? "",
+                    definition?["logoURL"] as? String ?? "",
+                    definition?["primaryStore"] as? String ?? "",
+                    error
+                ))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.5.isEmpty)
+        #expect(result.1 == "ubisoft_plus")
+        #expect(result.2 == "Ubisoft+")
+        #expect(result.3 == "https://assets.example.invalid/ubisoft-plus.svg")
+        #expect(result.4 == "UBISOFT_CONNECT")
     }
 }
 
@@ -733,11 +866,12 @@ import Foundation
     // WebRTC sessions identify as the native GFN-PC client; a browser identity makes GeForce NOW cap
     // the server desktop at the web-client resolution (~2560), downscaling 5K requests.
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
-    #expect(request.value(forHTTPHeaderField: "Referer") == nil)
+    #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
     #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
+    #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
     #expect(requestData["clientPlatformName"] as? String == "windows")
     // HDR off (default) -> capabilities must be null to avoid GFN's HDR-pipeline downscale.
@@ -745,8 +879,8 @@ import Foundation
     #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
     #expect(requestData["accountLinked"] as? Bool == true)
     #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
-    #expect(requestData["partnerCustomData"] as? String == "")
-    #expect(requestData["userAge"] as? Int == 26)
+    #expect(requestData["partnerCustomData"] as? String == "partner-data")
+    #expect(requestData["userAge"] as? Int == 21)
     #expect(requestData["secureRTSPSupported"] as? Bool == false)
     #expect(requestData["transport"] == nil)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
@@ -842,7 +976,7 @@ import Foundation
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(requestData["clientPlatformName"] as? String == "windows")
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
@@ -852,8 +986,8 @@ import Foundation
     }
 }
 
-@Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async throws {
-    try await networkTestIsolationLock.withLock {
+@Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async {
+    await networkTestIsolationLock.withLock {
     let host = "bundle-media.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
@@ -889,6 +1023,94 @@ import Foundation
     #expect(result.3.isEmpty)
     #expect(result.1 == "bundle.example.test")
     #expect(result.2 == 47998)
+    }
+}
+
+@Test func sessionProgressParsesSessionLimitTimerData() {
+    let parsed = OPNSessionJSONParser.parseSessionProgress(from: [
+        "message": [
+            "messageType": "SESSION_LENGTH_TIMER",
+            "timerData": [
+                "beforeEventMS": 1_794_000,
+                "presentDurationMS": 30_000,
+                "timerType": 0,
+            ],
+        ],
+    ])
+
+    #expect(parsed.remainingSessionLimitSeconds == 1794)
+}
+
+@Test func streamSessionLimitUpdateParsesVendorClientMessage() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "event": "STREAMING_CLIENT_MESSAGE",
+        "message": [
+            "messageType": "SESSION_LENGTH_TIMER",
+            "timerData": [
+                "beforeEventMS": 1_200_000,
+                "presentDurationMS": 30_000,
+                "timerType": "SmallMarquee",
+            ],
+        ],
+    ])
+
+    let update = try #require(StreamSessionLimitUpdate.parse(from: data))
+    #expect(update.remainingSeconds == 1200)
+    #expect(update.presentDurationSeconds == 30)
+    #expect(update.timerType == "SmallMarquee")
+
+    let paidSessionData = try JSONSerialization.data(withJSONObject: [
+        "messageType": "SESSION_LENGTH_TIMER",
+        "timerData": ["beforeEventMS": 14_400_000],
+    ])
+    #expect(StreamSessionLimitUpdate.parse(from: paidSessionData)?.remainingSeconds == 14_400)
+
+    let maintenanceData = try JSONSerialization.data(withJSONObject: [
+        "message": [
+            "messageType": "ZONE_MAINTENANCE_TIMER",
+            "timerData": ["beforeEventMS": 900_000],
+        ],
+    ])
+    #expect(StreamSessionLimitUpdate.parse(from: maintenanceData) == nil)
+}
+
+@Test func membershipRequiredBadgeOnlyShowsForFreeTierAccount() {
+    let game = OPNCatalogGameObject()
+    game.membershipTierLabel = "Ultimate"
+
+    #expect(OPNCatalogGameObject.isFreeMembershipTier("Free"))
+    #expect(!OPNCatalogGameObject.isFreeMembershipTier("Priority"))
+    #expect(game.freeAccountAccessBadgeLabel(isFreeTierAccount: true) == "Membership Required")
+    #expect(game.freeAccountAccessBadgeLabel(isFreeTierAccount: false) == nil)
+}
+
+@Test func sessionManagerCarriesRemainingSessionLimitSeconds() async {
+    await networkTestIsolationLock.withLock {
+    let host = "session-limit-timer.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session/resume-session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host, extraSession: [
+            "sessionProgress": [
+                "timeRemaining": 7200,
+            ],
+        ]))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+            continuation.resume(returning: (success, info["remainingSessionLimitSeconds"] as? Int ?? 0, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1 == 7200)
+    #expect(result.2.isEmpty)
     }
 }
 
@@ -932,7 +1154,7 @@ import Foundation
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
@@ -940,6 +1162,10 @@ import Foundation
     #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
+    #expect(claimRequestData?["clientDisplayHdrCapabilities"] is NSNull)
+    #expect(claimRequestData?["enablePersistingInGameSettings"] as? Bool == false)
+    #expect(claimRequestData?["partnerCustomData"] as? String == "")
+    #expect(claimRequestData?["userAge"] as? Int == 0)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
     #expect(claimRequestData?["transport"] == nil)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
@@ -978,7 +1204,7 @@ import Foundation
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     #expect(result.0 == true)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
@@ -1054,7 +1280,7 @@ import Foundation
     }
 }
 
-@Test func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
+@Test func sessionManagerStaleInternalCreateErrorReturnsActionableMessage() async {
     await networkTestIsolationLock.withLock {
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -1073,8 +1299,30 @@ import Foundation
     }
 
     #expect(result.0 == false)
-    #expect(result.1.contains("HTTP 400:"))
-    #expect(result.1.contains("INTERNAL_ERROR_STATUS 8A8C0000"))
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+    }
+}
+
+@Test func sessionManagerLimitedModeCreateErrorReturnsActionableMessage() async {
+    await networkTestIsolationLock.withLock {
+    let host = "create-limited-mode.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: limitedModeSessionResponse(), status: 500)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "GeForce NOW says this game is out of limited playtime. Add playtime or try another game.")
     }
 }
 
@@ -1087,6 +1335,110 @@ import Foundation
     ]], requestedAppId: 123)
 
     #expect(selected == nil)
+}
+
+@Test func sessionAdStateParsesNestedProgressAds() throws {
+    let parsed = OPNSessionJSONParser.parseSessionAdState(from: [
+        "sessionProgress": [
+            "isAdsRequired": true,
+            "sessionAds": [[
+                "adId": "nested-ad",
+                "adState": 1,
+                "adMediaFiles": [[
+                    "mediaFileUrl": "https://ads.example.test/video.mp4",
+                    "encodingProfile": "mp4deinterlaced720p",
+                ]],
+                "clickThroughUrl": "https://ads.example.test/click",
+                "adLengthInSeconds": 15,
+                "title": "Sponsor",
+            ]],
+        ],
+    ])
+
+    let ad = try #require(parsed.sessionAds.first)
+    #expect(parsed.isAdsRequired)
+    #expect(parsed.sessionAdsRequired)
+    #expect(!parsed.serverSentEmptyAds)
+    #expect(ad.adId == "nested-ad")
+    #expect(ad.mediaUrl == "https://ads.example.test/video.mp4")
+    #expect(ad.durationMs == 15_000)
+}
+
+@Test func sessionAdStateParsesVendorAdsAlias() throws {
+    let parsed = OPNSessionJSONParser.parseSessionAdState(from: [
+        "sessionAdsRequired": true,
+        "ads": [[
+            "adId": "vendor-ad",
+            "adState": 1,
+            "adMediaFiles": [[
+                "mediaFileUrl": "https://ads.example.test/hls.m3u8",
+                "encodingProfile": "hlsadaptive",
+            ]],
+        ]],
+    ])
+
+    let ad = try #require(parsed.sessionAds.first)
+    #expect(parsed.isAdsRequired)
+    #expect(ad.adId == "vendor-ad")
+    #expect(ad.mediaUrl == "https://ads.example.test/hls.m3u8")
+}
+
+@Test func sessionManagerKeepsNestedAdsAcrossEmptyRequiredPolls() async {
+    await networkTestIsolationLock.withLock {
+        let host = "nested-ads.example.test"
+        let lock = NSLock()
+        nonisolated(unsafe) var pollCount = 0
+        SessionManagerURLProtocol.install(host: host) { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/v2/session/resume-session")
+            lock.withLock { pollCount += 1 }
+            if lock.withLock({ pollCount }) == 1 {
+                return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 1, controlHost: host, extraSession: [
+                    "sessionProgress": [
+                        "isAdsRequired": true,
+                        "sessionAds": [[
+                            "adId": "nested-ad",
+                            "adState": 1,
+                            "mediaUrl": "https://ads.example.test/video.mp4",
+                            "adLengthInSeconds": 15,
+                        ]],
+                    ],
+                ]))
+            }
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 1, controlHost: host, extraSession: [
+                "sessionProgress": [
+                    "isAdsRequired": true,
+                ],
+            ]))
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let manager = OPNSessionManager()
+        manager.setAccessToken("token")
+        manager.setStreamingBaseUrl("https://\(host)")
+
+        let first = await withCheckedContinuation { continuation in
+            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+                let adState = info["adState"] as? [String: Any]
+                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
+                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
+            }
+        }
+        let second = await withCheckedContinuation { continuation in
+            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
+                let adState = info["adState"] as? [String: Any]
+                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
+                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
+            }
+        }
+
+        #expect(first.0)
+        #expect(first.3.isEmpty)
+        #expect(first.1 == "nested-ad")
+        #expect(second.0)
+        #expect(second.3.isEmpty)
+        #expect(second.2 == "https://ads.example.test/video.mp4")
+    }
 }
 
 private func minimalSettings() -> [String: Any] {
@@ -1112,31 +1464,36 @@ private func parsePhysicalResolutionMetadata(_ metadata: [[String: String]]) -> 
     return object
 }
 
-private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {
-    [
+private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", extraSession: [String: Any] = [:]) -> [String: Any] {
+    var session: [String: Any] = [
+        "sessionId": "resume-session",
+        "status": sessionStatus,
+        "gpuType": "L40",
+        "sessionRequestData": ["appId": 123],
+        "sessionControlInfo": ["ip": controlHost],
+        "connectionInfo": [[
+            "usage": 14,
+            "ip": "signaling.example.test",
+            "port": 443,
+            "resourcePath": "/nvst/",
+        ]],
+        "monitorSettings": [[
+            "widthInPixels": 1920,
+            "heightInPixels": 1080,
+            "framesPerSecond": 60,
+            "dpi": 96,
+        ]],
+    ]
+    for (key, value) in extraSession {
+        session[key] = value
+    }
+
+    return [
         "requestStatus": [
             "statusCode": statusCode,
             "statusDescription": statusCode == 1 ? "SUCCESS" : "ERROR",
         ],
-        "session": [
-            "sessionId": "resume-session",
-            "status": sessionStatus,
-            "gpuType": "L40",
-            "sessionRequestData": ["appId": 123],
-            "sessionControlInfo": ["ip": controlHost],
-            "connectionInfo": [[
-                "usage": 14,
-                "ip": "signaling.example.test",
-                "port": 443,
-                "resourcePath": "/nvst/",
-            ]],
-            "monitorSettings": [[
-                "widthInPixels": 1920,
-                "heightInPixels": 1080,
-                "framesPerSecond": 60,
-                "dpi": 96,
-            ]],
-        ],
+        "session": session,
     ]
 }
 
@@ -1154,7 +1511,22 @@ private func staleSessionResponse() -> [String: Any] {
     ]
 }
 
-private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil) -> [String: Any] {
+private func limitedModeSessionResponse() -> [String: Any] {
+    [
+        "requestStatus": [
+            "statusCode": 81,
+            "statusDescription": "STREAMING_NOT_ALLOWED_IN_LIMITED_MODE 8A91000D",
+            "unifiedErrorCode": -1970208755,
+        ],
+        "session": [
+            "sessionId": "limited-mode-session",
+            "status": 0,
+            "seatSetupInfo": ["queuePosition": 1, "seatSetupStep": 0, "seatSetupEta": 0],
+        ],
+    ]
+}
+
+private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false, freeToPlay: Bool = false) -> [String: Any] {
     [
         "id": id,
         "title": title ?? "Catalog Game \(id)",
@@ -1167,6 +1539,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
         "displaysOwnRatingDuringGameplay": true,
         "genres": ["ACTION"],
         "contentRatings": [["categoryKey": "TEEN", "contentDescriptorKeys": ["VIOLENCE"], "interactiveElementKeys": ["USERS_INTERACT"], "type": "ESRB"]],
+        "library": ["favorited": favorited],
         "images": ["TV_BANNER": ["https://assets.example.invalid/\(id).jpg"]],
         "variants": [[
             "id": variantId ?? "1\(abs(id.hashValue % 1_000_000))",
@@ -1178,7 +1551,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
             "streetDate": "2026-07-17",
             "supportedControls": ["GAMEPAD"],
             "subscriptions": ["sub-ultimate"],
-            "paymentModels": [["__typename": "IncludedWithSubscription"]],
+            "paymentModels": [["__typename": freeToPlay ? "FreeToPlay" : "IncludedWithSubscription"]],
             "minimumSizeInBytes": 42_000_000,
             "cloudSaveSupported": true,
             "gfn": [
@@ -1189,7 +1562,7 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
                 "library": ["status": libraryStatus, "selected": librarySelected, "playStatus": "PLAYABLE", "installed": true, "subscription": "GFN_PREMIUM"],
             ],
         ]],
-        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME"],
+        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME", "catalogSkuStrings": ["SKU_BASED_TAG": ["NEW_ON_GFN"], "SKU_BASED_PLAYABILITY_TEXT": "Included with membership", "SKU_BASED_UNPLAYABLE_DIALOG_HEADER": "Upgrade required", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE": "Upgrade to play", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE_ECOMM_RESTRICTED": "Upgrade in your account"]],
         "itemMetadata": ["campaignIds": []],
     ]
 }

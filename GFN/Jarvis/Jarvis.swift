@@ -182,7 +182,7 @@ public struct JarvisOAuthConfiguration: Equatable, Sendable {
         redirectURI: String = "com.nvidia.geforcenow://oauth/callback",
         scope: String = "openid consent email tk_client age",
         defaultIdpId: String = Jarvis.defaultIdpId,
-        userAgent: String = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173",
+        userAgent: String = GFNClientMetadata.nativeUserAgent,
         origin: String = "https://nvfile",
         referer: String = "https://nvfile/"
     ) {

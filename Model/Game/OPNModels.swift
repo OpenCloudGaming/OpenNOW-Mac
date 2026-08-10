@@ -49,6 +49,8 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var supportedLanguages: [String] = []
     public var gfnFeatureLabels: [String] = []
     public var isPatching = false
+    public var patchStatusPrimaryText = ""
+    public var patchStatusSecondaryText = ""
     public var librarySelected = false
     public var inLibrary = false
 }
@@ -96,6 +98,13 @@ public struct OPNStoreDefinition: Equatable, Sendable {
     public var accountLinkingMetadata = OPNStoreAccountLinkingMetadata()
 }
 
+public struct OPNSubscriptionDefinition: Equatable, Sendable {
+    public var subscription = ""
+    public var label = ""
+    public var logoURL = ""
+    public var primaryStore = ""
+}
+
 public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var id = ""
     public var uuid = ""
@@ -132,9 +141,17 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var promoTag = ""
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
+    public var skuPlayabilityText = ""
+    public var skuUnplayableDialogHeader = ""
+    public var skuUnplayableDialogBody = ""
+    public var skuUnplayableDialogBodyEcommerceRestricted = ""
     public var displaysOwnRatingDuringGameplay = false
+    public var isFavorited = false
     public var isInLibrary = false
     public var isPatching = false
+    public var isFreeToPlay = false
+    public var patchStatusPrimaryText = ""
+    public var patchStatusSecondaryText = ""
     public var variants: [OPNGameVariant] = []
 }
 
@@ -156,8 +173,9 @@ public struct OPNPanelSection: Equatable, Sendable {
     public var seeMoreSortId = ""
     public var seeMoreTitle = ""
     public var games: [OPNGameInfo] = []
+    public var tiles: [OPNPanelTile] = []
 
-    public init(id: String = "", title: String = "", typename: String = "", seeMoreFilterIds: [String] = [], seeMoreSortId: String = "", seeMoreTitle: String = "", games: [OPNGameInfo] = []) {
+    public init(id: String = "", title: String = "", typename: String = "", seeMoreFilterIds: [String] = [], seeMoreSortId: String = "", seeMoreTitle: String = "", games: [OPNGameInfo] = [], tiles: [OPNPanelTile] = []) {
         self.id = id
         self.title = title
         self.typename = typename
@@ -165,7 +183,21 @@ public struct OPNPanelSection: Equatable, Sendable {
         self.seeMoreSortId = seeMoreSortId
         self.seeMoreTitle = seeMoreTitle
         self.games = games
+        self.tiles = tiles
     }
+}
+
+public struct OPNPanelTile: Equatable, Sendable {
+    public var id = ""
+    public var kind = ""
+    public var title = ""
+    public var subtitle = ""
+    public var body = ""
+    public var imageUrl = ""
+    public var actionUrl = ""
+    public var actionLabel = ""
+    public var filterIds: [String] = []
+    public var sortId = ""
 }
 
 public struct OPNPanelResult: Equatable, Sendable {
@@ -338,6 +370,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var supportedLanguages: [String]
     public var gfnFeatureLabels: [String]
     public var isPatching: Bool
+    public var patchStatusPrimaryText: String
+    public var patchStatusSecondaryText: String
     public var librarySelected: Bool
     public var inLibrary: Bool
 
@@ -369,6 +403,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
         supportedLanguages = variant.supportedLanguages
         gfnFeatureLabels = variant.gfnFeatureLabels
         isPatching = variant.isPatching
+        patchStatusPrimaryText = variant.patchStatusPrimaryText
+        patchStatusSecondaryText = variant.patchStatusSecondaryText
         librarySelected = variant.librarySelected
         inLibrary = variant.inLibrary
         super.init()
@@ -399,6 +435,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
             supportedLanguages: supportedLanguages,
             gfnFeatureLabels: gfnFeatureLabels,
             isPatching: isPatching,
+            patchStatusPrimaryText: patchStatusPrimaryText,
+            patchStatusSecondaryText: patchStatusSecondaryText,
             librarySelected: librarySelected,
             inLibrary: inLibrary
         )
@@ -443,9 +481,17 @@ public final class OPNCatalogGameObject: NSObject {
     public var promoTag: String
     public var campaignIds: [String]
     public var skuTags: [String]
+    public var skuPlayabilityText: String
+    public var skuUnplayableDialogHeader: String
+    public var skuUnplayableDialogBody: String
+    public var skuUnplayableDialogBodyEcommerceRestricted: String
     public var displaysOwnRatingDuringGameplay: Bool
+    public var isFavorited: Bool
     public var isInLibrary: Bool
     public var isPatching: Bool
+    public var isFreeToPlay: Bool
+    public var patchStatusPrimaryText: String
+    public var patchStatusSecondaryText: String
     public var variants: [OPNCatalogGameVariantObject]
 
     public override convenience init() {
@@ -488,9 +534,17 @@ public final class OPNCatalogGameObject: NSObject {
         promoTag = game.promoTag
         campaignIds = game.campaignIds
         skuTags = game.skuTags
+        skuPlayabilityText = game.skuPlayabilityText
+        skuUnplayableDialogHeader = game.skuUnplayableDialogHeader
+        skuUnplayableDialogBody = game.skuUnplayableDialogBody
+        skuUnplayableDialogBodyEcommerceRestricted = game.skuUnplayableDialogBodyEcommerceRestricted
         displaysOwnRatingDuringGameplay = game.displaysOwnRatingDuringGameplay
+        isFavorited = game.isFavorited
         isInLibrary = game.isInLibrary
         isPatching = game.isPatching
+        isFreeToPlay = game.isFreeToPlay
+        patchStatusPrimaryText = game.patchStatusPrimaryText
+        patchStatusSecondaryText = game.patchStatusSecondaryText
         variants = game.variants.map(OPNCatalogGameVariantObject.init)
         super.init()
     }
@@ -532,11 +586,31 @@ public final class OPNCatalogGameObject: NSObject {
         game.promoTag = promoTag
         game.campaignIds = campaignIds
         game.skuTags = skuTags
+        game.skuPlayabilityText = skuPlayabilityText
+        game.skuUnplayableDialogHeader = skuUnplayableDialogHeader
+        game.skuUnplayableDialogBody = skuUnplayableDialogBody
+        game.skuUnplayableDialogBodyEcommerceRestricted = skuUnplayableDialogBodyEcommerceRestricted
         game.displaysOwnRatingDuringGameplay = displaysOwnRatingDuringGameplay
+        game.isFavorited = isFavorited
         game.isInLibrary = isInLibrary
         game.isPatching = isPatching
+        game.isFreeToPlay = isFreeToPlay
+        game.patchStatusPrimaryText = patchStatusPrimaryText
+        game.patchStatusSecondaryText = patchStatusSecondaryText
         game.variants = variants.map(\.swiftValue)
         return game
+    }
+
+    public static func isFreeMembershipTier(_ membershipTier: String) -> Bool {
+        let normalized = membershipTier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "free" || normalized == "free tier" || normalized == "free-tier"
+    }
+
+    public func freeAccountAccessBadgeLabel(isFreeTierAccount: Bool) -> String? {
+        guard isFreeTierAccount else { return nil }
+        let tier = membershipTierLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tier.isEmpty, !Self.isFreeMembershipTier(tier) else { return nil }
+        return "Membership Required"
     }
 }
 
@@ -550,6 +624,7 @@ public final class OPNCatalogPanelSectionObject: NSObject {
     public var seeMoreSortId: String
     public var seeMoreTitle: String
     public var games: [OPNCatalogGameObject]
+    public var tiles: [OPNCatalogPanelTileObject]
 
     public override convenience init() {
         self.init(section: OPNPanelSection())
@@ -563,11 +638,49 @@ public final class OPNCatalogPanelSectionObject: NSObject {
         seeMoreSortId = section.seeMoreSortId
         seeMoreTitle = section.seeMoreTitle
         games = section.games.map(OPNCatalogGameObject.init)
+        tiles = section.tiles.map(OPNCatalogPanelTileObject.init)
         super.init()
     }
 
     public var swiftValue: OPNPanelSection {
-        OPNPanelSection(id: id, title: title, typename: typeName, seeMoreFilterIds: seeMoreFilterIds, seeMoreSortId: seeMoreSortId, seeMoreTitle: seeMoreTitle, games: games.map(\.swiftValue))
+        OPNPanelSection(id: id, title: title, typename: typeName, seeMoreFilterIds: seeMoreFilterIds, seeMoreSortId: seeMoreSortId, seeMoreTitle: seeMoreTitle, games: games.map(\.swiftValue), tiles: tiles.map(\.swiftValue))
+    }
+}
+
+@objc(OPNCatalogPanelTileObject)
+@objcMembers
+public final class OPNCatalogPanelTileObject: NSObject {
+    public var id: String
+    public var kind: String
+    public var title: String
+    public var subtitle: String
+    public var body: String
+    public var imageUrl: String
+    public var actionUrl: String
+    public var actionLabel: String
+    public var filterIds: [String]
+    public var sortId: String
+
+    public override convenience init() {
+        self.init(tile: OPNPanelTile())
+    }
+
+    public init(tile: OPNPanelTile) {
+        id = tile.id
+        kind = tile.kind
+        title = tile.title
+        subtitle = tile.subtitle
+        body = tile.body
+        imageUrl = tile.imageUrl
+        actionUrl = tile.actionUrl
+        actionLabel = tile.actionLabel
+        filterIds = tile.filterIds
+        sortId = tile.sortId
+        super.init()
+    }
+
+    public var swiftValue: OPNPanelTile {
+        OPNPanelTile(id: id, kind: kind, title: title, subtitle: subtitle, body: body, imageUrl: imageUrl, actionUrl: actionUrl, actionLabel: actionLabel, filterIds: filterIds, sortId: sortId)
     }
 }
 
@@ -705,13 +818,15 @@ public final class OPNParsedSessionProgress: NSObject {
     public let progressState: Int
     public let remainingPlaytimeHours: Double
     public let remainingPlaytimeAvailable: Bool
+    public let remainingSessionLimitSeconds: Int
 
-    public init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool) {
+    public init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool, remainingSessionLimitSeconds: Int) {
         self.queuePosition = queuePosition
         self.seatSetupStep = seatSetupStep
         self.progressState = progressState.rawValue
         self.remainingPlaytimeHours = remainingPlaytimeHours
         self.remainingPlaytimeAvailable = remainingPlaytimeAvailable
+        self.remainingSessionLimitSeconds = remainingSessionLimitSeconds
     }
 }
 
@@ -837,14 +952,26 @@ public final class OPNSessionJSONParser: NSObject {
             ?? intValue(sessionProgress?["seatSetupStep"])
             ?? intValue(progressInfo?["seatSetupStep"])
             ?? 0
-        let remaining = remainingPlaytime(containers: [session, sessionProgress, progressInfo, controlInfo])
+        let timerDataContainers = [
+            dictionary(session["timerData"]),
+            dictionary(sessionProgress?["timerData"]),
+            dictionary(progressInfo?["timerData"]),
+            dictionary(controlInfo?["timerData"]),
+            dictionary(dictionary(session["message"])?["timerData"]),
+            dictionary(dictionary(sessionProgress?["message"])?["timerData"]),
+            dictionary(dictionary(progressInfo?["message"])?["timerData"]),
+            dictionary(dictionary(controlInfo?["message"])?["timerData"]),
+        ]
+        let containers = [session, sessionProgress, progressInfo, controlInfo] + timerDataContainers
+        let remaining = remainingPlaytime(containers: containers)
 
         return OPNParsedSessionProgress(
             queuePosition: queuePosition,
             seatSetupStep: seatSetupStep,
             progressState: progressState(seatSetupStep: seatSetupStep, queuePosition: queuePosition),
             remainingPlaytimeHours: remaining.hours,
-            remainingPlaytimeAvailable: remaining.available
+            remainingPlaytimeAvailable: remaining.available,
+            remainingSessionLimitSeconds: remainingSessionLimitSeconds(containers: containers)
         )
     }
 
@@ -853,23 +980,18 @@ public final class OPNSessionJSONParser: NSObject {
         let session = session as? [String: Any] ?? [:]
         let progress = dictionary(session["sessionProgress"])
         let progressInfo = dictionary(session["progressInfo"])
-        let required = boolValue(session["sessionAdsRequired"])
-            || boolValue(session["isAdsRequired"])
-            || boolValue(progress?["isAdsRequired"])
-            || boolValue(progressInfo?["isAdsRequired"])
+        let controlInfo = dictionary(session["sessionControlInfo"])
+        let containers = [session, progress, progressInfo, controlInfo].compactMap { $0 }
+        let required = containers.contains { container in
+            boolValue(container["sessionAdsRequired"]) || boolValue(container["isAdsRequired"])
+        }
 
         var adState = OPNSessionAdState()
         adState.sessionAdsRequired = required
-        adState.serverSentEmptyAds = session["sessionAds"] == nil || session["sessionAds"] is NSNull
-        adState.sessionAds = array(session["sessionAds"]).enumerated().compactMap { index, value in
-            guard let ad = dictionary(value) else { return nil }
-            let parsed = parseSessionAd(ad, index: index)
-            guard !isTerminalAdState(parsed.adState) else { return nil }
-            guard !parsed.adId.isEmpty || !parsed.mediaUrl.isEmpty || !parsed.title.isEmpty || !parsed.description.isEmpty else { return nil }
-            return parsed
-        }
+        adState.serverSentEmptyAds = !containers.contains { !array($0["sessionAds"]).isEmpty || !array($0["ads"]).isEmpty }
+        adState.sessionAds = sessionAds(from: containers)
 
-        if let opportunity = dictionary(session["opportunity"]) {
+        if let opportunity = containers.compactMap({ dictionary($0["opportunity"]) }).first {
             adState.isQueuePaused = boolValue(opportunity["queuePaused"], fallback: adState.isQueuePaused)
             adState.gracePeriodSeconds = positiveInt(opportunity["gracePeriodSeconds"]) ?? 0
             adState.message = nonEmptyString(opportunity["message"]) ?? nonEmptyString(opportunity["description"]) ?? ""
@@ -880,6 +1002,22 @@ public final class OPNSessionJSONParser: NSObject {
 
         adState.isAdsRequired = required || !adState.sessionAds.isEmpty || adState.isQueuePaused
         return OPNParsedSessionAdState(adState: adState)
+    }
+
+    private static func sessionAds(from containers: [[String: Any]]) -> [OPNSessionAdInfo] {
+        let adValues = containers.compactMap { container -> [Any]? in
+            let sessionAds = array(container["sessionAds"])
+            if !sessionAds.isEmpty { return sessionAds }
+            let ads = array(container["ads"])
+            return ads.isEmpty ? nil : ads
+        }.first ?? []
+        return adValues.enumerated().compactMap { index, value in
+            guard let ad = dictionary(value) else { return nil }
+            let parsed = parseSessionAd(ad, index: index)
+            guard !isTerminalAdState(parsed.adState) else { return nil }
+            guard !parsed.adId.isEmpty || !parsed.mediaUrl.isEmpty || !parsed.title.isEmpty || !parsed.description.isEmpty else { return nil }
+            return parsed
+        }
     }
 
     private static func nonEmptyString(_ value: Any?) -> String? {
@@ -1014,6 +1152,24 @@ public final class OPNSessionJSONParser: NSObject {
             }
         }
         return (0.0, false)
+    }
+
+    private static func remainingSessionLimitSeconds(containers: [[String: Any]?]) -> Int {
+        for container in containers.compactMap({ $0 }) {
+            if let milliseconds = firstNumber(in: container, keys: ["beforeEventMS", "remainingSessionLimitMs", "remainingSessionLimitMilliseconds", "sessionLimitRemainingMs", "sessionLimitRemainingMilliseconds"]) {
+                let seconds = Int((milliseconds / 1000.0).rounded())
+                if seconds > 0 && seconds <= 86_400 { return seconds }
+            }
+            if let seconds = firstNumber(in: container, keys: ["timeRemaining", "remainingTime", "remainingTimeInSeconds", "remainingSessionTimeInSeconds", "sessionTimeRemainingInSeconds", "timeRemainingInSeconds", "remainingSessionLimitSeconds", "sessionLimitRemainingSeconds"]) {
+                let rounded = Int(seconds.rounded())
+                if rounded > 0 && rounded <= 86_400 { return rounded }
+            }
+            if let minutes = firstNumber(in: container, keys: ["remainingTimeInMinutes", "remainingSessionTimeInMinutes", "sessionTimeRemainingInMinutes", "timeRemainingInMinutes", "remainingSessionLimitMinutes", "sessionLimitRemainingMinutes"]) {
+                let seconds = Int((minutes * 60.0).rounded())
+                if seconds > 0 && seconds <= 86_400 { return seconds }
+            }
+        }
+        return 0
     }
 
     private static func colorQuality(bitDepth: Int, chromaFormat: Int) -> String {

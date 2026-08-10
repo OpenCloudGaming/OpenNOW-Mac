@@ -90,7 +90,7 @@ import Testing
     #expect(components.host == "gx-target-experiments-frontend-api.gx.nvidia.com")
     #expect(components.path == "/cloudvariables/v3")
     #expect(queryItems["cvName"]?.contains("webRtcNetworkTestV2") == true)
-    #expect(queryItems["clientVer"] == "2.0.85.135")
+    #expect(queryItems["clientVer"] == GFNClientMetadata.appVersion)
     #expect(queryItems["clientType"] == "Browser")
     #expect(queryItems["browserType"] == "Chrome")
     #expect(queryItems["deviceOS"] == "MacOS")

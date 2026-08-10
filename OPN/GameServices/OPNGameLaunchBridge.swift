@@ -94,7 +94,7 @@ public final class OPNGameLaunchBridge {
         }
         let appId = launchAppId.stringValue
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
-        let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
+        let accountLinked = selectedVariant.map { Self.variantOwnedForLaunch($0, in: game) } ?? game.isInLibrary
         let selectedStore = selectedVariant?.appStore ?? ""
         let launchMetadata = Self.launchMetadata(for: game, selectedVariant: selectedVariant, userId: userId, idpId: idpId)
         let replacement = OPNStreamLaunchConfiguration(
@@ -169,6 +169,10 @@ public final class OPNGameLaunchBridge {
         if let index = game.variants.firstIndex(where: { $0.librarySelected }) { return index }
         if let index = game.variants.firstIndex(where: { $0.inLibrary }) { return index }
         return game.variants.isEmpty ? -1 : 0
+    }
+
+    private static func variantOwnedForLaunch(_ variant: OPNCatalogGameVariantObject, in game: OPNCatalogGameObject) -> Bool {
+        variant.inLibrary || variant.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch(variant.serviceStatus) || (game.variants.count == 1 && game.isInLibrary)
     }
 
     private func activeSession(_ session: OPNActiveSessionObject, matches game: OPNCatalogGameObject, appId: String) -> Bool {

@@ -20,13 +20,13 @@ private enum ControllerDetailAction: Equatable {
         switch self {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
-            if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "Play" }
+            if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
             if selectedVariant != nil { return "Mark Owned" }
             return "Play"
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
         case .store: return "Change Store"
         case .ownership:
-            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary { return "Unmark Owned" }
+            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Unmark Owned" }
             return "Mark Owned"
         case .share: return "Share"
         case .shortcut: return "Add Shortcut"
@@ -584,17 +584,17 @@ struct ControllerCatalogView: View {
         case .primary:
             if game.isLaunchPatching || selectedVariant?.isPatching == true {
                 viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
-            } else if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
+            } else if viewModel.selectedPlatformHasAccess(in: game) || selectedVariant == nil {
                 viewModel.launchSelectedGame()
             } else {
-                viewModel.markSelectedVariantOwned()
+                viewModel.handleUnownedSelectedVariantPrimaryAction()
             }
         case .favorite:
             viewModel.toggleFavoriteSelectedGame()
         case .store:
             viewModel.changeSelectedGameStore()
         case .ownership:
-            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true {
                 viewModel.removeSelectedVariantOwned()
             } else {
                 viewModel.markSelectedVariantOwned()
@@ -702,18 +702,20 @@ struct ControllerCatalogView: View {
     }
 
     private func moveSelectedStore(delta: Int) {
-        guard let game = viewModel.selectedGame, game.variants.count > 1 else { return }
+        guard let game = viewModel.selectedGame else { return }
+        let options = viewModel.platformOptions(for: game)
+        guard options.count > 1 else { return }
         let currentIndex = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-        let nextIndex = min(max(currentIndex + delta, 0), game.variants.count - 1)
-        viewModel.selectGameStoreVariant(at: nextIndex)
+        let currentOptionIndex = options.firstIndex { $0.variantIndex == currentIndex } ?? 0
+        let nextOptionIndex = min(max(currentOptionIndex + delta, 0), options.count - 1)
+        viewModel.focusGameStoreVariant(at: options[nextOptionIndex].variantIndex)
     }
 
     private func confirmStorePickerStage() {
         switch viewModel.ownershipFlowStage {
         case .storeSelection, .hidden:
-            guard let game = viewModel.selectedGame else { return }
-            let index = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-            viewModel.selectGameStoreVariant(at: index)
+            guard let option = viewModel.selectedPlatformOption(in: viewModel.selectedGame) else { return }
+            viewModel.selectGameStoreVariant(at: option.variantIndex)
         case .manualMark:
             viewModel.confirmSelectedVariantOwned()
         case .success:
@@ -1046,6 +1048,7 @@ private struct ControllerGameRail: View {
                             imageURL: viewModel.optimizedImageURL(item.game.bestWideImageURL, width: 720),
                             isFocused: isFocused && selectedIndex == item.index,
                             isQueuedForPatching: viewModel.isQueuedForPatching(item.game),
+                            showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                             tileSize: metrics.tileSize,
                             action: { openDetails(item.game) }
                         )
@@ -1095,6 +1098,7 @@ private struct ControllerGameTile: View {
     let imageURL: URL?
     let isFocused: Bool
     let isQueuedForPatching: Bool
+    let showsFreeAccountAccessBadges: Bool
     let tileSize: CGSize
     let action: () -> Void
 
@@ -1108,6 +1112,12 @@ private struct ControllerGameTile: View {
                 if let badge = game.cardBadgeLabel {
                     CatalogGameCardBadge(label: badge)
                         .scaleEffect(0.92, anchor: .topLeading)
+                }
+                if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
+                    CatalogGameAccessBadge(label: badge)
+                        .scaleEffect(0.92, anchor: .topTrailing)
+                        .padding(9)
+                        .frame(width: tileSize.width, height: tileSize.height, alignment: .topTrailing)
                 }
                 VStack(alignment: .leading, spacing: 7) {
                     Spacer(minLength: 0)
@@ -1138,7 +1148,7 @@ private struct ControllerGameTile: View {
     }
 
     private var subtitle: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "Queued for patch completion" : "Patching" }
+        if game.isLaunchPatching { return isQueuedForPatching ? "Queued for patch completion" : game.patchStatusPrimaryDisplayText }
         if game.isInLibrary { return "In Library" }
         if !game.primaryStoreLabel.isEmpty { return game.primaryStoreLabel }
         return game.supportsGamepad ? "Gamepad supported" : "Cloud ready"
@@ -1329,6 +1339,7 @@ private struct ControllerGameDetailOverlay: View {
     let close: () -> Void
 
     private var selectedVariant: OPNCatalogGameVariantObject? { viewModel.selectedVariant(in: game) }
+    private var selectedPlatformOption: CatalogPlatformOption? { viewModel.selectedPlatformOption(in: game) }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1381,8 +1392,8 @@ private struct ControllerGameDetailOverlay: View {
     }
 
     private var detailSubtitle: String {
-        let store = selectedVariant?.appStoreLabel.isEmpty == false ? selectedVariant?.appStoreLabel ?? "" : game.primaryStoreLabel
-        let ownership = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true ? "Owned" : "Ownership required"
+        let store = selectedPlatformOption?.title ?? game.primaryStoreLabel
+        let ownership = selectedPlatformOption?.hasAccess == true ? "Ready" : (selectedPlatformOption?.status.isEmpty == false ? selectedPlatformOption?.status ?? "Ownership required" : "Ownership required")
         return [store, ownership].filter { !$0.isEmpty }.joined(separator: " • ")
     }
 

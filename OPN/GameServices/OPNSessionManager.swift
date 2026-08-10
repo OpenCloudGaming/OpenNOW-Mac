@@ -22,7 +22,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
+            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
             return
         }
@@ -60,14 +60,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         var sessionRequestData: [String: Any] = [
-            "appId": launchAppId.stringValue,
+            "appId": launchAppId.intValue,
             "internalTitle": internalTitle,
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
             "networkTestSessionId": networkTestSessionIdValue(effectiveSettings),
             "parentSessionId": NSNull(),
             "clientIdentification": "GFN-PC",
             "deviceHashId": deviceId,
-            "clientVersion": "30.0",
+            "clientVersion": GFNClientMetadata.webRTCClientVersion,
             "sdkVersion": "1.0",
             "streamerVersion": 1,
             "clientPlatformName": sessionClientPlatformName(transportMode),
@@ -83,10 +83,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "enhancedStreamMode": int(effectiveSettings["enhancedStreamMode"], fallback: 1),
             "appLaunchMode": int(effectiveSettings["appLaunchMode"], fallback: 1),
             "secureRTSPSupported": transportMode == "nvst",
-            "partnerCustomData": "",
+            "partnerCustomData": string(effectiveSettings["partnerCustomData"]),
             "accountLinked": bool(effectiveSettings["accountLinked"], fallback: true),
-            "enablePersistingInGameSettings": true,
-            "userAge": 26,
+            "enablePersistingInGameSettings": bool(effectiveSettings["enablePersistingInGameSettings"]),
+            "userAge": int(effectiveSettings["userAge"]),
             "requestedStreamingFeatures": requestedStreamingFeatures(effectiveSettings, hdrEnabled: hdrEnabled),
         ]
         if let transport = sessionTransportPolicy(effectiveSettings) {
@@ -131,6 +131,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard http?.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
+                if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
+                    self.clearPersistedActiveSessionId("")
+                    createCompletion(false, [:], staleMessage)
+                    return
+                }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    createCompletion(false, [:], limitedModeMessage)
+                    return
+                }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
@@ -315,10 +324,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             }
             var updated = adSession
             if let sessionJson = json["session"] as? [String: Any] {
+                let progress = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary)
                 updated["status"] = int(sessionJson["status"])
-                updated["queuePosition"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).queuePosition
-                updated["seatSetupStep"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).seatSetupStep
-                updated["progressState"] = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary).progressState
+                updated["queuePosition"] = progress.queuePosition
+                updated["seatSetupStep"] = progress.seatSetupStep
+                updated["progressState"] = progress.progressState
+                updated["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
                 updated["negotiatedStreamProfile"] = self.negotiatedStreamProfile(from: sessionJson)
                 updated["adState"] = self.sessionAdState(from: sessionJson)
                 self.mergeAndStoreAdState(&updated)
@@ -329,7 +340,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func claimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], recoveryMode: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))"))
+            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
             return
         }
@@ -360,7 +371,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard let self else { return }
             var preClaimStatus = 0
             if let error {
-                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
+                OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
                 let json = CloudMatchResponseParser.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
@@ -373,6 +384,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                         self.clearPersistedActiveSessionId(sessionId)
                         completion(false, [:], staleMessage)
+                        return
+                    }
+                    if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                        completion(false, [:], limitedModeMessage)
                         return
                     }
                     completion(false, [:], "STALE_ACTIVE_SESSION: validation HTTP \(http?.statusCode ?? 0): \(body)")
@@ -408,7 +423,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "sdrHdrMode": hdrEnabled ? 1 : 0,
             "networkTestSessionId": networkTestSessionIdValue(settings),
             "availableSupportedControllers": stringArray(settings["availableSupportedControllers"]),
-            "clientVersion": "30.0",
+            "clientVersion": GFNClientMetadata.webRTCClientVersion,
             "deviceHashId": deviceId,
             "internalTitle": NSNull(),
             "clientPlatformName": sessionClientPlatformName(transportMode),
@@ -426,10 +441,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "useOps": bool(settings["useOps"], fallback: true),
             "clientDisplayHdrCapabilities": hdrEnabled ? clientDisplayHdrCapabilities(capabilities) : NSNull(),
             "accountLinked": bool(settings["accountLinked"], fallback: true),
-            "partnerCustomData": "",
-            "enablePersistingInGameSettings": true,
+            "partnerCustomData": string(settings["partnerCustomData"]),
+            "enablePersistingInGameSettings": bool(settings["enablePersistingInGameSettings"]),
             "secureRTSPSupported": transportMode == "nvst",
-            "userAge": 26,
+            "userAge": int(settings["userAge"]),
             "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
         ]
         if let transport = sessionTransportPolicy(settings) {
@@ -484,6 +499,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     completion(false, [:], staleMessage)
                     return
                 }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    completion(false, [:], limitedModeMessage)
+                    return
+                }
                 completion(false, [:], "Claim HTTP \(http?.statusCode ?? 0): \(body)")
                 return
             }
@@ -498,6 +517,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
+                    return
+                }
+                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                    completion(false, [:], limitedModeMessage)
                     return
                 }
                 completion(false, [:], "Claim API error \(statusCode): \(description.isEmpty ? "unknown" : description)")
@@ -568,6 +591,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "remainingPlaytimeHours": 0.0,
             "remainingPlaytimeAvailable": false,
             "remainingPlaytimeUnlimited": false,
+            "remainingSessionLimitSeconds": 0,
             "clientId": clientId,
             "deviceId": deviceId,
         ]
@@ -579,6 +603,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["remainingPlaytimeHours"] = progress.remainingPlaytimeHours
             info["remainingPlaytimeAvailable"] = true
         }
+        info["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
         applyConnectionInfo(session, to: &info)
         if string(info["serverIp"]).isEmpty, let controlInfo = session["sessionControlInfo"] as? [String: Any] {
             info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
@@ -891,7 +916,7 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
         // Windows display-scaling factor and scales the server desktop DOWN, so the game renders at a
         // fraction of the requested resolution (e.g. a Retina scale=2 -> dpi 200 -> 200% -> 5120x2160
         // collapses to a 2560x1080 desktop). 100 is NOT equivalent to 0: any positive value triggers
-        // scaling; only 0 yields the full native desktop. The working reference client (OpenNOW) sends 0.
+        // scaling; only 0 yields the full native desktop. The working reference client (MacForceNow) sends 0.
         "dpi": 0,
     ]
 }
@@ -942,7 +967,7 @@ private func streamTransportMode(_ settings: [String: Any]) -> String {
 private func sessionClientPlatformName(_ transportMode: String) -> String {
     // Always identify as a native "windows" client. Reporting "browser" makes GeForce NOW apply the
     // web-client resolution cap, which downscales the server desktop (5120x2160 -> 2560x1080). The
-    // working reference client (OpenNOW) sends "windows" on every transport, including WebRTC.
+    // working reference client (MacForceNow) sends "windows" on every transport, including WebRTC.
     _ = transportMode
     return "windows"
 }

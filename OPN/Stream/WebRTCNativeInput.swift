@@ -214,6 +214,11 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                 clipboardText = String(data: payload.subdata(in: 8..<(8 + textLength)), encoding: .utf8) ?? ""
             }
         }
+        if let update = StreamSessionLimitUpdate.parse(from: payload) ?? clipboardText.data(using: .utf8).flatMap(StreamSessionLimitUpdate.parse(from:)) {
+            owner?.handleSessionLimitUpdate(update)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.session_limit", level: .info, message: "Remote session length timer received.", attributes: ["remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
+            return
+        }
         if clipboardText.isEmpty, let first = payload.first, first == UInt8(ascii: "{") || first == UInt8(ascii: "[") {
             clipboardText = clipboardTextFromJSON(payload)
         }

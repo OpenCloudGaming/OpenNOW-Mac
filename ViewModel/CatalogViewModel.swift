@@ -127,6 +127,13 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     }
 }
 
+struct CatalogStreamAdPlayback: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let mediaUrl: String
+    let durationMs: Int
+}
+
 @MainActor
 @Observable
 final class CatalogViewModel {
@@ -201,14 +208,24 @@ final class CatalogViewModel {
     var ownershipFlowMessage = ""
     var twitchPreferences = TwitchPreferencesStore.load()
     var twitchAccountStatus = TwitchAccountStatus()
-    var twitchPrimaryStreamKeySaved = false
+    var twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
     var isConnectingTwitch = false
     var catalogBroadcastStatus = WebRTCLiveBroadcastStatus.idle
     var queuedPatchingLaunchGameTitle = ""
+    private var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
+    private var loadingFullSectionIds: Set<String> = []
+    var expandedSectionIds: Set<String> = []
+    var accountSubscriptions: [String] = []
+    var subscriptionDefinitions: [CatalogSubscriptionDefinition] = []
+    var activeStreamAdPlayback: CatalogStreamAdPlayback?
 
     let account: LoginAccount
     let session: LoginSession
     let onRefreshAuth: () async -> Bool
+
+    var isFreeTierAccount: Bool {
+        subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
+    }
 
     private var hasLoaded = false
     private var browseGeneration = 0
@@ -220,6 +237,7 @@ final class CatalogViewModel {
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
+    private var activeStreamAdContinuation: CheckedContinuation<Int, Error>?
     private var settingsPreferencesGeneration = 0
     private var isCatalogBroadcastPreparing = false
     private var selectedGameRevealSequence = 0
@@ -339,6 +357,7 @@ final class CatalogViewModel {
                     title: resolvedTitle,
                     games: games(for: section, title: resolvedTitle, sectionId: sectionId),
                     kind: .panel,
+                    tiles: section.tiles,
                     seeMoreFilterIds: section.seeMoreFilterIds,
                     seeMoreSortId: section.seeMoreSortId,
                     seeMoreTitle: section.seeMoreTitle
@@ -618,6 +637,29 @@ final class CatalogViewModel {
         browseCatalog()
     }
 
+    func openPanelTile(_ tile: OPNCatalogPanelTileObject) {
+        if tile.kind == "filter", !tile.filterIds.isEmpty {
+            selectedMainPage = .games
+            selectedCatalogDestination = .home
+            searchQuery = ""
+            selectedFilterIds = tile.filterIds
+            if !tile.sortId.isEmpty { selectedSortId = tile.sortId }
+            browseCatalog()
+            return
+        }
+        if let url = URL(string: tile.actionUrl), !tile.actionUrl.isEmpty {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func toggleSectionExpansion(_ sectionId: String) {
+        if expandedSectionIds.contains(sectionId) {
+            expandedSectionIds.remove(sectionId)
+        } else {
+            expandedSectionIds.insert(sectionId)
+        }
+    }
+
     func selectGame(_ game: OPNCatalogGameObject?) {
         let resolvedGame = game.flatMap(resolveGameForDetails) ?? game
         selectedGame = resolvedGame
@@ -680,12 +722,42 @@ final class CatalogViewModel {
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
+        if Int(shortcut.cmsId) != nil {
+            MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
+            let selfBox = CatalogWeakObject(self)
+            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId(shortcut.cmsId) { success, game, error in
+                let gameBox = CatalogSendableValue(game)
+                Task { @MainActor in
+                    guard let self = selfBox.value else { return }
+                    let game = gameBox.value
+                    if success, let game {
+                        MacForceNowLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
+                        self.selectGame(game)
+                        self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
+                        return
+                    }
+                    MacForceNowLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
+                    if let game = Self.launchGame(from: shortcut, title: title) {
+                        MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+                        self.selectGame(game)
+                        self.launch(game: game, variantIndex: 0)
+                    } else {
+                        self.resolveShortcutByBrowsing(shortcut, title: title)
+                    }
+                }
+            }
+            return
+        }
         if let game = Self.launchGame(from: shortcut, title: title) {
             MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: 0)
             return
         }
+        resolveShortcutByBrowsing(shortcut, title: title)
+    }
+
+    private func resolveShortcutByBrowsing(_ shortcut: GFNGameShortcut, title: String) {
         MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
@@ -803,13 +875,13 @@ final class CatalogViewModel {
             switch plan {
             case .ready(let configuration):
                 MacForceNowLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
-                self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
+                self.startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: self.account.membershipTier), message: message)
             case .activeSession(let active, let resume, let replacement):
                 MacForceNowLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
                 self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
-                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle)
-                self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
+                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
+                self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: self.account.membershipTier)
                 self.launchFlowState = .activeSessionPrompt
                 self.launchFlowMessage = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
                     ? "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
@@ -851,6 +923,7 @@ final class CatalogViewModel {
     func cancelActiveStreamLaunch() {
         guard activeStreamConfiguration != nil else { return }
         streamProgressGeneration += 1
+        cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
@@ -1065,6 +1138,7 @@ final class CatalogViewModel {
 
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
+        cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         activeDiscordPresence = nil
@@ -1108,6 +1182,54 @@ final class CatalogViewModel {
         }
     }
 
+    func presentRequiredStreamAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
+        guard URL(string: ad.mediaUrl) != nil else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
+        }
+        activeStreamAdContinuation?.resume(throwing: CancellationError())
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = CatalogStreamAdPlayback(
+            id: ad.adId,
+            title: ad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Sponsored Message" : ad.title,
+            mediaUrl: ad.mediaUrl,
+            durationMs: ad.durationMs
+        )
+        isActiveStreamLaunchOverlayVisible = true
+        let title = activeStreamConfiguration?.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeStreamProgress = StreamProgress(
+            title: title?.isEmpty == false ? title ?? "GeForce NOW" : "GeForce NOW",
+            message: "Playing sponsored message before your free-tier session continues...",
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.allocateCloudSession.rawValue,
+            isReady: false,
+            queuePosition: activeStreamProgress?.queuePosition
+        )
+        return try await withCheckedThrowingContinuation { continuation in
+            activeStreamAdContinuation = continuation
+        }
+    }
+
+    func finishRequiredStreamAdPlayback(watchedTimeInMs: Int) {
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = nil
+        continuation.resume(returning: max(0, watchedTimeInMs))
+    }
+
+    func failRequiredStreamAdPlayback(_ message: String) {
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        activeStreamAdPlayback = nil
+        continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
+    }
+
+    private func cancelActiveStreamAdPlayback() {
+        activeStreamAdPlayback = nil
+        guard let continuation = activeStreamAdContinuation else { return }
+        activeStreamAdContinuation = nil
+        continuation.resume(throwing: CancellationError())
+    }
+
     private var launchToken: String {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
@@ -1135,10 +1257,12 @@ final class CatalogViewModel {
         return error.localizedDescription
     }
 
-    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "") -> StreamLaunchConfiguration {
+    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "", membershipTier: String = "") -> StreamLaunchConfiguration {
         let overrideTitle = titleOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         var metadata = configuration.metadata
         metadata.merge(OPNRemoteCoOpPreferencesStore.load().launchMetadata) { _, launchValue in launchValue }
+        let tier = membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tier.isEmpty { metadata["membershipTier"] = tier }
         return StreamLaunchConfiguration(
             title: overrideTitle.isEmpty ? configuration.title : overrideTitle,
             applicationID: configuration.appId,
@@ -1223,7 +1347,7 @@ final class CatalogViewModel {
     }
 
     func isFavorite(_ game: OPNCatalogGameObject) -> Bool {
-        favoriteGameIdentities.contains(Self.identity(for: game))
+        game.isFavorited || favoriteGameIdentities.contains(Self.identity(for: game))
     }
 
     func toggleFavoriteSelectedGame() {
@@ -1234,9 +1358,10 @@ final class CatalogViewModel {
         let previousGames = CatalogSendableValue(favoriteGames)
         let previousIdentities = favoriteGameIdentities
         let selfBox = CatalogWeakObject(self)
-        if favoriteGameIdentities.contains(identity) {
+        if isFavorite(selectedGame) {
             favoriteGameIdentities.remove(identity)
             favoriteGames.removeAll { Self.identity(for: $0) == identity }
+            updateGameFavoriteState(identity: identity, isFavorited: false)
             actionMessage = "Removing from favorites..."
             OPNGameServiceSwiftAdapter.removeFavoriteApp(appId) { success, error in
                 Task { @MainActor in
@@ -1248,6 +1373,7 @@ final class CatalogViewModel {
                     } else {
                         self.favoriteGames = previousGames.value
                         self.favoriteGameIdentities = previousIdentities
+                        self.updateGameFavoriteState(identity: identity, isFavorited: true)
                         if self.refreshAuthIfNeeded(error: error) { return }
                         self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
                     }
@@ -1255,7 +1381,10 @@ final class CatalogViewModel {
             }
         } else {
             favoriteGameIdentities.insert(identity)
-            favoriteGames.insert(Self.snapshotObject(for: selectedGame), at: 0)
+            updateGameFavoriteState(identity: identity, isFavorited: true)
+            let favoriteSnapshot = Self.snapshotObject(for: selectedGame)
+            favoriteSnapshot.isFavorited = true
+            favoriteGames.insert(favoriteSnapshot, at: 0)
             actionMessage = "Adding to favorites..."
             OPNGameServiceSwiftAdapter.addFavoriteApp(appId) { success, error in
                 Task { @MainActor in
@@ -1267,6 +1396,7 @@ final class CatalogViewModel {
                     } else {
                         self.favoriteGames = previousGames.value
                         self.favoriteGameIdentities = previousIdentities
+                        self.updateGameFavoriteState(identity: identity, isFavorited: false)
                         if self.refreshAuthIfNeeded(error: error) { return }
                         self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
                     }
@@ -1301,17 +1431,26 @@ final class CatalogViewModel {
 
     func selectGameStoreVariant(at index: Int) {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
-        selectedVariantIndex = index
-        let variant = selectedGame.variants[index]
-        if variant.inLibrary || variant.librarySelected || selectedGame.isInLibrary {
+        focusGameStoreVariant(at: index)
+        guard let option = platformOptions(for: selectedGame).first(where: { $0.variantIndex == index }) else { return }
+        if option.isOwned {
+            let variant = selectedGame.variants[index]
             selectOwnedVariant(variant)
-            ownershipFlowStage = .storeSelection
+            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
+            ownershipFlowMessage = ""
+        } else if option.hasAccess {
+            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
             ownershipFlowMessage = ""
         } else if ownershipFlowStage != .hidden {
             ownershipFlowStage = .manualMark
             ownershipFlowMessage = ""
         }
-        actionMessage = "Changed store to \(displayName(forStore: variant.appStore))."
+        actionMessage = "Changed store to \(option.title)."
+    }
+
+    func focusGameStoreVariant(at index: Int) {
+        guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
+        selectedVariantIndex = index
     }
 
     func cycleSelectedGameStore() {
@@ -1349,6 +1488,42 @@ final class CatalogViewModel {
 
     func markSelectedVariantOwned() {
         beginMarkSelectedVariantOwnedFlow()
+    }
+
+    func handleUnownedSelectedVariantPrimaryAction() {
+        guard let selectedGame else { return }
+        if selectedGame.isFreeToPlay {
+            autoMarkFreeToPlaySelectedVariantThenLaunch()
+        } else {
+            markSelectedVariantOwned()
+        }
+    }
+
+    private func autoMarkFreeToPlaySelectedVariantThenLaunch() {
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        let gameIdentity = Self.identity(for: selectedGame)
+        let variantId = variant.id
+        let variantIndex = selectedVariantIndex
+        let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
+        let selfBox = CatalogWeakObject(self)
+        setActionMessage("Adding free-to-play \(title) to library...")
+        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
+                    self.actionMessage = "Added to library. Launching \(title)..."
+                    self.refreshCatalogAfterOwnershipChange()
+                    if let game = self.selectedGame {
+                        self.launch(game: game, variantIndex: variantIndex)
+                    }
+                } else {
+                    if self.refreshAuthIfNeeded(error: error) { return }
+                    self.errorMessage = error.isEmpty ? "Unable to add this free-to-play game to your library." : error
+                    self.markSelectedVariantOwned()
+                }
+            }
+        }
     }
 
     func beginMarkSelectedVariantOwnedFlow() {
@@ -1448,7 +1623,7 @@ final class CatalogViewModel {
     }
 
     func syncSelectedStoreAccount() {
-        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        guard let store = selectedPlatformOption(in: selectedGame)?.accountStore, !store.isEmpty else { return }
         syncStoreAccount(store)
     }
 
@@ -1472,7 +1647,7 @@ final class CatalogViewModel {
     }
 
     func linkSelectedStoreAccount() {
-        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        guard let store = selectedPlatformOption(in: selectedGame)?.accountStore, !store.isEmpty else { return }
         linkStoreAccount(store)
     }
 
@@ -1502,6 +1677,55 @@ final class CatalogViewModel {
         return game.variants[index]
     }
 
+    func selectedPlatformOption(in game: OPNCatalogGameObject?) -> CatalogPlatformOption? {
+        let options = platformOptions(for: game)
+        return options.first(where: { $0.isSelected }) ?? options.first
+    }
+
+    func selectedPlatformHasAccess(in game: OPNCatalogGameObject?) -> Bool {
+        selectedPlatformOption(in: game)?.hasAccess == true
+    }
+
+    func platformOptions(for game: OPNCatalogGameObject?) -> [CatalogPlatformOption] {
+        guard let game else { return [] }
+        let selectedIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: game)
+        return game.variants.enumerated().map { index, variant in
+            let subscriptionIds = Self.visibleSubscriptionIds(for: variant)
+            let subscriptionDefinition = subscriptionDefinition(for: subscriptionIds)
+            let accountStore = subscriptionDefinition?.primaryStore.isEmpty == false ? subscriptionDefinition?.primaryStore ?? "" : variant.appStore
+            let account = accountStatus(forStore: accountStore)
+            let storeDefinition = storeDefinition(forStore: accountStore)
+            let isOwned = Self.variantIsOwned(variant, in: game)
+            let hasSubscriptionEntitlement = subscriptionIds.contains { accountHasSubscription($0) }
+            let isUnavailable = Self.variantIsUnavailable(variant)
+            let isSubscription = !subscriptionIds.isEmpty
+            let title = displayName(forVariant: variant)
+            let iconURL = iconURL(forVariant: variant)
+            let canLink = account == nil && storeDefinition?.isAccountLinkingSupported == true
+            let canSync = account?.hasAccountSyncingData == true
+            return CatalogPlatformOption(
+                id: variant.id.isEmpty ? "\(index)-\(variant.appStore)-\(title)" : variant.id,
+                variantIndex: index,
+                variant: variant,
+                title: title,
+                iconURL: iconURL,
+                store: variant.appStore,
+                subscriptionIds: subscriptionIds,
+                primaryStore: accountStore,
+                isSubscription: isSubscription,
+                isOwned: isOwned,
+                hasSubscriptionEntitlement: hasSubscriptionEntitlement,
+                hasAccess: isOwned || hasSubscriptionEntitlement,
+                isSelected: selectedIndex == index,
+                isUnavailable: isUnavailable,
+                canLink: canLink,
+                canSync: canSync,
+                accountDisplayName: account?.userDisplayName ?? "",
+                status: platformStatusLabel(isOwned: isOwned, hasSubscriptionEntitlement: hasSubscriptionEntitlement, isUnavailable: isUnavailable, isSubscription: isSubscription, account: account, canLink: canLink, canSync: canSync)
+            )
+        }
+    }
+
     func displayName(forStore store: String) -> String {
         if let definition = storeDefinitions.first(where: { $0.store.caseInsensitiveCompare(store) == .orderedSame }), !definition.label.isEmpty {
             return definition.label
@@ -1509,8 +1733,61 @@ final class CatalogViewModel {
         return store.isEmpty ? "Store" : store.uppercased()
     }
 
+    func displayName(forSubscription subscription: String) -> String {
+        if let definition = subscriptionDefinitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }), !definition.label.isEmpty {
+            return definition.label
+        }
+        return subscription.isEmpty ? "Subscription" : subscription.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    func iconURL(forSubscription subscription: String) -> String {
+        subscriptionDefinitions.first { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }?.logoURL ?? ""
+    }
+
+    func displayName(forVariant variant: OPNCatalogGameVariantObject) -> String {
+        let subscriptionNames = Self.visibleSubscriptionIds(for: variant).map { displayName(forSubscription: $0) }
+        if !subscriptionNames.isEmpty { return subscriptionNames.joined(separator: " / ") }
+        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
+        return variant.appStore.isEmpty ? "GeForce NOW" : displayName(forStore: variant.appStore)
+    }
+
+    func iconURL(forVariant variant: OPNCatalogGameVariantObject) -> String {
+        let subscription = Self.visibleSubscriptionIds(for: variant).first ?? ""
+        let subscriptionIconURL = iconURL(forSubscription: subscription)
+        if !subscriptionIconURL.isEmpty { return subscriptionIconURL }
+        return variant.appStoreSmallImageUrl
+    }
+
     func accountStatus(forStore store: String) -> CatalogStoreAccount? {
         accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
+    private func accountHasSubscription(_ subscription: String) -> Bool {
+        accountSubscriptions.contains { $0.caseInsensitiveCompare(subscription) == .orderedSame }
+    }
+
+    private func storeDefinition(forStore store: String) -> CatalogStoreDefinition? {
+        storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
+    private func subscriptionDefinition(for subscriptionIds: [String]) -> CatalogSubscriptionDefinition? {
+        for subscription in subscriptionIds {
+            if let definition = subscriptionDefinitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }) {
+                return definition
+            }
+        }
+        return nil
+    }
+
+    private func platformStatusLabel(isOwned: Bool, hasSubscriptionEntitlement: Bool, isUnavailable: Bool, isSubscription: Bool, account: CatalogStoreAccount?, canLink: Bool, canSync: Bool) -> String {
+        if isOwned { return "Owned" }
+        if hasSubscriptionEntitlement { return "Subscribed" }
+        if isUnavailable { return "Game not found" }
+        if canSync { return "Sync available" }
+        if account?.hasAccountLinkingData == true { return "Connected" }
+        if canLink { return "Connect" }
+        if isSubscription { return "Subscription required" }
+        return ""
     }
 
     var streamingQualityProfileAllowsCustomization: Bool {
@@ -1891,6 +2168,7 @@ final class CatalogViewModel {
         for game in games {
             let identity = Self.identity(for: game)
             guard !identity.isEmpty, identities.insert(identity).inserted else { continue }
+            game.isFavorited = true
             uniqueGames.append(game)
         }
         favoriteGames = uniqueGames
@@ -1906,8 +2184,10 @@ final class CatalogViewModel {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.accountStores = Self.parseStoreAccounts(accountBox.value)
+                    self.accountSubscriptions = Self.parseAccountSubscriptions(accountBox.value)
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.accountStores = []
+                    self.accountSubscriptions = []
                 }
             }
         }
@@ -1916,6 +2196,13 @@ final class CatalogViewModel {
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 if success { self.storeDefinitions = definitionsBox.value.map(Self.parseStoreDefinition) }
+            }
+        }
+        OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { success, definitions, _ in
+            let definitionsBox = CatalogSendableValue(definitions)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success { self.subscriptionDefinitions = definitionsBox.value.map(Self.parseSubscriptionDefinition) }
             }
         }
         let userId = session.userId.isEmpty ? account.userId : session.userId
@@ -1928,7 +2215,12 @@ final class CatalogViewModel {
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 if success {
-                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscriptionBox.value)
+                    let subscription = subscriptionBox.value
+                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
+                    let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !membershipTier.isEmpty {
+                        self.account.membershipTier = membershipTier
+                    }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.subscriptionStatus = .unavailable
                 }
@@ -1975,7 +2267,7 @@ final class CatalogViewModel {
         }
     }
 
-    private func schedulePatchingPollIfNeeded(immediate: Bool = false) {
+    private func schedulePatchingPollIfNeeded(immediate: Bool = true) {
         let patchingAppIds = patchingPollAppIds()
         guard !patchingAppIds.isEmpty else {
             deinitHandle.patchingPollTask?.cancel()
@@ -2008,23 +2300,32 @@ final class CatalogViewModel {
         let appIds = patchingPollAppIds()
         guard !appIds.isEmpty else { return }
         patchingPollInFlight = true
-        let selfBox = CatalogWeakObject(self)
+        defer { patchingPollInFlight = false }
+        let libraryResult = await fetchLibraryPatchStatuses()
+        let targetedResult = await fetchAppPatchStatuses(appIds: appIds)
+        var mergedStatuses = libraryResult.statuses
+        Self.mergePatchStatuses(targetedResult.statuses, into: &mergedStatuses)
+        if !mergedStatuses.isEmpty {
+            applyPatchingStatuses(mergedStatuses)
+        }
+        for error in [libraryResult.error, targetedResult.error] where !error.isEmpty {
+            if refreshAuthIfNeeded(error: error) { return }
+            MacForceNowLog.warning(.catalog, "App patch status poll failed: \(error)")
+        }
+    }
+
+    private func fetchLibraryPatchStatuses() async -> (statuses: [String: OPNAppPatchStatus], error: String) {
+        await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchLibraryPatchStatuses { success, statuses, error in
+                continuation.resume(returning: (success ? statuses : [:], success ? "" : error))
+            }
+        }
+    }
+
+    private func fetchAppPatchStatuses(appIds: [String]) async -> (statuses: [String: OPNAppPatchStatus], error: String) {
         await withCheckedContinuation { continuation in
             OPNGameServiceSwiftAdapter.fetchAppPatchStatuses(appIds: appIds) { success, statuses, error in
-                Task { @MainActor in
-                    guard let self = selfBox.value else {
-                        continuation.resume()
-                        return
-                    }
-                    defer { continuation.resume() }
-                    self.patchingPollInFlight = false
-                    if success {
-                        self.applyPatchingStatuses(statuses)
-                    } else if !error.isEmpty {
-                        if self.refreshAuthIfNeeded(error: error) { return }
-                        MacForceNowLog.warning(.catalog, "App patch status poll failed: \(error)")
-                    }
-                }
+                continuation.resume(returning: (success ? statuses : [:], success ? "" : error))
             }
         }
     }
@@ -2069,9 +2370,27 @@ final class CatalogViewModel {
         for variant in game.variants {
             if let isPatching = status.variantPatchingById[variant.id] {
                 variant.isPatching = isPatching
+                variant.patchStatusPrimaryText = isPatching ? status.primaryTextByVariantId[variant.id] ?? variant.patchStatusPrimaryText : ""
+                variant.patchStatusSecondaryText = isPatching ? status.secondaryTextByVariantId[variant.id] ?? variant.patchStatusSecondaryText : ""
             }
         }
         game.isPatching = status.isPatching || game.variants.contains { $0.isPatching }
+        game.patchStatusPrimaryText = game.isPatching ? game.variants.first { !$0.patchStatusPrimaryText.isEmpty }?.patchStatusPrimaryText ?? status.primaryTextByVariantId.values.first ?? "Patching" : ""
+        game.patchStatusSecondaryText = game.isPatching ? game.variants.first { !$0.patchStatusSecondaryText.isEmpty }?.patchStatusSecondaryText ?? status.secondaryTextByVariantId.values.first ?? "" : ""
+    }
+
+    private static func mergePatchStatuses(_ source: [String: OPNAppPatchStatus], into target: inout [String: OPNAppPatchStatus]) {
+        for (appId, status) in source {
+            guard var existing = target[appId] else {
+                target[appId] = status
+                continue
+            }
+            existing.isPatching = existing.isPatching || status.isPatching
+            existing.variantPatchingById.merge(status.variantPatchingById) { _, new in new }
+            existing.primaryTextByVariantId.merge(status.primaryTextByVariantId) { _, new in new }
+            existing.secondaryTextByVariantId.merge(status.secondaryTextByVariantId) { _, new in new }
+            target[appId] = existing
+        }
     }
 
     private func launchQueuedPatchingGameIfReady() {
@@ -2095,11 +2414,27 @@ final class CatalogViewModel {
 
     private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
         guard let selectedGame, Self.identity(for: selectedGame) == gameIdentity else { return }
-        selectedGame.isInLibrary = inLibrary
         for variant in selectedGame.variants where variant.id == variantId {
             variant.inLibrary = inLibrary
             variant.librarySelected = inLibrary
         }
+        selectedGame.isInLibrary = Self.gameHasOwnedVariant(selectedGame)
+    }
+
+    private func updateGameFavoriteState(identity: String, isFavorited: Bool) {
+        guard !identity.isEmpty else { return }
+        func update(_ games: [OPNCatalogGameObject]) {
+            for game in games where Self.identity(for: game) == identity {
+                game.isFavorited = isFavorited
+            }
+        }
+        if selectedGame.map(Self.identity(for:)) == identity { selectedGame?.isFavorited = isFavorited }
+        update(catalogGames)
+        update(libraryGames)
+        update(favoriteGames)
+        update(marqueeGames)
+        update(mainPanelGames)
+        for games in fullSectionGames.values { update(games) }
     }
 
     private func setActionMessage(_ message: String) {
@@ -2359,6 +2694,27 @@ final class CatalogViewModel {
         return game.variants.isEmpty ? -1 : 0
     }
 
+    static func variantIsOwned(_ variant: OPNCatalogGameVariantObject, in game: OPNCatalogGameObject) -> Bool {
+        variant.inLibrary || variant.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch(variant.serviceStatus) || (game.variants.count == 1 && game.isInLibrary)
+    }
+
+    static func gameHasOwnedVariant(_ game: OPNCatalogGameObject) -> Bool {
+        game.variants.contains { $0.inLibrary || $0.librarySelected || OPNGameRemediation.gameServiceStatusOwnedForLaunch($0.serviceStatus) }
+    }
+
+    static func visibleSubscriptionIds(for variant: OPNCatalogGameVariantObject) -> [String] {
+        uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).filter { $0.caseInsensitiveCompare("NONE") != .orderedSame }
+    }
+
+    static func variantIsUnavailable(_ variant: OPNCatalogGameVariantObject) -> Bool {
+        let status = variant.serviceStatus.lowercased()
+        return status.contains("not") || status.contains("unavailable") || status.contains("unsupported")
+    }
+
+    private static func parseAccountSubscriptions(_ account: NSDictionary) -> [String] {
+        uniqueNonEmpty(account["subscriptions"] as? [String] ?? [])
+    }
+
     private static func parseStoreAccounts(_ account: NSDictionary) -> [CatalogStoreAccount] {
         guard let stores = account["stores"] as? [NSDictionary] else { return [] }
         return stores.map { store in
@@ -2388,6 +2744,15 @@ final class CatalogViewModel {
             accountLinkingLabel: metadata?["label"] as? String ?? ""
         )
     }
+
+    private static func parseSubscriptionDefinition(_ definition: NSDictionary) -> CatalogSubscriptionDefinition {
+        CatalogSubscriptionDefinition(
+            subscription: definition["subscription"] as? String ?? "",
+            label: definition["label"] as? String ?? "",
+            logoURL: definition["logoURL"] as? String ?? "",
+            primaryStore: definition["primaryStore"] as? String ?? ""
+        )
+    }
 }
 
 struct CatalogSectionModel: Identifiable, Equatable {
@@ -2402,6 +2767,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
     let title: String
     let games: [OPNCatalogGameObject]
     let kind: Kind
+    var tiles: [OPNCatalogPanelTileObject] = []
     var seeMoreFilterIds: [String] = []
     var seeMoreSortId = ""
     var seeMoreTitle = ""
@@ -2411,6 +2777,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
         title: String,
         games: [OPNCatalogGameObject],
         kind: Kind,
+        tiles: [OPNCatalogPanelTileObject] = [],
         seeMoreFilterIds: [String] = [],
         seeMoreSortId: String = "",
         seeMoreTitle: String = ""
@@ -2419,6 +2786,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
         self.title = title
         self.games = CatalogViewModel.dedupedByTitleGrouping(games)
         self.kind = kind
+        self.tiles = tiles
         self.seeMoreFilterIds = seeMoreFilterIds
         self.seeMoreSortId = seeMoreSortId
         self.seeMoreTitle = seeMoreTitle
@@ -2461,6 +2829,37 @@ struct CatalogStoreDefinition: Identifiable, Equatable {
     let isAccountLinkingSupported: Bool
     let isAccountLinkingRequired: Bool
     let accountLinkingLabel: String
+}
+
+struct CatalogSubscriptionDefinition: Identifiable, Equatable {
+    var id: String { subscription }
+    let subscription: String
+    let label: String
+    let logoURL: String
+    let primaryStore: String
+}
+
+struct CatalogPlatformOption: Identifiable {
+    let id: String
+    let variantIndex: Int
+    let variant: OPNCatalogGameVariantObject
+    let title: String
+    let iconURL: String
+    let store: String
+    let subscriptionIds: [String]
+    let primaryStore: String
+    let isSubscription: Bool
+    let isOwned: Bool
+    let hasSubscriptionEntitlement: Bool
+    let hasAccess: Bool
+    let isSelected: Bool
+    let isUnavailable: Bool
+    let canLink: Bool
+    let canSync: Bool
+    let accountDisplayName: String
+    let status: String
+
+    var accountStore: String { primaryStore.isEmpty ? store : primaryStore }
 }
 
 struct CatalogPlaytimeStatistics: Codable, Equatable {
@@ -2515,6 +2914,10 @@ struct CatalogSubscriptionStatus: Equatable {
     let remainingPlaytimeText: String
     let usageText: String
     let isAvailable: Bool
+
+    var isFreeTierAccount: Bool {
+        OPNCatalogGameObject.isFreeMembershipTier(membershipTier)
+    }
 
     init(membershipTier: String, remainingPlaytimeText: String, usageText: String, isAvailable: Bool) {
         self.membershipTier = membershipTier.isEmpty ? "Performance" : membershipTier

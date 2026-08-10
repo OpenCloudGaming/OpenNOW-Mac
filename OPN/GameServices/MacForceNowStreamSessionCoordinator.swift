@@ -11,8 +11,13 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     private var remoteEndContinuation: AsyncStream<String>.Continuation?
     private var pendingRemoteEndMessage: String?
     private var offerContinuation: CheckedContinuation<StreamOffer, Error>?
+    private let adPresenter: (any StreamSessionAdPresenter)?
+    private let progressHandler: (@Sendable (StreamProgress) -> Void)?
 
-    public init() {}
+    public init(adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil) {
+        self.adPresenter = adPresenter
+        self.progressHandler = progressHandler
+    }
 
     public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
         guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
@@ -58,6 +63,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         }
         guard shouldReportFinishedSession(reason) else { return }
         let stopError = await stopCloudMatchSession(session)
+        if stopError == nil { StreamSessionLimitStartStore.clear(sessionId: session.id) }
         await reportUDSEndOfSession(session, reason: reason)
         if let stopError { throw stopError }
     }
@@ -139,11 +145,11 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
         if configuration.resumesExistingSession {
             let claimed = try await claimSession(configuration: configuration, settings: launch.settings)
-            return try await waitForReadySession(claimed)
+            return try await waitForReadySession(claimed, configuration: configuration)
         }
 
         let created = try await createSession(configuration: configuration, settings: launch.settings)
-        return try await waitForReadySession(created)
+        return try await waitForReadySession(created, configuration: configuration)
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
@@ -170,7 +176,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         }
     }
 
-    private func waitForReadySession(_ initial: AllocatedStreamSession) async throws -> AllocatedStreamSession {
+    private func waitForReadySession(_ initial: AllocatedStreamSession, configuration: StreamLaunchConfiguration) async throws -> AllocatedStreamSession {
         if initial.isReady { return initial }
         guard !initial.sessionId.isEmpty, !initial.serverIp.isEmpty else {
             throw MacForceNowStreamSessionError.sessionAllocationFailed("Cloud session is missing session id or server address.")
@@ -179,8 +185,23 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         var attempts = 0
         var lastPollWasPendingProgress = initial.isPendingProgress
         var latest = initial
+        var requiredAdGateObserved = initial.requiredAdGateObserved
+        var completedAdIds: Set<String> = []
+        publishAllocationProgress(latest, configuration: configuration)
         while !latest.isReady {
             try Task.checkCancellation()
+            if let ad = latest.pendingAd, !completedAdIds.contains(ad.adId) {
+                requiredAdGateObserved = true
+                latest = latest.markingRequiredAdGateObserved()
+                publishAllocationProgress(latest, configuration: configuration, overrideMessage: "Playing sponsored message before your free-tier session continues...")
+                latest = try await playRequiredAd(ad, session: latest)
+                latest = latest.markingRequiredAdGateObserved()
+                completedAdIds.insert(ad.adId)
+                attempts = 0
+                lastPollWasPendingProgress = latest.isPendingProgress
+                publishAllocationProgress(latest, configuration: configuration)
+                continue
+            }
             if attempts >= 60, !lastPollWasPendingProgress {
                 throw MacForceNowStreamSessionError.sessionAllocationFailed("Session poll timeout")
             }
@@ -191,9 +212,62 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
             if latest.status > 3, ![4, 5, 6].contains(latest.status) {
                 throw MacForceNowStreamSessionError.sessionAllocationFailed("Session in terminal error state")
             }
+            if requiredAdGateObserved { latest = latest.markingRequiredAdGateObserved() }
             lastPollWasPendingProgress = latest.isPendingProgress
+            publishAllocationProgress(latest, configuration: configuration)
         }
+        if requiredAdGateObserved { latest = latest.markingRequiredAdGateObserved() }
         return latest
+    }
+
+    private func playRequiredAd(_ ad: AllocatedSessionAd, session: AllocatedStreamSession) async throws -> AllocatedStreamSession {
+        guard !ad.mediaUrl.isEmpty else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but no playable ad media was returned.")
+        }
+        guard let adPresenter else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but the loading screen ad player is not available.")
+        }
+        let startedSession = try await reportSessionAd(session: session, ad: ad, action: "start", watchedTimeInMs: -1, cancelReason: "")
+        let playbackSession = startedSession.sessionId.isEmpty ? session : startedSession
+        do {
+            let watchedTimeInMs = try await adPresenter.playRequiredSessionAd(ad.presentation)
+            let updated = try await reportSessionAd(session: playbackSession, ad: ad, action: "finish", watchedTimeInMs: watchedTimeInMs, cancelReason: "")
+            return updated.sessionId.isEmpty ? playbackSession : updated
+        } catch {
+            _ = try? await reportSessionAd(session: playbackSession, ad: ad, action: "cancel", watchedTimeInMs: -1, cancelReason: "playback_failed")
+            throw error
+        }
+    }
+
+    private func publishAllocationProgress(_ session: AllocatedStreamSession, configuration: StreamLaunchConfiguration, overrideMessage: String = "") {
+        guard let progressHandler else { return }
+        progressHandler(StreamProgress(
+            title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title,
+            message: overrideMessage.isEmpty ? allocationProgressMessage(session) : overrideMessage,
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.allocateCloudSession.rawValue,
+            isReady: session.isReady,
+            queuePosition: session.queuePosition > 0 ? session.queuePosition : nil
+        ))
+    }
+
+    private func allocationProgressMessage(_ session: AllocatedStreamSession) -> String {
+        if session.queuePosition > 0 { return "Queue position: \(session.queuePosition)" }
+        if session.adsRequired { return "Preparing sponsored message before your free-tier session continues..." }
+        if session.seatSetupStep > 0 { return "Setting up your cloud gaming rig..." }
+        return "Allocating cloud session..."
+    }
+
+    private func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
+        try await withCheckedThrowingContinuation { continuation in
+            OPNSessionManager.shared.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason) { success, info, error in
+                if success {
+                    continuation.resume(returning: AllocatedStreamSession(info))
+                } else {
+                    continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error))
+                }
+            }
+        }
     }
 
     private func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
@@ -374,18 +448,46 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func streamDescriptor(sessionInfo: AllocatedStreamSession, configuration: StreamLaunchConfiguration) -> StreamSessionDescriptor {
-        StreamSessionDescriptor(
+        let isSessionLimited = isFreeTierSession(configuration: configuration, sessionInfo: sessionInfo)
+        var metadata = configuration.metadata
+        metadata.merge([
+            "accessToken": configuration.accessToken,
+            "signalingUrl": sessionInfo.signalingUrl,
+            "streamingBaseUrl": sessionInfo.streamingBaseUrl,
+        ]) { _, new in new }
+        if isSessionLimited {
+            metadata["sessionLimitSeconds"] = String(sessionLimitSeconds(sessionInfo: sessionInfo))
+            metadata["sessionLimitReason"] = sessionInfo.remainingSessionLimitSeconds > 0 ? "serverBacked" : "freeTier"
+            metadata["startedAtEpochSeconds"] = String(startedAtEpochSeconds(sessionInfo: sessionInfo, isSessionLimited: true))
+        } else {
+            metadata["startedAtEpochSeconds"] = String(Date().timeIntervalSince1970)
+        }
+        return StreamSessionDescriptor(
             id: sessionInfo.sessionId,
             applicationID: configuration.applicationID,
             serverAddress: sessionInfo.serverIp,
             title: configuration.title,
-            metadata: [
-                "accessToken": configuration.accessToken,
-                "signalingUrl": sessionInfo.signalingUrl,
-                "streamingBaseUrl": sessionInfo.streamingBaseUrl,
-                "startedAtEpochSeconds": String(Date().timeIntervalSince1970),
-            ]
+            metadata: metadata
         )
+    }
+
+    private func startedAtEpochSeconds(sessionInfo: AllocatedStreamSession, isSessionLimited: Bool) -> TimeInterval {
+        guard isSessionLimited, !sessionInfo.sessionId.isEmpty else { return Date().timeIntervalSince1970 }
+        if sessionInfo.remainingSessionLimitSeconds > 0 {
+            return Date().timeIntervalSince1970 - Double(max(0, sessionLimitSeconds(sessionInfo: sessionInfo) - sessionInfo.remainingSessionLimitSeconds))
+        }
+        return StreamSessionLimitStartStore.startedAtEpochSeconds(for: sessionInfo.sessionId)
+    }
+
+    private func sessionLimitSeconds(sessionInfo: AllocatedStreamSession) -> Int {
+        sessionInfo.remainingSessionLimitSeconds > 0 ? max(3600, sessionInfo.remainingSessionLimitSeconds) : 3600
+    }
+
+    private func isFreeTierSession(configuration: StreamLaunchConfiguration, sessionInfo: AllocatedStreamSession) -> Bool {
+        if sessionInfo.remainingSessionLimitSeconds > 0 { return true }
+        if sessionInfo.requiredAdGateObserved { return true }
+        let tier = (configuration.metadata["membershipTier"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return tier == "free" || tier.contains("free")
     }
 
     private func shouldReportFinishedSession(_ reason: StreamEndReason) -> Bool {
@@ -508,19 +610,63 @@ private struct PreparedStreamLaunch {
     let streamingBaseUrl: String
 }
 
+private enum StreamSessionLimitStartStore {
+    private static let lock = NSLock()
+    private static let key = "MacForceNow.Stream.SessionLimitStartedAtEpochSeconds"
+    private static let maxStoredAgeSeconds: TimeInterval = 24 * 60 * 60
+
+    static func startedAtEpochSeconds(for sessionId: String, now: Date = Date()) -> TimeInterval {
+        lock.withLock {
+            let nowEpoch = now.timeIntervalSince1970
+            var starts = storedStarts(nowEpoch: nowEpoch)
+            if let existing = starts[sessionId], existing > 0 {
+                persist(starts)
+                return existing
+            }
+            starts[sessionId] = nowEpoch
+            persist(starts)
+            return nowEpoch
+        }
+    }
+
+    static func clear(sessionId: String) {
+        guard !sessionId.isEmpty else { return }
+        lock.withLock {
+            var starts = storedStarts(nowEpoch: Date().timeIntervalSince1970)
+            guard starts.removeValue(forKey: sessionId) != nil else { return }
+            persist(starts)
+        }
+    }
+
+    private static func storedStarts(nowEpoch: TimeInterval) -> [String: TimeInterval] {
+        let raw = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+        return raw.filter { nowEpoch - $0.value <= maxStoredAgeSeconds }
+    }
+
+    private static func persist(_ starts: [String: TimeInterval]) {
+        UserDefaults.standard.set(starts, forKey: key)
+        UserDefaults.standard.synchronize()
+    }
+}
+
 private struct AllocatedStreamSession: Sendable {
     let sessionId: String
+    let title: String
     let serverIp: String
     let signalingServer: String
     let signalingUrl: String
     let signalingQueryParameters: String
     let signalingHeaders: [String]
     let streamingBaseUrl: String
+    let deviceId: String
     let status: Int
     let queuePosition: Int
     let seatSetupStep: Int
     let progressState: Int
     let adsRequired: Bool
+    let requiredAdGateObserved: Bool
+    let remainingSessionLimitSeconds: Int
+    let pendingAd: AllocatedSessionAd?
     let rawJSON: String
 
     var isReady: Bool {
@@ -535,18 +681,45 @@ private struct AllocatedStreamSession: Sendable {
 
     init(_ info: [String: Any]) {
         sessionId = Self.string(info["sessionId"])
+        title = Self.string(info["title"]).isEmpty ? "GeForce NOW" : Self.string(info["title"])
         serverIp = Self.string(info["serverIp"])
         signalingServer = Self.string(info["signalingServer"])
         signalingUrl = Self.string(info["signalingUrl"])
         signalingQueryParameters = Self.string(info["signalingQueryParameters"])
         signalingHeaders = Self.stringArray(info["signalingHeaders"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
+        deviceId = Self.string(info["deviceId"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
         seatSetupStep = Self.int(info["seatSetupStep"])
         progressState = Self.int(info["progressState"])
-        adsRequired = Self.bool((info["adState"] as? [String: Any])?["isAdsRequired"])
+        let adState = info["adState"] as? [String: Any]
+        adsRequired = Self.bool(adState?["isAdsRequired"])
+        requiredAdGateObserved = Self.bool(info["requiredAdGateObserved"])
+        remainingSessionLimitSeconds = Self.int(info["remainingSessionLimitSeconds"])
+        pendingAd = Self.pendingAd(from: adState)
         rawJSON = Self.jsonString(info)
+    }
+
+    func markingRequiredAdGateObserved() -> AllocatedStreamSession {
+        guard !requiredAdGateObserved else { return self }
+        var dictionary = (try? JSONSerialization.jsonObject(with: Data(rawJSON.utf8))) as? [String: Any] ?? [:]
+        dictionary["requiredAdGateObserved"] = true
+        return AllocatedStreamSession(dictionary)
+    }
+
+    var reportableSession: [String: Any] {
+        [
+            "sessionId": sessionId,
+            "serverIp": serverIp,
+            "streamingBaseUrl": streamingBaseUrl,
+            "deviceId": deviceId,
+        ]
+    }
+
+    private static func pendingAd(from adState: [String: Any]?) -> AllocatedSessionAd? {
+        guard bool(adState?["isAdsRequired"]), let ads = adState?["sessionAds"] as? [[String: Any]] else { return nil }
+        return ads.compactMap(AllocatedSessionAd.init(dictionary:)).first
     }
 
     private static func jsonString(_ value: [String: Any]) -> String {
@@ -581,6 +754,65 @@ private struct AllocatedStreamSession: Sendable {
         if let values = value as? [String] { return values }
         if let values = value as? [NSString] { return values.map { $0 as String } }
         return []
+    }
+}
+
+private struct AllocatedSessionAd: Equatable, Sendable {
+    let adId: String
+    let mediaUrl: String
+    let durationMs: Int
+    let title: String
+
+    var presentation: StreamSessionAdPresentation {
+        StreamSessionAdPresentation(adId: adId, title: title, mediaUrl: mediaUrl, durationMs: durationMs)
+    }
+
+    init?(dictionary: [String: Any]) {
+        let adId = Self.string(dictionary["adId"])
+        guard !adId.isEmpty else { return nil }
+        self.adId = adId
+        title = Self.string(dictionary["title"])
+        durationMs = Self.int(dictionary["durationMs"])
+        mediaUrl = Self.bestMediaUrl(dictionary)
+    }
+
+    private static func bestMediaUrl(_ dictionary: [String: Any]) -> String {
+        let mediaFiles = (dictionary["adMediaFiles"] as? [[String: Any]] ?? [])
+            .compactMap { file -> (url: String, rank: Int)? in
+                let url = string(file["mediaFileUrl"])
+                guard !url.isEmpty else { return nil }
+                return (url, mediaProfileRank(string(file["encodingProfile"])))
+            }
+            .sorted { $0.rank < $1.rank }
+        if let url = mediaFiles.first?.url { return url }
+        for key in ["mediaUrl", "videoUrl", "url", "adUrl"] {
+            let url = string(dictionary[key])
+            if !url.isEmpty { return url }
+        }
+        return ""
+    }
+
+    private static func mediaProfileRank(_ profile: String) -> Int {
+        switch profile {
+        case "mp4deinterlaced720p": return 0
+        case "hlsadaptive": return 1
+        case "webm": return 2
+        default: return 100
+        }
+    }
+
+    private static func string(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        if let value = value as? NSString { return value as String }
+        if let value = value as? NSNumber { return value.stringValue }
+        return ""
+    }
+
+    private static func int(_ value: Any?) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? 0 }
+        return 0
     }
 }
 

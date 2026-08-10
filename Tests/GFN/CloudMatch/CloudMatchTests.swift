@@ -37,20 +37,22 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 }
 
 @Test func cloudMatchBuildsBrowserWebRTCServerInfoRequest() throws {
-    let request = try #require(CloudMatchRequestFactory.serverInfoRequest(baseURLString: "region.example.test", accessToken: "access", deviceId: "device", headers: .browserWebRTC(clientVersion: "2.0.85.135"), timeoutInterval: 4))
+    let request = try #require(CloudMatchRequestFactory.serverInfoRequest(baseURLString: "region.example.test", accessToken: "access", deviceId: "device", headers: .browserWebRTC(), timeoutInterval: 4))
     #expect(request.url?.absoluteString == "https://region.example.test/v2/serverInfo")
     #expect(request.timeoutInterval == 4)
     #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
-    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "WINDOWS")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
+    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "MACOS")
 }
 
 @Test func cloudMatchBuildsSessionRequests() throws {
     let create = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
     #expect(create.url?.absoluteString == "https://cloudmatch.example.test/v2/session?keyboardLayout=us&languageCode=en_US")
     #expect(create.httpMethod == "POST")
-    #expect(create.value(forHTTPHeaderField: "Origin") == nil)
+    #expect(create.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+    #expect(create.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
     #expect(create.httpBody == Data("{}".utf8))
 
     // WebRTC sessions must identify as the native GFN-PC client — a BROWSER identity makes GeForce
@@ -153,6 +155,9 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 
     let notPausedData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 34, "statusDescription": "SESSION_NOT_PAUSED"]])
     #expect(CloudMatchResponseParser.isSessionNotPausedResponse(notPausedData))
+
+    let limitedModeData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 81, "statusDescription": "STREAMING_NOT_ALLOWED_IN_LIMITED_MODE 8A91000D"]])
+    #expect(CloudMatchResponseParser.limitedModeStreamingMessage(limitedModeData) == "GeForce NOW says this game is out of limited playtime. Add playtime or try another game.")
 
     let staleData = try JSONSerialization.data(withJSONObject: [
         "requestStatus": ["statusCode": 4, "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000"],

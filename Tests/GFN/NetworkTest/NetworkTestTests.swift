@@ -31,9 +31,10 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     #expect(request.httpMethod == "POST")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-    #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
-    #expect(request.value(forHTTPHeaderField: "x-nv-client-identity") == NetworkTest.defaultUserAgent)
-    #expect(request.value(forHTTPHeaderField: "nv-client-identity") == NetworkTest.defaultUserAgent)
+    #expect(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix(NetworkTest.defaultUserAgent) == true)
+    #expect(request.value(forHTTPHeaderField: "User-Agent")?.contains("Chrome/") == true)
+    #expect(request.value(forHTTPHeaderField: "x-nv-client-identity") == request.value(forHTTPHeaderField: "User-Agent"))
+    #expect(request.value(forHTTPHeaderField: "nv-client-identity") == request.value(forHTTPHeaderField: "User-Agent"))
     #expect(request.value(forHTTPHeaderField: "x-nv-client-version") == "1.0")
     let body = try #require(request.httpBody)
     let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -101,7 +102,7 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let service = NetworkTestService(transport: MockNetworkTestTransport { request in
         #expect(request.url?.path == "/v2/nettestsession")
         #expect(request.httpMethod == "POST")
-        #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
+        #expect(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix(NetworkTest.defaultUserAgent) == true)
         return [
             "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS_STATUS", "serverId": "np-sjc-01"],
             "netTestSession": [

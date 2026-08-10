@@ -6,6 +6,30 @@ public enum NetworkTest: Sendable {
     public static let defaultUserAgent = "GFN-PC/1.0 (WebRTC) NetworkTest/0.0.51 "
 }
 
+public struct NetworkTestClientIdentity: Equatable, Sendable {
+    public let clientPrefix: String
+    public let browserName: String
+    public let browserVersion: String
+    public let osName: String
+    public let osVersion: String
+    public let buildMarker: String
+
+    public init(clientPrefix: String = NetworkTest.defaultUserAgent, browserName: String = "Chrome", browserVersion: String = "128.0.0.0", osName: String = "Mac OS", osVersion: String = "10.15.7", buildMarker: String = "master-8926289") {
+        self.clientPrefix = clientPrefix
+        self.browserName = browserName
+        self.browserVersion = browserVersion
+        self.osName = osName
+        self.osVersion = osVersion
+        self.buildMarker = buildMarker
+    }
+
+    public static let gfnPC = NetworkTestClientIdentity()
+
+    public var userAgent: String {
+        "\(clientPrefix)\(browserName)/\(browserVersion) \(osName)/\(osVersion) (\(buildMarker))"
+    }
+}
+
 public extension NetworkTest {
     enum LifecycleState: String, CaseIterable, Sendable {
         case idle = "Idle"
@@ -82,7 +106,7 @@ public struct NetworkTestConfiguration: Equatable, Sendable {
     public let userAgent: String
     public let timeoutInterval: TimeInterval
 
-    public init(baseURLString: String = "https://prod.cloudmatchbeta.nvidiagrid.net", userAgent: String = NetworkTest.defaultUserAgent, timeoutInterval: TimeInterval = 15) {
+    public init(baseURLString: String = "https://prod.cloudmatchbeta.nvidiagrid.net", userAgent: String = NetworkTestClientIdentity.gfnPC.userAgent, timeoutInterval: TimeInterval = 15) {
         self.baseURLString = baseURLString
         self.userAgent = userAgent
         self.timeoutInterval = timeoutInterval

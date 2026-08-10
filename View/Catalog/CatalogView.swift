@@ -5,6 +5,7 @@
 //
 
 import AppKit
+import AVKit
 import Combine
 import CryptoKit
 import ImageIO
@@ -136,6 +137,9 @@ struct CatalogView: View {
                             WebRTCMediaStreamView(
                                 configuration: streamConfiguration,
                                 onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                                onRequiredSessionAd: { ad in
+                                    try await viewModel.presentRequiredStreamAd(ad)
+                                },
                                 onEnd: { success, message, report in
                                     viewModel.finishActiveStream(success: success, message: message, report: report)
                                 }
@@ -660,92 +664,123 @@ private struct VendorStreamLaunchLoadingOverlay: View {
     let viewModel: CatalogViewModel
 
     var body: some View {
-        let progress = viewModel.activeStreamProgress
-        let steps = progress?.steps ?? []
-        let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
-        let message = progress?.message ?? "Starting GeForce NOW stream..."
-        ZStack {
-            Color.black
+        GeometryReader { proxy in
+            let progress = viewModel.activeStreamProgress
+            let steps = progress?.steps ?? []
+            let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
+            let message = progress?.message ?? "Starting GeForce NOW stream..."
+            let queuePosition = progress?.queuePosition
+            ZStack {
+                Color.black
 
-            if let screenshotURL = loadingScreenshotURL {
-                AsyncImage(url: screenshotURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    default:
-                        Color.black
-                    }
-                }
-                .clipped()
-                .transition(.opacity)
-            }
-
-            Rectangle()
-                .fill(.black.opacity(0.42))
-
-            RadialGradient(
-                stops: [
-                    .init(color: .white.opacity(0.18), location: 0.00),
-                    .init(color: .white.opacity(0.05), location: 0.46),
-                    .init(color: .clear, location: 1.00)
-                ],
-                center: .top,
-                startRadius: 0,
-                endRadius: 800
-            )
-
-            LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.80), location: 0.00),
-                    .init(color: .black.opacity(0.34), location: 0.24),
-                    .init(color: .black.opacity(0.18), location: 0.50),
-                    .init(color: .black.opacity(0.34), location: 0.76),
-                    .init(color: .black.opacity(0.80), location: 1.00)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-
-            VStack(spacing: 24) {
-                VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                    .scaledToFit()
-                    .frame(width: 174, height: 131)
-
-                VStack(spacing: 10) {
-                    Text(title)
-                        .font(.nvidia(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(message)
-                        .font(.nvidia(size: 13, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-
-                VendorIndeterminateProgressBar()
-                    .frame(width: 320, height: 4)
-
-                Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
-                    .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                    .accessibilityLabel("Cancel stream launch")
-
-                if !steps.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                            VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
+                if let screenshotURL = loadingScreenshotURL {
+                    AsyncImage(url: screenshotURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .clipped()
+                        default:
+                            EmptyView()
                         }
                     }
-                    .frame(width: 320, alignment: .leading)
+                    .transition(.opacity)
                 }
+
+                Rectangle()
+                    .fill(.black.opacity(0.42))
+
+                RadialGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.18), location: 0.00),
+                        .init(color: .white.opacity(0.05), location: 0.46),
+                        .init(color: .clear, location: 1.00)
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
+                )
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.80), location: 0.00),
+                        .init(color: .black.opacity(0.34), location: 0.24),
+                        .init(color: .black.opacity(0.18), location: 0.50),
+                        .init(color: .black.opacity(0.34), location: 0.76),
+                        .init(color: .black.opacity(0.80), location: 1.00)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                VStack(spacing: 22) {
+                    if let ad = viewModel.activeStreamAdPlayback {
+                        VendorEmbeddedSessionAdPlayer(
+                            ad: ad,
+                            onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
+                            onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
+                        )
+                        .frame(width: min(max(proxy.size.width * 0.62, 520), 920), height: min(max(proxy.size.height * 0.48, 300), 540))
+                    } else {
+                        VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                            .scaledToFit()
+                            .frame(width: 174, height: 131)
+                    }
+
+                    VStack(spacing: 10) {
+                        Text(title)
+                            .font(.nvidia(size: 22, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text(message)
+                            .font(.nvidia(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if let queuePosition, queuePosition > 0 {
+                        HStack(spacing: 10) {
+                            Text("QUEUE POSITION")
+                                .font(.nvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            Text("#\(queuePosition)")
+                                .font(.nvidia(size: 18, weight: .bold))
+                                .foregroundStyle(Color.openNowGreen)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.46), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 1))
+                    }
+
+                    if viewModel.activeStreamAdPlayback == nil {
+                        VendorIndeterminateProgressBar()
+                            .frame(width: 320, height: 4)
+                    }
+
+                    Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                        .accessibilityLabel("Cancel stream launch")
+
+                    if !steps.isEmpty {
+                        VStack(alignment: .leading, spacing: 9) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                                VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
+                            }
+                        }
+                        .frame(width: 320, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 28)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
-        .ignoresSafeArea()
+        .background(.black)
     }
 
     private var loadingScreenshotURL: URL? {
@@ -757,6 +792,164 @@ private struct VendorStreamLaunchLoadingOverlay: View {
         guard !urls.isEmpty else { return nil }
         let index = abs(configuration.id.uuidString.hashValue) % urls.count
         return URL(string: urls[index])
+    }
+}
+
+private struct VendorEmbeddedSessionAdPlayer: View {
+    private static let volumePreferenceKey = "MacForceNow.Stream.RequiredSessionAdVolume"
+
+    let ad: CatalogStreamAdPlayback
+    let onFinished: (Int) -> Void
+    let onFailed: (String) -> Void
+    @State private var player: AVPlayer?
+    @State private var item: AVPlayerItem?
+    @State private var statusObservation: NSKeyValueObservation?
+    @State private var endObserver: NSObjectProtocol?
+    @State private var startedAt = Date()
+    @State private var remainingSeconds = 0
+    @AppStorage(Self.volumePreferenceKey) private var volume = 1.0
+    @State private var didFinish = false
+    private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                if let player {
+                    VendorSessionAdPlayerView(player: player)
+                } else {
+                    Color.black
+                    ProgressView()
+                        .controlSize(.large)
+                }
+
+                Text("AD · \(countdownText)")
+                    .font(.nvidia(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.72), in: Capsule())
+                    .padding(14)
+            }
+            .background(.black)
+
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ad.title)
+                        .font(.nvidia(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Sponsored message required before your free-tier session continues")
+                        .font(.nvidia(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 9) {
+                    Image(systemName: volume <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Slider(value: $volume, in: 0...1)
+                        .frame(width: 140)
+                        .onChange(of: volume) { _, nextVolume in
+                            player?.volume = Float(nextVolume)
+                        }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(.black.opacity(0.86))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.16), lineWidth: 1))
+        .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
+        .onAppear(perform: startPlayback)
+        .onDisappear(perform: stopPlayback)
+        .onReceive(timer) { _ in updateCountdown() }
+    }
+
+    private var countdownText: String {
+        let minutes = max(0, remainingSeconds) / 60
+        let seconds = max(0, remainingSeconds) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func startPlayback() {
+        guard player == nil else { return }
+        guard let url = URL(string: ad.mediaUrl) else {
+            fail("Required ad media URL is invalid.")
+            return
+        }
+        startedAt = Date()
+        remainingSeconds = max(1, Int(ceil(Double(ad.durationMs) / 1000.0)))
+        let nextItem = AVPlayerItem(url: url)
+        let nextPlayer = AVPlayer(playerItem: nextItem)
+        nextPlayer.volume = Float(volume)
+        item = nextItem
+        player = nextPlayer
+        statusObservation = nextItem.observe(\.status, options: [.new]) { observedItem, _ in
+            DispatchQueue.main.async {
+                if observedItem.status == .failed {
+                    fail(observedItem.error?.localizedDescription ?? "Required ad failed to load.")
+                }
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nextItem, queue: .main) { _ in
+            Task { @MainActor in finish() }
+        }
+        nextPlayer.play()
+    }
+
+    private func stopPlayback() {
+        statusObservation = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = nil
+        player?.pause()
+        player = nil
+        item = nil
+    }
+
+    private func updateCountdown() {
+        guard let player else { return }
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let knownDuration = Double(ad.durationMs) / 1000.0
+        let itemDuration = player.currentItem?.duration.seconds ?? 0
+        let duration = knownDuration > 0 ? knownDuration : (itemDuration.isFinite ? itemDuration : 0)
+        remainingSeconds = duration > 0 ? max(0, Int(ceil(duration - elapsed))) : 0
+    }
+
+    private func finish() {
+        guard !didFinish else { return }
+        didFinish = true
+        let watchedTimeInMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+        stopPlayback()
+        onFinished(watchedTimeInMs)
+    }
+
+    private func fail(_ message: String) {
+        guard !didFinish else { return }
+        didFinish = true
+        stopPlayback()
+        onFailed(message)
+    }
+}
+
+private struct VendorSessionAdPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView(frame: .zero)
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
     }
 }
 
@@ -1175,7 +1368,7 @@ private struct CatalogMainMenuPanel: View {
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus)
+            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
 
@@ -1510,35 +1703,63 @@ private struct CatalogMainMenuSectionLabel: View {
 
 private struct CatalogMainMenuPlaytimeCard: View {
     let status: CatalogSubscriptionStatus
+    let activeStreamProgress: StreamProgress?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("REMAINING PLAYTIME")
-                    .font(.nvidia(size: 10, weight: .bold))
-                    .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.46))
-                Spacer(minLength: 0)
-                Text(status.membershipTier.uppercased())
-                    .font(.nvidia(size: 10, weight: .bold))
-                    .tracking(0.6)
-                    .foregroundStyle(.black.opacity(0.86))
-                    .padding(.horizontal, 8)
-                    .frame(height: 20)
-                    .background(Color.openNowGreen)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let activeSession = activeSessionTime(at: context.date)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(.white.opacity(0.46))
+                    Spacer(minLength: 0)
+                    Text(status.membershipTier.uppercased())
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.black.opacity(0.86))
+                        .padding(.horizontal, 8)
+                        .frame(height: 20)
+                        .background(Color.openNowGreen)
+                }
+                Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
+                    .font(.nvidia(size: 22, weight: .bold))
+                    .foregroundStyle((activeSession != nil || status.isAvailable) ? .white.opacity(0.95) : .white.opacity(0.56))
+                    .lineLimit(1)
+                Text(activeSession?.usageText ?? status.usageText)
+                    .font(.nvidia(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.56))
+                    .lineLimit(1)
             }
-            Text(status.remainingPlaytimeText)
-                .font(.nvidia(size: 22, weight: .bold))
-                .foregroundStyle(status.isAvailable ? .white.opacity(0.95) : .white.opacity(0.56))
-                .lineLimit(1)
-            Text(status.usageText)
-                .font(.nvidia(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.56))
-                .lineLimit(1)
+            .padding(14)
+            .background(Color.white.opacity(0.055))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private func activeSessionTime(at date: Date) -> (remainingText: String, usageText: String)? {
+        guard let progress = activeStreamProgress,
+              let startedAtEpoch = progress.sessionLimitStartedAtEpochSeconds,
+              let limitSeconds = progress.sessionLimitSeconds,
+              limitSeconds > 0 else { return nil }
+        let elapsedSeconds = max(0, Int(date.timeIntervalSince1970 - startedAtEpoch))
+        let remainingSeconds = max(0, limitSeconds - elapsedSeconds)
+        return (
+            CatalogSubscriptionStatus.durationText(seconds: remainingSeconds),
+            "Server session limit for this stream"
+        )
+    }
+}
+
+private extension CatalogSubscriptionStatus {
+    static func durationText(seconds: Int) -> String {
+        let totalSeconds = max(0, seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 { return String(format: "%dh %02dm", hours, minutes) }
+        return String(format: "%dm %02ds", minutes, seconds)
     }
 }
 
@@ -1673,17 +1894,17 @@ private struct CatalogStorePickerOverlay: View {
                 .lineLimit(1)
                 .padding(.bottom, 10)
             FlowLayout(spacing: 8) {
-                if viewModel.ownershipFlowStage == .success, let variant = selectedVariant(game: game) {
-                    storeInlineLabel(variant: variant, owned: true)
+                if viewModel.ownershipFlowStage == .success, let option = selectedOption(game: game) {
+                    storeInlineLabel(option: option, owned: true)
                 } else {
                     Text("PC Digital Version")
                         .font(.nvidia(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
-                    if viewModel.ownershipFlowStage == .manualMark, let variant = selectedVariant(game: game) {
+                    if viewModel.ownershipFlowStage == .manualMark, let option = selectedOption(game: game) {
                         Text("|")
                             .font(.nvidia(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
-                        storeInlineLabel(variant: variant, owned: false)
+                        storeInlineLabel(option: option, owned: false)
                     }
                 }
             }
@@ -1739,7 +1960,10 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func storeSelectionContent(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let options = viewModel.platformOptions(for: game)
+        let storeOptions = options.filter { !$0.isSubscription }
+        let subscriptionOptions = options.filter { $0.isSubscription }
+        return VStack(alignment: .leading, spacing: 0) {
             Text("Choose a game store")
                 .font(.nvidia(size: 24, weight: .bold))
                 .foregroundStyle(.white.opacity(0.96))
@@ -1748,27 +1972,40 @@ private struct CatalogStorePickerOverlay: View {
                 .font(.nvidia(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
                 .padding(.bottom, 32)
-            CatalogStorePickerSection(label: "Game stores:") {
-                VStack(alignment: .leading, spacing: 19) {
-                    ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                        CatalogStorePickerRow(
-                            title: storeTitle(variant),
-                            iconURL: storeIconURL(variant),
-                            status: storeStatus(game: game, variant: variant),
-                            isSelected: selectedIndex(game: game) == index,
-                            isAvailable: variantIsOwned(game: game, variant: variant)
-                        ) {
-                            viewModel.selectGameStoreVariant(at: index)
-                        }
+            VStack(alignment: .leading, spacing: 16) {
+                if !storeOptions.isEmpty {
+                    CatalogStorePickerSection(label: "Game stores:") {
+                        storeOptionList(options: storeOptions)
+                    }
+                }
+                if !subscriptionOptions.isEmpty {
+                    CatalogStorePickerSection(label: "Subscriptions:") {
+                        storeOptionList(options: subscriptionOptions)
                     }
                 }
             }
         }
     }
 
+    private func storeOptionList(options: [CatalogPlatformOption]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(options) { option in
+                CatalogStorePickerRow(
+                    title: option.title,
+                    iconURL: option.iconURL,
+                    status: option.status,
+                    isSelected: option.isSelected
+                ) {
+                    viewModel.selectGameStoreVariant(at: option.variantIndex)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func manualMarkContent(game: OPNCatalogGameObject) -> some View {
-        let variant = selectedVariant(game: game)
-        let storeName = variant.map(storeTitle) ?? "this store"
+        let option = selectedOption(game: game)
+        let storeName = option?.title ?? "this store"
         return VStack(alignment: .leading, spacing: 0) {
             Text("Mark as owned")
                 .font(.nvidia(size: 24, weight: .bold))
@@ -1797,16 +2034,16 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func successContent(game: OPNCatalogGameObject) -> some View {
-        let variant = selectedVariant(game: game)
-        let storeName = variant.map(storeTitle) ?? "Game Store"
-        let account = variant.flatMap { viewModel.accountStatus(forStore: $0.appStore) }
+        let option = selectedOption(game: game)
+        let storeName = option?.title ?? "Game Store"
+        let account = option.flatMap { viewModel.accountStatus(forStore: $0.accountStore) }
         return VStack(alignment: .leading, spacing: 0) {
             Text("You're all set to play")
                 .font(.nvidia(size: 24, weight: .bold))
                 .foregroundStyle(.white.opacity(0.96))
                 .padding(.bottom, 30)
             HStack(alignment: .top, spacing: 16) {
-                if let variant { storeIconView(iconURL: storeIconURL(variant)) }
+                if let option { storeIconView(iconURL: option.iconURL) }
                 VStack(alignment: .leading, spacing: 10) {
                     Text(successAccountTitle(storeName: storeName, account: account))
                         .font(.nvidia(size: 18, weight: .medium))
@@ -1832,45 +2069,18 @@ private struct CatalogStorePickerOverlay: View {
         }
     }
 
-    private func selectedIndex(game: OPNCatalogGameObject) -> Int {
-        let preferred = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-        return max(preferred, 0)
+    private func selectedOption(game: OPNCatalogGameObject) -> CatalogPlatformOption? {
+        viewModel.selectedPlatformOption(in: game)
     }
 
-    private func storeTitle(_ variant: OPNCatalogGameVariantObject) -> String {
-        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
-        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
-    }
-
-    private func storeIconURL(_ variant: OPNCatalogGameVariantObject) -> String {
-        variant.appStoreSmallImageUrl
-    }
-
-    private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> String {
-        if variantIsOwned(game: game, variant: variant) { return "Owned" }
-        let status = variant.serviceStatus.lowercased()
-        if status.contains("not") || status.contains("unavailable") || status.contains("unsupported") { return "Game not found" }
-        return ""
-    }
-
-    private func variantIsOwned(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> Bool {
-        variant.inLibrary || variant.librarySelected || (game.isInLibrary && game.variants.count == 1)
-    }
-
-    private func selectedVariant(game: OPNCatalogGameObject) -> OPNCatalogGameVariantObject? {
-        let index = selectedIndex(game: game)
-        guard game.variants.indices.contains(index) else { return nil }
-        return game.variants[index]
-    }
-
-    private func storeInlineLabel(variant: OPNCatalogGameVariantObject, owned: Bool) -> some View {
+    private func storeInlineLabel(option: CatalogPlatformOption, owned: Bool) -> some View {
         HStack(spacing: 8) {
-            storeIconView(iconURL: storeIconURL(variant))
-            Text(storeTitle(variant))
+            storeIconView(iconURL: option.iconURL)
+            Text(option.title)
                 .font(.nvidia(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
             if owned {
-                Text("Owned")
+                Text(option.status.isEmpty ? "Ready" : option.status)
                     .font(.nvidia(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(.horizontal, 8)
@@ -1955,15 +2165,28 @@ private struct CatalogStorePickerSection<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 32) {
-            Text(label)
-                .font(.nvidia(size: 14, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 132, alignment: .leading)
-                .padding(.top, 3)
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 48) {
+                sectionLabel
+                    .padding(.top, 12)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                sectionLabel
+                    .padding(.bottom, 4)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    private var sectionLabel: some View {
+        Text(label)
+            .font(.nvidia(size: 14, weight: .bold))
+            .foregroundStyle(.white.opacity(0.92))
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -1972,7 +2195,6 @@ private struct CatalogStorePickerRow: View {
     let iconURL: String
     let status: String
     let isSelected: Bool
-    let isAvailable: Bool
     let action: (() -> Void)?
     @State private var isHovering = false
 
@@ -1985,43 +2207,60 @@ private struct CatalogStorePickerRow: View {
                 rowContent
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { isHovering = $0 }
     }
+}
 
+private extension CatalogStorePickerRow {
     private var rowContent: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 8) {
             storeIcon
             Text(title)
                 .font(.nvidia(size: 16, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 232, alignment: .leading)
-            if !status.isEmpty {
-                Text(status)
-                    .font(.nvidia(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 0)
-                    .frame(height: 24)
-                if isAvailable {
-                    Image(systemName: "checkmark")
-                        .font(.nvidia(size: 14, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
-                }
-            }
-            Spacer(minLength: 0)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            statusTag
+            selectedCheckmark
         }
-        .frame(height: 30)
-        .padding(.horizontal, isHovering ? 8 : 0)
+        .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .leading)
+        .padding(.horizontal, 16)
         .background(Color.white.opacity(isHovering ? 0.08 : 0))
+        .overlay { Rectangle().stroke(Color.white.opacity(0), lineWidth: 1) }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var statusTag: some View {
+        if !status.isEmpty {
+            Text(status)
+                .font(.nvidia(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.70))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Color.black.opacity(0.32))
+        }
+    }
+
+    private var selectedCheckmark: some View {
+        Image(systemName: "checkmark")
+            .font(.nvidia(size: 14, weight: .bold))
+            .foregroundStyle(Color.openNowGreen)
+            .frame(width: 20, height: 20)
+            .opacity(isSelected ? 1 : 0)
     }
 
     @ViewBuilder
     private var storeIcon: some View {
         if !iconURL.isEmpty {
-            CatalogStoreIconImage(url: URL(string: iconURL), size: 22)
-                .frame(width: 22, height: 22)
+            CatalogStoreIconImage(url: URL(string: iconURL), size: 20)
+                .frame(width: 20, height: 20)
         } else {
-            Color.clear.frame(width: 22, height: 22)
+            Color.clear.frame(width: 20, height: 20)
         }
     }
 }
@@ -2585,11 +2824,23 @@ private struct CatalogRailView: View {
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                    showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },
+                                    onMarkOwned: {
+                                        viewModel.selectGame(game, inSection: section.id)
+                                        viewModel.handleUnownedSelectedVariantPrimaryAction()
+                                    },
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 ))
                                     .id(game.catalogIdentity)
+                            }
+                            ForEach(Array(section.tiles.enumerated()), id: \.offset) { _, tile in
+                                CatalogPanelActionTile(
+                                    tile: tile,
+                                    imageURL: viewModel.optimizedImageURL(tile.imageUrl, width: 620),
+                                    action: { viewModel.openPanelTile(tile) }
+                                )
                             }
                             if canShowAll {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
@@ -2642,6 +2893,9 @@ private struct CatalogRailView: View {
             appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
         }
+        for tile in section.tiles.prefix(4) {
+            appendPrefetchURL(tile.imageUrl, width: 620, urls: &urls, seen: &seen)
+        }
         CatalogImageCache.shared.prefetch(urls)
     }
 
@@ -2656,8 +2910,11 @@ private struct CatalogRailView: View {
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
         guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
         guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
-        withAnimation(.easeInOut(duration: 0.24)) {
-            proxy.scrollTo(request.gameIdentity, anchor: .center)
+        DispatchQueue.main.async {
+            guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
+            withAnimation(.easeInOut(duration: 0.24)) {
+                proxy.scrollTo(request.gameIdentity, anchor: .center)
+            }
         }
     }
 }
@@ -2694,8 +2951,13 @@ private struct CatalogDestinationGridView: View {
                         isSelected: isSelected(game),
                         isSelectionActive: viewModel.selectedGame != nil,
                         isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                        showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                         onSelect: { viewModel.selectGame(game, inSection: section.id) },
                         onPlay: { viewModel.launch(game: game) },
+                        onMarkOwned: {
+                            viewModel.selectGame(game, inSection: section.id)
+                            viewModel.handleUnownedSelectedVariantPrimaryAction()
+                        },
                         onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                     )
                 }
@@ -2779,14 +3041,325 @@ private struct CatalogSeeMoreTile: View {
     }
 }
 
+private struct CatalogPanelActionTile: View {
+    let tile: OPNCatalogPanelTileObject
+    let imageURL: URL?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                    .clipped()
+                LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 5) {
+                    if !tile.subtitle.isEmpty {
+                        Text(tile.subtitle.uppercased())
+                            .font(.nvidia(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(Color.openNowGreen)
+                            .lineLimit(1)
+                    }
+                    Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
+                        .font(.nvidia(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Text(actionLabel)
+                        .font(.nvidia(size: 11, weight: .bold))
+                        .tracking(0.7)
+                        .foregroundStyle(.black.opacity(0.88))
+                        .padding(.horizontal, 10)
+                        .frame(height: 25)
+                        .background(Color.openNowGreen)
+                }
+                .padding(14)
+            }
+            .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+            .overlay { Rectangle().stroke(isHovering ? Color.openNowGreen : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovering)
+            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+            .padding(.top, CatalogVendorLayout.tileTopMargin)
+            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(tile.title.isEmpty ? actionLabel : tile.title)
+    }
+
+    private var actionLabel: String {
+        if !tile.actionLabel.isEmpty { return tile.actionLabel.uppercased() }
+        return tile.kind == "filter" ? "BROWSE" : "OPEN"
+    }
+}
+
+private enum CatalogShowAllWindowPreferences {
+    private static let widthKey = "MacForceNow.catalog.showAllWindow.width"
+    private static let heightKey = "MacForceNow.catalog.showAllWindow.height"
+
+    static func loadSize() -> CGSize? {
+        let width = UserDefaults.standard.double(forKey: widthKey)
+        let height = UserDefaults.standard.double(forKey: heightKey)
+        guard width > 0, height > 0 else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
+    static func saveSize(_ size: CGSize) {
+        UserDefaults.standard.set(Double(size.width), forKey: widthKey)
+        UserDefaults.standard.set(Double(size.height), forKey: heightKey)
+    }
+}
+
+private struct CatalogShowAllResizeZones<ResizeGesture: Gesture>: View {
+    let resizeAction: (CatalogShowAllResizeEdge) -> ResizeGesture
+
+    private let edgeThickness: CGFloat = 8
+    private let cornerSize: CGFloat = 28
+
+    var body: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                resizeZone(.top, height: edgeThickness)
+                Spacer(minLength: 0)
+                resizeZone(.bottom, height: edgeThickness)
+            }
+            HStack(spacing: 0) {
+                resizeZone(.left, width: edgeThickness)
+                Spacer(minLength: 0)
+                resizeZone(.right, width: edgeThickness)
+            }
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    resizeZone(.topLeft, width: cornerSize, height: cornerSize)
+                    Spacer(minLength: 0)
+                    resizeZone(.topRight, width: cornerSize, height: cornerSize)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 0) {
+                    resizeZone(.bottomLeft, width: cornerSize, height: cornerSize)
+                    Spacer(minLength: 0)
+                    ZStack(alignment: .bottomTrailing) {
+                        resizeZone(.bottomRight, width: cornerSize, height: cornerSize)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.28))
+                                .frame(width: 9, height: 1)
+                            Rectangle()
+                                .fill(Color.white.opacity(0.42))
+                                .frame(width: 15, height: 1)
+                            Rectangle()
+                                .fill(Color.openNowGreen.opacity(0.86))
+                                .frame(width: 21, height: 1)
+                        }
+                        .rotationEffect(.degrees(-45))
+                        .offset(x: -10, y: -10)
+                        .allowsHitTesting(false)
+                    }
+                }
+            }
+        }
+    }
+
+    private func resizeZone(_ edge: CatalogShowAllResizeEdge, width: CGFloat? = nil, height: CGFloat? = nil) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: width, height: height)
+            .contentShape(Rectangle())
+            .gesture(resizeAction(edge))
+            .cursor(edge.cursor)
+            .accessibilityLabel(edge.accessibilityLabel)
+    }
+}
+
+private enum CatalogShowAllResizeEdge {
+    case top
+    case bottom
+    case left
+    case right
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    @MainActor var cursor: NSCursor {
+        switch self {
+        case .top, .bottom: return .resizeUpDown
+        case .left, .right: return .resizeLeftRight
+        case .topLeft, .bottomRight: return .catalogDiagonalResizeForward
+        case .topRight, .bottomLeft: return .catalogDiagonalResizeBackward
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .top: return "Resize show all window from top edge"
+        case .bottom: return "Resize show all window from bottom edge"
+        case .left: return "Resize show all window from left edge"
+        case .right: return "Resize show all window from right edge"
+        case .topLeft: return "Resize show all window from top left corner"
+        case .topRight: return "Resize show all window from top right corner"
+        case .bottomLeft: return "Resize show all window from bottom left corner"
+        case .bottomRight: return "Resize show all window from bottom right corner"
+        }
+    }
+
+    func horizontalDelta(from translation: CGFloat) -> CGFloat {
+        switch self {
+        case .left, .topLeft, .bottomLeft: return -translation
+        case .right, .topRight, .bottomRight: return translation
+        case .top, .bottom: return 0
+        }
+    }
+
+    func verticalDelta(from translation: CGFloat) -> CGFloat {
+        switch self {
+        case .top, .topLeft, .topRight: return -translation
+        case .bottom, .bottomLeft, .bottomRight: return translation
+        case .left, .right: return 0
+        }
+    }
+
+    func horizontalOffsetDelta(sizeDelta: CGFloat) -> CGFloat {
+        switch self {
+        case .left, .topLeft, .bottomLeft: return -sizeDelta / 2
+        case .right, .topRight, .bottomRight: return sizeDelta / 2
+        case .top, .bottom: return 0
+        }
+    }
+
+    func verticalOffsetDelta(sizeDelta: CGFloat) -> CGFloat {
+        switch self {
+        case .top, .topLeft, .topRight: return -sizeDelta / 2
+        case .bottom, .bottomLeft, .bottomRight: return sizeDelta / 2
+        case .left, .right: return 0
+        }
+    }
+}
+
+private extension View {
+    func cursor(_ cursor: NSCursor) -> some View {
+        modifier(CatalogCursorModifier(cursor: cursor))
+    }
+}
+
+private struct CatalogCursorModifier: ViewModifier {
+    let cursor: NSCursor
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering, !isHovering {
+                    cursor.push()
+                    isHovering = true
+                } else if !hovering, isHovering {
+                    NSCursor.pop()
+                    isHovering = false
+                }
+            }
+            .onDisappear {
+                guard isHovering else { return }
+                NSCursor.pop()
+                isHovering = false
+            }
+    }
+}
+
+@MainActor private extension NSCursor {
+    static let catalogDiagonalResizeForward = NSCursor.catalogDiagonalResize(angle: 45)
+    static let catalogDiagonalResizeBackward = NSCursor.catalogDiagonalResize(angle: -45)
+
+    private static func catalogDiagonalResize(angle: CGFloat) -> NSCursor {
+        let size = CGSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        let transform = NSAffineTransform()
+        transform.translateX(by: size.width / 2, yBy: size.height / 2)
+        transform.rotate(byDegrees: angle)
+        transform.translateX(by: -size.width / 2, yBy: -size.height / 2)
+        transform.concat()
+        let path = NSBezierPath()
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 15, y: 9))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 5))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 13))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 5))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 13))
+        path.lineWidth = 1.7
+        NSColor.white.setStroke()
+        path.stroke()
+        image.unlockFocus()
+        return NSCursor(image: image, hotSpot: CGPoint(x: size.width / 2, y: size.height / 2))
+    }
+}
+
+private struct CatalogShowAllEmptySearchView: View {
+    let query: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.nvidia(size: 34, weight: .bold))
+                .foregroundStyle(Color.openNowGreen.opacity(0.84))
+            Text("No matching games")
+                .font(.nvidia(size: 18, weight: .bold))
+                .foregroundStyle(.white.opacity(0.88))
+            Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Try searching by title, genre, store, publisher, input type, rating, or tag." : "No metadata matched \"\(query)\".")
+                .font(.nvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.58))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .padding(28)
+    }
+}
+
+private enum CatalogSearchQueryParser {
+    static func terms(from query: String) -> [String] {
+        var terms: [String] = []
+        var current = ""
+        var isQuoted = false
+        for character in query.lowercased() {
+            if character == "\"" {
+                append(current, to: &terms)
+                current = ""
+                isQuoted.toggle()
+            } else if character.isWhitespace && !isQuoted {
+                append(current, to: &terms)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        append(current, to: &terms)
+        return terms
+    }
+
+    private static func append(_ value: String, to terms: inout [String]) {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        terms.append(normalized)
+    }
+}
+
 private struct CatalogGameTile: View, Equatable {
     let game: OPNCatalogGameObject
     let imageURL: URL?
     let isSelected: Bool
     let isSelectionActive: Bool
     let isQueuedForPatching: Bool
+    let showsFreeAccountAccessBadges: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
+    let onMarkOwned: () -> Void
     let onQueueForPatching: () -> Void
     @State private var isHovering = false
 
@@ -2824,11 +3397,11 @@ private struct CatalogGameTile: View, Equatable {
     }
 
     private var playButton: some View {
-        Button(action: game.isLaunchPatching ? onQueueForPatching : onPlay) {
+        Button(action: primaryAction) {
             HStack(spacing: 7) {
-                Image(systemName: game.isLaunchPatching ? (isQueuedForPatching ? "clock.fill" : "plus.circle.fill") : "play.fill")
+                Image(systemName: primaryIconName)
                     .font(.nvidia(size: 10, weight: .bold))
-                Text(game.isLaunchPatching ? (isQueuedForPatching ? "QUEUED" : "QUEUE") : "PLAY")
+                Text(primaryTitle)
                     .font(.nvidia(size: 11, weight: .bold))
                     .tracking(0.9)
             }
@@ -2841,7 +3414,33 @@ private struct CatalogGameTile: View, Equatable {
         }
         .buttonStyle(.plain)
         .disabled(game.isLaunchPatching && isQueuedForPatching)
-        .accessibilityLabel(game.isLaunchPatching ? (isQueuedForPatching ? "Queued \(game.title.isEmpty ? "game" : game.title)" : "Queue \(game.title.isEmpty ? "game" : game.title) after patching") : "Play \(game.title.isEmpty ? "game" : game.title)")
+        .accessibilityLabel(primaryAccessibilityLabel)
+    }
+
+    private var primaryTitle: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "QUEUED" : "QUEUE" }
+        return game.cardPrimaryActionIsLaunchable ? "PLAY" : "MARK OWNED"
+    }
+
+    private var primaryIconName: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "plus.circle.fill" }
+        return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
+    }
+
+    private func primaryAction() {
+        if game.isLaunchPatching {
+            onQueueForPatching()
+        } else if game.cardPrimaryActionIsLaunchable {
+            onPlay()
+        } else {
+            onMarkOwned()
+        }
+    }
+
+    private var primaryAccessibilityLabel: String {
+        let title = game.title.isEmpty ? "game" : game.title
+        if game.isLaunchPatching { return isQueuedForPatching ? "Queued \(title)" : "Queue \(title) after patching" }
+        return game.cardPrimaryActionIsLaunchable ? "Play \(title)" : "Mark \(title) as owned"
     }
 
     private var tileContent: some View {
@@ -2857,6 +3456,11 @@ private struct CatalogGameTile: View, Equatable {
                 }
                 if let badge = game.cardBadgeLabel {
                     CatalogGameCardBadge(label: badge)
+                }
+                if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
+                    CatalogGameAccessBadge(label: badge)
+                        .padding(8)
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight, alignment: .topTrailing)
                 }
                 if isActive {
                     VStack {
@@ -2915,6 +3519,28 @@ struct CatalogGameCardBadge: View {
                 .frame(height: 24)
                 .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))
         }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct CatalogGameAccessBadge: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.nvidia(size: 11, weight: .bold))
+            Text(label)
+                .font(.nvidia(size: 11, weight: .bold))
+                .tracking(0.7)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.42), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }
 }
@@ -3231,6 +3857,7 @@ struct GameDetailPanel: View {
 
     private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
         var labels: [String] = []
+        if !game.skuPlayabilityText.isEmpty { labels.append(game.skuPlayabilityText) }
         if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
         for technology in supportedTechnologyLabels(game: game).prefix(2) { appendUnique(technology, to: &labels) }
         if labels.isEmpty { labels.append("Cloud Ready") }
@@ -3345,14 +3972,14 @@ struct GameDetailPanel: View {
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
         HStack(spacing: 0) {
-            if let variant = selectedVariant {
+            if let option = selectedPlatformOption {
                 Button { viewModel.changeSelectedGameStore() } label: {
                     HStack(spacing: 6) {
-                        if !variant.appStoreSmallImageUrl.isEmpty {
-                            CatalogStoreIconImage(url: URL(string: variant.appStoreSmallImageUrl), size: 16)
+                        if !option.iconURL.isEmpty {
+                            CatalogStoreIconImage(url: URL(string: option.iconURL), size: 16)
                                 .frame(width: 16, height: 16)
                         }
-                        Text(storePickerTitle(variant: variant))
+                        Text(option.title)
                             .font(.nvidia(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white.opacity(0.92))
@@ -3361,7 +3988,7 @@ struct GameDetailPanel: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text((selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary) ? "Owned" : "Not Owned")
+            Text(selectedPlatformHasAccess(game) ? "Ready" : "Not Owned")
                 .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.72))
                 .padding(.horizontal, 10)
@@ -3390,10 +4017,14 @@ struct GameDetailPanel: View {
             if viewModel.isQueuedForPatching(game) {
                 return "Queued to launch automatically after GeForce NOW finishes patching this game."
             }
-            return "GeForce NOW is patching this game. Launch will be available after patching finishes."
+            let secondary = game.patchStatusSecondaryDisplayText
+            return secondary.isEmpty ? "GeForce NOW is \(game.patchStatusPrimaryDisplayText.lowercased()). Launch will be available after patching finishes." : secondary
         }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true {
+        if selectedVariantIsOwned(game) {
             return "Access unlocked with your membership. Game ownership required to play."
+        }
+        if let option = selectedPlatformOption, option.hasSubscriptionEntitlement {
+            return "Access unlocked through your \(option.title) subscription."
         }
         if let selectedVariant, !selectedVariant.appStore.isEmpty {
             return "Game ownership required on \(viewModel.displayName(forStore: selectedVariant.appStore)) to play."
@@ -3568,9 +4199,13 @@ struct GameDetailPanel: View {
         viewModel.selectedVariant(in: viewModel.selectedGame)
     }
 
+    private var selectedPlatformOption: CatalogPlatformOption? {
+        viewModel.selectedPlatformOption(in: viewModel.selectedGame)
+    }
+
     private func primaryActionTitle(game: OPNCatalogGameObject) -> String {
         if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "QUEUED" : "QUEUE" }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "PLAY" }
+        if selectedPlatformHasAccess(game) { return "PLAY" }
         if selectedVariant != nil { return "MARK OWNED" }
         return "PLAY"
     }
@@ -3580,71 +4215,53 @@ struct GameDetailPanel: View {
             viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
             return
         }
-        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
+        if selectedPlatformHasAccess(game) || selectedVariant == nil {
             viewModel.launchSelectedGame()
         } else {
-            viewModel.markSelectedVariantOwned()
+            viewModel.handleUnownedSelectedVariantPrimaryAction()
         }
+    }
+
+    private func selectedVariantIsOwned(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedVariant else { return false }
+        return CatalogViewModel.variantIsOwned(selectedVariant, in: game)
+    }
+
+    private func selectedPlatformHasAccess(_ game: OPNCatalogGameObject) -> Bool {
+        viewModel.selectedPlatformHasAccess(in: game)
     }
 
     private func variantChips(game: OPNCatalogGameObject) -> some View {
         FlowLayout(spacing: 8) {
-            ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                Button { selectVariant(at: index, in: game) } label: {
+            ForEach(viewModel.platformOptions(for: game)) { option in
+                Button { selectVariant(at: option.variantIndex, in: game) } label: {
                     HStack(spacing: 7) {
-                        if variant.librarySelected || variant.inLibrary || index == viewModel.selectedVariantIndex {
-                            Image(systemName: variant.librarySelected || variant.inLibrary ? "checkmark.circle.fill" : "circle.fill")
+                        if option.hasAccess || option.isSelected {
+                            Image(systemName: option.hasAccess ? "checkmark.circle.fill" : "circle.fill")
                                 .font(.nvidia(size: 11, weight: .bold))
                         }
-                        Text(storePickerTitle(variant: variant))
+                        Text(option.title)
                             .font(.nvidia(size: 11, weight: .bold))
                     }
-                    .foregroundStyle(index == viewModel.selectedVariantIndex ? .black.opacity(0.88) : .white.opacity(0.82))
+                    .foregroundStyle(option.isSelected ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 11)
                     .frame(height: 32)
-                    .background(index == viewModel.selectedVariantIndex ? Color.openNowGreen : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(index == viewModel.selectedVariantIndex ? Color.openNowGreen : Color.white.opacity(0.14), lineWidth: 1) }
+                    .background(option.isSelected ? Color.openNowGreen : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(option.isSelected ? Color.openNowGreen : Color.white.opacity(0.14), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(storePickerTitle(variant: variant))
-                .accessibilityValue(index == viewModel.selectedVariantIndex ? "Selected" : "")
+                .accessibilityLabel(option.title)
+                .accessibilityValue(option.isSelected ? "Selected" : "")
             }
         }
         .frame(maxWidth: 520, alignment: .leading)
     }
 
     private func selectVariant(at index: Int, in game: OPNCatalogGameObject) {
-        viewModel.selectedVariantIndex = index
+        viewModel.focusGameStoreVariant(at: index)
         guard index >= 0, index < game.variants.count else { return }
         let variant = game.variants[index]
         if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
-    }
-
-    private func storePickerTitle(variant: OPNCatalogGameVariantObject) -> String {
-        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
-        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
-    }
-
-    private func storeAccountStatus(store: String) -> some View {
-        let account = viewModel.accountStatus(forStore: store)
-        let storeName = viewModel.displayName(forStore: store)
-        return HStack(spacing: 8) {
-            Image(systemName: account?.hasAccountLinkingData == true ? "link.circle.fill" : "link.circle")
-                .foregroundStyle(Color.openNowGreen)
-            Text(accountStatusText(account: account, storeName: storeName))
-                .font(.nvidia(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.70))
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: 520)
-    }
-
-    private func accountStatusText(account: CatalogStoreAccount?, storeName: String) -> String {
-        guard let account else { return "Connect \(storeName) to sync owned games." }
-        if !account.userDisplayName.isEmpty { return "Connected to \(storeName) as \(account.userDisplayName)." }
-        if account.totalSyncedGames > 0 { return "\(account.totalSyncedGames) \(storeName) games synced." }
-        if !account.syncState.isEmpty { return "\(storeName) sync state: \(account.syncState)." }
-        return "\(storeName) account connected."
     }
 
     private func detailRows(game: OPNCatalogGameObject) -> some View {
@@ -3785,7 +4402,9 @@ private struct CatalogHeroRemoteImage: View {
             image = cached.image
             hasFailed = false
             isLoading = false
-            onScrimColorChange(CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black)
+            let scrimColor = await CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black
+            guard !Task.isCancelled else { return }
+            onScrimColorChange(scrimColor)
         } else {
             guard !Task.isCancelled else { return }
             image = nil
@@ -3906,7 +4525,13 @@ private enum CatalogHeroImageMetadata {
         let bottom: String?
     }
 
-    static func scrimColor(from data: Data) -> CatalogMarqueeScrimColor? {
+    static func scrimColor(from data: Data) async -> CatalogMarqueeScrimColor? {
+        await Task.detached(priority: .userInitiated) {
+            scrimColorSynchronously(from: data)
+        }.value
+    }
+
+    private static func scrimColorSynchronously(from data: Data) -> CatalogMarqueeScrimColor? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         if let metadataColor = metadataScrimColor(from: source) {
             return metadataColor
@@ -4318,12 +4943,26 @@ extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
     var cardBadgeLabel: String? {
-        if isLaunchPatching { return "Patching" }
+        if isLaunchPatching { return patchStatusPrimaryDisplayText }
         return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
     }
 
     var isLaunchPatching: Bool {
         isPatching || variants.contains { $0.isPatching }
+    }
+
+    var patchStatusPrimaryDisplayText: String {
+        if !patchStatusPrimaryText.isEmpty { return patchStatusPrimaryText }
+        return variants.first { !$0.patchStatusPrimaryText.isEmpty }?.patchStatusPrimaryText ?? "Patching"
+    }
+
+    var patchStatusSecondaryDisplayText: String {
+        if !patchStatusSecondaryText.isEmpty { return patchStatusSecondaryText }
+        return variants.first { !$0.patchStatusSecondaryText.isEmpty }?.patchStatusSecondaryText ?? ""
+    }
+
+    var cardPrimaryActionIsLaunchable: Bool {
+        isInLibrary || variants.contains { $0.inLibrary || $0.librarySelected } || variants.isEmpty
     }
 
     var bestHeroImageURL: String {
@@ -4496,6 +5135,7 @@ extension OPNCatalogGameObject {
     var detailChips: [String] {
         var chips: [String] = []
         if isInLibrary { chips.append("IN LIBRARY") }
+        if !skuPlayabilityText.isEmpty { chips.append(skuPlayabilityText.uppercased()) }
         if !membershipTierLabel.isEmpty { chips.append(membershipTierLabel.uppercased()) }
         if !playabilityState.isEmpty { chips.append(playabilityState.replacingOccurrences(of: "_", with: " ").uppercased()) }
         chips.append(contentsOf: genres.prefix(3).map { $0.uppercased() })

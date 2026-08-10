@@ -107,16 +107,16 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
     public let browserType: String
     public let userAgent: String
 
-    public init(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab",
+    public init(clientId: String = GFNClientMetadata.clientId,
                 clientType: String = "NATIVE",
-                clientVersion: String = "2.0.80.173",
+                clientVersion: String = GFNClientMetadata.appVersion,
                 clientStreamer: String = "NVIDIA-CLASSIC",
                 deviceOS: String = "MACOS",
                 deviceType: String = "DESKTOP",
                 deviceMake: String = "UNKNOWN",
                 deviceModel: String = "UNKNOWN",
                 browserType: String = "CHROME",
-                userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
+                userAgent: String = GFNClientMetadata.nativeWindowsUserAgent) {
         self.clientId = clientId
         self.clientType = clientType
         self.clientVersion = clientVersion
@@ -131,8 +131,8 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
 
     public static let nativeGFNPC = CloudMatchClientHeaders()
 
-    public static func browserWebRTC(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab", clientVersion: String = "2.0.85.135", userAgent: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36") -> CloudMatchClientHeaders {
-        CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "WINDOWS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
+    public static func browserWebRTC(clientId: String = GFNClientMetadata.clientId, clientVersion: String = GFNClientMetadata.appVersion, userAgent: String = GFNClientMetadata.browserMacUserAgent) -> CloudMatchClientHeaders {
+        CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "MACOS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
     }
 
     public static func streamSession(transportMode: String) -> CloudMatchClientHeaders {
@@ -140,7 +140,7 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
         // (nv-client-type: BROWSER / nv-client-streamer: WEBRTC) at the web-client resolution
         // (~2560-class), which silently downscaled the server desktop for 5K requests. The actual
         // transport is selected by the GSStreamerType metadata, NOT these headers — so a native
-        // identity is compatible with WebRTC. The working reference client (OpenNOW) sends
+        // identity is compatible with WebRTC. The working reference client (MacForceNow) sends
         // NATIVE / NVIDIA-CLASSIC even over WebRTC and gets the full 5120x2160 desktop.
         _ = transportMode
         return nativeGFNPC
@@ -198,7 +198,7 @@ public enum CloudMatchRequestFactory {
 
     public static func createSessionRequest(baseURLString: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
         let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
-        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: false, timeoutInterval: timeoutInterval, headers: headers)
+        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: true, timeoutInterval: timeoutInterval, headers: headers)
     }
 
     public static func pollSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
@@ -489,6 +489,14 @@ public enum CloudMatchResponseParser {
         guard let data, let json = jsonDictionary(data) else { return false }
         let status = requestStatus(from: json)
         return status.statusCode == 34 || status.statusDescription.contains("SESSION_NOT_PAUSED")
+    }
+
+    public static func limitedModeStreamingMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let status = requestStatus(from: json)
+        let description = status.statusDescription.uppercased()
+        let isLimitedModeFailure = status.statusCode == 81 || description.contains("STREAMING_NOT_ALLOWED_IN_LIMITED_MODE") || description.contains("8A91000D")
+        return isLimitedModeFailure ? "GeForce NOW says this game is out of limited playtime. Add playtime or try another game." : nil
     }
 
     public static func staleActiveSessionClaimMessage(_ data: Data?) -> String? {

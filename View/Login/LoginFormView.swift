@@ -86,7 +86,31 @@ struct LoginFormView: View {
                 .buttonStyle(VendorGetInButtonStyle())
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
                 .accessibilityHint("Opens \(viewModel.selectedProvider.title) authentication in your browser")
-                .padding(.bottom, 32)
+                .padding(.bottom, 12)
+
+                Button(action: startDeviceCodeLogin) {
+                    Text("USE DEVICE CODE")
+                        .font(.nvidiaSans(size: 12, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(0.8)
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                .accessibilityHint("Opens NVIDIA device-code authentication")
+                .padding(.bottom, viewModel.deviceCodeUserCode.isEmpty ? 32 : 12)
+
+                if !viewModel.deviceCodeUserCode.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(viewModel.deviceCodeUserCode)
+                            .font(.system(size: 24, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                        Text(viewModel.deviceCodeVerificationURI)
+                            .font(.nvidiaSans(size: 12, weight: .regular))
+                            .foregroundStyle(Color.gfnTextSecondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.bottom, 20)
+                }
 
                 if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                     Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
@@ -178,6 +202,12 @@ struct LoginFormView: View {
         } else {
             viewModel.presentTermsOfUseIfNeeded()
         }
+    }
+
+    private func startDeviceCodeLogin() {
+        viewModel.rememberSession = true
+        viewModel.acceptedTerms = true
+        viewModel.launchDeviceCodeOAuth()
     }
 
     private var appVersionText: String {
