@@ -254,6 +254,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let requestData = rawSession["sessionRequestData"] as? [String: Any] ?? [:]
         let connectionInfo = normalizedConnectionInfo(rawSession: rawSession, sessionInfo: sessionInfo, allocation: allocation)
         let monitorSettings = normalizedMonitorSettings(rawSession: rawSession, requestData: requestData, settings: settings, streamingProfileJSON: streamingProfileJSON)
+        let streamingProfile = normalizedNativeStreamingProfile(rawSession: rawSession, sessionInfo: sessionInfo, settings: settings, allocation: allocation, streamingProfileJSON: streamingProfileJSON)
         let sessionControlInfo = rawSession["sessionControlInfo"] as? [String: Any] ?? [:]
         let zoneAddress = firstNonEmpty(string(sessionControlInfo["ip"], fallback: ""), string(rawSession["zoneAddress"], fallback: ""), allocation.session.serverAddress)
         let zoneName = firstNonEmpty(string(rawSession["zoneName"], fallback: ""), zoneAddress.split(separator: ".").first.map { String($0).uppercased() } ?? "")
@@ -268,6 +269,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "zoneName": zoneName,
             "deviceId": string(requestData["deviceHashId"], fallback: ""),
             "gpuType": string(rawSession["gpuType"], fallback: ""),
+            "streamingProfile": streamingProfile,
             "monitorSettings": monitorSettings,
             "connectionInfo": connectionInfo,
             "finalizedStreamingFeatures": normalizedStreamingFeatures(rawSession: rawSession, requestData: requestData, streamingProfileJSON: streamingProfileJSON),
@@ -392,6 +394,67 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             connections.append(["usage": 2, "ip": mediaHost, "port": mediaPort, "protocol": 2, "resourcePath": "", "appLevelProtocol": 2])
         }
         return connections
+    }
+
+    private static func normalizedNativeStreamingProfile(rawSession: [String: Any], sessionInfo: [String: Any], settings: [String: Any], allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) -> [String: Any] {
+        let candidates = [
+            rawSession["streamingProfile"],
+            rawSession["negotiatedStreamProfile"],
+            sessionInfo["streamingProfile"],
+            sessionInfo["negotiatedStreamProfile"],
+            settings["streamingProfile"],
+        ]
+        var profile: [String: Any] = [:]
+        for candidate in candidates.compactMap({ $0 as? [String: Any] }) where JSONSerialization.isValidJSONObject(candidate) {
+            for (key, value) in candidate where !isEmptyProfileValue(value) {
+                if shouldReplaceProfileValue(profile[key], key: key) { profile[key] = value }
+            }
+        }
+
+        let modeSelection = jsonObject(from: streamingProfileJSON)
+        let selectedMode = modeSelection["selectedVideoMode"] as? [String: Any] ?? [:]
+        let selectedFeatures = modeSelection["selectedFeatures"] as? [String: Any] ?? [:]
+        let width = int(selectedMode["width"])
+        let height = int(selectedMode["height"])
+        let fps = int(selectedMode["fps"])
+        if string(profile["streamingProfileGuid"], fallback: "").isEmpty {
+            profile["streamingProfileGuid"] = openNOWStreamingProfileGuid(allocation: allocation, streamingProfileJSON: streamingProfileJSON)
+        }
+        if string(profile["resolution"], fallback: "").isEmpty, width > 0, height > 0 { profile["resolution"] = "\(width)x\(height)" }
+        if int(profile["fps"]) <= 0, fps > 0 { profile["fps"] = fps }
+        if string(profile["codec"], fallback: "").isEmpty {
+            let codec = normalizedCodec(string(settings["codec"], fallback: ""))
+            if !codec.isEmpty { profile["codec"] = codec }
+        }
+        if string(profile["audioMode"], fallback: "").isEmpty {
+            let audioMode = firstNonEmpty(string(rawSession["audioModeFormat"], fallback: ""), string(settings["audioModeFormat"], fallback: ""), "stereo")
+            profile["audioMode"] = audioMode
+        }
+        if profile["bitDepth"] == nil { profile["bitDepth"] = int(selectedFeatures["bitDepth"]) }
+        if profile["chromaFormat"] == nil { profile["chromaFormat"] = int(selectedFeatures["chromaFormat"]) }
+        if profile["colorQuality"] == nil {
+            profile["colorQuality"] = int(selectedFeatures["bitDepth"]) >= 10 ? "10bit_420" : "8bit_420"
+        }
+        return profile
+    }
+
+    private static func openNOWStreamingProfileGuid(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) -> String {
+        let signature = "\(allocation.session.applicationID)|\(streamingProfileJSON)"
+        let key = "OpenNOW.NativeNVST.StreamingProfileGuid.\(stableProfileHash(signature))"
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: key), UUID(uuidString: existing) != nil { return existing.lowercased() }
+        let generated = UUID().uuidString.lowercased()
+        defaults.set(generated, forKey: key)
+        return generated
+    }
+
+    private static func stableProfileHash(_ value: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(hash, radix: 16)
     }
 
     private static func normalizedConnection(_ source: [String: Any]?) -> [String: Any]? {
@@ -650,14 +713,15 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let payload = NativeNVSTSessionPayload(allocation: allocation)
         let profile = jsonObject(from: streamingProfileJSON)
         let geronimoSession = jsonObject(from: geronimoSessionJSON)
+        let geronimoStreamingProfile = geronimoSession["streamingProfile"] as? [String: Any] ?? [:]
         let selectedVideoMode = profile["selectedVideoMode"] as? [String: Any] ?? [:]
         let selectedFeatures = profile["selectedFeatures"] as? [String: Any] ?? [:]
         return [
             "sessionId": allocation.session.id,
-            "nativeMissingStartFields": payload.missingStartFields.joined(separator: ","),
+            "nativeMissingStartFields": payload.missingStartFields.filter { $0 != "streamingProfile.streamingProfileGuid" || string(geronimoStreamingProfile["streamingProfileGuid"], fallback: "").isEmpty }.joined(separator: ","),
             "nativeHasToken": payload.hasToken ? "true" : "false",
             "nativeTokenType": payload.tokenType,
-            "nativeStreamingProfileGuid": payload.streamingProfileGUID,
+            "nativeStreamingProfileGuid": firstNonEmpty(string(geronimoStreamingProfile["streamingProfileGuid"], fallback: ""), payload.streamingProfileGUID),
             "profileWidth": String(int(selectedVideoMode["width"])),
             "profileHeight": String(int(selectedVideoMode["height"])),
             "profileFps": String(int(selectedVideoMode["fps"])),

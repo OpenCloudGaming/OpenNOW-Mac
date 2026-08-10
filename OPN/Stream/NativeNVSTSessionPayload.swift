@@ -12,18 +12,26 @@ public struct NativeNVSTSessionPayload: Equatable, Sendable {
 
     public init(allocation: NativeNVSTSessionAllocation) {
         let object = Self.object(from: allocation.rawSessionJSON)
+        let sessionInfo = Self.object(from: allocation.sessionInfoJSON)
+        let settings = Self.object(from: allocation.settingsJSON)
         let rawServerAddress = Self.string(object["serverAddress"])
         let sessionRequestData = object["sessionRequestData"] as? [String: Any]
         effectiveServerAddress = rawServerAddress.isEmpty ? allocation.session.serverAddress : rawServerAddress
-        tokenType = Self.string(object["tokenType"])
-        hasToken = !Self.string(object["token"]).isEmpty
+        tokenType = Self.firstNonEmpty(Self.string(object["tokenType"]), Self.string(object["authType"]), Self.string((object["auth"] as? [String: Any])?["type"]), allocation.authTokenType)
+        hasToken = !Self.firstNonEmpty(Self.string(object["token"]), Self.string(object["authToken"]), Self.string(object["jwt"]), Self.string((object["auth"] as? [String: Any])?["token"]), Self.string(object["sessionToken"]), allocation.authToken).isEmpty
         let rawAppID = Self.string(object["appId"])
         let requestAppID = Self.string(sessionRequestData?["appId"])
         appID = Self.firstNonEmpty(rawAppID, requestAppID, allocation.session.applicationID)
         let rawSession = Self.string(object["session"])
         let rawSessionID = Self.string(object["sessionId"])
         sessionIdentifier = Self.firstNonEmpty(rawSession, rawSessionID, allocation.session.id)
-        streamingProfileGUID = Self.string((object["streamingProfile"] as? [String: Any])?["streamingProfileGuid"])
+        streamingProfileGUID = Self.firstNonEmpty(
+            Self.string((object["streamingProfile"] as? [String: Any])?["streamingProfileGuid"]),
+            Self.string((object["negotiatedStreamProfile"] as? [String: Any])?["streamingProfileGuid"]),
+            Self.string((sessionInfo["streamingProfile"] as? [String: Any])?["streamingProfileGuid"]),
+            Self.string((sessionInfo["negotiatedStreamProfile"] as? [String: Any])?["streamingProfileGuid"]),
+            Self.string((settings["streamingProfile"] as? [String: Any])?["streamingProfileGuid"])
+        )
         audioModeFormat = Self.string(object["audioModeFormat"])
         missingStartFields = Self.missingStartFields(
             effectiveServerAddress: effectiveServerAddress,

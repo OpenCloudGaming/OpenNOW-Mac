@@ -184,6 +184,17 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(payload.missingStartFields == ["tokenType", "token", "streamingProfile.streamingProfileGuid"])
 }
 
+@Test func nativeNVSTSessionPayloadUsesAllocationAuthWithoutLoggingToken() throws {
+    let allocation = nativeAllocation(rawSessionJSON: "{}", authTokenType: "JWT_GFN", authToken: "private-access-token")
+
+    let payload = NativeNVSTSessionPayload(allocation: allocation)
+
+    #expect(payload.tokenType == "JWT_GFN")
+    #expect(payload.hasToken)
+    #expect(payload.missingStartFields == ["streamingProfile.streamingProfileGuid"])
+    #expect(payload.telemetryAttributes.values.contains("private-access-token") == false)
+}
+
 @Test func nativeNVSTGeronimoStartFailureMessageDoesNotExposePrivateABI() {
     let message = NativeNVSTBifrostTransport.geronimoStartFailureMessage
 
@@ -315,6 +326,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         streamingProfileJSON: streamingProfileJSON
     )
     let object = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+    let streamingProfile = try #require(object["streamingProfile"] as? [String: Any])
     let monitorSettings = try #require(object["monitorSettings"] as? [[String: Any]])
     let connectionInfo = try #require(object["connectionInfo"] as? [[String: Any]])
     let features = try #require(object["finalizedStreamingFeatures"] as? [String: Any])
@@ -324,12 +336,57 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(object["appLaunchMode"] as? Int == 2)
     #expect(object["zoneAddress"] as? String == "control.example.test")
     #expect(object["zoneName"] as? String == "CONTROL")
+    #expect(streamingProfile["streamingProfileGuid"] as? String == "profile-guid")
+    #expect(streamingProfile["resolution"] as? String == "1920x1080")
+    #expect(streamingProfile["fps"] as? Int == 60)
     #expect(monitorSettings.count == 1)
     #expect(monitorSettings[0]["widthInPixels"] as? Int == 1920)
     #expect(connectionInfo.count == 2)
     #expect(connectionInfo.contains { $0["usage"] as? Int == 17 } == false)
     #expect(connectionInfo.allSatisfy { $0["protocol"] as? Int == 2 })
     #expect(features["bitDepth"] as? Int == 8)
+}
+
+@Test func nativeNVSTGeronimoSessionJSONGeneratesStableOpenNOWProfileGuidWhenCloudSessionOmitsOne() throws {
+    let streamingProfileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: "{}",
+        sessionInfoJSON: "{}",
+        settingsJSON: """
+        {
+          "resolution": "1920x1080",
+          "fps": 60,
+          "codec": "H264",
+          "audioModeFormat": "stereo"
+        }
+        """
+    )
+    let allocation = nativeAllocation(rawSessionJSON: """
+    {
+      "sessionId": "native-session",
+      "sessionRequestData": { "appId": 123 },
+      "sessionControlInfo": { "ip": "control.example.test" }
+    }
+    """, settingsJSON: """
+    {
+      "transportMode": "nvst",
+      "codec": "H264",
+      "audioModeFormat": "stereo"
+    }
+    """)
+    let firstSessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: streamingProfileJSON)
+    let secondSessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: streamingProfileJSON)
+    let firstObject = try #require(JSONSerialization.jsonObject(with: Data(firstSessionJSON.utf8)) as? [String: Any])
+    let secondObject = try #require(JSONSerialization.jsonObject(with: Data(secondSessionJSON.utf8)) as? [String: Any])
+    let firstStreamingProfile = try #require(firstObject["streamingProfile"] as? [String: Any])
+    let secondStreamingProfile = try #require(secondObject["streamingProfile"] as? [String: Any])
+    let generatedGuid = try #require(firstStreamingProfile["streamingProfileGuid"] as? String)
+
+    #expect(UUID(uuidString: generatedGuid) != nil)
+    #expect(secondStreamingProfile["streamingProfileGuid"] as? String == generatedGuid)
+    #expect(firstStreamingProfile["resolution"] as? String == "1920x1080")
+    #expect(firstStreamingProfile["fps"] as? Int == 60)
+    #expect(firstStreamingProfile["codec"] as? String == "H264")
+    #expect(firstStreamingProfile["audioMode"] as? String == "stereo")
 }
 
 @Test func nativeNVSTGeronimoSessionJSONGeneratesMissingMonitorSettings() throws {
@@ -460,7 +517,7 @@ private func nativeConfiguration() -> StreamLaunchConfiguration {
     StreamLaunchConfiguration(title: "Native Test", applicationID: "123", accessToken: "token", accountLinked: true, selectedStore: "Steam")
 }
 
-private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", authTokenType: String = "", authToken: String = "") -> NativeNVSTSessionAllocation {
+private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}") -> NativeNVSTSessionAllocation {
     let session = StreamSessionDescriptor(id: "native-session", applicationID: "123", serverAddress: "server.example.test", title: "Native Test", metadata: ["transport": "nvst"])
     return NativeNVSTSessionAllocation(
         session: session,
@@ -473,7 +530,7 @@ private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-
         mediaPort: 47998,
         authTokenType: authTokenType,
         authToken: authToken,
-        settingsJSON: "{\"transportMode\":\"nvst\"}",
+        settingsJSON: settingsJSON,
         sessionInfoJSON: "{\"sessionId\":\"native-session\"}",
         rawSessionJSON: rawSessionJSON
     )
