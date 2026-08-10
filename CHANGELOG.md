@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/anderson-oki/macforce-now/compare/v0.10.0...v0.11.0) (2026-08-10)
+
+
+### Features
+
+* add steam controller haptic ([d7f4705](https://github.com/anderson-oki/macforce-now/commit/d7f4705e6cd83f11b6e7f285581d42b34f66b8be))
+* add steam controller mapping ([8199337](https://github.com/anderson-oki/macforce-now/commit/8199337a7bf3fa1b5ab1bdf9be914ea117575389))
+
+
+### Bug Fixes
+
+* controller mode catalog close details ([3a14fe6](https://github.com/anderson-oki/macforce-now/commit/3a14fe63b5ddf85e039c5c815c37684b6fac08ad))
+* ui scaling ([ff1bd88](https://github.com/anderson-oki/macforce-now/commit/ff1bd88a5ba64bf5339d85062f9122cb3fe5f535))
+
 ## [0.10.0](https://github.com/anderson-oki/macforce-now/compare/v0.9.0...v0.10.0) (2026-08-10)
 
 
