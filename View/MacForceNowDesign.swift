@@ -26,13 +26,19 @@ enum MacForceNowDesign {
     }
 
     enum Spacing {
-        static let pageHorizontal: CGFloat = 40
-        static let railHorizontal: CGFloat = 32
-        static let card: CGFloat = 18
+        private static let basePageHorizontal: CGFloat = 40
+        private static let baseRailHorizontal: CGFloat = 32
+        private static let baseCard: CGFloat = 18
+
+        static func pageHorizontal(scale: CGFloat) -> CGFloat { basePageHorizontal * scale }
+        static func railHorizontal(scale: CGFloat) -> CGFloat { baseRailHorizontal * scale }
+        static func card(scale: CGFloat) -> CGFloat { baseCard * scale }
     }
 
     enum Radius {
-        static let avatar: CGFloat = 14
+        private static let baseAvatar: CGFloat = 14
+
+        static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
     }
 
     static let accent = Color.openNowGreen

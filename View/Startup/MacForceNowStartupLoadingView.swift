@@ -8,6 +8,7 @@ enum MacForceNowStartupAnimation {
 
 struct MacForceNowStartupLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.opnUIScale) private var uiScale
     @State private var startDate = Date()
 
     var body: some View {
@@ -22,15 +23,15 @@ struct MacForceNowStartupLoadingView: View {
                 ZStack {
                     MacForceNowStartupBackdrop(progress: progress, loop: loop)
 
-                    MacForceNowStartupDepthGrid(progress: progress, loop: loop, compact: compact)
+                    MacForceNowStartupDepthGrid(progress: progress, loop: loop, compact: compact, uiScale: uiScale)
 
-                    MacForceNowStartupOrbitalSystem(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
+                    MacForceNowStartupOrbitalSystem(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion, uiScale: uiScale)
 
-                    MacForceNowStartupDiagnostics(progress: progress, compact: compact)
+                    MacForceNowStartupDiagnostics(progress: progress, compact: compact, uiScale: uiScale)
 
-                    MacForceNowStartupCoreLogo(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
+                    MacForceNowStartupCoreLogo(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion, uiScale: uiScale)
 
-                    MacForceNowStartupSequenceFooter(progress: progress, loop: loop, compact: compact)
+                    MacForceNowStartupSequenceFooter(progress: progress, loop: loop, compact: compact, uiScale: uiScale)
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
@@ -98,10 +99,11 @@ private struct MacForceNowStartupDepthGrid: View {
     let progress: Double
     let loop: Double
     let compact: Bool
+    let uiScale: CGFloat
 
     var body: some View {
         let reveal = startupSmoothStep(0.18, 0.48, progress)
-        let size = CGFloat(compact ? 420 : 680)
+        let size = CGFloat(compact ? 420 : 680) * uiScale
 
         ZStack {
             ForEach(0..<5, id: \.self) { index in
@@ -114,7 +116,7 @@ private struct MacForceNowStartupDepthGrid: View {
                     .scaleEffect(CGFloat(scaleValue))
                     .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
                     .rotation3DEffect(.degrees(loop * 22 + Double(index * 4)), axis: (x: 0, y: 1, z: 0), perspective: 0.65)
-                    .offset(y: CGFloat(index * 14) + CGFloat(reveal) * 34)
+                    .offset(y: CGFloat(index * 14) * uiScale + CGFloat(reveal) * 34 * uiScale)
                     .blendMode(.screen)
             }
 
@@ -122,14 +124,14 @@ private struct MacForceNowStartupDepthGrid: View {
                 Capsule()
                     .fill(Color.openNowGreen.opacity(reveal * 0.12))
                     .frame(width: size * 0.70, height: index.isMultiple(of: 3) ? 1.2 : 0.7)
-                    .offset(y: CGFloat(index - 4) * (compact ? 20 : 28))
+                    .offset(y: CGFloat(index - 4) * (compact ? 20 : 28) * uiScale)
                     .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
                     .rotationEffect(.degrees(loop * 7))
                     .blendMode(.screen)
             }
         }
         .opacity(reveal)
-        .offset(y: compact ? 46 : 62)
+        .offset(y: (compact ? 46 : 62) * uiScale)
         .allowsHitTesting(false)
     }
 }
@@ -139,12 +141,13 @@ private struct MacForceNowStartupCoreLogo: View {
     let loop: Double
     let compact: Bool
     let reduceMotion: Bool
+    let uiScale: CGFloat
 
     var body: some View {
         let logoReveal = startupSmoothStep(0.00, 0.16, progress)
         let systemReveal = startupSmoothStep(0.20, 0.54, progress)
         let completion = startupSmoothStep(0.80, 1.00, progress)
-        let size = CGFloat(compact ? 154 : 224)
+        let size = CGFloat(compact ? 154 : 224) * uiScale
         let rotation = reduceMotion ? 0 : loop * 360
         let tilt = reduceMotion ? 0 : sin(loop * .pi * 2) * 9
 
@@ -152,7 +155,7 @@ private struct MacForceNowStartupCoreLogo: View {
             Circle()
                 .fill(Color.openNowGreen.opacity(0.14 + systemReveal * 0.08))
                 .frame(width: size * (1.10 + completion * 0.20), height: size * (1.10 + completion * 0.20))
-                .blur(radius: compact ? 26 : 42)
+                .blur(radius: (compact ? 26 : 42) * uiScale)
                 .opacity(logoReveal)
 
             ForEach(0..<3, id: \.self) { index in
@@ -174,12 +177,12 @@ private struct MacForceNowStartupCoreLogo: View {
                 .rotation3DEffect(.degrees(rotation), axis: (x: 0.10, y: 1, z: 0.02), perspective: 0.74)
                 .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), perspective: 0.74)
                 .scaleEffect(CGFloat(0.86 + logoReveal * 0.14 + completion * 0.05))
-                .shadow(color: Color.openNowGreen.opacity(0.74), radius: compact ? 24 : 38)
-                .shadow(color: .white.opacity(0.16 + completion * 0.12), radius: compact ? 8 : 12)
+                .shadow(color: Color.openNowGreen.opacity(0.74), radius: (compact ? 24 : 38) * uiScale)
+                .shadow(color: .white.opacity(0.16 + completion * 0.12), radius: (compact ? 8 : 12) * uiScale)
                 .opacity(logoReveal)
         }
         .frame(width: size * 2.0, height: size * 1.55)
-        .offset(y: compact ? -38 : -58)
+        .offset(y: (compact ? -38 : -58) * uiScale)
     }
 }
 
@@ -188,6 +191,7 @@ private struct MacForceNowStartupOrbitalSystem: View {
     let loop: Double
     let compact: Bool
     let reduceMotion: Bool
+    let uiScale: CGFloat
 
     private static let modules: [MacForceNowStartupModule] = [
         .init(title: "AUTH", detail: "session vault", angle: -150, radius: 0.78, stageStart: 0.18),
@@ -212,11 +216,11 @@ private struct MacForceNowStartupOrbitalSystem: View {
                     let x = cos(angle) * radius
                     let y = sin(angle) * radius * 0.58
 
-                    MacForceNowStartupModuleCard(module: module, load: load, compact: compact)
-                        .frame(width: compact ? 138 : 184, height: compact ? 54 : 66)
+                    MacForceNowStartupModuleCard(module: module, load: load, compact: compact, uiScale: uiScale)
+                        .frame(width: (compact ? 138 : 184) * uiScale, height: (compact ? 54 : 66) * uiScale)
                         .scaleEffect(CGFloat(0.74 + reveal * 0.26))
                         .rotation3DEffect(.degrees(module.angle * 0.14 + spin * 0.16), axis: (x: 0.08, y: x > 0 ? -1 : 1, z: 0), perspective: 0.72)
-                        .offset(x: x, y: y - (compact ? 30 : 52))
+                        .offset(x: x, y: y - (compact ? 30 : 52) * uiScale)
                         .opacity(reveal)
                         .blur(radius: CGFloat((1 - reveal) * 8))
                         .blendMode(.screen)
@@ -241,48 +245,50 @@ private struct MacForceNowStartupModuleCard: View {
     let module: MacForceNowStartupModule
     let load: Double
     let compact: Bool
+    let uiScale: CGFloat
 
     var body: some View {
-        HStack(spacing: compact ? 8 : 10) {
+        HStack(spacing: (compact ? 8 : 10) * uiScale) {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.openNowGreen.opacity(0.18 + load * 0.18))
                 .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.openNowGreen.opacity(0.46), lineWidth: 1) }
-                .frame(width: compact ? 22 : 28, height: compact ? 22 : 28)
+                .frame(width: (compact ? 22 : 28) * uiScale, height: (compact ? 22 : 28) * uiScale)
                 .overlay {
                     Circle()
                         .fill(load > 0.96 ? Color.openNowGreen : Color.white.opacity(0.32))
-                        .frame(width: compact ? 7 : 9, height: compact ? 7 : 9)
+                        .frame(width: (compact ? 7 : 9) * uiScale, height: (compact ? 7 : 9) * uiScale)
                 }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(module.title)
-                    .font(.system(size: compact ? 9 : 11, weight: .black, design: .rounded))
+                    .font(.system(size: (compact ? 9 : 11) * uiScale, weight: .black, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(.white.opacity(0.90))
                 Text(module.detail)
-                    .font(.system(size: compact ? 8 : 9, weight: .bold))
+                    .font(.system(size: (compact ? 8 : 9) * uiScale, weight: .bold))
                     .foregroundStyle(Color.openNowGreen.opacity(0.72))
             }
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, compact ? 9 : 12)
-        .background(.black.opacity(0.40), in: RoundedRectangle(cornerRadius: compact ? 16 : 19, style: .continuous))
+        .padding(.horizontal, (compact ? 9 : 12) * uiScale)
+        .background(.black.opacity(0.40), in: RoundedRectangle(cornerRadius: (compact ? 16 : 19) * uiScale, style: .continuous))
         .overlay(alignment: .bottomLeading) {
             Capsule()
                 .fill(Color.openNowGreen.opacity(0.82))
-                .frame(width: CGFloat(load) * (compact ? 112 : 154), height: 2)
-                .padding(.horizontal, compact ? 13 : 16)
+                .frame(width: CGFloat(load) * (compact ? 112 : 154) * uiScale, height: 2)
+                .padding(.horizontal, (compact ? 13 : 16) * uiScale)
                 .padding(.bottom, 6)
         }
-        .overlay { RoundedRectangle(cornerRadius: compact ? 16 : 19, style: .continuous).stroke(Color.openNowGreen.opacity(0.26), lineWidth: 1) }
-        .shadow(color: Color.openNowGreen.opacity(0.20), radius: compact ? 10 : 16)
+        .overlay { RoundedRectangle(cornerRadius: (compact ? 16 : 19) * uiScale, style: .continuous).stroke(Color.openNowGreen.opacity(0.26), lineWidth: 1) }
+        .shadow(color: Color.openNowGreen.opacity(0.20), radius: (compact ? 10 : 16) * uiScale)
     }
 }
 
 private struct MacForceNowStartupDiagnostics: View {
     let progress: Double
     let compact: Bool
+    let uiScale: CGFloat
 
     private let diagnostics = [
         ("bootstrap", 0.10),
@@ -293,35 +299,35 @@ private struct MacForceNowStartupDiagnostics: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+        VStack(alignment: .leading, spacing: (compact ? 8 : 10) * uiScale) {
             Text("LOAD SEQUENCE")
-                .font(.system(size: compact ? 9 : 10, weight: .black))
+                .font(.system(size: (compact ? 9 : 10) * uiScale, weight: .black))
                 .tracking(2.2)
                 .foregroundStyle(.white.opacity(0.46))
 
             ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, item in
                 let itemProgress = startupSmoothStep(item.1, item.1 + 0.20, progress)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * uiScale) {
                     Circle()
                         .fill(itemProgress > 0.96 ? Color.openNowGreen : Color.white.opacity(0.18))
-                        .frame(width: 7, height: 7)
+                        .frame(width: 7 * uiScale, height: 7 * uiScale)
                     Text(item.0.uppercased())
-                        .font(.system(size: compact ? 9 : 10, weight: .bold, design: .monospaced))
+                        .font(.system(size: (compact ? 9 : 10) * uiScale, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.44 + itemProgress * 0.38))
                     Spacer(minLength: 0)
                     Text(itemProgress > 0.96 ? "OK" : "SYNC")
-                        .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
+                        .font(.system(size: (compact ? 8 : 9) * uiScale, weight: .black, design: .monospaced))
                         .foregroundStyle(itemProgress > 0.96 ? Color.openNowGreen : .white.opacity(0.38))
                 }
             }
         }
-        .padding(compact ? 13 : 16)
-        .frame(width: compact ? 190 : 232)
-        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1) }
+        .padding((compact ? 13 : 16) * uiScale)
+        .frame(width: (compact ? 190 : 232) * uiScale)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 20 * uiScale, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20 * uiScale, style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1) }
         .opacity(startupSmoothStep(0.22, 0.48, progress) * (1 - startupSmoothStep(0.90, 1.0, progress) * 0.35))
-        .offset(x: compact ? -136 : -272, y: compact ? 132 : 158)
+        .offset(x: (compact ? -136 : -272) * uiScale, y: (compact ? 132 : 158) * uiScale)
         .rotation3DEffect(.degrees(12), axis: (x: 0, y: 1, z: 0), perspective: 0.72)
         .allowsHitTesting(false)
     }
@@ -331,25 +337,26 @@ private struct MacForceNowStartupSequenceFooter: View {
     let progress: Double
     let loop: Double
     let compact: Bool
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(spacing: compact ? 10 : 13) {
+        VStack(spacing: (compact ? 10 : 13) * uiScale) {
             Text(statusText)
-                .font(.system(size: compact ? 11 : 13, weight: .black, design: .rounded))
+                .font(.system(size: (compact ? 11 : 13) * uiScale, weight: .black, design: .rounded))
                 .tracking(compact ? 1.8 : 2.8)
                 .foregroundStyle(.white.opacity(0.76))
 
-            MacForceNowStartupProgressRail(loop: loop, progress: progress)
-                .frame(width: compact ? 230 : 360, height: 5)
+            MacForceNowStartupProgressRail(loop: loop, progress: progress, uiScale: uiScale)
+                .frame(width: (compact ? 230 : 360) * uiScale, height: 5 * uiScale)
 
             Text("Logo core initializes first. Services attach as the cloud client comes online.")
-                .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                .font(.system(size: (compact ? 10 : 11) * uiScale, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.42))
                 .multilineTextAlignment(.center)
-                .frame(width: compact ? 280 : 420)
+                .frame(width: (compact ? 280 : 420) * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, compact ? 30 : 48)
+        .padding(.bottom, (compact ? 30 : 48) * uiScale)
         .opacity(1 - startupSmoothStep(0.94, 1.0, progress) * 0.55)
         .allowsHitTesting(false)
     }
@@ -366,12 +373,13 @@ private struct MacForceNowStartupSequenceFooter: View {
 private struct MacForceNowStartupProgressRail: View {
     let loop: Double
     let progress: Double
+    let uiScale: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
             let width = max(proxy.size.width, 1)
-            let fillWidth = max(width * CGFloat(progress), 12)
-            let sweepWidth = max(width * 0.34, 72)
+            let fillWidth = max(width * CGFloat(progress), 12 * uiScale)
+            let sweepWidth = max(width * 0.34, 72 * uiScale)
             let offset = -sweepWidth + (width + sweepWidth * 2) * CGFloat(loop)
 
             ZStack(alignment: .leading) {
@@ -390,7 +398,7 @@ private struct MacForceNowStartupProgressRail: View {
                     )
                     .frame(width: sweepWidth)
                     .offset(x: offset)
-                    .shadow(color: Color.openNowGreen.opacity(0.70), radius: 8)
+                    .shadow(color: Color.openNowGreen.opacity(0.70), radius: 8 * uiScale)
             }
             .clipShape(Capsule())
         }

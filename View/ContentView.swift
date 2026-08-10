@@ -45,6 +45,7 @@ struct ContentView: View {
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: windowTitle))
             .background(MacForceNowInterfaceScaleDensityBooster(scale: uiScale))
+            .environment(\.opnUIScale, uiScale)
             .task {
                 await bootstrapAppStartIfNeeded()
             }

@@ -15,14 +15,15 @@ extension Font {
 
 struct LoginTextFieldStyle: TextFieldStyle {
     let isFocused: Bool
+    var uiScale: CGFloat = 1
 
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
-            .font(.system(size: 14, weight: .regular))
+            .font(.system(size: 14 * uiScale, weight: .regular))
             .foregroundStyle(.white)
             .tint(Color.openNowGreen)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 16 * uiScale)
+            .padding(.vertical, 14 * uiScale)
             .background(Color.white.opacity(0.08))
             .overlay {
                 Rectangle()

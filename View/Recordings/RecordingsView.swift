@@ -29,6 +29,7 @@ enum RecordingRightsNoticePreference {
 struct RecordingsView: View {
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(RecordingRightsNoticePreference.key) private var rightsNoticeAcknowledged = false
+    @Environment(\.opnUIScale) private var uiScale
     @State private var recordings: [WebRTCStreamRecording] = []
     @State private var selectedRecording: WebRTCStreamRecording?
     @State private var player: AVPlayer?
@@ -75,7 +76,7 @@ struct RecordingsView: View {
         .background(RecordingsBackdrop())
         .overlay {
             if !rightsNoticeAcknowledged {
-                RecordingRightsNotice { rightsNoticeAcknowledged = true }
+                RecordingRightsNotice(onAcknowledge: { rightsNoticeAcknowledged = true }, uiScale: uiScale)
             }
         }
         .onAppear { reload(showMessage: false) }
@@ -103,24 +104,24 @@ struct RecordingsView: View {
     private var recordingsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             libraryHeader
-            RecordingSearchField(text: $searchText)
-                .padding(.horizontal, 18)
-                .padding(.top, 4)
+            RecordingSearchField(text: $searchText, uiScale: uiScale)
+                .padding(.horizontal, 18 * uiScale)
+                .padding(.top, 4 * uiScale)
             sortAndFilters
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
+                .padding(.horizontal, 18 * uiScale)
+                .padding(.top, 14 * uiScale)
 
             if recordings.isEmpty {
-                RecordingEmptyState(kind: .library, action: { reload(showMessage: true) })
+                RecordingEmptyState(kind: .library, action: { reload(showMessage: true) }, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visibleRecordings.isEmpty {
-                RecordingEmptyState(kind: .search, action: clearSearchAndFilters)
+                RecordingEmptyState(kind: .search, action: clearSearchAndFilters, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 10) {
+                    LazyVStack(spacing: 10 * uiScale) {
                         ForEach(visibleRecordings) { recording in
-                            RecordingRow(recording: recording, isSelected: selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) {
+                            RecordingRow(recording: recording, isSelected: selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled, uiScale: uiScale) {
                                 select(recording, autoplay: true)
                             }
                             .contextMenu {
@@ -137,8 +138,8 @@ struct RecordingsView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 18)
+                    .padding(.horizontal, 14 * uiScale)
+                    .padding(.vertical, 18 * uiScale)
                 }
             }
         }
@@ -147,27 +148,27 @@ struct RecordingsView: View {
     }
 
     private var libraryHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            HStack(alignment: .top, spacing: 12 * uiScale) {
+                VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("RECORDINGS")
-                        .font(.recordingsNvidia(size: 11, weight: .bold))
+                        .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
                         .foregroundStyle(Color.openNowGreen)
                     Text("Saved Videos")
-                        .font(.recordingsNvidia(size: 25, weight: .bold))
+                        .font(.recordingsNvidia(size: 25 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
                     Text(stats.subtitle)
-                        .font(.recordingsNvidia(size: 12, weight: .medium))
+                        .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(1)
                 }
                 Spacer()
                 Button { reload(showMessage: true) } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.recordingsNvidia(size: 15, weight: .bold))
+                        .font(.recordingsNvidia(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 40 * uiScale, height: 40 * uiScale)
                         .background(Color.white.opacity(0.075))
                         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
                 }
@@ -175,36 +176,36 @@ struct RecordingsView: View {
                 .help("Refresh recordings")
             }
 
-            HStack(spacing: 8) {
-                RecordingMetric(title: "VIDEOS", value: "\(recordings.count)")
-                RecordingMetric(title: "RUNTIME", value: durationText(stats.totalDurationSeconds))
-                RecordingMetric(title: "SIZE", value: compactFileSizeText(stats.totalBytes))
+            HStack(spacing: 8 * uiScale) {
+                RecordingMetric(title: "VIDEOS", value: "\(recordings.count)", uiScale: uiScale)
+                RecordingMetric(title: "RUNTIME", value: durationText(stats.totalDurationSeconds), uiScale: uiScale)
+                RecordingMetric(title: "SIZE", value: compactFileSizeText(stats.totalBytes), uiScale: uiScale)
             }
 
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 22)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 22 * uiScale)
+        .padding(.top, 22 * uiScale)
+        .padding(.bottom, 16 * uiScale)
     }
 
     private var sortAndFilters: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12 * uiScale) {
+            HStack(spacing: 10 * uiScale) {
                 Menu {
                     ForEach(RecordingSortOrder.allCases) { order in
                         Button(order.title) { sortOrder = order }
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 8 * uiScale) {
                         Image(systemName: "arrow.up.arrow.down")
                         Text(sortOrder.title)
                         Image(systemName: "chevron.down")
-                            .font(.recordingsNvidia(size: 9, weight: .bold))
+                            .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
                     }
-                    .font(.recordingsNvidia(size: 11, weight: .bold))
+                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.84))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
+                    .padding(.horizontal, 12 * uiScale)
+                    .frame(height: 32 * uiScale)
                     .background(RecordingsLayout.card)
                     .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
                 }
@@ -213,14 +214,14 @@ struct RecordingsView: View {
                 Spacer()
 
                 Text("\(visibleRecordings.count) shown")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
+                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.48))
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
+                HStack(spacing: 7 * uiScale) {
                     ForEach(RecordingFilter.allCases) { filter in
-                        RecordingFilterChip(filter: filter, isActive: activeFilters.contains(filter)) {
+                        RecordingFilterChip(filter: filter, isActive: activeFilters.contains(filter), uiScale: uiScale) {
                             toggleFilter(filter)
                         }
                     }
@@ -235,7 +236,7 @@ struct RecordingsView: View {
             if let selectedRecording, let player {
                 selectedPlayer(recording: selectedRecording, player: player)
             } else {
-                RecordingEmptyPlayer(message: message)
+                RecordingEmptyPlayer(message: message, uiScale: uiScale)
             }
         }
     }
@@ -247,16 +248,16 @@ struct RecordingsView: View {
                     .background(Color.black)
                     .overlay(alignment: .top) {
                         LinearGradient(colors: [.black.opacity(0.62), .black.opacity(0.00)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 120)
+                            .frame(height: 120 * uiScale)
                     }
                     .overlay(alignment: .bottom) {
                         LinearGradient(colors: [.black.opacity(0.00), .black.opacity(0.58)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 140)
+                            .frame(height: 140 * uiScale)
                     }
                     .onAppear { player.play() }
 
-                RecordingNowPlayingBadge(recording: recording)
-                    .padding(22)
+                RecordingNowPlayingBadge(recording: recording, uiScale: uiScale)
+                    .padding(22 * uiScale)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay { Rectangle().stroke(Color.black.opacity(0.72), lineWidth: 1) }
@@ -266,6 +267,7 @@ struct RecordingsView: View {
                 copiedPath: copiedPathRecordingID == recording.id,
                 message: message,
                 editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled,
+                uiScale: uiScale,
                 onRestart: { restart(recording) },
                 onEdit: { startEditing(recording) },
                 onEditorLocked: showRecordingEditorBetaSettingsMessage,
@@ -518,21 +520,22 @@ struct RecordingsView: View {
 private struct RecordingMetric: View {
     let title: String
     let value: String
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5 * uiScale) {
             Text(title)
-                .font(.recordingsNvidia(size: 9, weight: .bold))
+                .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
                 .tracking(1.0)
                 .foregroundStyle(.white.opacity(0.42))
             Text(value)
-                .font(.recordingsNvidia(size: 13, weight: .bold))
+                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(10 * uiScale)
         .background(RecordingsLayout.card)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
     }
@@ -540,15 +543,16 @@ private struct RecordingMetric: View {
 
 private struct RecordingSearchField: View {
     @Binding var text: String
+    let uiScale: CGFloat
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
-                .font(.recordingsNvidia(size: 13, weight: .bold))
+                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
                 .foregroundStyle(Color.openNowGreen.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
-                .font(.recordingsNvidia(size: 13, weight: .medium))
+                .font(.recordingsNvidia(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.94))
             if !text.isEmpty {
                 Button { text = "" } label: {
@@ -558,8 +562,8 @@ private struct RecordingSearchField: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 40)
+        .padding(.horizontal, 12 * uiScale)
+        .frame(height: 40 * uiScale)
         .background(Color.white.opacity(0.065))
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
     }
@@ -568,20 +572,21 @@ private struct RecordingSearchField: View {
 private struct RecordingFilterChip: View {
     let filter: RecordingFilter
     let isActive: Bool
+    let uiScale: CGFloat
     let action: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 6 * uiScale) {
                 Image(systemName: filter.systemImage)
-                    .font(.recordingsNvidia(size: 10, weight: .bold))
+                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
                 Text(filter.title)
             }
-            .font(.recordingsNvidia(size: 10, weight: .bold))
+            .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
             .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.92 : 0.64))
-            .padding(.horizontal, 9)
-            .frame(height: 28)
+            .padding(.horizontal, 9 * uiScale)
+            .frame(height: 28 * uiScale)
             .background(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.09 : 0.055))
             .overlay { Rectangle().stroke(isActive ? Color.openNowGreen : RecordingsLayout.stroke, lineWidth: 1) }
         }
@@ -594,6 +599,7 @@ private struct RecordingRow: View {
     let recording: WebRTCStreamRecording
     let isSelected: Bool
     let editorEarlyBetaEnabled: Bool
+    let uiScale: CGFloat
     let action: () -> Void
     @State private var isHovering = false
 
@@ -610,33 +616,33 @@ private struct RecordingRow: View {
 
     private var content: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    RecordingThumbnail(recording: recording, isSelected: isSelected, isHovering: isHovering)
-                    VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 12 * uiScale) {
+                HStack(alignment: .top, spacing: 12 * uiScale) {
+                    RecordingThumbnail(recording: recording, isSelected: isSelected, isHovering: isHovering, uiScale: uiScale)
+                    VStack(alignment: .leading, spacing: 6 * uiScale) {
                         Text(recording.title)
-                            .font(.recordingsNvidia(size: 14, weight: .bold))
+                            .font(.recordingsNvidia(size: 14 * uiScale, weight: .bold))
                             .foregroundStyle(.white.opacity(0.96))
                             .lineLimit(2)
                         Text(relativeDateText(recording.createdAt))
-                            .font(.recordingsNvidia(size: 11, weight: .medium))
+                            .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
                 }
 
-                HStack(spacing: 7) {
-                    RecordingPill(text: durationText(recording.durationSeconds), active: isSelected)
-                    RecordingPill(text: qualityText(recording), active: false)
-                    RecordingPill(text: compactFileSizeText(recording.fileSizeBytes), active: false)
+                HStack(spacing: 7 * uiScale) {
+                    RecordingPill(text: durationText(recording.durationSeconds), active: isSelected, uiScale: uiScale)
+                    RecordingPill(text: qualityText(recording), active: false, uiScale: uiScale)
+                    RecordingPill(text: compactFileSizeText(recording.fileSizeBytes), active: false, uiScale: uiScale)
                     Spacer(minLength: 0)
                     if recording.enhancedVideo {
-                        RecordingPill(text: "RTX", active: true)
+                        RecordingPill(text: "RTX", active: true, uiScale: uiScale)
                     }
                 }
             }
-            .padding(13)
+            .padding(13 * uiScale)
             .background(background)
             .overlay(alignment: .leading) { Rectangle().fill(isSelected ? Color.openNowGreen : .clear).frame(width: 3) }
             .overlay { Rectangle().stroke(isSelected ? Color.openNowGreen.opacity(0.48) : Color.white.opacity(isHovering ? 0.18 : 0.08), lineWidth: 1) }
@@ -655,6 +661,7 @@ private struct RecordingThumbnail: View {
     let recording: WebRTCStreamRecording
     let isSelected: Bool
     let isHovering: Bool
+    let uiScale: CGFloat
     @State private var thumbnail: NSImage?
 
     var body: some View {
@@ -663,7 +670,7 @@ private struct RecordingThumbnail: View {
                 Image(nsImage: thumbnail)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 76, height: 46)
+                    .frame(width: 76 * uiScale, height: 46 * uiScale)
                     .clipped()
                     .overlay {
                         LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.58)], startPoint: .top, endPoint: .bottom)
@@ -678,17 +685,17 @@ private struct RecordingThumbnail: View {
                     .stroke(Color.black.opacity(0.35), lineWidth: 1)
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
-                .font(.recordingsNvidia(size: 19, weight: .bold))
+                .font(.recordingsNvidia(size: 19 * uiScale, weight: .bold))
                 .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
-                .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7, x: 0, y: 2)
+                .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
-        .frame(width: 76, height: 46)
+        .frame(width: 76 * uiScale, height: 46 * uiScale)
         .overlay(alignment: .bottomTrailing) {
             Text(resolutionBadge(recording))
-                .font(.recordingsNvidia(size: 8, weight: .bold))
+                .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(.black.opacity(0.86))
-                .padding(.horizontal, 5)
-                .frame(height: 15)
+                .padding(.horizontal, 5 * uiScale)
+                .frame(height: 15 * uiScale)
                 .background(Color.openNowGreen)
         }
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
@@ -763,14 +770,15 @@ private enum RecordingThumbnailLoader {
 private struct RecordingPill: View {
     let text: String
     let active: Bool
+    let uiScale: CGFloat
 
     var body: some View {
         Text(text)
-            .font(.recordingsNvidia(size: 9, weight: .bold))
+            .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
             .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.62))
             .lineLimit(1)
-            .padding(.horizontal, 7)
-            .frame(height: 20)
+            .padding(.horizontal, 7 * uiScale)
+            .frame(height: 20 * uiScale)
             .background(active ? Color.openNowGreen : Color.white.opacity(0.065))
             .overlay { Rectangle().stroke(active ? Color.openNowGreen : Color.white.opacity(0.10), lineWidth: 1) }
     }
@@ -778,28 +786,29 @@ private struct RecordingPill: View {
 
 private struct RecordingNowPlayingBadge: View {
     let recording: WebRTCStreamRecording
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
+            HStack(spacing: 8 * uiScale) {
                 Circle()
                     .fill(Color.openNowGreen)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 8 * uiScale, height: 8 * uiScale)
                 Text("NOW PLAYING")
-                    .font(.recordingsNvidia(size: 10, weight: .bold))
+                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
                     .tracking(1.3)
                     .foregroundStyle(Color.openNowGreen)
             }
             Text(recording.title)
-                .font(.recordingsNvidia(size: 20, weight: .bold))
+                .font(.recordingsNvidia(size: 20 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
             Text("\(qualityText(recording)) · \(durationText(recording.durationSeconds)) · \(compactFileSizeText(recording.fileSizeBytes))")
-                .font(.recordingsNvidia(size: 12, weight: .medium))
+                .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.70))
                 .lineLimit(1)
         }
-        .padding(15)
+        .padding(15 * uiScale)
         .background(.black.opacity(0.55))
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
     }
@@ -810,6 +819,7 @@ private struct RecordingInspector: View {
     let copiedPath: Bool
     let message: String
     let editorEarlyBetaEnabled: Bool
+    let uiScale: CGFloat
     let onRestart: () -> Void
     let onEdit: () -> Void
     let onEditorLocked: () -> Void
@@ -820,61 +830,61 @@ private struct RecordingInspector: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 14 * uiScale) {
+                VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text(recording.title)
-                        .font(.recordingsNvidia(size: 18, weight: .bold))
+                        .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
                         .lineLimit(1)
                     Text("\(dateText(recording.createdAt)) · \(recording.videoURL.deletingLastPathComponent().lastPathComponent)")
-                        .font(.recordingsNvidia(size: 12, weight: .medium))
+                        .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: 12 * uiScale)
                 Button("Restart", action: onRestart)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .primary))
+                    .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
                 if editorEarlyBetaEnabled {
                     Button("Edit", action: onEdit)
-                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 } else {
                     Button("Editor Locked", action: onEditorLocked)
-                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 }
                 Button("Open", action: onOpen)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 Button("Reveal", action: onReveal)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 Button(copiedPath ? "Copied" : "Copy Path", action: onCopyPath)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 Button("Delete", role: .destructive, action: onDelete)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .destructive))
+                    .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 22 * uiScale)
+            .padding(.vertical, 16 * uiScale)
 
             Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1)
 
-            HStack(spacing: 10) {
-                RecordingDetailTile(title: "QUALITY", value: qualityText(recording), detail: "\(recording.width)x\(recording.height)")
-                RecordingDetailTile(title: "BITRATE", value: bitrateText(recording), detail: "Audio \(recording.audioBitrateKbps) Kbps")
-                RecordingDetailTile(title: "DURATION", value: durationText(recording.durationSeconds), detail: compactFileSizeText(recording.fileSizeBytes))
-                RecordingDetailTile(title: "ENHANCEMENT", value: recording.enhancedVideo ? "Enabled" : "Standard", detail: recording.enhancedVideo ? "Enhanced video" : "Original stream")
+            HStack(spacing: 10 * uiScale) {
+                RecordingDetailTile(title: "QUALITY", value: qualityText(recording), detail: "\(recording.width)x\(recording.height)", uiScale: uiScale)
+                RecordingDetailTile(title: "BITRATE", value: bitrateText(recording), detail: "Audio \(recording.audioBitrateKbps) Kbps", uiScale: uiScale)
+                RecordingDetailTile(title: "DURATION", value: durationText(recording.durationSeconds), detail: compactFileSizeText(recording.fileSizeBytes), uiScale: uiScale)
+                RecordingDetailTile(title: "ENHANCEMENT", value: recording.enhancedVideo ? "Enabled" : "Standard", detail: recording.enhancedVideo ? "Enhanced video" : "Original stream", uiScale: uiScale)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 22 * uiScale)
+            .padding(.vertical, 14 * uiScale)
 
             if !message.isEmpty {
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * uiScale) {
                     Image(systemName: "info.circle.fill")
                     Text(message)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .font(.recordingsNvidia(size: 11, weight: .medium))
+                .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.58))
-                .padding(.horizontal, 22)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 22 * uiScale)
+                .padding(.bottom, 14 * uiScale)
             }
         }
         .background(Color(red: 17 / 255, green: 18 / 255, blue: 18 / 255))
@@ -886,24 +896,25 @@ private struct RecordingDetailTile: View {
     let title: String
     let value: String
     let detail: String
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5 * uiScale) {
             Text(title)
-                .font(.recordingsNvidia(size: 9, weight: .bold))
+                .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(Color.openNowGreen.opacity(0.86))
             Text(value)
-                .font(.recordingsNvidia(size: 14, weight: .bold))
+                .font(.recordingsNvidia(size: 14 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.94))
                 .lineLimit(1)
             Text(detail)
-                .font(.recordingsNvidia(size: 11, weight: .medium))
+                .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.50))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(12 * uiScale)
         .background(RecordingsLayout.card)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
     }
@@ -917,55 +928,57 @@ private struct RecordingEmptyState: View {
 
     let kind: Kind
     let action: () -> Void
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 16 * uiScale) {
             ZStack {
                 Circle()
                     .fill(Color.openNowGreen.opacity(0.10))
-                    .frame(width: 78, height: 78)
+                    .frame(width: 78 * uiScale, height: 78 * uiScale)
                 Image(systemName: kind == .library ? "record.circle" : "line.3.horizontal.decrease.circle")
-                    .font(.recordingsNvidia(size: 34, weight: .bold))
+                    .font(.recordingsNvidia(size: 34 * uiScale, weight: .bold))
                     .foregroundStyle(Color.openNowGreen)
             }
             Text(kind == .library ? "No recordings yet" : "No matches")
-                .font(.recordingsNvidia(size: 18, weight: .bold))
+                .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.94))
             Text(kind == .library ? "Start a stream, open the sidebar, and press Record to save gameplay videos here." : "Clear search or filters to show the rest of your recording library.")
-                .font(.recordingsNvidia(size: 12, weight: .medium))
+                .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.58))
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 280)
+                .frame(maxWidth: 280 * uiScale)
             Button(kind == .library ? "Refresh" : "Clear Filters", action: action)
-                .buttonStyle(RecordingActionButtonStyle(tone: .primary))
+                .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
         }
-        .padding(28)
+        .padding(28 * uiScale)
     }
 }
 
 private struct RecordingEmptyPlayer: View {
     let message: String
+    let uiScale: CGFloat
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 18 * uiScale) {
             ZStack {
                 RoundedRectangle(cornerRadius: 0)
                     .fill(Color.white.opacity(0.045))
-                    .frame(width: 180, height: 108)
+                    .frame(width: 180 * uiScale, height: 108 * uiScale)
                     .overlay { DiagonalGrid().stroke(Color.white.opacity(0.08), lineWidth: 1) }
                     .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
-                    .font(.recordingsNvidia(size: 46, weight: .bold))
+                    .font(.recordingsNvidia(size: 46 * uiScale, weight: .bold))
                     .foregroundStyle(Color.openNowGreen.opacity(0.88))
             }
             Text("Select a recording")
-                .font(.recordingsNvidia(size: 24, weight: .bold))
+                .font(.recordingsNvidia(size: 24 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
             Text(message.isEmpty ? "Your saved gameplay videos appear here with playback, file actions, and capture details." : message)
-                .font(.recordingsNvidia(size: 13, weight: .medium))
+                .font(.recordingsNvidia(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.58))
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 420 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1013,13 +1026,14 @@ struct RecordingActionButtonStyle: ButtonStyle {
     }
 
     let tone: Tone
+    var uiScale: CGFloat = 1.0
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.recordingsNvidia(size: 12, weight: .bold))
+            .font(.recordingsNvidia(size: 12 * uiScale, weight: .bold))
             .foregroundStyle(foreground)
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+            .padding(.horizontal, 14 * uiScale)
+            .frame(height: 36 * uiScale)
             .background(background(isPressed: configuration.isPressed))
             .overlay { Rectangle().stroke(stroke, lineWidth: 1) }
     }
@@ -1186,32 +1200,33 @@ private func bitrateText(_ recording: WebRTCStreamRecording) -> String {
 
 private struct RecordingRightsNotice: View {
     let onAcknowledge: () -> Void
+    let uiScale: CGFloat
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.72).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 16 * uiScale) {
+                HStack(spacing: 12 * uiScale) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.recordingsNvidia(size: 22, weight: .bold))
+                        .font(.recordingsNvidia(size: 22 * uiScale, weight: .bold))
                         .foregroundStyle(.orange)
                     Text("About Recording GeForce NOW Sessions")
-                        .font(.recordingsNvidia(size: 18, weight: .bold))
+                        .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
                 }
                 Text("Some game publishers restrict recording or broadcasting of their titles on cloud gaming services. You are responsible for complying with the terms of service of GeForce NOW, the game publisher, and any applicable store policies when recording sessions.")
-                    .font(.recordingsNvidia(size: 13, weight: .regular))
+                    .font(.recordingsNvidia(size: 13 * uiScale, weight: .regular))
                     .foregroundStyle(.white.opacity(0.72))
-                    .lineSpacing(3)
+                    .lineSpacing(3 * uiScale)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
                     Button("I Understand", action: onAcknowledge)
-                        .buttonStyle(RecordingActionButtonStyle(tone: .primary))
+                        .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
                 }
             }
-            .padding(28)
-            .frame(maxWidth: 460)
+            .padding(28 * uiScale)
+            .frame(maxWidth: 460 * uiScale)
             .background(RecordingsLayout.card)
             .overlay { Rectangle().stroke(RecordingsLayout.strongStroke, lineWidth: 1) }
         }

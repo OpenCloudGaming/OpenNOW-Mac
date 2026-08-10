@@ -2562,7 +2562,7 @@ private struct CatalogHeroView: View {
                         Button { viewModel.selectGameFromHero(game) } label: {
                             Text("VIEW DETAILS")
                                 .nvidiaFont(size: 14, weight: .bold)
-                                .frame(width: 142, height: 41)
+                                .frame(width: 142 * uiScale, height: 41 * uiScale)
                         }
                         .buttonStyle(VendorGetInButtonStyle())
                     }
@@ -2575,30 +2575,30 @@ private struct CatalogHeroView: View {
                         if activeIndex > 0 {
                             CatalogMarqueeArrow(name: "lt_arrow", action: onPreviousSlide)
                         } else {
-                            Color.clear.frame(width: 48, height: 48)
+                            Color.clear.frame(width: 48 * uiScale, height: 48 * uiScale)
                         }
                         Spacer()
                         if activeIndex < games.count - 1 {
                             CatalogMarqueeArrow(name: "rt_arrow", action: onNextSlide)
                         } else {
-                            Color.clear.frame(width: 48, height: 48)
+                            Color.clear.frame(width: 48 * uiScale, height: 48 * uiScale)
                         }
                     }
                     .frame(height: heroHeight, alignment: .center)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 16 * uiScale)
 
                     HStack(spacing: 8) {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
                                     .fill(index == activeIndex ? Color.openNowGreen : Color.white.opacity(0.58))
-                                    .frame(width: index == activeIndex ? 12 : 9, height: index == activeIndex ? 12 : 9)
+                                    .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 34)
+                    .padding(.bottom, 34 * uiScale)
                 }
             }
             .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, viewportHeight: availableHeight, scale: uiScale))
@@ -2611,11 +2611,12 @@ private struct CatalogHeroTitleView: View {
     let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
     let scrimColor: CatalogMarqueeScrimColor
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 620) {
             CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
-                .frame(maxWidth: 390, maxHeight: 150)
+                .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
         } else {
             fallbackTitle
         }
@@ -2968,12 +2969,12 @@ private struct CatalogDestinationGridView: View {
     @Environment(\.opnUIScale) private var uiScale
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4, alignment: .top)]
+        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .lastTextBaseline, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            HStack(alignment: .lastTextBaseline, spacing: 20 * uiScale) {
                 Text(section.title)
                     .nvidiaFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
@@ -2985,9 +2986,9 @@ private struct CatalogDestinationGridView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-            .padding(.top, 24)
+            .padding(.top, 24 * uiScale)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
                 ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
                     CatalogGameTile(
                         game: game,
@@ -3007,7 +3008,7 @@ private struct CatalogDestinationGridView: View {
                 }
             }
             .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
-            .padding(.bottom, 12)
+            .padding(.bottom, 12 * uiScale)
         }
         .onAppear { prefetchGridImages() }
         .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
@@ -3522,7 +3523,7 @@ private struct CatalogGameTile: View, Equatable {
                                 .nvidiaFont(size: 10, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.76))
                         }
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) - 32, height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
+                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) - 32 * uiScale, height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
                         .padding(.horizontal, 16)
                         .background(CatalogVendorLayout.tileTray.opacity(1))
                         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale))
@@ -3969,7 +3970,7 @@ struct GameDetailPanel: View {
             .overlay(alignment: .topLeading) {
                 if showsActionsMenu {
                     detailActionsMenuPanel(game: game)
-                        .offset(y: 44)
+                        .offset(y: 44 * uiScale)
                 }
             }
             .onExitCommand { showsActionsMenu = false }
@@ -4010,7 +4011,7 @@ struct GameDetailPanel: View {
                 viewModel.openStoreForSelectedVariant()
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 4 * uiScale)
         .frame(width: 208 * uiScale)
         .background(MacForceNowDesign.Surface.panelRaised)
         .overlay {
@@ -4045,7 +4046,7 @@ struct GameDetailPanel: View {
                 .background(Color.black.opacity(0.14))
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: 520, alignment: .leading)
+        .frame(maxWidth: 520 * uiScale, alignment: .leading)
     }
 
     private func accessMessage(game: OPNCatalogGameObject) -> some View {
