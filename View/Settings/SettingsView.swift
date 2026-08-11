@@ -1254,6 +1254,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
     @State private var showingControllerMapping = false
     @State private var permissionResetInFlight = false
     @State private var permissionResetError: String?
+    @State private var accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -1454,6 +1455,41 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         SteamControllerMappingView()
                     }
 
+                    SettingsDivider(uiScale: uiScale)
+                    HStack(spacing: 12 * uiScale) {
+                        Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 14 * uiScale))
+                            .foregroundStyle(accessibilityPermissionGranted ? Color.openNowGreen : .orange)
+
+                        VStack(alignment: .leading, spacing: 2 * uiScale) {
+                            Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
+                                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.88))
+                            Text(accessibilityPermissionGranted ? "Holding the Steam button lets the right pad move the real macOS cursor mid-stream." : "Without it, holding the Steam button and moving a pad does nothing during a stream. Grant permission in System Settings → Privacy & Security → Accessibility.")
+                                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        Spacer()
+
+                        if !accessibilityPermissionGranted {
+                            Button("Grant Permission") {
+                                SteamControllerLocalCursorInjector.requestAccessibilityPermission()
+                            }
+                            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 14 * uiScale)
+                            .frame(height: 28 * uiScale)
+                            .background(Color.openNowGreen)
+                            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                            .clipShape(RoundedRectangle(cornerRadius: 5 * uiScale))
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }
+                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                        accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
+                    }
                 }
             }
         }

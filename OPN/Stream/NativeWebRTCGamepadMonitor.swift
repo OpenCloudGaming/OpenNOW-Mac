@@ -21,6 +21,7 @@ public final class NativeWebRTCGamepadMonitor {
     private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]
     private var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
     private var localCursorModeHeld: Set<InputDeviceID> = []
+    private var accessibilityPromptShown = false
 
     public init() {
         observerTokens = [
@@ -165,7 +166,11 @@ public final class NativeWebRTCGamepadMonitor {
         guard pollingAllowed, let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
         applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot, includePointerMotion: !snapshot.buttons.contains(.mode))
         if snapshot.buttons.contains(.mode) {
-            localCursorModeHeld.insert(deviceID)
+            let isRisingEdge = localCursorModeHeld.insert(deviceID).inserted
+            if isRisingEdge, !SteamControllerLocalCursorInjector.hasAccessibilityPermission, !accessibilityPromptShown {
+                accessibilityPromptShown = true
+                SteamControllerLocalCursorInjector.requestAccessibilityPermission()
+            }
             SteamControllerLocalCursorInjector.shared.update(pad: snapshot.rightPad)
             return
         }
