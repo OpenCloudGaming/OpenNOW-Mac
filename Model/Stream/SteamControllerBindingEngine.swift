@@ -87,6 +87,7 @@ public struct SteamControllerBindingEngine: Sendable {
                 events.append(.mouse(.wheel(deviceID: deviceID, delta: delta, timestamp: timestamp)))
             }
         }
+        if snapshot.buttons.contains(.quickAccess) { outputButtons.insert(.quickAccess) }
         previousActiveControls = active
 
         let leftTrigger = leftTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .leftTrigger)) ? 0 : snapshot.leftTrigger)
