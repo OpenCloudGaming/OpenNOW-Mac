@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/anderson-oki/macforce-now/compare/v0.11.0...v0.11.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* missing accessibility permission prompt ([2d9b4d4](https://github.com/anderson-oki/macforce-now/commit/2d9b4d4d4fc46b59f01a0d46a180ce4fee75ffcf))
+* quick access open overlay ([e783ada](https://github.com/anderson-oki/macforce-now/commit/e783ada1513780a69bcfd7cc0ac2f632004e15a0))
+
 ## [0.11.0](https://github.com/anderson-oki/macforce-now/compare/v0.10.0...v0.11.0) (2026-08-10)
 
 
