@@ -81,14 +81,14 @@ struct LoginFormView: View {
                 .padding(.bottom, 12)
 
                 Button(action: startDeviceCodeLogin) {
-                    Text("USE DEVICE CODE")
+                    Text("BROWSER SIGN-IN")
                         .font(.nvidiaSans(size: 12, weight: .bold))
                         .foregroundStyle(Color.openNowGreen)
                         .tracking(0.8)
                 }
                 .buttonStyle(.plain)
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
-                .accessibilityHint("Opens NVIDIA device-code authentication")
+                .accessibilityHint("Opens NVIDIA browser authentication")
                 .padding(.bottom, viewModel.deviceCodeUserCode.isEmpty ? 32 : 12)
 
                 if !viewModel.deviceCodeUserCode.isEmpty {

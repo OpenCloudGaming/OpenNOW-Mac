@@ -194,6 +194,17 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(await transport.requestCount == 4)
 }
 
+@Test func starfleetServiceSurfacesOAuthErrorDescriptions() async throws {
+    let transport = SequencedStarfleetTransport([
+        .success((status: 400, json: ["error_description": "Device flow is not allowed", "error": "invalid_request"])),
+    ])
+    let service = StarfleetService(transport: transport)
+
+    await #expect(throws: StarfleetAuthError.oauthError("Device flow is not allowed")) {
+        _ = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
+    }
+}
+
 @Test func starfleetServiceRefreshesWithClientTokenGrant() async throws {
     let initial = StarfleetSession(
         accessToken: "expired",

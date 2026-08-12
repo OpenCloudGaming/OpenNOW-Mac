@@ -1007,7 +1007,7 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
             throw StarfleetAuthError.transportFailure(error)
         }
 
-        guard response.statusCode == 200 else { throw StarfleetAuthError.httpStatus(response.statusCode) }
+        guard response.statusCode == 200 else { throw starfleetOAuthError(data: data, statusCode: response.statusCode) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StarfleetAuthError.invalidJSONResponse
         }
@@ -1064,4 +1064,15 @@ private func starfleetStringValue(_ value: Any?) -> String? {
     if let string = value as? String { return string }
     if let number = value as? NSNumber { return number.stringValue }
     return nil
+}
+
+private func starfleetOAuthError(data: Data, statusCode: Int) -> StarfleetAuthError {
+    guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        return .httpStatus(statusCode)
+    }
+    let error = (json["error"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let description = (json["error_description"] as? String ?? json["errorDescription"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !description.isEmpty { return .oauthError(description) }
+    if !error.isEmpty { return .oauthError(error) }
+    return .httpStatus(statusCode)
 }
