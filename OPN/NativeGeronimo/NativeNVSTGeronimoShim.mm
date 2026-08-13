@@ -61,6 +61,7 @@ struct StreamStartParameters {
 };
 
 struct VideoDecoderInitParams { alignas(8) unsigned char bytes[0xd0]; };
+struct VideoDecoderCapabilityParams { alignas(8) unsigned char bytes[0x68]; };
 
 struct NVbStreamSettings_t { alignas(8) unsigned char bytes[0x170]; };
 struct NVbConnectionInfo_t { unsigned char bytes[0x40c]; };
@@ -130,6 +131,7 @@ static_assert(sizeof(std::string) == 0x18, "libGeronimo std::string ABI changed"
 static_assert(sizeof(Nsk::DownstreamVideoSettings) == 0x90, "libGeronimo DownstreamVideoSettings ABI changed");
 static_assert(sizeof(Nsk::AudioStreamSettings) == 0x2, "libGeronimo AudioStreamSettings ABI changed");
 static_assert(sizeof(Nsk::StreamConnectionInfo) == 0x28, "libGeronimo StreamConnectionInfo ABI changed");
+static_assert(sizeof(Nsk::VideoDecoderCapabilityParams) == 0x68, "libGeronimo VideoDecoder capability ABI changed");
 static_assert(sizeof(Nsk::NVbStreamSettings_t) == 0x170, "libGeronimo NVbStreamSettings_t ABI changed");
 static_assert(sizeof(Nsk::NVbConnectionInfo_t) == 0x40c, "libGeronimo NVbConnectionInfo_t ABI changed");
 static_assert(sizeof(Nsk::NVbTracingContext_t) == 0x20, "libGeronimo NVbTracingContext_t ABI changed");
@@ -787,6 +789,12 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
 
     Nsk::VideoDecoderInitParams decoderParams;
     memset(decoderParams.bytes, 0, sizeof(decoderParams.bytes));
+    Nsk::VideoDecoderCapabilityParams decoderCapabilities;
+    memset(decoderCapabilities.bytes, 0, sizeof(decoderCapabilities.bytes));
+    storeUnaligned<uint32_t>(decoderParams.bytes, 0x00, 1);
+    storeUnaligned<uint32_t>(decoderParams.bytes, 0x04, 1);
+    storeUnaligned<void *>(decoderParams.bytes, 0x10, &decoderCapabilities);
+    storeUnaligned<uint32_t>(decoderCapabilities.bytes, 0x60, 1);
     Nsk::NVbStreamingParams_t streamingParams;
     memset(streamingParams.bytes, 0, sizeof(streamingParams.bytes));
     if (!convertToStreamingParams(startParameters, decoderParams, streamingParams)) {
