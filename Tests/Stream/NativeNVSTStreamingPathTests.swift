@@ -344,7 +344,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let allocation = nativeAllocation(rawSessionJSON: """
     {
       "serverAddress": "control.example.test",
-      "serverType": 5,
+      "serverType": 4,
       "tokenType": "9",
       "token": "private-session-token",
       "networkSessionId": "network-session",
@@ -385,7 +385,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(payload.telemetryAttributes.values.contains("private-session-token") == false)
 }
 
-@Test func nativeNVSTLaunchPayloadUsesAllocationAuthWhenSessionOmitsTokenFields() throws {
+@Test func nativeNVSTLaunchPayloadUsesAllocationServerTypeAndAuthWhenSessionOmitsFields() throws {
     let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: """
         {
@@ -410,14 +410,46 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "2.0.87.131")
 
     try payload.validate()
+    #expect(payload.start.serverType == 5)
     #expect(payload.prepare.tokenType == "JWT_GFN")
     #expect(payload.prepare.hasToken)
     #expect(payload.telemetryAttributes.values.contains("private-access-token") == false)
 }
 
-@Test func nativeNVSTLaunchPayloadRejectsMissingVerifiedStartFields() throws {
-    let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}"), streamingProfileJSON: "{}", clientAppVersion: "OpenNOW")
+@Test func nativeNVSTPayloadFallsBackToRawSessionServerTypeWhenServerInfoIsUnavailable() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264" }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    let allocation = nativeAllocation(
+        rawSessionJSON: """
+        {
+          "serverType": 5,
+          "sessionRequestData": { "appId": 123 }
+        }
+        """,
+        serverType: 0,
+        authTokenType: "JWT_GFN",
+        authToken: "private-access-token"
+    )
 
+    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "2.0.87.131")
+    let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: profileJSON)
+    let session = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+
+    try payload.validate()
+    #expect(payload.start.serverType == 5)
+    #expect(session["serverType"] as? Int == 5)
+}
+
+@Test func nativeNVSTLaunchPayloadRejectsMissingVerifiedStartFields() throws {
+    let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}", serverType: 0), streamingProfileJSON: "{}", clientAppVersion: "OpenNOW")
+
+    #expect(payload.missingFields.contains("serverType"))
     #expect(payload.missingFields.contains("tokenType"))
     #expect(payload.missingFields.contains("token"))
     #expect(payload.missingFields.contains("streamingProfile"))
@@ -440,7 +472,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
           "token": "private-session-token",
           "sessionRequestData": { "appId": 123, "deviceHashId": "device-id" }
         }
-        """),
+        """, serverType: 52),
         streamingProfileJSON: profileJSON,
         clientAppVersion: "OpenNOW"
     )
@@ -479,6 +511,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         {
           "sessionId": "native-session",
           "status": 2,
+          "serverType": 4,
           "gpuType": "L40",
           "frameStatsEnabled": true,
           "summaryStatsEnabled": false,
@@ -520,6 +553,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(object["appId"] as? Int == 123)
     #expect(object["appName"] as? String == "Native Game")
     #expect(object["appLaunchMode"] as? Int == 2)
+    #expect(object["serverType"] as? Int == 5)
     #expect(object["frameStatsEnabled"] as? Bool == true)
     #expect(object["summaryStatsEnabled"] as? Bool == false)
     #expect(object["maxLocalPlayers"] as? Int == 4)
@@ -723,7 +757,7 @@ private func nativeFinish(_ reason: StreamEndReason) -> RecordedNativeNVSTFinish
     RecordedNativeNVSTFinish(session: nativeAllocation().session, reason: reason)
 }
 
-private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}") -> NativeNVSTSessionAllocation {
+private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", serverType: Int = 5, authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}") -> NativeNVSTSessionAllocation {
     let session = StreamSessionDescriptor(id: "native-session", applicationID: "123", serverAddress: "server.example.test", title: "Native Test", metadata: ["transport": "nvst"])
     return NativeNVSTSessionAllocation(
         session: session,
@@ -734,6 +768,7 @@ private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-
         streamingBaseURL: "https://stream.example.test/",
         mediaHost: "media.example.test",
         mediaPort: 47998,
+        serverType: serverType,
         authTokenType: authTokenType,
         authToken: authToken,
         settingsJSON: settingsJSON,

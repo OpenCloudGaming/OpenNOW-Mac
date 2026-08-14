@@ -122,6 +122,42 @@ import Foundation
     }
 }
 
+@Test func streamPreferencesFetchesNumericServerTypeFromServerInfo() async {
+    await networkTestIsolationLock.withLock {
+        let host = "native-server-type.example.test"
+        SessionManagerURLProtocol.install(host: host) { request in
+            #expect(request.url?.path == "/v2/serverInfo")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT token")
+            #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+            #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+            return SessionManagerURLProtocol.response(json: ["serverType": 5])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let serverType = try? await OPNStreamPreferences.fetchServerType(token: "token", streamingBaseUrl: "https://\(host)")
+
+        #expect(serverType == 5)
+        #expect(SessionManagerURLProtocol.recordedRequests(host: host).count == 1)
+    }
+}
+
+@Test func streamPreferencesRejectsNonnumericServerTypeFromServerInfo() async {
+    await networkTestIsolationLock.withLock {
+        let host = "invalid-native-server-type.example.test"
+        SessionManagerURLProtocol.install(host: host) { _ in
+            SessionManagerURLProtocol.response(json: ["serverType": "prod"])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        do {
+            let serverType = try await OPNStreamPreferences.fetchServerType(token: "token", streamingBaseUrl: "https://\(host)")
+            #expect(serverType == nil)
+        } catch {
+            Issue.record("Unexpected server-info request failure: \(error)")
+        }
+    }
+}
+
 @Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"

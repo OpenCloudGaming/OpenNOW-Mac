@@ -10,6 +10,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let streamingBaseURL: String
     public let mediaHost: String
     public let mediaPort: Int
+    public let serverType: Int
     public let authTokenType: String
     public let authToken: String
     public let settingsJSON: String
@@ -25,6 +26,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
                 streamingBaseURL: String,
                 mediaHost: String,
                 mediaPort: Int,
+                serverType: Int,
                 authTokenType: String = "",
                 authToken: String = "",
                 settingsJSON: String,
@@ -39,6 +41,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
         self.streamingBaseURL = streamingBaseURL
         self.mediaHost = mediaHost
         self.mediaPort = max(0, mediaPort)
+        self.serverType = serverType
         self.authTokenType = authTokenType.trimmingCharacters(in: .whitespacesAndNewlines)
         self.authToken = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
         self.settingsJSON = settingsJSON.isEmpty ? "{}" : settingsJSON
@@ -109,6 +112,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         guard string(launch.settings["transportMode"]).caseInsensitiveCompare("nvst") == .orderedSame else {
             throw OpenNOWStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
         }
+        let serverType: Int
+        do {
+            serverType = try await OPNStreamPreferences.fetchServerType(token: configuration.accessToken, streamingBaseUrl: launch.streamingBaseUrl) ?? 0
+        } catch {
+            try Task.checkCancellation()
+            serverType = 0
+        }
         try Task.checkCancellation()
         let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
@@ -127,6 +137,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             streamingBaseURL: sessionInfo.streamingBaseUrl,
             mediaHost: sessionInfo.mediaConnectionHost,
             mediaPort: sessionInfo.mediaConnectionPort,
+            serverType: serverType,
             authTokenType: "JWT_GFN",
             authToken: configuration.accessToken,
             settingsJSON: jsonString(launch.settings),

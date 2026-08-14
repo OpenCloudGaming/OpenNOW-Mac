@@ -856,6 +856,18 @@ public enum OPNStreamPreferences {
         }.resume()
     }
 
+    public static func fetchServerType(token: String, streamingBaseUrl: String) async throws -> Int? {
+        let baseUrl = streamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : streamingBaseUrl
+        var request = serverInfoRequest(baseUrl: baseUrl, token: token, headers: .streamSession(transportMode: "nvst"))
+        request.timeoutInterval = 4
+        let (data, response) = try await OPNURLSessionHTTPTransport.send(request, operation: "stream.fetchServerType", invalidHTTPResponseError: URLError(.badServerResponse))
+        guard response.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let parsed = Int(CloudMatchServerInfoParser.parse(json).serverType.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parsed > 0 else { return nil }
+        return parsed
+    }
+
     public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         var initial = OPNStreamNetworkPreflightResult()
         initial.streamingBaseUrl = loadSelectedStreamingBaseUrl()
@@ -1281,9 +1293,9 @@ public enum OPNStreamPreferences {
         GFNClientMetadata.browserMacUserAgent
     }
 
-    private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
-        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, userAgent: browserUserAgent())
-        var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: headers, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+    private static func serverInfoRequest(baseUrl: String, token: String, headers: CloudMatchClientHeaders? = nil) -> URLRequest {
+        let requestHeaders = headers ?? CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, userAgent: browserUserAgent())
+        var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: requestHeaders, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         return request
     }

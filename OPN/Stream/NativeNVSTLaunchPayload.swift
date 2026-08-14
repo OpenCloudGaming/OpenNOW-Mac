@@ -88,7 +88,7 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         let token = Self.firstNonEmpty(Self.string(rawSession["token"]), Self.string(rawSession["authToken"]), Self.string(rawSession["jwt"]), Self.string((rawSession["auth"] as? [String: Any])?["token"]), Self.string(rawSession["sessionToken"]), allocation.authToken)
         let networkSessionId = Self.firstNonEmpty(Self.string(rawSession["networkSessionId"]), Self.string(requestData["networkSessionId"]), allocation.session.id)
         let audioMode = Self.firstNonEmpty(Self.string(rawSession["audioModeFormat"]), Self.string(requestData["audioModeFormat"]), Self.string(settings["audioModeFormat"]), "stereo")
-        let serverType = Self.positiveInt(rawSession["serverType"], requestData["serverType"], fallback: 0)
+        let serverType = Self.positiveInt(allocation.serverType, rawSession["serverType"], requestData["serverType"], fallback: 0)
         let traceParent = Self.firstNonEmpty(Self.string((rawSession["spanData"] as? [String: Any])?["traceparent"]), Self.string((requestData["spanData"] as? [String: Any])?["traceparent"]))
 
         prepare = Prepare(

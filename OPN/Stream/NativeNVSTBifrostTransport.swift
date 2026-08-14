@@ -446,7 +446,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "appId": int(requestData["appId"]) > 0 ? int(requestData["appId"]) : int(rawSession["appId"]),
             "appName": firstNonEmpty(string(requestData["appName"], fallback: ""), string(rawSession["appName"], fallback: ""), allocation.session.title),
             "appLaunchMode": geronimoAppLaunchMode(firstValue(in: requestData, rawSession, keys: ["appLaunchMode"])),
-            "serverType": int(rawSession["serverType"]) > 0 ? int(rawSession["serverType"]) : int(requestData["serverType"]),
+            "serverType": allocation.serverType > 0 ? allocation.serverType : (int(rawSession["serverType"]) > 0 ? int(rawSession["serverType"]) : int(requestData["serverType"])),
             "state": int(rawSession["state"]) > 0 ? int(rawSession["state"]) : int(rawSession["status"]),
             "frameStatsEnabled": bool(firstValue(in: rawSession, requestData, keys: ["frameStatsEnabled"])),
             "summaryStatsEnabled": summaryStatsValue == nil ? true : bool(summaryStatsValue),
