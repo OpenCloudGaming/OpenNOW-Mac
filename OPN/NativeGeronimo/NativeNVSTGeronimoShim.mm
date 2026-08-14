@@ -995,8 +995,10 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
         {GridAppStopResultSlotOffset, "_ZN7GridApp12onStopResultERKN14SessionControl23SessionSetUpFailureInfoE"},
         {GridAppPauseResultSlotOffset, "_ZN7GridApp13onPauseResultERKN14SessionControl23SessionSetUpFailureInfoE"},
     };
-    if (addressPoint[GridAppPrepareResultSlotOffset / sizeof(void *)] != nullptr ||
-        addressPoint[GridAppStreamingBeginSlotOffset / sizeof(void *)] != nullptr) {
+    void *pureVirtual = dlsym(session->libraryHandle, "__cxa_pure_virtual");
+    if (pureVirtual == nullptr ||
+        addressPoint[GridAppPrepareResultSlotOffset / sizeof(void *)] != pureVirtual ||
+        addressPoint[GridAppStreamingBeginSlotOffset / sizeof(void *)] != pureVirtual) {
         free(clone);
         setError(errorBuffer, errorBufferLength, "GridApp host callback slots no longer match the verified ABI.");
         return false;

@@ -78,6 +78,24 @@ import Testing
     }
 }
 
+@Test func nvstGeronimoCreatesWithVendoredGridAppCallbackABI() {
+    let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
+    var errorBuffer = [CChar](repeating: 0, count: 1024)
+    let session = frameworksDirectory.path.withCString { frameworksPath in
+        errorBuffer.withUnsafeMutableBufferPointer { buffer in
+            OpenNOWTestNativeNVSTGeronimoCreate(frameworksPath, buffer.baseAddress, buffer.count)
+        }
+    }
+    guard let session else {
+        _ = errorBuffer.withUnsafeBufferPointer { buffer in
+            Issue.record("Geronimo creation failed: \(buffer.baseAddress.map { String(cString: $0) } ?? "unknown error")")
+        }
+        return
+    }
+
+    OpenNOWTestNativeNVSTGeronimoDestroy(session)
+}
+
 @Test func nvstGeronimoConversionRejectsUnsupportedServerAndAuthTypes() {
     #expect((1...5).map { OpenNOWNativeNVSTGeronimoConvertServerType(Int32($0)) } == [0, 1, 2, 3, 4])
     #expect(OpenNOWNativeNVSTGeronimoConvertServerType(1001) == 0x33)
@@ -113,3 +131,9 @@ private func OpenNOWNativeNVSTGeronimoConvertServerType(_ serverType: Int32) -> 
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoConvertAuthTokenType")
 private func OpenNOWNativeNVSTGeronimoConvertAuthTokenType(_ tokenType: UnsafePointer<CChar>?) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
+private func OpenNOWTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoDestroy")
+private func OpenNOWTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
