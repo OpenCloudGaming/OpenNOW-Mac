@@ -88,7 +88,7 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         let token = Self.firstNonEmpty(Self.string(rawSession["token"]), Self.string(rawSession["authToken"]), Self.string(rawSession["jwt"]), Self.string((rawSession["auth"] as? [String: Any])?["token"]), Self.string(rawSession["sessionToken"]), allocation.authToken)
         let networkSessionId = Self.firstNonEmpty(Self.string(rawSession["networkSessionId"]), Self.string(requestData["networkSessionId"]), allocation.session.id)
         let audioMode = Self.firstNonEmpty(Self.string(rawSession["audioModeFormat"]), Self.string(requestData["audioModeFormat"]), Self.string(settings["audioModeFormat"]), "stereo")
-        let serverType = Self.positiveInt(rawSession["serverType"], requestData["serverType"], fallback: 0x34)
+        let serverType = Self.positiveInt(rawSession["serverType"], requestData["serverType"], fallback: 0)
         let traceParent = Self.firstNonEmpty(Self.string((rawSession["spanData"] as? [String: Any])?["traceparent"]), Self.string((requestData["spanData"] as? [String: Any])?["traceparent"]))
 
         prepare = Prepare(
@@ -148,6 +148,7 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         if prepare.clientAppVersion.isEmpty { missing.append("clientAppVersion") }
         if prepare.tokenType.isEmpty { missing.append("tokenType") }
         if !prepare.hasToken { missing.append("token") }
+        if start.serverType <= 0 { missing.append("serverType") }
         if start.appId <= 0 { missing.append("appId") }
         if start.networkSessionId.isEmpty { missing.append("networkSessionId") }
         if start.streamingProfileJSON.isEmpty { missing.append("streamingProfile") }
@@ -158,6 +159,25 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
     func validate() throws {
         guard missingFields.isEmpty else {
             throw NativeNVSTError.invalidSession("Native NVST launch payload is missing required fields: \(missingFields.joined(separator: ", ")).")
+        }
+        guard Self.isSupportedServerType(start.serverType) else {
+            throw NativeNVSTError.invalidSession("Native NVST launch payload has unsupported server type \(start.serverType).")
+        }
+        guard Self.isSupportedAuthTokenType(prepare.tokenType) else {
+            throw NativeNVSTError.invalidSession("Native NVST launch payload has an unsupported auth token type.")
+        }
+    }
+
+    private static func isSupportedServerType(_ serverType: Int) -> Bool {
+        (1...5).contains(serverType) || serverType == 1001
+    }
+
+    private static func isSupportedAuthTokenType(_ tokenType: String) -> Bool {
+        switch tokenType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "7", "jarvis", "nvb_auth_jarvis", "8", "jwt", "nvb_auth_jwt", "9", "jwt_gfn", "jwt-gfn", "nvb_auth_jwt_gfn":
+            true
+        default:
+            false
         }
     }
 

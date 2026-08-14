@@ -78,6 +78,19 @@ import Testing
     }
 }
 
+@Test func nvstGeronimoConversionRejectsUnsupportedServerAndAuthTypes() {
+    #expect((1...5).map { OpenNOWNativeNVSTGeronimoConvertServerType(Int32($0)) } == [0, 1, 2, 3, 4])
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(1001) == 0x33)
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(0) == -1)
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(52) == -1)
+    #expect(convertedAuthTokenType("7") == 7)
+    #expect(convertedAuthTokenType("jarvis") == 7)
+    #expect(convertedAuthTokenType("JWT") == 8)
+    #expect(convertedAuthTokenType("jwt-gfn") == 9)
+    #expect(convertedAuthTokenType("unsupported") == -1)
+    #expect(OpenNOWNativeNVSTGeronimoConvertAuthTokenType(nil) == -1)
+}
+
 private func vendoredBridge() throws -> NVSTNativeBridge {
     let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
     return try NVSTNativeBridge(configuration: NVSTNativeBridgeConfiguration(frameworksDirectory: frameworksDirectory))
@@ -90,3 +103,13 @@ private func repoRoot() -> URL {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
 }
+
+private func convertedAuthTokenType(_ tokenType: String) -> Int32 {
+    tokenType.withCString { OpenNOWNativeNVSTGeronimoConvertAuthTokenType($0) }
+}
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoConvertServerType")
+private func OpenNOWNativeNVSTGeronimoConvertServerType(_ serverType: Int32) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoConvertAuthTokenType")
+private func OpenNOWNativeNVSTGeronimoConvertAuthTokenType(_ tokenType: UnsafePointer<CChar>?) -> Int32

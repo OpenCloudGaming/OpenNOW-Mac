@@ -19,11 +19,28 @@ public struct NativeNVSTTransportConnection: Equatable, Sendable {
     }
 }
 
+public enum NativeNVSTTransportTermination: Equatable, Sendable {
+    case remoteStopped(String)
+    case failed(String)
+}
+
 public protocol NativeNVSTTransport: Sendable {
     func prepare() async throws -> NVSTNativeBridgeStatus
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
     func send(_ event: UserInputEvent) async throws
+    func pause() async throws
     func disconnect() async
+    func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination>
+}
+
+public extension NativeNVSTTransport {
+    func pause() async throws {
+        throw NativeNVSTError.notRunning
+    }
+
+    func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
+        AsyncStream { $0.finish() }
+    }
 }
 
 public enum NativeNVSTError: LocalizedError, Equatable, Sendable {
@@ -53,6 +70,8 @@ public actor NativeNVSTStreamingPath {
     private var state: StreamingPathState = .idle
     private var activeSession: StreamSessionDescriptor?
     private var startedAt: ContinuousClock.Instant?
+    private var terminalTask: Task<Void, Never>?
+    private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
 
     public init(sessionProvider: any NativeNVSTSessionProvider,
                 transport: any NativeNVSTTransport,
@@ -72,6 +91,16 @@ public actor NativeNVSTStreamingPath {
 
     public func audioFrames(bufferingPolicy: AsyncStream<NativeNVSTAudioFrame>.Continuation.BufferingPolicy = .bufferingNewest(240)) async -> AsyncStream<NativeNVSTAudioFrame> {
         await mediaSession.audioFrames(bufferingPolicy: bufferingPolicy)
+    }
+
+    public func endEvents() -> AsyncStream<StreamReport> {
+        let id = UUID()
+        let pair = AsyncStream<StreamReport>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        reportContinuations[id] = pair.continuation
+        pair.continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeReportContinuation(id) }
+        }
+        return pair.stream
     }
 
     public func start(configuration: StreamLaunchConfiguration,
@@ -127,6 +156,7 @@ public actor NativeNVSTStreamingPath {
         activeSession = allocation.session
         startedAt = .now
         state = .running(allocation.session)
+        monitorTransportTermination()
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
         WebRTCMediaTelemetry.capture("nvst.path.connected", level: .info, message: "Native NVST streaming path connected.", attributes: ["sessionId": allocation.session.id, "applicationID": allocation.session.applicationID])
         return allocation.session
@@ -138,16 +168,47 @@ public actor NativeNVSTStreamingPath {
     }
 
     public func stop(reason: StreamEndReason = .userRequested, message: String = "Native NVST stream ended.") async throws -> StreamReport {
+        if reason == .paused { return try await pause(message: message) }
         guard let activeSession else { throw NativeNVSTError.notRunning }
+        terminalTask?.cancel()
+        terminalTask = nil
+        let durationSeconds = streamDurationSeconds()
+        self.activeSession = nil
+        startedAt = nil
         WebRTCMediaTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
         await transport.disconnect()
         try await sessionProvider.finishSession(activeSession, reason: reason)
         await mediaSession.finish()
-        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: streamDurationSeconds(), metadata: ["transport": "nvst"])
+        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+        state = .ended(report)
+        publish(report)
+        return report
+    }
+
+    public func pause(message: String = "Native NVST stream paused.") async throws -> StreamReport {
+        guard let activeSession else { throw NativeNVSTError.notRunning }
+        terminalTask?.cancel()
+        terminalTask = nil
+        let originalStartedAt = startedAt
+        let durationSeconds = streamDurationSeconds()
         self.activeSession = nil
         startedAt = nil
-        state = .ended(report)
-        return report
+        WebRTCMediaTelemetry.capture("nvst.path.pause", level: .info, message: message, attributes: ["sessionId": activeSession.id])
+        do {
+            try await transport.pause()
+            try? await sessionProvider.finishSession(activeSession, reason: .paused)
+            await mediaSession.finish()
+            let report = StreamReport(title: activeSession.title, success: true, reason: .paused, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+            state = .ended(report)
+            publish(report)
+            return report
+        } catch {
+            self.activeSession = activeSession
+            startedAt = originalStartedAt
+            state = .running(activeSession)
+            monitorTransportTermination()
+            throw error
+        }
     }
 
     private func cancelStartingSession() async {
@@ -164,13 +225,63 @@ public actor NativeNVSTStreamingPath {
         throw CancellationError()
     }
 
+    private func monitorTransportTermination() {
+        terminalTask?.cancel()
+        terminalTask = Task { [weak self, transport] in
+            let events = await transport.terminalEvents()
+            for await event in events {
+                guard !Task.isCancelled else { return }
+                await self?.handleTransportTermination(event)
+                return
+            }
+        }
+    }
+
+    private func handleTransportTermination(_ termination: NativeNVSTTransportTermination) async {
+        guard let activeSession else { return }
+        let durationSeconds = streamDurationSeconds()
+        self.activeSession = nil
+        startedAt = nil
+        terminalTask = nil
+        let reason: StreamEndReason
+        let message: String
+        switch termination {
+        case .remoteStopped(let value):
+            reason = .remoteEnded
+            message = value.isEmpty ? "Native NVST stream ended remotely." : value
+        case .failed(let value):
+            reason = .failed
+            message = value.isEmpty ? "Native NVST transport failed." : value
+        }
+        await transport.disconnect()
+        try? await sessionProvider.finishSession(activeSession, reason: reason)
+        await mediaSession.finish()
+        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+        state = .ended(report)
+        publish(report)
+    }
+
+    private func publish(_ report: StreamReport) {
+        for continuation in reportContinuations.values {
+            continuation.yield(report)
+        }
+    }
+
+    private func removeReportContinuation(_ id: UUID) {
+        reportContinuations[id] = nil
+    }
+
     private func publishProgress(configuration: StreamLaunchConfiguration,
                                  step: StreamLaunchStep,
                                  message: String,
                                  isReady: Bool = false,
                                  progress: (@Sendable (StreamProgress) async -> Void)?) async throws {
         let value = StreamProgress(configuration: configuration, step: step, message: message, isReady: isReady)
-        state = .starting(value)
+        if isReady, let activeSession {
+            state = .running(activeSession)
+        } else {
+            state = .starting(value)
+        }
         await progress?(value)
     }
 

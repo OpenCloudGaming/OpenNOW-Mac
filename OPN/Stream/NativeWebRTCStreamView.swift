@@ -132,6 +132,16 @@ public final class NativeWebRTCStreamView: NSView {
         emitMouseButton(.right, isPressed: false)
     }
 
+    public override func otherMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        if capturePointerForMouseDown() { return }
+        emitMouseButton(mouseButton(event.buttonNumber), isPressed: true)
+    }
+
+    public override func otherMouseUp(with event: NSEvent) {
+        emitMouseButton(mouseButton(event.buttonNumber), isPressed: false)
+    }
+
     public override func mouseMoved(with event: NSEvent) {
         emitMouseMove(event)
     }
@@ -141,6 +151,10 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func rightMouseDragged(with event: NSEvent) {
+        emitMouseMove(event)
+    }
+
+    public override func otherMouseDragged(with event: NSEvent) {
         emitMouseMove(event)
     }
 
@@ -157,6 +171,25 @@ public final class NativeWebRTCStreamView: NSView {
     public override func keyUp(with event: NSEvent) {
         if handlePasteShortcut(event) { return }
         emitKey(event, isPressed: false)
+    }
+
+    public override func flagsChanged(with event: NSEvent) {
+        let pressed: Bool
+        switch event.keyCode {
+        case 54, 55:
+            pressed = event.modifierFlags.contains(.command)
+        case 56, 60:
+            pressed = event.modifierFlags.contains(.shift)
+        case 57:
+            pressed = event.modifierFlags.contains(.capsLock)
+        case 58, 61:
+            pressed = event.modifierFlags.contains(.option)
+        case 59, 62:
+            pressed = event.modifierFlags.contains(.control)
+        default:
+            return
+        }
+        emitKey(event, isPressed: pressed)
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {

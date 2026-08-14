@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include <atomic>
+#include <algorithm>
 #include <cctype>
 #include <condition_variable>
 #include <memory>
@@ -82,17 +83,17 @@ struct PrepareParameters {
     std::string serverAddress;
     uint32_t serverPort = 0;
     uint32_t clientProfile = 0;
-    std::string appId;
+    std::string deviceId;
     alignas(4) unsigned char communicationParams[0x2c] = {};
-    bool synchronous = true;
+    bool synchronous = false;
     unsigned char pad65[3] = {};
-    int32_t serverType = 0x34;
+    int32_t serverType = -1;
     unsigned char pad6c[4] = {};
     std::string locale;
     std::string sslCertificate;
     std::string sslPrivateKey;
-    std::string deviceId;
-    std::string platform;
+    std::string applicationIdentifier;
+    std::string applicationVersion;
     std::string clientName;
     std::string clientAppVersion;
     std::vector<std::string> applicationHeaders;
@@ -103,29 +104,33 @@ struct SessionParameters {
     uint32_t pad04 = 0;
     std::string serverAddress;
     uint32_t serverPort = 0;
-    uint32_t sessionMode = 0;
+    int32_t serverType = -1;
     unsigned char pad28[0x0c] = {};
     uint32_t streamSettingsCount = 0;
-    uint64_t reserved38 = 0;
+    uint64_t gamepadBitmap = 0;
     uint64_t supportedHidTypes = 0;
     Nsk::NVbStreamSettings_t *streamSettings = nullptr;
     Nsk::NVbStreamSettings_t defaultStreamSettings;
     unsigned char pad1c0[0x0c] = {};
-    uint32_t configurationProfile = 0;
+    uint32_t appLaunchMode = 0;
     void *metadata = nullptr;
     uint32_t metadataCount = 0;
-    bool useL4S = false;
+    bool networkPacketCaptureEnabled = false;
     unsigned char pad1dd[0x0b] = {};
-    std::string clientAppVersion;
-    std::string region;
+    std::string partnerCustomData;
     std::string clientLocale;
-    uint32_t keyboardLayoutMode = 0;
-    bool keyboardLayoutAutomatic = false;
-    unsigned char pad235[3] = {};
     std::string keyboardLayout;
-    std::string streamingSessionId;
+    bool allowKeyboardLayoutChange = false;
+    bool accountLinked = false;
+    unsigned char pad232 = 0;
+    uint8_t audioChannelCount = 2;
+    bool persistingInGameSettings = false;
+    unsigned char pad235[3] = {};
+    std::string networkSessionId;
+    std::string bifrostSessionId;
     std::vector<Nsk::NVbConnectionInfo_t> connectionInfo;
-    uint32_t connectionInfoFlags = 0;
+    uint32_t userAge = 0;
+    uint32_t pad284 = 0;
 };
 }
 
@@ -145,34 +150,55 @@ static_assert(offsetof(Nsk::StreamStartParameters, audioSettings) == 0xf0, "libG
 static_assert(offsetof(Nsk::StreamStartParameters, connectionType) == 0x108, "libGeronimo connectionType offset changed");
 static_assert(offsetof(Nsk::StreamStartParameters, connectionInfo) == 0x120, "libGeronimo connectionInfo offset changed");
 static_assert(offsetof(Nsk::StreamStartParameters, unknown180) == 0x180, "libGeronimo StreamStartParameters ABI changed");
-static_assert(offsetof(SessionControl::PrepareParameters, appId) == 0x20, "libGeronimo PrepareParameters appId offset changed");
+static_assert(sizeof(SessionControl::PrepareParameters) == 0x130, "libGeronimo PrepareParameters size changed");
+static_assert(offsetof(SessionControl::PrepareParameters, deviceId) == 0x20, "libGeronimo PrepareParameters deviceId offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, communicationParams) == 0x38, "libGeronimo PrepareParameters communicationParams offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, locale) == 0x70, "libGeronimo PrepareParameters locale offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, sslCertificate) == 0x88, "libGeronimo PrepareParameters sslCertificate offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, sslPrivateKey) == 0xa0, "libGeronimo PrepareParameters sslPrivateKey offset changed");
-static_assert(offsetof(SessionControl::PrepareParameters, deviceId) == 0xb8, "libGeronimo PrepareParameters deviceId offset changed");
-static_assert(offsetof(SessionControl::PrepareParameters, platform) == 0xd0, "libGeronimo PrepareParameters platform offset changed");
+static_assert(offsetof(SessionControl::PrepareParameters, applicationIdentifier) == 0xb8, "libGeronimo PrepareParameters applicationIdentifier offset changed");
+static_assert(offsetof(SessionControl::PrepareParameters, applicationVersion) == 0xd0, "libGeronimo PrepareParameters applicationVersion offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, clientName) == 0xe8, "libGeronimo PrepareParameters clientName offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, clientAppVersion) == 0x100, "libGeronimo PrepareParameters clientAppVersion offset changed");
 static_assert(offsetof(SessionControl::PrepareParameters, applicationHeaders) == 0x118, "libGeronimo PrepareParameters applicationHeaders offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, serverAddress) == 0x08, "libGeronimo SessionParameters serverAddress offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, serverPort) == 0x20, "libGeronimo SessionParameters serverPort offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, serverType) == 0x24, "libGeronimo SessionParameters serverType offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, streamSettingsCount) == 0x34, "libGeronimo SessionParameters streamSettingsCount offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, gamepadBitmap) == 0x38, "libGeronimo SessionParameters gamepadBitmap offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, supportedHidTypes) == 0x40, "libGeronimo SessionParameters supportedHidTypes offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, streamSettings) == 0x48, "libGeronimo SessionParameters streamSettings offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, defaultStreamSettings) == 0x50, "libGeronimo SessionParameters defaultStreamSettings offset changed");
-static_assert(offsetof(SessionControl::SessionParameters, clientAppVersion) == 0x1e8, "libGeronimo SessionParameters clientAppVersion offset changed");
-static_assert(offsetof(SessionControl::SessionParameters, clientLocale) == 0x218, "libGeronimo SessionParameters clientLocale offset changed");
-static_assert(offsetof(SessionControl::SessionParameters, keyboardLayout) == 0x238, "libGeronimo SessionParameters keyboardLayout offset changed");
-static_assert(offsetof(SessionControl::SessionParameters, streamingSessionId) == 0x250, "libGeronimo SessionParameters streamingSessionId offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, appLaunchMode) == 0x1cc, "libGeronimo SessionParameters appLaunchMode offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, metadata) == 0x1d0, "libGeronimo SessionParameters metadata offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, metadataCount) == 0x1d8, "libGeronimo SessionParameters metadataCount offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, networkPacketCaptureEnabled) == 0x1dc, "libGeronimo SessionParameters networkPacketCaptureEnabled offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, partnerCustomData) == 0x1e8, "libGeronimo SessionParameters partnerCustomData offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, clientLocale) == 0x200, "libGeronimo SessionParameters clientLocale offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, keyboardLayout) == 0x218, "libGeronimo SessionParameters keyboardLayout offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, allowKeyboardLayoutChange) == 0x230, "libGeronimo SessionParameters allowKeyboardLayoutChange offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, accountLinked) == 0x231, "libGeronimo SessionParameters accountLinked offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, audioChannelCount) == 0x233, "libGeronimo SessionParameters audioChannelCount offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, persistingInGameSettings) == 0x234, "libGeronimo SessionParameters persistingInGameSettings offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, networkSessionId) == 0x238, "libGeronimo SessionParameters networkSessionId offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, bifrostSessionId) == 0x250, "libGeronimo SessionParameters bifrostSessionId offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, connectionInfo) == 0x268, "libGeronimo SessionParameters connectionInfo offset changed");
-static_assert(offsetof(SessionControl::SessionParameters, connectionInfoFlags) == 0x280, "libGeronimo SessionParameters connectionInfoFlags offset changed");
+static_assert(offsetof(SessionControl::SessionParameters, userAge) == 0x280, "libGeronimo SessionParameters userAge offset changed");
+static_assert(sizeof(SessionControl::SessionParameters) == 0x288, "libGeronimo SessionParameters size changed");
 
 namespace {
 constexpr size_t GridAppStorageSize = 0x2000;
 constexpr size_t GridAppVTableSize = 0x220;
 constexpr size_t GridAppPrepareResultSlotOffset = 0x90;
 constexpr size_t GridAppStreamingBeginSlotOffset = 0x98;
+constexpr size_t GridAppSetupFailureSlotOffset = 0xa8;
+constexpr size_t GridAppResumeFailureSlotOffset = 0xb0;
+constexpr size_t GridAppSetupSuccessSlotOffset = 0xc0;
+constexpr size_t GridAppStreamingTerminatedSlotOffset = 0xc8;
+constexpr size_t GridAppSetupProgressSlotOffset = 0x140;
+constexpr size_t GridAppActiveSessionsSlotOffset = 0x148;
+constexpr size_t GridAppStopResultSlotOffset = 0x158;
+constexpr size_t GridAppPauseResultSlotOffset = 0x160;
 constexpr size_t SDLGraphicsContextStorageSize = 0x88;
 constexpr size_t SDLEventProcessorStorageSize = 0xb0;
 constexpr size_t SDLWindowStorageSize = 0x438;
@@ -198,13 +224,15 @@ using GridAppCtor = void (*)(void *);
 using GridAppDtor = void (*)(void *);
 using GridAppInitialize = void *(*)(void *, bool);
 using GridAppProcessEvents = void (*)(void *);
-using GridAppStop = void (*)(void *, const char *, int);
-using GridAppPause = bool (*)(void *);
+using GridAppStop = bool (*)(void *, const char *, int);
+using GridAppPause = bool (*)(void *, int);
 using GridAppPrepare = bool (*)(void *, const SessionControl::PrepareParameters &);
 using GridAppSetAuthInfo = bool (*)(void *, void *);
 using GridAppStart = bool (*)(void *, const SessionControl::SessionParameters &, const Nsk::NVbTracingContext_t &);
+using GridAppResume = bool (*)(void *, const char *, const SessionControl::SessionParameters &, const Nsk::NVbTracingContext_t &);
 using GridAppSetDecoderInfo = void (*)(void *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool);
 using GridAppSendInput = void (*)(void *, const void *);
+using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
@@ -255,10 +283,13 @@ static_assert(sizeof(NVbAuthInfo_t) == 0x10, "libGeronimo NVbAuthInfo_t ABI chan
 
 enum class NativeSessionState {
     created,
+    configured,
     preparePending,
     prepared,
     starting,
+    setupPending,
     streaming,
+    pausePending,
     paused,
     stopping,
     stopped,
@@ -270,7 +301,9 @@ struct GeronimoFunctions {
     GridAppProcessEvents gridAppProcessEvents = nullptr;
     GridAppStop stop = nullptr;
     GridAppPause pause = nullptr;
+    GridAppResume resume = nullptr;
     GridAppSendInput sendInput = nullptr;
+    GridAppHandleGamepadChanged handleGamepadChanged = nullptr;
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
     ObjectCtor graphicsContextCtor = nullptr;
     ObjectDtor graphicsContextDtor = nullptr;
@@ -291,6 +324,9 @@ struct GeronimoFunctions {
 
 struct PendingStart {
     GridAppStart start = nullptr;
+    GridAppResume resume = nullptr;
+    bool shouldResume = false;
+    std::string resumeSessionId;
     SessionControl::SessionParameters parameters;
     std::vector<Nsk::NVbStreamSettings_t> streamSettings;
     std::string traceParent;
@@ -326,10 +362,12 @@ struct OpenNOWNativeNVSTGeronimoSession {
     NativeSessionState state = NativeSessionState::created;
     std::unique_ptr<PendingStart> pendingStart;
     bool startEventDelivered = false;
-    bool streamerConnectedInProgress = false;
-    bool streamerConnectedPending = false;
-    bool streamerConnectedDelivered = false;
+    bool setupSucceeded = false;
+    bool streamingBegan = false;
+    bool connectedEventDelivered = false;
     bool stopIssued = false;
+    bool microphoneEnabled = false;
+    bool registeredGamepads[4] = {};
     std::string lastError;
     bool platformStarted = false;
     bool initialized = false;
@@ -340,6 +378,8 @@ struct OpenNOWNativeNVSTGeronimoSession {
     void *audioRenderer = nullptr;
     void *audioCapturer = nullptr;
     uint32_t requestedCodec = DefaultNVbCodecH264;
+    uint32_t activeCodec = 0;
+    bool videoDecoderStarted = false;
     std::string initServerAddress;
     std::string startServerAddress;
     std::string sessionId;
@@ -355,8 +395,12 @@ struct OpenNOWNativeNVSTGeronimoSession {
 
 std::mutex gGridAppSessionsMutex;
 std::unordered_map<void *, OpenNOWNativeNVSTGeronimoSession *> gGridAppSessions;
+std::mutex gPlatformMutex;
+size_t gPlatformReferenceCount = 0;
 
 void setSessionFailure(OpenNOWNativeNVSTGeronimoSession *session, const char *message);
+bool setSessionFailureUnlessStopping(OpenNOWNativeNVSTGeronimoSession *session, const char *message);
+bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec);
 
 void setError(char *buffer, size_t length, const char *message) {
     if (buffer == nullptr || length == 0) { return; }
@@ -447,6 +491,26 @@ void callVoidVirtual(void *object, size_t byteOffset) {
     if (function != nullptr) { function(object); }
 }
 
+void emitConnectedIfReady(OpenNOWNativeNVSTGeronimoSession *session) {
+    bool shouldEmit = false;
+    {
+        std::lock_guard<std::mutex> lock(session->stateMutex);
+        if (session->startEventDelivered && session->setupSucceeded && session->streamingBegan && !session->connectedEventDelivered) {
+            session->state = NativeSessionState::streaming;
+            session->connectedEventDelivered = true;
+            shouldEmit = true;
+        }
+    }
+    if (shouldEmit) {
+        emitEvent(session,
+                  45,
+                  NVbCallbackTypeEvent,
+                  NVbClientEventSessionNotification,
+                  NVbSessionNotificationStreamerConnected,
+                  0);
+    }
+}
+
 void openNOWGridAppPrepareResult(void *gridApp, const NVbResult_t *result, void *) {
     OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
@@ -480,58 +544,157 @@ void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     try {
-        bool micSetupSucceeded = loadUnaligned<uint8_t>(streamInfo, 0) != 0;
-        bool shouldResumeMedia = false;
+        bool micSetupSucceeded = streamInfo != nullptr && loadUnaligned<uint8_t>(streamInfo, 0) != 0;
+        bool acceptsStreamingBegin = false;
         {
             std::lock_guard<std::mutex> stateLock(session->stateMutex);
-            shouldResumeMedia = (session->state == NativeSessionState::starting || session->state == NativeSessionState::streaming) &&
-                                !session->streamerConnectedInProgress &&
-                                !session->streamerConnectedPending &&
-                                !session->streamerConnectedDelivered;
-            if (shouldResumeMedia) { session->streamerConnectedInProgress = true; }
+            if (session->state == NativeSessionState::starting || session->state == NativeSessionState::setupPending || session->state == NativeSessionState::streaming) {
+                session->streamingBegan = true;
+                acceptsStreamingBegin = true;
+            }
         }
-        if (!shouldResumeMedia) { return; }
-        bool shouldEmit = false;
+        if (!acceptsStreamingBegin) { return; }
         {
             std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
             callVoidVirtual(session->audioRenderer, 0x48);
-            callVoidVirtual(session->audioCapturer, micSetupSucceeded ? 0x48 : 0x40);
-            callVoidVirtual(session->videoDecoder, 0x58);
-        }
-        {
-            std::lock_guard<std::mutex> stateLock(session->stateMutex);
-            if ((session->state == NativeSessionState::starting || session->state == NativeSessionState::streaming) &&
-                !session->streamerConnectedDelivered) {
-                session->state = NativeSessionState::streaming;
-                session->streamerConnectedInProgress = false;
-                session->streamerConnectedPending = true;
-                if (session->startEventDelivered) {
-                    session->streamerConnectedPending = false;
-                    session->streamerConnectedDelivered = true;
-                    shouldEmit = true;
-                }
+            callVoidVirtual(session->audioCapturer, session->microphoneEnabled && micSetupSucceeded ? 0x48 : 0x40);
+            if (!session->videoDecoderStarted) {
+                callVoidVirtual(session->videoDecoder, 0x58);
+                session->videoDecoderStarted = session->videoDecoder != nullptr;
             }
         }
-        if (shouldEmit) {
-            emitEvent(session,
-                      45,
-                      NVbCallbackTypeEvent,
-                      NVbClientEventSessionNotification,
-                      NVbSessionNotificationStreamerConnected,
-                      0);
-        }
+        emitConnectedIfReady(session);
     } catch (...) {
         try {
-            {
-                std::lock_guard<std::mutex> stateLock(session->stateMutex);
-                session->streamerConnectedInProgress = false;
-            }
             setSessionFailure(session, "GridApp streaming-begin callback handling raised an unexpected C++ exception.");
             emitEvent(session, 70, 0, 0, 0, -13);
         } catch (...) {
             fprintf(stderr, "OpenNOW failed to contain a GridApp streaming-begin callback exception.\n");
         }
     }
+}
+
+void openNOWGridAppSetupFailure(void *gridApp, const void *failureInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
+    if (setSessionFailureUnlessStopping(session, "GridApp session setup failed.")) {
+        emitEvent(session, 70, 0, 0, 0, resultCode);
+    }
+}
+
+void openNOWGridAppResumeFailure(void *gridApp, const void *failureInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
+    if (setSessionFailureUnlessStopping(session, "GridApp resume failed.")) {
+        emitEvent(session, 70, 0, 0, 0, resultCode);
+    }
+}
+
+void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    uint32_t codec = session->requestedCodec;
+    bool streamingBegan = false;
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::starting && session->state != NativeSessionState::setupPending && session->state != NativeSessionState::streaming) { return; }
+        streamingBegan = session->streamingBegan;
+    }
+    if (sessionInfo != nullptr) {
+        auto *begin = loadUnaligned<Nsk::NVbStreamSettings_t *>(sessionInfo, 0x38);
+        auto *end = loadUnaligned<Nsk::NVbStreamSettings_t *>(sessionInfo, 0x40);
+        if (begin != nullptr && end != nullptr && end > begin) { codec = loadUnaligned<uint32_t>(begin, 0x2c); }
+    }
+    bool decoderReady = false;
+    {
+        std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+        decoderReady = ensureVideoDecoderLocked(session, codec);
+        if (decoderReady && streamingBegan && !session->videoDecoderStarted) {
+            callVoidVirtual(session->videoDecoder, 0x58);
+            session->videoDecoderStarted = true;
+        }
+    }
+    if (!decoderReady) {
+        setSessionFailure(session, "Geronimo could not initialize the negotiated video decoder.");
+        emitEvent(session, 70, 0, 0, 0, -14);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state == NativeSessionState::starting || session->state == NativeSessionState::setupPending || session->state == NativeSessionState::streaming) {
+            session->setupSucceeded = true;
+        }
+    }
+    emitEvent(session, 46, 0, 0, codec, 0);
+    emitConnectedIfReady(session);
+}
+
+void openNOWGridAppStreamingTerminated(void *gridApp, const void *terminationInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    uint32_t terminationReason = terminationInfo == nullptr ? 0 : loadUnaligned<uint32_t>(terminationInfo, 0);
+    int32_t extendedCode = terminationInfo == nullptr ? -1 : loadUnaligned<int32_t>(terminationInfo, 4);
+    bool locallyRequested = false;
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        locallyRequested = session->stopIssued;
+        if (!locallyRequested) { session->state = NativeSessionState::stopped; }
+    }
+    if (!locallyRequested) { emitEvent(session, 62, 0, 0, terminationReason, extendedCode); }
+}
+
+void openNOWGridAppSetupProgress(void *gridApp, const void *parameters) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    uint32_t state = parameters == nullptr ? 0 : loadUnaligned<uint32_t>(parameters, 0);
+    uint32_t queuePosition = parameters == nullptr ? 0 : loadUnaligned<uint32_t>(parameters, 4);
+    int32_t eta = parameters == nullptr ? 0 : loadUnaligned<int32_t>(parameters, 8);
+    emitEvent(session, 35, 0, state, queuePosition, eta);
+}
+
+void openNOWGridAppActiveSessions(void *gridApp, const void *result) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    int32_t resultCode = result == nullptr ? -1 : loadUnaligned<int32_t>(result, 0);
+    emitEvent(session, 36, 0, 0, 0, resultCode);
+}
+
+void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
+    bool locallyRequested = false;
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        locallyRequested = session->stopIssued;
+        session->state = NativeSessionState::stopped;
+    }
+    emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode);
+}
+
+void openNOWGridAppPauseResult(void *gridApp, const void *failureInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
+    bool wasPending = false;
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state == NativeSessionState::pausePending) {
+            session->state = resultCode == 0 ? NativeSessionState::paused : NativeSessionState::streaming;
+            wasPending = true;
+        }
+    }
+    if (wasPending) { emitEvent(session, resultCode == 0 ? 50 : 70, 0, 0, 0, resultCode); }
 }
 
 NSDictionary *jsonDictionary(const std::string &json) {
@@ -580,6 +743,28 @@ int32_t jsonIntAtPath(NSDictionary *dictionary, const char *path) {
     return 0;
 }
 
+bool jsonBoolAtPath(NSDictionary *dictionary, const char *path) {
+    id value = jsonValueAtPath(dictionary, path);
+    if ([value isKindOfClass:[NSNumber class]]) { return [static_cast<NSNumber *>(value) boolValue]; }
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *lowered = [static_cast<NSString *>(value) lowercaseString];
+        return [lowered isEqualToString:@"true"] || [lowered isEqualToString:@"1"];
+    }
+    return false;
+}
+
+std::vector<std::string> jsonStringArrayAtPath(NSDictionary *dictionary, const char *path) {
+    std::vector<std::string> values;
+    id value = jsonValueAtPath(dictionary, path);
+    if (![value isKindOfClass:[NSArray class]]) { return values; }
+    for (id element in static_cast<NSArray *>(value)) {
+        if (![element isKindOfClass:[NSString class]]) { continue; }
+        const char *utf8 = [static_cast<NSString *>(element) UTF8String];
+        if (utf8 != nullptr && utf8[0] != '\0') { values.emplace_back(utf8); }
+    }
+    return values;
+}
+
 std::string firstNonEmptyString(NSDictionary *first, NSDictionary *second, const char *const *paths, size_t count) {
     for (size_t index = 0; index < count; ++index) {
         std::string value = jsonStringAtPath(first, paths[index]);
@@ -622,11 +807,47 @@ HostAndPort hostAndPort(const std::string &address) {
     return result;
 }
 
-uint32_t authTypeForTokenType(const std::string &tokenType) {
+bool authTypeForTokenType(const std::string &tokenType, uint32_t &authType) {
     std::string lowered = tokenType;
     for (char &character : lowered) { character = static_cast<char>(std::tolower(static_cast<unsigned char>(character))); }
-    if (lowered.find("jarvis") != std::string::npos) { return 8; }
-    return 9;
+    if (lowered == "7" || lowered == "jarvis" || lowered == "nvb_auth_jarvis") {
+        authType = 7;
+        return true;
+    }
+    if (lowered == "8" || lowered == "jwt" || lowered == "nvb_auth_jwt") {
+        authType = 8;
+        return true;
+    }
+    if (lowered == "9" || lowered == "jwt_gfn" || lowered == "jwt-gfn" || lowered == "nvb_auth_jwt_gfn") {
+        authType = 9;
+        return true;
+    }
+    return false;
+}
+
+int32_t convertedServerType(int32_t serverType) {
+    switch (serverType) {
+    case 1: return 0;
+    case 2: return 1;
+    case 3: return 2;
+    case 4: return 3;
+    case 5: return 4;
+    case 1001: return 0x33;
+    default: return -1;
+    }
+}
+
+uint8_t audioChannelCount(NSDictionary *cloud, NSDictionary *geronimo) {
+    int32_t numeric = jsonIntAtPath(geronimo, "audioModeFormat");
+    if (numeric == 0) { numeric = jsonIntAtPath(cloud, "audioModeFormat"); }
+    if (numeric == 6 || numeric == 8) { return static_cast<uint8_t>(numeric); }
+    if (numeric == 3) { return 8; }
+    std::string value = jsonStringAtPath(geronimo, "audioModeFormat");
+    if (value.empty()) { value = jsonStringAtPath(cloud, "audioModeFormat"); }
+    for (char &character : value) { character = static_cast<char>(std::tolower(static_cast<unsigned char>(character))); }
+    if (value.find("7.1") != std::string::npos || value.find("surround71") != std::string::npos) { return 8; }
+    if (value.find("5.1") != std::string::npos || value.find("surround51") != std::string::npos) { return 6; }
+    return 2;
 }
 
 void *resolve(void *handle, const char *symbol, char *errorBuffer, size_t errorBufferLength) {
@@ -660,12 +881,31 @@ uint32_t codecFromJSON(NSDictionary *cloud, NSDictionary *geronimo) {
     return DefaultNVbCodecH264;
 }
 
+bool acquirePlatform(NskPlatformStartup startup) {
+    std::lock_guard<std::mutex> lock(gPlatformMutex);
+    if (gPlatformReferenceCount == 0) {
+        Nsk::PlatformStartupParams parameters;
+        if (startup == nullptr || !startup(parameters)) { return false; }
+    }
+    ++gPlatformReferenceCount;
+    return true;
+}
+
+void releasePlatform(PlatformShutdown shutdown) {
+    std::lock_guard<std::mutex> lock(gPlatformMutex);
+    if (gPlatformReferenceCount == 0) { return; }
+    --gPlatformReferenceCount;
+    if (gPlatformReferenceCount == 0 && shutdown != nullptr) { shutdown(); }
+}
+
 bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *errorBuffer, size_t errorBufferLength) {
     functions.gridAppDtor = reinterpret_cast<GridAppDtor>(resolve(handle, "_ZN7GridAppD2Ev", errorBuffer, errorBufferLength));
     functions.gridAppProcessEvents = reinterpret_cast<GridAppProcessEvents>(resolve(handle, "_ZN7GridApp13processEventsEv", errorBuffer, errorBufferLength));
     functions.stop = reinterpret_cast<GridAppStop>(resolve(handle, "_ZN7GridApp4stopEPKci", errorBuffer, errorBufferLength));
-    functions.pause = reinterpret_cast<GridAppPause>(resolve(handle, "_ZN7GridApp5pauseEv", errorBuffer, errorBufferLength));
+    functions.pause = reinterpret_cast<GridAppPause>(resolve(handle, "_ZN7GridApp14pauseStreamingEi", errorBuffer, errorBufferLength));
+    functions.resume = reinterpret_cast<GridAppResume>(resolve(handle, "_ZN7GridApp6resumeEPKcRKN14SessionControl17SessionParametersERK19NVbTracingContext_t", errorBuffer, errorBufferLength));
     functions.sendInput = reinterpret_cast<GridAppSendInput>(resolve(handle, "_ZN7GridApp18sendNvstInputEventERK16NvstInputEvent_t", errorBuffer, errorBufferLength));
+    functions.handleGamepadChanged = reinterpret_cast<GridAppHandleGamepadChanged>(resolve(handle, "_ZN7GridApp25handleGamepadChangedEventEhiib", errorBuffer, errorBufferLength));
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
     functions.graphicsContextCtor = reinterpret_cast<ObjectCtor>(resolve(handle, "_ZN18SDLGraphicsContextC1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextDtor = reinterpret_cast<ObjectDtor>(resolve(handle, "_ZN18SDLGraphicsContextD1Ev", errorBuffer, errorBufferLength));
@@ -686,7 +926,9 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.gridAppProcessEvents != nullptr &&
            functions.stop != nullptr &&
            functions.pause != nullptr &&
+           functions.resume != nullptr &&
            functions.sendInput != nullptr &&
+           functions.handleGamepadChanged != nullptr &&
            functions.setDecoderInfo != nullptr &&
            functions.graphicsContextCtor != nullptr &&
            functions.graphicsContextDtor != nullptr &&
@@ -740,15 +982,43 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
     }
     memcpy(clone, sourceVTable, GridAppVTableSize);
     void **addressPoint = clone + 2;
-    size_t prepareIndex = GridAppPrepareResultSlotOffset / sizeof(void *);
-    size_t streamingIndex = GridAppStreamingBeginSlotOffset / sizeof(void *);
-    if (addressPoint[prepareIndex] != nullptr || addressPoint[streamingIndex] != nullptr) {
+    const struct {
+        size_t offset;
+        const char *symbol;
+    } verifiedSlots[] = {
+        {GridAppSetupFailureSlotOffset, "_ZN7GridApp21onSessionSetUpFailureERKN14SessionControl23SessionSetUpFailureInfoE"},
+        {GridAppResumeFailureSlotOffset, "_ZN7GridApp15onResumeFailureERKN14SessionControl23SessionSetUpFailureInfoE"},
+        {GridAppSetupSuccessSlotOffset, "_ZN7GridApp21onSessionSetupSuccessERK11SessionInfo"},
+        {GridAppStreamingTerminatedSlotOffset, "_ZN7GridApp21onStreamingTerminatedERKNS_22SessionTerminationInfoE"},
+        {GridAppSetupProgressSlotOffset, "_ZN7GridApp22onSessionSetupProgressERKN14SessionControl23SessionUpdateParametersE"},
+        {GridAppActiveSessionsSlotOffset, "_ZN7GridApp16onActiveSessionsERK20ActiveSessionsResult"},
+        {GridAppStopResultSlotOffset, "_ZN7GridApp12onStopResultERKN14SessionControl23SessionSetUpFailureInfoE"},
+        {GridAppPauseResultSlotOffset, "_ZN7GridApp13onPauseResultERKN14SessionControl23SessionSetUpFailureInfoE"},
+    };
+    if (addressPoint[GridAppPrepareResultSlotOffset / sizeof(void *)] != nullptr ||
+        addressPoint[GridAppStreamingBeginSlotOffset / sizeof(void *)] != nullptr) {
         free(clone);
-        setError(errorBuffer, errorBufferLength, "GridApp callback vtable slots no longer match the verified ABI.");
+        setError(errorBuffer, errorBufferLength, "GridApp host callback slots no longer match the verified ABI.");
         return false;
     }
-    addressPoint[prepareIndex] = reinterpret_cast<void *>(&openNOWGridAppPrepareResult);
-    addressPoint[streamingIndex] = reinterpret_cast<void *>(&openNOWGridAppStreamingBegin);
+    for (const auto &slot : verifiedSlots) {
+        void *expected = resolve(session->libraryHandle, slot.symbol, errorBuffer, errorBufferLength);
+        if (expected == nullptr || addressPoint[slot.offset / sizeof(void *)] != expected) {
+            free(clone);
+            setError(errorBuffer, errorBufferLength, "GridApp lifecycle callback slots no longer match the verified ABI.");
+            return false;
+        }
+    }
+    addressPoint[GridAppPrepareResultSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppPrepareResult);
+    addressPoint[GridAppStreamingBeginSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStreamingBegin);
+    addressPoint[GridAppSetupFailureSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupFailure);
+    addressPoint[GridAppResumeFailureSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppResumeFailure);
+    addressPoint[GridAppSetupSuccessSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupSuccess);
+    addressPoint[GridAppStreamingTerminatedSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStreamingTerminated);
+    addressPoint[GridAppSetupProgressSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupProgress);
+    addressPoint[GridAppActiveSessionsSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppActiveSessions);
+    addressPoint[GridAppStopResultSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStopResult);
+    addressPoint[GridAppPauseResultSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppPauseResult);
     *static_cast<void ***>(session->gridApp) = addressPoint;
     session->gridAppVTable = clone;
     try {
@@ -783,10 +1053,55 @@ void setSessionFailure(OpenNOWNativeNVSTGeronimoSession *session, const char *me
     session->lastError = message == nullptr ? "Native Geronimo media initialization failed." : message;
 }
 
+bool setSessionFailureUnlessStopping(OpenNOWNativeNVSTGeronimoSession *session, const char *message) {
+    std::lock_guard<std::mutex> lock(session->stateMutex);
+    if (session->state == NativeSessionState::paused || session->state == NativeSessionState::stopping ||
+        session->state == NativeSessionState::stopped || session->state == NativeSessionState::failed) { return false; }
+    session->state = NativeSessionState::failed;
+    session->lastError = message == nullptr ? "Native Geronimo session failed." : message;
+    return true;
+}
+
 bool initializeAudioObject(void *object, void *ioInterface, const PlatformAudioSettings &settings) {
     using Initialize = bool (*)(void *, void *, const PlatformAudioSettings &);
     Initialize initialize = virtualFunction<Initialize>(object, 0x38);
     return initialize != nullptr && initialize(object, ioInterface, settings);
+}
+
+bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec) {
+    if (codec != 1 && codec != 2 && codec != 4) { return false; }
+    if (session->videoDecoder != nullptr && session->activeCodec == codec) { return true; }
+    callVoidVirtual(session->videoDecoder, 0x60);
+    destroyPolymorphicObject(session->videoDecoder);
+    session->activeCodec = 0;
+    session->videoDecoderStarted = false;
+
+    PlatformDecoderCreationSettings creationSettings{};
+    storeUnaligned<uint32_t>(creationSettings.bytes, 0x00, 0);
+    storeUnaligned<uint32_t>(creationSettings.bytes, 0x10, 2);
+    storeUnaligned<uint32_t>(creationSettings.bytes, 0x18, GraphicsContextMetal);
+    storeUnaligned<uint32_t>(creationSettings.bytes, 0x1c, 1);
+    void *candidate = session->functions.createVideoDecoder(creationSettings, 0);
+    if (candidate == nullptr) { return false; }
+    const std::shared_ptr<AsyncVideoFrameRenderer> &renderer = session->functions.windowAsyncRenderer(session->window);
+    if (!renderer) {
+        destroyPolymorphicObject(candidate);
+        return false;
+    }
+    PlatformDecoderSettings decoderSettings{};
+    storeUnaligned<uint32_t>(decoderSettings.bytes, 0x00, 42);
+    storeUnaligned<uint32_t>(decoderSettings.bytes, 0x0c, codec);
+    storeUnaligned<uint8_t>(decoderSettings.bytes, 0x1d, 1);
+    int32_t decoderResult = session->functions.videoDecoderInitialize(candidate, session->ioInterface, decoderSettings, renderer);
+    if (decoderResult != 0) {
+        destroyPolymorphicObject(candidate);
+        return false;
+    }
+    session->videoDecoder = candidate;
+    session->activeCodec = codec;
+    session->videoDecoderStarted = false;
+    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, 0, 0, false);
+    return true;
 }
 
 bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
@@ -848,36 +1163,17 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
         return false;
     }
 
-    session->audioCapturer = session->functions.createAudioCapturer();
-    if (session->audioCapturer != nullptr && !initializeAudioObject(session->audioCapturer, session->ioInterface, audioSettings)) {
-        destroyPolymorphicObject(session->audioCapturer);
+    if (session->microphoneEnabled) {
+        session->audioCapturer = session->functions.createAudioCapturer();
+        if (session->audioCapturer != nullptr && !initializeAudioObject(session->audioCapturer, session->ioInterface, audioSettings)) {
+            destroyPolymorphicObject(session->audioCapturer);
+        }
     }
 
-    PlatformDecoderCreationSettings creationSettings{};
-    storeUnaligned<uint32_t>(creationSettings.bytes, 0x10, 2);
-    storeUnaligned<uint32_t>(creationSettings.bytes, 0x18, GraphicsContextMetal);
-    storeUnaligned<uint32_t>(creationSettings.bytes, 0x1c, 1);
-    session->videoDecoder = session->functions.createVideoDecoder(creationSettings, 0);
-    if (session->videoDecoder == nullptr) {
+    if (!ensureVideoDecoderLocked(session, session->requestedCodec)) {
         setSessionFailure(session, "Geronimo video decoder creation failed.");
         return false;
     }
-    const std::shared_ptr<AsyncVideoFrameRenderer> &renderer = session->functions.windowAsyncRenderer(session->window);
-    if (!renderer) {
-        setSessionFailure(session, "SDLWindow did not create an asynchronous Metal renderer.");
-        return false;
-    }
-    PlatformDecoderSettings decoderSettings{};
-    storeUnaligned<uint32_t>(decoderSettings.bytes, 0x00, 42);
-    storeUnaligned<uint32_t>(decoderSettings.bytes, 0x0c, session->requestedCodec);
-    storeUnaligned<uint8_t>(decoderSettings.bytes, 0x1d, 1);
-    int32_t decoderResult = session->functions.videoDecoderInitialize(session->videoDecoder, session->ioInterface, decoderSettings, renderer);
-    if (decoderResult != 0) {
-        destroyPolymorphicObject(session->videoDecoder);
-        setSessionFailure(session, "Geronimo video decoder initialization failed.");
-        return false;
-    }
-    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, 0, 0, false);
     return true;
 }
 
@@ -885,6 +1181,8 @@ void teardownPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
     callVoidVirtual(session->videoDecoder, 0x60);
     destroyPolymorphicObject(session->videoDecoder);
+    session->activeCodec = 0;
+    session->videoDecoderStarted = false;
 
     void *capturer = session->audioCapturer;
     session->audioCapturer = nullptr;
@@ -917,45 +1215,35 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
         session->state = NativeSessionState::starting;
         pending = std::move(session->pendingStart);
     }
-    if (!setupPlatformMedia(session)) {
-        teardownPlatformMedia(session);
-        emitEvent(session, 30, 0, 0, 0, -10);
-        emitEvent(session, 70, 0, 0, 0, -10);
-        return -10;
-    }
     pending->parameters.streamSettingsCount = static_cast<uint32_t>(pending->streamSettings.size());
     pending->parameters.streamSettings = pending->streamSettings.empty() ? nullptr : pending->streamSettings.data();
     if (!pending->streamSettings.empty()) {
         pending->parameters.defaultStreamSettings = pending->streamSettings.front();
     }
+    if (!setupPlatformMedia(session)) {
+        teardownPlatformMedia(session);
+        emitEvent(session, 70, 0, 0, 0, -10);
+        return -10;
+    }
     Nsk::NVbTracingContext_t tracingContext;
     tracingContext.traceParent = pending->traceParent.c_str();
     emitEvent(session, 30, 0, 0, 0, 0);
-    if (!pending->start(session->gridApp, pending->parameters, tracingContext)) {
-        setSessionFailure(session, "GridApp::start failed after successful prepare.");
+    bool accepted = pending->shouldResume
+        ? pending->resume(session->gridApp, pending->resumeSessionId.c_str(), pending->parameters, tracingContext)
+        : pending->start(session->gridApp, pending->parameters, tracingContext);
+    if (!accepted) {
+        setSessionFailure(session, pending->shouldResume ? "GridApp::resume failed after successful prepare." : "GridApp::start failed after successful prepare.");
         teardownPlatformMedia(session);
         emitEvent(session, 70, 0, 0, 0, -11);
         return -11;
     }
     emitEvent(session, 40, 0, 0, 0, 0);
-    bool shouldEmitStreamerConnected = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         session->startEventDelivered = true;
-        if (session->streamerConnectedPending && !session->streamerConnectedDelivered) {
-            session->streamerConnectedPending = false;
-            session->streamerConnectedDelivered = true;
-            shouldEmitStreamerConnected = true;
-        }
+        if (session->state == NativeSessionState::starting) { session->state = NativeSessionState::setupPending; }
     }
-    if (shouldEmitStreamerConnected) {
-        emitEvent(session,
-                  45,
-                  NVbCallbackTypeEvent,
-                  NVbClientEventSessionNotification,
-                  NVbSessionNotificationStreamerConnected,
-                  0);
-    }
+    emitConnectedIfReady(session);
     return 0;
 }
 }
@@ -1000,8 +1288,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             return nullptr;
         }
 
-        Nsk::PlatformStartupParams platformParams;
-        if (!platformStartup(platformParams)) {
+        if (!acquirePlatform(platformStartup)) {
             setError(errorBuffer, errorBufferLength, "Geronimo platform startup failed.");
             dlclose(bifrostHandle);
             dlclose(handle);
@@ -1012,7 +1299,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         gridApp = aligned_alloc(16, GridAppStorageSize);
         if (gridApp == nullptr) {
             setError(errorBuffer, errorBufferLength, "Failed to allocate GridApp storage.");
-            platformShutdown();
+            releasePlatform(platformShutdown);
             dlclose(bifrostHandle);
             dlclose(handle);
             return nullptr;
@@ -1025,7 +1312,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             setError(errorBuffer, errorBufferLength, "GridApp initialization failed.");
             functions.gridAppDtor(gridApp);
             free(gridApp);
-            platformShutdown();
+            releasePlatform(platformShutdown);
             dlclose(bifrostHandle);
             dlclose(handle);
             return nullptr;
@@ -1036,7 +1323,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             setError(errorBuffer, errorBufferLength, "Failed to allocate native Geronimo session.");
             functions.gridAppDtor(gridApp);
             free(gridApp);
-            platformShutdown();
+            releasePlatform(platformShutdown);
             dlclose(bifrostHandle);
             dlclose(handle);
             return nullptr;
@@ -1052,7 +1339,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         if (!installGridAppCallbacks(session, errorBuffer, errorBufferLength)) {
             functions.gridAppDtor(gridApp);
             free(gridApp);
-            platformShutdown();
+            releasePlatform(platformShutdown);
             dlclose(bifrostHandle);
             dlclose(handle);
             delete session;
@@ -1066,7 +1353,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         if (gridApp != nullptr) { free(gridApp); }
         if (session != nullptr && session->gridAppVTable != nullptr) { free(session->gridAppVTable); }
         delete session;
-        if (platformStarted && platformShutdown != nullptr) { platformShutdown(); }
+        if (platformStarted && platformShutdown != nullptr) { releasePlatform(platformShutdown); }
         if (bifrostHandle != nullptr) { dlclose(bifrostHandle); }
         if (handle != nullptr) { dlclose(handle); }
         return nullptr;
@@ -1123,18 +1410,20 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer
     return 0;
 }
 
-extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
-                                                    const char *rawSessionJSON,
-                                                    const char *streamingProfileJSON,
-                                                    const char *cloudSessionJSON,
-                                                    const char *gameLanguage,
-                                                    const char *clientAppVersion,
-                                                    const char *clientLocale,
-                                                    const char *traceParent,
-                                                    const char *authTokenType,
-                                                    const char *authToken,
-                                                    char *errorBuffer,
-                                                    size_t errorBufferLength) {
+int32_t startOrResumeGeronimo(void *sessionPointer,
+                              const char *rawSessionJSON,
+                              const char *streamingProfileJSON,
+                              const char *cloudSessionJSON,
+                              const char *gameLanguage,
+                              const char *clientAppVersion,
+                              const char *clientLocale,
+                              const char *traceParent,
+                              const char *authTokenType,
+                              const char *authToken,
+                              int32_t microphoneEnabled,
+                              bool shouldResume,
+                              char *errorBuffer,
+                              size_t errorBufferLength) {
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->libraryHandle == nullptr || session->gridApp == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized.");
@@ -1160,9 +1449,10 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     auto prepare = reinterpret_cast<GridAppPrepare>(resolve(session->libraryHandle, "_ZN7GridApp7prepareERKN14SessionControl17PrepareParametersE", errorBuffer, errorBufferLength));
     auto setAuthInfo = reinterpret_cast<GridAppSetAuthInfo>(resolve(session->libraryHandle, "_ZN7GridApp11setAuthInfoER13NVbAuthInfo_t", errorBuffer, errorBufferLength));
     auto start = reinterpret_cast<GridAppStart>(resolve(session->libraryHandle, "_ZN7GridApp5startERKN14SessionControl17SessionParametersERK19NVbTracingContext_t", errorBuffer, errorBufferLength));
+    auto resume = reinterpret_cast<GridAppResume>(resolve(session->libraryHandle, "_ZN7GridApp6resumeEPKcRKN14SessionControl17SessionParametersERK19NVbTracingContext_t", errorBuffer, errorBufferLength));
     auto convertToStreamingParams = reinterpret_cast<ConvertToStreamingParams>(resolvePrivateNskSymbol(session->libraryHandle, reinterpret_cast<void *>(getParameters), "_ZN3Nsk24convertToStreamingParamsERKNS_21StreamStartParametersERKNS_22VideoDecoderInitParamsER20NVbStreamingParams_t", ConvertToStreamingParamsOffset, errorBuffer, errorBufferLength));
     auto freeStreamingParams = reinterpret_cast<FreeStreamingParams>(resolvePrivateNskSymbol(session->libraryHandle, reinterpret_cast<void *>(getParameters), "_ZN3Nsk4freeER20NVbStreamingParams_t", FreeStreamingParamsOffset, errorBuffer, errorBufferLength));
-    if (getParameters == nullptr || prepare == nullptr || setAuthInfo == nullptr || start == nullptr || convertToStreamingParams == nullptr || freeStreamingParams == nullptr) { return -2; }
+    if (getParameters == nullptr || prepare == nullptr || setAuthInfo == nullptr || start == nullptr || resume == nullptr || convertToStreamingParams == nullptr || freeStreamingParams == nullptr) { return -2; }
 
     std::string rawSession = stringOrEmpty(rawSessionJSON);
     std::string streamingProfile = stringOrEmpty(streamingProfileJSON);
@@ -1195,6 +1485,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     NSDictionary *cloud = jsonDictionary(cloudSession);
     NSDictionary *geronimo = jsonDictionary(rawSession);
     NSDictionary *profile = jsonDictionary(streamingProfile);
+    session->microphoneEnabled = microphoneEnabled != 0;
     session->requestedCodec = codecFromJSON(cloud, geronimo);
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
@@ -1238,60 +1529,55 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     session->clientAppVersion = stringOrEmpty(clientAppVersion).empty() ? "OpenNOW" : stringOrEmpty(clientAppVersion);
     session->clientLocale = stringOrEmpty(clientLocale).empty() ? "en_US" : stringOrEmpty(clientLocale);
     session->keyboardLayout = jsonStringAtPath(geronimo, "keyboardLayout");
-    if (session->keyboardLayout.empty()) { session->keyboardLayout = "us"; }
+    if (session->keyboardLayout.empty()) { session->keyboardLayout = "en_US"; }
     session->deviceId = jsonStringAtPath(geronimo, "deviceId");
-    if (session->deviceId.empty()) { session->deviceId = "OpenNOW"; }
-    session->platform = "DESKTOP";
-
-    SessionControl::PrepareParameters prepareParameters;
-    prepareParameters.serverAddress = session->initServerAddress;
-    prepareParameters.serverPort = endpoint.port;
-    prepareParameters.clientProfile = 0;
-    prepareParameters.appId = session->appIdString;
-    prepareParameters.synchronous = true;
-    prepareParameters.serverType = 0x34;
-    prepareParameters.locale = session->clientLocale;
-    prepareParameters.deviceId = session->deviceId;
-    prepareParameters.platform = session->platform;
-    prepareParameters.clientName = "OpenNOW";
-    prepareParameters.clientAppVersion = session->clientAppVersion;
-    {
-        std::lock_guard<std::mutex> stateLock(session->stateMutex);
-        session->state = NativeSessionState::preparePending;
-        session->lastError.clear();
+    if (session->deviceId.empty()) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo start requires a device id.");
+        return -4;
     }
-    if (!prepare(session->gridApp, prepareParameters)) {
-        setSessionFailure(session, "GridApp::prepare rejected the native session.");
+    int32_t rawServerType = jsonIntAtPath(geronimo, "serverType");
+    if (rawServerType == 0) { rawServerType = jsonIntAtPath(cloud, "serverType"); }
+    int32_t nativeServerType = convertedServerType(rawServerType);
+    if (nativeServerType < 0) {
         if (errorBuffer != nullptr && errorBufferLength > 0) {
-            snprintf(errorBuffer,
-                     errorBufferLength,
-                     "GridApp::prepare failed appId=%u server=%s:%u.",
-                     appId,
-                     session->startServerAddress.c_str(),
-                     endpoint.port);
+            snprintf(errorBuffer, errorBufferLength, "Native Geronimo start received unsupported server type %d.", rawServerType);
         }
         return -5;
     }
 
+    SessionControl::PrepareParameters prepareParameters;
+    prepareParameters.serverAddress = session->initServerAddress;
+    prepareParameters.serverPort = endpoint.port;
+    prepareParameters.clientProfile = width >= 1920 && height >= 1080 ? 5 : 3;
+    prepareParameters.deviceId = session->deviceId;
+    const uint32_t communicationParameters[] = {3, 3, 13, 500, 1000, 10000, 1000, 50, 3000, 1000, 300};
+    memcpy(prepareParameters.communicationParams, communicationParameters, sizeof(communicationParameters));
+    prepareParameters.synchronous = true;
+    prepareParameters.serverType = nativeServerType;
+    prepareParameters.locale = session->clientLocale;
+    prepareParameters.applicationIdentifier = "GFN-PC";
+    prepareParameters.applicationVersion = "30.0";
+    prepareParameters.clientName = "OpenNOW";
+    prepareParameters.clientAppVersion = session->clientAppVersion;
+    prepareParameters.applicationHeaders = jsonStringArrayAtPath(geronimo, "applicationHeaders");
+
     NVbAuthInfo_t authInfo;
     authInfo.token = session->authToken.c_str();
-    authInfo.authType = authTypeForTokenType(tokenType);
-    if (!setAuthInfo(session->gridApp, &authInfo)) {
-        setSessionFailure(session, "GridApp::setAuthInfo rejected the native credentials.");
-        if (errorBuffer != nullptr && errorBufferLength > 0) {
-            snprintf(errorBuffer, errorBufferLength, "GridApp::setAuthInfo failed authType=%lu.", static_cast<unsigned long>(authInfo.authType));
-        }
+    uint32_t resolvedAuthType = 0;
+    if (!authTypeForTokenType(tokenType, resolvedAuthType)) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo start received an unsupported auth token type.");
         return -6;
     }
+    authInfo.authType = resolvedAuthType;
 
     Nsk::VideoDecoderInitParams decoderParams;
     memset(decoderParams.bytes, 0, sizeof(decoderParams.bytes));
     Nsk::VideoDecoderCapabilityParams decoderCapabilities;
     memset(decoderCapabilities.bytes, 0, sizeof(decoderCapabilities.bytes));
-    storeUnaligned<uint32_t>(decoderParams.bytes, 0x00, 1);
-    storeUnaligned<uint32_t>(decoderParams.bytes, 0x04, 1);
+    storeUnaligned<uint32_t>(decoderParams.bytes, 0x00, 0);
+    storeUnaligned<uint32_t>(decoderParams.bytes, 0x04, 0);
     storeUnaligned<void *>(decoderParams.bytes, 0x10, &decoderCapabilities);
-    storeUnaligned<uint32_t>(decoderCapabilities.bytes, 0x60, 1);
+    storeUnaligned<uint32_t>(decoderCapabilities.bytes, 0x60, GraphicsContextMetal);
     Nsk::NVbStreamingParams_t streamingParams;
     memset(streamingParams.bytes, 0, sizeof(streamingParams.bytes));
     StreamingParamsGuard streamingParamsGuard{&streamingParams, freeStreamingParams};
@@ -1314,10 +1600,13 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
 
     auto pending = std::make_unique<PendingStart>();
     pending->start = start;
+    pending->resume = resume;
+    pending->shouldResume = shouldResume;
+    pending->resumeSessionId = session->sessionId;
     pending->parameters.appId = appId;
     pending->parameters.serverAddress = session->startServerAddress;
     pending->parameters.serverPort = endpoint.port;
-    pending->parameters.sessionMode = 0;
+    pending->parameters.serverType = nativeServerType;
     uint32_t streamSettingsCount = loadField<uint32_t>(streamingParams, 0x28);
     Nsk::NVbStreamSettings_t *streamSettings = loadField<Nsk::NVbStreamSettings_t *>(streamingParams, 0x30);
     if (streamSettingsCount > MaximumStreamSettingsCount || (streamSettingsCount > 0 && streamSettings == nullptr)) {
@@ -1329,11 +1618,19 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
         pending->streamSettings.assign(streamSettings, streamSettings + streamSettingsCount);
         pending->parameters.defaultStreamSettings = pending->streamSettings.front();
     }
-    pending->parameters.clientAppVersion = session->clientAppVersion;
-    pending->parameters.region = session->startServerAddress;
+    pending->parameters.supportedHidTypes = static_cast<uint64_t>(jsonIntAtPath(geronimo, "finalizedStreamingFeatures.supportedHidDevices"));
+    pending->parameters.appLaunchMode = static_cast<uint32_t>(std::max(0, jsonIntAtPath(geronimo, "appLaunchMode")));
+    pending->parameters.networkPacketCaptureEnabled = jsonBoolAtPath(geronimo, "networkPacketCaptureEnabled");
+    pending->parameters.partnerCustomData = jsonStringAtPath(geronimo, "partnerCustomData");
     pending->parameters.clientLocale = session->clientLocale;
     pending->parameters.keyboardLayout = session->keyboardLayout;
-    pending->parameters.streamingSessionId = session->sessionId;
+    pending->parameters.allowKeyboardLayoutChange = jsonBoolAtPath(geronimo, "allowKeyboardLayoutChange");
+    pending->parameters.accountLinked = jsonBoolAtPath(geronimo, "accountLinked");
+    pending->parameters.audioChannelCount = audioChannelCount(cloud, geronimo);
+    pending->parameters.persistingInGameSettings = jsonBoolAtPath(geronimo, "persistingInGameSettings");
+    pending->parameters.networkSessionId = jsonStringAtPath(geronimo, "networkSessionId");
+    pending->parameters.bifrostSessionId = jsonStringAtPath(geronimo, "bifrostSessionId");
+    pending->parameters.userAge = static_cast<uint32_t>(std::max(0, jsonIntAtPath(geronimo, "userAge")));
     uint32_t connectionCount = loadField<uint32_t>(streamingParams, 0x168);
     Nsk::NVbConnectionInfo_t *connections = loadField<Nsk::NVbConnectionInfo_t *>(streamingParams, 0x170);
     if (connectionCount > MaximumConnectionInfoCount || (connectionCount > 0 && connections == nullptr)) {
@@ -1347,11 +1644,41 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
     pending->traceParent = stringOrEmpty(traceParent);
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
-        if (session->state != NativeSessionState::preparePending && session->state != NativeSessionState::prepared) {
-            setError(errorBuffer, errorBufferLength, "Native Geronimo session stopped while start parameters were being prepared.");
+        if (session->state != NativeSessionState::created) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo session stopped while start parameters were being configured.");
             return -8;
         }
+        session->state = NativeSessionState::configured;
+        session->lastError.clear();
         session->pendingStart = std::move(pending);
+    }
+
+    if (!setAuthInfo(session->gridApp, &authInfo)) {
+        setSessionFailure(session, "GridApp::setAuthInfo rejected the native credentials.");
+        if (errorBuffer != nullptr && errorBufferLength > 0) {
+            snprintf(errorBuffer, errorBufferLength, "GridApp::setAuthInfo failed authType=%lu.", static_cast<unsigned long>(authInfo.authType));
+        }
+        return -6;
+    }
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::configured) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo session stopped before prepare.");
+            return -8;
+        }
+        session->state = NativeSessionState::preparePending;
+    }
+    if (!prepare(session->gridApp, prepareParameters)) {
+        setSessionFailure(session, "GridApp::prepare rejected the native session.");
+        if (errorBuffer != nullptr && errorBufferLength > 0) {
+            snprintf(errorBuffer,
+                     errorBufferLength,
+                     "GridApp::prepare failed appId=%u server=%s:%u.",
+                     appId,
+                     session->startServerAddress.c_str(),
+                     endpoint.port);
+        }
+        return -5;
     }
     return 0;
     } catch (...) {
@@ -1359,6 +1686,74 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
         setError(errorBuffer, errorBufferLength, "Native Geronimo start raised an unexpected C++ exception.");
         return -11;
     }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
+                                                     const char *rawSessionJSON,
+                                                     const char *streamingProfileJSON,
+                                                     const char *cloudSessionJSON,
+                                                     const char *gameLanguage,
+                                                     const char *clientAppVersion,
+                                                     const char *clientLocale,
+                                                     const char *traceParent,
+                                                     const char *authTokenType,
+                                                     const char *authToken,
+                                                     int32_t microphoneEnabled,
+                                                     char *errorBuffer,
+                                                     size_t errorBufferLength) {
+    return startOrResumeGeronimo(sessionPointer,
+                                 rawSessionJSON,
+                                 streamingProfileJSON,
+                                 cloudSessionJSON,
+                                 gameLanguage,
+                                 clientAppVersion,
+                                 clientLocale,
+                                 traceParent,
+                                 authTokenType,
+                                 authToken,
+                                 microphoneEnabled,
+                                 false,
+                                 errorBuffer,
+                                 errorBufferLength);
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoConvertServerType(int32_t serverType) {
+    return convertedServerType(serverType);
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoConvertAuthTokenType(const char *tokenType) {
+    if (tokenType == nullptr) { return -1; }
+    uint32_t authType = 0;
+    return authTypeForTokenType(tokenType, authType) ? static_cast<int32_t>(authType) : -1;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoResume(void *sessionPointer,
+                                                      const char *rawSessionJSON,
+                                                      const char *streamingProfileJSON,
+                                                      const char *cloudSessionJSON,
+                                                      const char *gameLanguage,
+                                                      const char *clientAppVersion,
+                                                      const char *clientLocale,
+                                                      const char *traceParent,
+                                                      const char *authTokenType,
+                                                      const char *authToken,
+                                                      int32_t microphoneEnabled,
+                                                      char *errorBuffer,
+                                                      size_t errorBufferLength) {
+    return startOrResumeGeronimo(sessionPointer,
+                                 rawSessionJSON,
+                                 streamingProfileJSON,
+                                 cloudSessionJSON,
+                                 gameLanguage,
+                                 clientAppVersion,
+                                 clientLocale,
+                                 traceParent,
+                                 authTokenType,
+                                 authToken,
+                                 microphoneEnabled,
+                                 true,
+                                 errorBuffer,
+                                 errorBufferLength);
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
@@ -1383,7 +1778,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
         try {
             {
                 std::lock_guard<std::mutex> stateLock(session->stateMutex);
-                if (session->state == NativeSessionState::stopping || session->state == NativeSessionState::stopped) { return 1; }
+                if (session->state == NativeSessionState::stopped) { return 1; }
                 if (session->state == NativeSessionState::failed) {
                     setError(errorBuffer, errorBufferLength, session->lastError.c_str());
                     return -4;
@@ -1412,6 +1807,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
             }
             {
                 std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                if (session->state == NativeSessionState::stopped) { return 1; }
                 if (session->state == NativeSessionState::failed) {
                     setError(errorBuffer, errorBufferLength, session->lastError.c_str());
                     return -4;
@@ -1439,20 +1835,24 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPause(void *sessionPointer, char *er
             setError(errorBuffer, errorBufferLength, "Native Geronimo stream is not active for pause.");
             return -2;
         }
+        session->state = NativeSessionState::pausePending;
     }
     try {
-        if (!session->functions.pause(session->gridApp)) {
-            setError(errorBuffer, errorBufferLength, "GridApp::pause failed.");
+        if (!session->functions.pause(session->gridApp, 0)) {
+            {
+                std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                if (session->state == NativeSessionState::pausePending) { session->state = NativeSessionState::streaming; }
+            }
+            setError(errorBuffer, errorBufferLength, "GridApp::pauseStreaming failed.");
             return -3;
         }
-        {
-            std::lock_guard<std::mutex> stateLock(session->stateMutex);
-            session->state = NativeSessionState::paused;
-        }
-        emitEvent(session, 50, 0, 0, 0, 0);
         return 0;
     } catch (...) {
-        setError(errorBuffer, errorBufferLength, "GridApp::pause raised an unexpected C++ exception.");
+        {
+            std::lock_guard<std::mutex> stateLock(session->stateMutex);
+            if (session->state == NativeSessionState::pausePending) { session->state = NativeSessionState::streaming; }
+        }
+        setError(errorBuffer, errorBufferLength, "GridApp::pauseStreaming raised an unexpected C++ exception.");
         return -4;
     }
 }
@@ -1482,10 +1882,60 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSendInput(void *sessionPointer,
         return -3;
     }
     try {
+        uint32_t eventType = loadUnaligned<uint32_t>(inputEventBytes, 0);
+        if (eventType == 18) {
+            uint8_t sourceIndex = loadUnaligned<uint8_t>(inputEventBytes, 0x3e);
+            if (sourceIndex >= 4) {
+                setError(errorBuffer, errorBufferLength, "Native gamepad input source index is outside the supported range.");
+                return -5;
+            }
+            if (!session->registeredGamepads[sourceIndex]) {
+                if (!session->functions.handleGamepadChanged(session->gridApp, sourceIndex, 0xffff, 0xffff, true)) {
+                    setError(errorBuffer, errorBufferLength, "Geronimo rejected native gamepad registration.");
+                    return -6;
+                }
+                session->registeredGamepads[sourceIndex] = true;
+            }
+        }
         session->functions.sendInput(session->gridApp, inputEventBytes);
         return 0;
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "GridApp::sendNvstInputEvent raised an unexpected C++ exception.");
+        return -4;
+    }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSendText(void *sessionPointer,
+                                                        const uint8_t *utf8Bytes,
+                                                        size_t utf8ByteCount,
+                                                        char *errorBuffer,
+                                                        size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->functions.sendInput == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for text input.");
+        return -1;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo stream is not active for text input.");
+            return -2;
+        }
+    }
+    if (utf8Bytes == nullptr || utf8ByteCount == 0 || utf8ByteCount > UINT16_MAX) {
+        setError(errorBuffer, errorBufferLength, "Native text input must contain between 1 and 65535 UTF-8 bytes.");
+        return -3;
+    }
+    alignas(8) uint8_t eventBytes[NvstInputEventSize] = {};
+    storeUnaligned<uint32_t>(eventBytes, 0x00, 20);
+    storeUnaligned<const uint8_t *>(eventBytes, 0x08, utf8Bytes);
+    storeUnaligned<uint16_t>(eventBytes, 0x10, static_cast<uint16_t>(utf8ByteCount));
+    try {
+        session->functions.sendInput(session->gridApp, eventBytes);
+        return 0;
+    } catch (...) {
+        setError(errorBuffer, errorBufferLength, "GridApp::sendNvstInputEvent raised an unexpected text-input exception.");
         return -4;
     }
 }
@@ -1498,42 +1948,36 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStopWithResult(void *sessionPointer,
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return 0; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
-    bool shouldStopGridApp = false;
+    bool completesImmediately = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state == NativeSessionState::stopping || session->state == NativeSessionState::stopped) { return 0; }
-        shouldStopGridApp = session->state != NativeSessionState::created && !session->stopIssued;
+        completesImmediately = session->state == NativeSessionState::created ||
+                               session->state == NativeSessionState::configured ||
+                               session->state == NativeSessionState::failed;
         session->stopIssued = true;
-        session->state = NativeSessionState::stopping;
+        session->state = completesImmediately ? NativeSessionState::stopped : NativeSessionState::stopping;
         session->pendingStart.reset();
     }
-
-    bool stopFailed = false;
-    if (shouldStopGridApp && session->gridApp != nullptr && session->functions.stop != nullptr) {
-        try {
-            session->functions.stop(session->gridApp, reason == nullptr ? "OpenNOW native NVST stop" : reason, code);
-        } catch (...) {
-            stopFailed = true;
-        }
+    if (completesImmediately) {
+        emitEvent(session, 60, 0, 0, 0, code);
+        return 0;
     }
-    bool teardownFailed = false;
     try {
-        teardownPlatformMedia(session);
+        if (session->gridApp == nullptr || session->functions.stop == nullptr ||
+            !session->functions.stop(session->gridApp, reason == nullptr ? "OpenNOW native NVST stop" : reason, code)) {
+            setSessionFailure(session, "GridApp::stop rejected the native stop request.");
+            setError(errorBuffer, errorBufferLength, "GridApp::stop rejected the native stop request.");
+            emitEvent(session, 70, 0, 0, 0, -2);
+            return -2;
+        }
+        return 0;
     } catch (...) {
-        teardownFailed = true;
-    }
-    {
-        std::lock_guard<std::mutex> stateLock(session->stateMutex);
-        session->state = NativeSessionState::stopped;
-    }
-    emitEvent(session, 60, 0, 0, 0, code);
-    if (stopFailed || teardownFailed) {
-        setError(errorBuffer,
-                 errorBufferLength,
-                 stopFailed ? "GridApp::stop raised an unexpected C++ exception." : "Native Geronimo media teardown raised an unexpected C++ exception.");
+        setSessionFailure(session, "GridApp::stop raised an unexpected C++ exception.");
+        setError(errorBuffer, errorBufferLength, "GridApp::stop raised an unexpected C++ exception.");
+        emitEvent(session, 70, 0, 0, 0, -2);
         return -2;
     }
-    return 0;
 }
 
 extern "C" void OpenNOWNativeNVSTGeronimoStop(void *sessionPointer) {
@@ -1544,18 +1988,27 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return; }
     std::unique_lock<std::recursive_mutex> operationLock(session->operationMutex);
-    OpenNOWNativeNVSTGeronimoStopWithResult(sessionPointer, "OpenNOW native NVST destroy", 0, nullptr, 0);
+    NativeSessionState state;
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        state = session->state;
+    }
+    if (state != NativeSessionState::created && state != NativeSessionState::configured && state != NativeSessionState::paused &&
+        state != NativeSessionState::stopped && state != NativeSessionState::failed && session->functions.stop != nullptr) {
+        try {
+            session->functions.stop(session->gridApp, "OpenNOW native NVST forced destroy", 0);
+        } catch (...) {
+            fprintf(stderr, "OpenNOW forced native stop raised an unexpected C++ exception.\n");
+        }
+    }
     if (session->gridAppVTable != nullptr) { detachGridAppCallbacks(session); }
     {
         std::lock_guard<std::mutex> eventLock(session->eventMutex);
         session->eventHandler = nullptr;
         session->eventContext = nullptr;
     }
-    try {
-        teardownPlatformMedia(session);
-    } catch (...) {
-        fprintf(stderr, "OpenNOW native media destruction raised an unexpected C++ exception.\n");
-    }
+    try { teardownPlatformMedia(session); }
+    catch (...) { fprintf(stderr, "OpenNOW native media destruction raised an unexpected C++ exception.\n"); }
     if (session->gridApp != nullptr) {
         if (session->initialized && session->functions.gridAppDtor != nullptr) {
             try {
@@ -1568,17 +2021,17 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
         free(session->gridApp);
         session->gridApp = nullptr;
     }
-    if (session->gridAppVTable != nullptr) {
-        free(session->gridAppVTable);
-        session->gridAppVTable = nullptr;
-    }
     if (session->platformStarted && session->platformShutdown != nullptr) {
         try {
-            session->platformShutdown();
+            releasePlatform(session->platformShutdown);
         } catch (...) {
             fprintf(stderr, "OpenNOW Geronimo platform shutdown raised an unexpected C++ exception.\n");
         }
         session->platformStarted = false;
+    }
+    if (session->gridAppVTable != nullptr) {
+        free(session->gridAppVTable);
+        session->gridAppVTable = nullptr;
     }
     session->videoSurfaceHandle = nullptr;
     if (session->libraryHandle != nullptr) {

@@ -2,6 +2,7 @@ import Foundation
 
 public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let session: StreamSessionDescriptor
+    public let isResume: Bool
     public let signalingServer: String
     public let signalingURL: String
     public let signalingQueryParameters: String
@@ -16,6 +17,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let rawSessionJSON: String
 
     public init(session: StreamSessionDescriptor,
+                isResume: Bool = false,
                 signalingServer: String,
                 signalingURL: String,
                 signalingQueryParameters: String,
@@ -29,6 +31,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
                 sessionInfoJSON: String,
                 rawSessionJSON: String) {
         self.session = session
+        self.isResume = isResume
         self.signalingServer = signalingServer
         self.signalingURL = signalingURL
         self.signalingQueryParameters = signalingQueryParameters
@@ -116,6 +119,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         activeSession = descriptor
         return NativeNVSTSessionAllocation(
             session: descriptor,
+            isResume: configuration.resumesExistingSession,
             signalingServer: sessionInfo.signalingServer,
             signalingURL: sessionInfo.signalingUrl,
             signalingQueryParameters: sessionInfo.signalingQueryParameters,

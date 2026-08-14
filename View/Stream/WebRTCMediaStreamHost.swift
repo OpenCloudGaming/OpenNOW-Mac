@@ -85,6 +85,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     @State private var path: NativeNVSTStreamingPath?
     @State private var startTask: Task<Void, Never>?
+    @State private var endEventTask: Task<Void, Never>?
     @State private var nativeView: NativeWebRTCStreamView?
     @State private var statusMessage = "Starting native NVST transport..."
     @State private var isConnected = false
@@ -136,15 +137,28 @@ private struct NativeNVSTMediaStreamSurface: View {
         let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeWindowHandle)
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
         self.path = path
+        endEventTask = Task {
+            let events = await path.endEvents()
+            for await report in events {
+                guard !Task.isCancelled else { return }
+                await MainActor.run { finishOnce(report: report) }
+                return
+            }
+        }
         configureInput(for: nativeView)
         WebRTCMediaStreamLifecycle.activate(
             configuration.id,
             quitRequestHandler: { completion in
-                Task { await finish(reason: .userRequested, message: "Native NVST stream ended by user.") }
-                completion(true)
+                Task {
+                    await finish(reason: .paused, message: "Native NVST stream paused before application exit.")
+                    completion(true)
+                }
                 return true
             },
-            commandHandler: { _ in }
+            commandHandler: { command in
+                guard case .showQuitMenu = command else { return }
+                Task { await finish(reason: .paused, message: "Native NVST stream paused.") }
+            }
         )
         startTask = Task {
             do {
@@ -183,6 +197,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         startTask?.cancel()
         startTask = nil
+        endEventTask?.cancel()
+        endEventTask = nil
         endStreamingPerformanceMode()
         guard !didEnd else { return }
         didEnd = true
@@ -208,7 +224,10 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard !didEnd else { return }
         didEnd = true
         isConnected = false
+        endEventTask?.cancel()
+        endEventTask = nil
         nativeView?.onInputEvent = nil
+        nativeView?.onCommand = nil
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         onEnd(report.success, report.message, report)
     }
@@ -217,6 +236,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         view.onInputEvent = { [path] event in
             guard let path else { return }
             Task { try? await path.send(event) }
+        }
+        view.onCommand = { command in
+            _ = WebRTCMediaStreamLifecycle.sendCommand(command)
         }
     }
 
