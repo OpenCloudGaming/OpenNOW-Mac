@@ -8,9 +8,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private let nativeVideoSurfaceHandle: UInt?
     private var bridge: NVSTNativeBridge?
     private var activeConnection: NativeNVSTTransportConnection?
+    private var isConnecting = false
     private var geronimoSessionAddress: UInt?
     private var geronimoEventSink: NativeNVSTGeronimoEventSink?
-    private var encodedInputEvents: [NativeNVSTEncodedInputEvent] = []
+    private var geronimoPumpTask: Task<Void, Never>?
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
@@ -35,6 +36,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {
+        guard activeConnection == nil, !isConnecting else { throw NativeNVSTError.alreadyRunning }
+        isConnecting = true
+        defer { isConnecting = false }
         let status = try await prepare()
         guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
         guard !allocation.signalingURL.isEmpty || !allocation.signalingServer.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing signaling endpoint data.") }
@@ -60,6 +64,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let connection = started.connection
         geronimoSessionAddress = started.sessionAddress
         geronimoEventSink = started.eventSink
+        geronimoPumpTask = started.pumpTask
         activeConnection = connection
         return connection
     }
@@ -72,13 +77,17 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func disconnect() async {
-        if let geronimoSessionAddress {
-            self.geronimoSessionAddress = nil
-            await Self.destroyGeronimoOnMainActor(sessionAddress: geronimoSessionAddress)
+        let pumpTask = geronimoPumpTask
+        let sessionAddress = geronimoSessionAddress
+        geronimoPumpTask = nil
+        geronimoSessionAddress = nil
+        activeConnection = nil
+        pumpTask?.cancel()
+        if let pumpTask { await pumpTask.value }
+        if let sessionAddress {
+            await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
         }
         geronimoEventSink = nil
-        activeConnection = nil
-        encodedInputEvents.removeAll()
     }
 
     public func pause() async throws {
@@ -86,7 +95,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         try await Self.pauseGeronimoOnMainActor(sessionAddress: sessionAddress)
     }
 
-    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink) {
+    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, pumpTask: Task<Void, Never>) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
             throw NativeNVSTError.runtimeUnavailable("Native Geronimo frameworks path could not be encoded.")
         }
@@ -112,19 +121,6 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             WebRTCMediaTelemetry.capture("nvst.geronimo.create.failed", level: .error, message: message, attributes: attributes)
             throw NativeNVSTError.runtimeUnavailable(message)
         }
-        if let nativeVideoSurfaceHandle, let nativeVideoSurface = UnsafeMutableRawPointer(bitPattern: nativeVideoSurfaceHandle) {
-            let surfaceResult = OpenNOWNativeNVSTGeronimoSetVideoSurface(session, nativeVideoSurface, errorBuffer, 1024)
-            guard surfaceResult == 0 else {
-                let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo video surface binding failed with result \(surfaceResult).")
-                var attributes = startAttributes
-                attributes["result"] = String(surfaceResult)
-                attributes["error"] = message
-                WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: attributes)
-                OpenNOWNativeNVSTGeronimoDestroy(session)
-                throw NativeNVSTError.privateABIUnavailable(message)
-            }
-            WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.bound", level: .info, message: "Native Geronimo video surface bound for SDL window creation.", attributes: startAttributes)
-        }
         let eventSink = NativeNVSTGeronimoEventSink(sessionId: allocation.session.id, telemetryAttributes: startAttributes)
         let eventContext = Unmanaged.passUnretained(eventSink).toOpaque()
         let callbackResult = OpenNOWNativeNVSTGeronimoSetEventHandler(session, nativeNVSTGeronimoEventCallback, eventContext, errorBuffer, 1024)
@@ -137,6 +133,24 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
+        guard let nativeVideoSurfaceHandle, let nativeVideoSurface = UnsafeMutableRawPointer(bitPattern: nativeVideoSurfaceHandle) else {
+            let message = "Native Geronimo requires an AppKit video surface."
+            WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: startAttributes)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
+            throw NativeNVSTError.privateABIUnavailable(message)
+        }
+        let surfaceResult = OpenNOWNativeNVSTGeronimoSetVideoSurface(session, nativeVideoSurface, errorBuffer, 1024)
+        guard surfaceResult == 0 else {
+            let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo video surface binding failed with result \(surfaceResult).")
+            var attributes = startAttributes
+            attributes["result"] = String(surfaceResult)
+            attributes["error"] = message
+            WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: attributes)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
+            throw NativeNVSTError.privateABIUnavailable(message)
+        }
+        WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.bound", level: .info, message: "Native Geronimo video surface bound for SDL window creation.", attributes: startAttributes)
+        var pumpTask: Task<Void, Never>?
         do {
             let result = geronimoSessionJSON.withCString { rawSessionPointer in
                 streamingProfileJSON.withCString { profilePointer in
@@ -171,12 +185,43 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             var attributes = startAttributes
             attributes["library"] = status.libraryURL.lastPathComponent
             WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for StreamerConnected callback.", attributes: attributes)
+            let activePumpTask = Self.makeGeronimoPumpTask(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
+            pumpTask = activePumpTask
             try await eventSink.waitForStreamerConnected(timeoutNanoseconds: 20_000_000_000)
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
-            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, eventSink)
+            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, eventSink, activePumpTask)
         } catch {
+            pumpTask?.cancel()
+            if let pumpTask { await pumpTask.value }
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw error
+        }
+    }
+
+    @MainActor private static func makeGeronimoPumpTask(sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, telemetryAttributes: [String: String]) -> Task<Void, Never> {
+        Task { @MainActor in
+            let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+            defer { errorBuffer.deallocate() }
+            errorBuffer.initialize(repeating: 0, count: 1024)
+            while !Task.isCancelled {
+                errorBuffer.pointee = 0
+                let result = OpenNOWNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, errorBuffer, 1024)
+                if result < 0 {
+                    let message = errorMessage(errorBuffer, fallback: "Native Geronimo event pump failed with result \(result).")
+                    var attributes = telemetryAttributes
+                    attributes["result"] = String(result)
+                    attributes["error"] = message
+                    WebRTCMediaTelemetry.capture("nvst.geronimo.pump.failed", level: .error, message: message, attributes: attributes)
+                    eventSink.fail(NativeNVSTError.transportFailed(message))
+                    return
+                }
+                if result > 0 { return }
+                do {
+                    try await Task.sleep(nanoseconds: 2_000_000)
+                } catch {
+                    return
+                }
+            }
         }
     }
 
@@ -799,21 +844,29 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func waitForStreamerConnected(timeoutNanoseconds: UInt64) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            lock.lock()
-            if let resolvedResult {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let resolvedResult {
+                    lock.unlock()
+                    continuation.resume(with: resolvedResult)
+                    return
+                }
+                completion = continuation
                 lock.unlock()
-                continuation.resume(with: resolvedResult)
-                return
-            }
-            completion = continuation
-            lock.unlock()
 
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                self?.resolve(.failure(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoStartFailureMessage)))
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    self?.resolve(.failure(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoStartFailureMessage)))
+                }
             }
+        } onCancel: { [weak self] in
+            self?.resolve(.failure(CancellationError()))
         }
+    }
+
+    func fail(_ error: Error) {
+        resolve(.failure(error))
     }
 
     private func resolve(_ result: Result<Void, Error>) {
@@ -850,6 +903,9 @@ private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRa
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoStart")
 private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoPump")
+private func OpenNOWNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoPause")
 private func OpenNOWNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
