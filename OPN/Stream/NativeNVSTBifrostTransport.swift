@@ -146,6 +146,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: encoded)
     }
 
+    public func togglePerformanceOverlay() async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.toggleGeronimoPerformanceOverlayOnMainActor(sessionAddress: sessionAddress)
+    }
+
     public func disconnect() async {
         connectingAttemptID = nil
         connectingEventSink?.cancel()
@@ -364,6 +369,16 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let result = OpenNOWNativeNVSTGeronimoPause(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo pause failed with result \(result)."))
+        }
+    }
+
+    @MainActor private static func toggleGeronimoPerformanceOverlayOnMainActor(sessionAddress: UInt) throws {
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+        defer { errorBuffer.deallocate() }
+        errorBuffer.initialize(repeating: 0, count: 1024)
+        let result = OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
+        guard result == 0 else {
+            throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo performance overlay failed with result \(result)."))
         }
     }
 
@@ -1436,6 +1451,9 @@ private func OpenNOWNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?,
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSendInput")
 private func OpenNOWNativeNVSTGeronimoSendInput(_ session: UnsafeMutableRawPointer?, _ inputEventBytes: UnsafePointer<UInt8>?, _ inputEventByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay")
+private func OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSendText")
 private func OpenNOWNativeNVSTGeronimoSendText(_ session: UnsafeMutableRawPointer?, _ utf8Bytes: UnsafePointer<UInt8>?, _ utf8ByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

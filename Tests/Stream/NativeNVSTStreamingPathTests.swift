@@ -53,6 +53,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private(set) var sentEvents: [UserInputEvent] = []
     private(set) var disconnectCount = 0
     private(set) var pauseCount = 0
+    private(set) var performanceOverlayToggleCount = 0
     private let mode: Mode
     private let terminalStream: AsyncStream<NativeNVSTTransportTermination>
     private let terminalContinuation: AsyncStream<NativeNVSTTransportTermination>.Continuation
@@ -93,6 +94,10 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     func send(_ event: UserInputEvent) async throws {
         sentEvents.append(event)
+    }
+
+    func togglePerformanceOverlay() async throws {
+        performanceOverlayToggleCount += 1
     }
 
     func disconnect() async {
@@ -184,6 +189,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
     let input = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 4, scanCode: 4, isPressed: true, timestamp: MediaTimestamp(nanoseconds: 1)))
     try await path.send(input)
+    try await path.togglePerformanceOverlay()
     let report = try await path.stop(reason: .userRequested, message: "Stopped")
 
     #expect(session == nativeAllocation().session)
@@ -191,8 +197,23 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await progressRecorder.steps.contains(.allocateCloudSession))
     #expect(await progressRecorder.steps.contains(.connected))
     #expect(await transport.sentEvents == [input])
+    #expect(await transport.performanceOverlayToggleCount == 1)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
     #expect(report.metadata["transport"] == "nvst")
+}
+
+@Test func nativeNVSTPathRejectsPerformanceOverlayToggleWhenStopped() async throws {
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: RecordingNativeNVSTSessionProvider(), transport: transport)
+
+    do {
+        try await path.togglePerformanceOverlay()
+        Issue.record("Expected stopped path to reject performance overlay toggle")
+    } catch let error as NativeNVSTError {
+        #expect(error == .notRunning)
+    }
+
+    #expect(await transport.performanceOverlayToggleCount == 0)
 }
 
 @Test func nativeNVSTPathPausesNativeAndCloudSessions() async throws {

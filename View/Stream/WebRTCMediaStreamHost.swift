@@ -91,7 +91,11 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var isConnected = false
     @State private var isEnding = false
     @State private var didEnd = false
+    @State private var unifiedHUDVisible = false
     @State private var streamControlsVisible = false
+    @State private var nativeStatsVisible = false
+    @State private var statsTogglePending = false
+    @State private var statsToggleTask: Task<Void, Never>?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
@@ -99,8 +103,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         ZStack {
             Color.black.ignoresSafeArea()
             NativeNVSTStreamHostView(
-                overlay: AnyView(nativeStreamControlsOverlay),
-                overlayVisible: streamControlsVisible
+                overlay: AnyView(nativeWindowOverlay),
+                overlayVisible: unifiedHUDVisible || streamControlsVisible
             ) { view in
                 nativeView = view
                 configureNativeView(view)
@@ -172,7 +176,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 let shouldPresentStream = await MainActor.run {
                     guard !Task.isCancelled, !didEnd, !isEnding else { return false }
                     isConnected = true
-                    nativeView.remoteInputEnabled = !streamControlsVisible
+                    nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
                     nativeView.setNativeNVSTVideoVisible(true)
                     nativeView.restoreInputFocus()
                     statusMessage = "Connected over native NVST."
@@ -217,10 +221,15 @@ private struct NativeNVSTMediaStreamSurface: View {
         startTask = nil
         endEventTask?.cancel()
         endEventTask = nil
+        statsToggleTask?.cancel()
+        statsToggleTask = nil
+        statsTogglePending = false
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
         isConnected = false
+        unifiedHUDVisible = false
         streamControlsVisible = false
+        nativeStatsVisible = false
         nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else { return }
         didEnd = true
@@ -272,7 +281,12 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard !didEnd else { return }
         didEnd = true
         isConnected = false
+        unifiedHUDVisible = false
         streamControlsVisible = false
+        nativeStatsVisible = false
+        statsToggleTask?.cancel()
+        statsToggleTask = nil
+        statsTogglePending = false
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         nativeView?.remoteInputEnabled = false
@@ -298,13 +312,13 @@ private struct NativeNVSTMediaStreamSurface: View {
         view.directMouseInputEnabled = profile.directMouseInput
         view.hidesCursorWhilePointerLocked = false
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
-        view.remoteInputEnabled = isConnected && !streamControlsVisible
+        view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
         configureInput(for: view)
     }
 
     private func configureInput(for view: NativeWebRTCStreamView) {
         view.onInputEvent = { [path, weak view] event in
-            guard let path, let view, isConnected, !streamControlsVisible, !isEnding, !didEnd else { return }
+            guard let path, let view, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
             if view.remoteInputEnabled {
                 guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
             }
@@ -313,7 +327,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         view.shouldHandleCommand = { command in
             guard isConnected else { return false }
             return switch command {
-            case .toggleUnifiedHUD, .showQuitMenu:
+            case .toggleStatsHUD, .toggleUnifiedHUD, .toggleMicrophone, .showQuitMenu:
                 true
             default:
                 false
@@ -326,12 +340,11 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
         switch command {
+        case .toggleStatsHUD, .toggleMicrophone:
+            toggleNativeStatsHUD()
         case .toggleUnifiedHUD:
-            if streamControlsVisible {
-                dismissStreamControls()
-            } else {
-                showStreamControls()
-            }
+            guard !streamControlsVisible else { return }
+            setUnifiedHUDVisible(!unifiedHUDVisible)
         case .showQuitMenu:
             if !streamControlsVisible { showStreamControls() }
         default:
@@ -353,6 +366,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
+        unifiedHUDVisible = false
         nativeView?.remoteInputEnabled = false
         nativeView?.setNativeNVSTVideoVisible(isConnected)
         streamControlsVisible = true
@@ -364,11 +378,51 @@ private struct NativeNVSTMediaStreamSurface: View {
         streamControlsVisible = false
         let completion = pendingApplicationQuitCompletion
         pendingApplicationQuitCompletion = nil
-        nativeView?.remoteInputEnabled = isConnected
+        nativeView?.remoteInputEnabled = isConnected && !unifiedHUDVisible
         nativeView?.setNativeNVSTVideoVisible(isConnected)
         nativeView?.restoreInputFocus()
         completion?(false)
         WebRTCMediaTelemetry.capture("nvst.ui.controls.dismiss", level: .info, message: "Native NVST stream controls dismissed.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func setUnifiedHUDVisible(_ visible: Bool) {
+        guard isConnected, !streamControlsVisible else { return }
+        unifiedHUDVisible = visible
+        nativeView?.remoteInputEnabled = !visible
+        if !visible {
+            nativeView?.restoreInputFocus()
+        }
+        WebRTCMediaTelemetry.capture("nvst.ui.hud.toggle", level: .info, message: visible ? "Native NVST HUD shown." : "Native NVST HUD hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(visible)])
+    }
+
+    private func toggleNativeStatsHUD() {
+        guard isConnected, !statsTogglePending, let path else { return }
+        statsTogglePending = true
+        statsToggleTask = Task {
+            do {
+                try await path.togglePerformanceOverlay()
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    defer {
+                        statsTogglePending = false
+                        statsToggleTask = nil
+                    }
+                    guard isConnected, !isEnding, !didEnd else { return }
+                    nativeStatsVisible.toggle()
+                    WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "Native NVST stats shown." : "Native NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    defer {
+                        statsTogglePending = false
+                        statsToggleTask = nil
+                    }
+                    guard isConnected, !isEnding, !didEnd else { return }
+                    WebRTCMediaTelemetry.capture("nvst.ui.stats.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": configuration.applicationID])
+                }
+            }
+        }
     }
 
     private func pauseFromStreamControls() {
@@ -389,6 +443,169 @@ private struct NativeNVSTMediaStreamSurface: View {
         Task {
             let didFinish = await finish(reason: .userRequested, message: "Native NVST stream ended by user.")
             completion?(didFinish && shouldTerminateApplication)
+        }
+    }
+
+    @ViewBuilder private var nativeWindowOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            if unifiedHUDVisible { nativeUnifiedHUD }
+            if streamControlsVisible { nativeStreamControlsOverlay }
+        }
+    }
+
+    private var nativeUnifiedHUD: some View {
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                nativeHUDHeader
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        nativeHUDStatusPanel
+                        nativeHUDControlsPanel
+                        nativeHUDStreamPanel
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                }
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                Text("Cmd+G HUD   Cmd+M Stats   Cmd+Q Quit")
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+            }
+            .frame(width: WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(width: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+    }
+
+    private var nativeHUDHeader: some View {
+        HStack(spacing: 10) {
+            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            Button(action: { setUnifiedHUDVisible(false) }) {
+                Image(systemName: "xmark")
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.08))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Close stream HUD")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(WebRTCMediaStreamTheme.appBar)
+    }
+
+    private var nativeHUDStatusPanel: some View {
+        HStack(spacing: 8) {
+            nativeHUDMetricCard(title: "Stream", value: isConnected ? "Live" : "Starting", positive: isConnected)
+            nativeHUDMetricCard(title: "Transport", value: "NVST", positive: isConnected)
+            nativeHUDMetricCard(title: "Stats", value: nativeStatsVisible ? "On" : "Off", positive: nativeStatsVisible)
+        }
+    }
+
+    private var nativeHUDControlsPanel: some View {
+        nativeHUDSection(label: "CONTROLS") {
+            HStack(spacing: 8) {
+                StreamHUDActionRow(
+                    title: nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
+                    subtitle: "Geronimo performance overlay",
+                    systemName: "chart.line.uptrend.xyaxis",
+                    isActive: nativeStatsVisible,
+                    isDisabled: statsTogglePending,
+                    action: toggleNativeStatsHUD
+                )
+                StreamHUDActionRow(
+                    title: "Stream Controls",
+                    subtitle: "Pause or end this stream",
+                    systemName: "power",
+                    isActive: false,
+                    isDisabled: isEnding,
+                    action: { showStreamControls() }
+                )
+            }
+        }
+    }
+
+    private var nativeHUDStreamPanel: some View {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        return nativeHUDSection(label: "STREAM") {
+            VStack(alignment: .leading, spacing: 8) {
+                nativeHUDDetailRow(label: "Resolution", value: "\(profile.resolution.width) x \(profile.resolution.height)")
+                nativeHUDDetailRow(label: "Frame Rate", value: "\(profile.fps) FPS")
+                nativeHUDDetailRow(label: "Codec", value: profile.codec.value.uppercased())
+                nativeHUDDetailRow(label: "Input", value: unifiedHUDVisible ? "Paused for HUD" : "Active")
+            }
+        }
+    }
+
+    private func nativeHUDSection<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            content()
+        }
+        .padding(12)
+        .background(WebRTCMediaStreamTheme.surfaceRaised)
+        .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1))
+    }
+
+    private func nativeHUDMetricCard(title: String, value: String, positive: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.streamNvidia(size: 8, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            Text(value)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(positive ? WebRTCMediaStreamTheme.accentSoft : WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(WebRTCMediaStreamTheme.surfaceRaised)
+        .overlay(Rectangle().stroke(positive ? WebRTCMediaStreamTheme.accent.opacity(0.30) : WebRTCMediaStreamTheme.divider, lineWidth: 1))
+    }
+
+    private func nativeHUDDetailRow(label: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .lineLimit(1)
         }
     }
 
@@ -422,7 +639,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
                 .controlSize(.large)
                 .disabled(isEnding)
-                Text("Cmd+G controls  |  Cmd+Q menu  |  Esc resume")
+                Text("Cmd+G HUD  |  Cmd+M stats  |  Cmd+Q menu  |  Esc resume")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.36))
             }

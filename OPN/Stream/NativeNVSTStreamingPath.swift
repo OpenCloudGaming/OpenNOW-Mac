@@ -28,6 +28,7 @@ public protocol NativeNVSTTransport: Sendable {
     func prepare() async throws -> NVSTNativeBridgeStatus
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
     func send(_ event: UserInputEvent) async throws
+    func togglePerformanceOverlay() async throws
     func pause() async throws
     func disconnect() async
     func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination>
@@ -176,6 +177,11 @@ public actor NativeNVSTStreamingPath {
     public func send(_ event: UserInputEvent) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.send(event)
+    }
+
+    public func togglePerformanceOverlay() async throws {
+        guard activeSession != nil else { throw NativeNVSTError.notRunning }
+        try await transport.togglePerformanceOverlay()
     }
 
     public func stop(reason: StreamEndReason = .userRequested, message: String = "Native NVST stream ended.") async throws -> StreamReport {

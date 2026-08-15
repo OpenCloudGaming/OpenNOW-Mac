@@ -236,6 +236,7 @@ using GridAppResume = bool (*)(void *, const char *, const SessionControl::Sessi
 using GridAppSetDecoderInfo = void (*)(void *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool);
 using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
+using GridAppTogglePerfIndicator = void (*)(void *);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
@@ -277,7 +278,7 @@ constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 64;
-constexpr uint8_t SDLWindowHighDPIEnabled = 0;
+constexpr uint8_t SDLWindowHighDPIEnabled = 1;
 
 static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
 
@@ -313,6 +314,7 @@ struct GeronimoFunctions {
     GridAppSendInput sendInput = nullptr;
     GridAppHandleGamepadChanged handleGamepadChanged = nullptr;
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
+    GridAppTogglePerfIndicator togglePerfIndicator = nullptr;
     ObjectCtor graphicsContextCtor = nullptr;
     ObjectDtor graphicsContextDtor = nullptr;
     SDLGraphicsContextInitialize graphicsContextInitialize = nullptr;
@@ -931,6 +933,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.sendInput = reinterpret_cast<GridAppSendInput>(resolve(handle, "_ZN7GridApp18sendNvstInputEventERK16NvstInputEvent_t", errorBuffer, errorBufferLength));
     functions.handleGamepadChanged = reinterpret_cast<GridAppHandleGamepadChanged>(resolve(handle, "_ZN7GridApp25handleGamepadChangedEventEhiib", errorBuffer, errorBufferLength));
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
+    functions.togglePerfIndicator = reinterpret_cast<GridAppTogglePerfIndicator>(resolve(handle, "_ZN7GridApp29togglePerfIndicatorVisibilityEv", errorBuffer, errorBufferLength));
     functions.graphicsContextCtor = reinterpret_cast<ObjectCtor>(resolve(handle, "_ZN18SDLGraphicsContextC1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextDtor = reinterpret_cast<ObjectDtor>(resolve(handle, "_ZN18SDLGraphicsContextD1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextInitialize = reinterpret_cast<SDLGraphicsContextInitialize>(resolve(handle, "_ZN18SDLGraphicsContext10initializeERKNS_14InitParametersE", errorBuffer, errorBufferLength));
@@ -954,6 +957,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.sendInput != nullptr &&
            functions.handleGamepadChanged != nullptr &&
            functions.setDecoderInfo != nullptr &&
+           functions.togglePerfIndicator != nullptr &&
            functions.graphicsContextCtor != nullptr &&
            functions.graphicsContextDtor != nullptr &&
            functions.graphicsContextInitialize != nullptr &&
@@ -1964,6 +1968,31 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSendInput(void *sessionPointer,
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "GridApp::sendNvstInputEvent raised an unexpected C++ exception.");
         return -4;
+    }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(void *sessionPointer,
+                                                                         char *errorBuffer,
+                                                                         size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->functions.togglePerfIndicator == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for the performance overlay.");
+        return -1;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo stream is not active for the performance overlay.");
+            return -2;
+        }
+    }
+    try {
+        session->functions.togglePerfIndicator(session->gridApp);
+        return 0;
+    } catch (...) {
+        setError(errorBuffer, errorBufferLength, "GridApp::togglePerfIndicatorVisibility raised an unexpected C++ exception.");
+        return -3;
     }
 }
 

@@ -7,7 +7,7 @@ public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success:
 public typealias WebRTCMediaAntiAFKStateChangeCallback = @MainActor @Sendable (_ enabled: Bool) -> Void
 public typealias WebRTCMediaVideoEnhancementChangeCallback = @MainActor @Sendable (_ mode: Int, _ sharpness: Int, _ denoise: Int) -> Void
 
-private enum WebRTCMediaStreamTheme {
+enum WebRTCMediaStreamTheme {
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
     static let accentSoft = Color(red: 0.67, green: 1.0, blue: 0.36)
     static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
@@ -26,13 +26,13 @@ private enum WebRTCMediaStreamTheme {
     }
 }
 
-private extension Font {
+extension Font {
     static func streamNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
         OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
-private struct StreamHUDActionRow: View {
+struct StreamHUDActionRow: View {
     let title: String
     let subtitle: String
     let systemName: String
