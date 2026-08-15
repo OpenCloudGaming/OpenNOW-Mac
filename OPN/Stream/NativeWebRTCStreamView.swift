@@ -35,10 +35,27 @@ public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     public var onPointerLockChanged: ((Bool) -> Void)?
     public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
+    public var shouldHandleCommand: ((WebRTCMediaStreamCommand) -> Bool)?
     public private(set) var isPointerLocked = false
+    public var remoteInputEnabled = true {
+        didSet {
+            if oldValue && !remoteInputEnabled {
+                releasePressedInputs()
+                setPointerLocked(false)
+            } else if !oldValue && remoteInputEnabled {
+                gamepadMonitor.refreshInputState()
+            }
+        }
+    }
     public var directMouseInputEnabled = true {
         didSet {
             if !directMouseInputEnabled { setPointerLocked(false) }
+        }
+    }
+    public var hidesCursorWhilePointerLocked = true {
+        didSet {
+            guard isPointerLocked else { return }
+            updatePointerLockCursorVisibility()
         }
     }
     private var trackingArea: NSTrackingArea?
@@ -47,6 +64,9 @@ public final class NativeWebRTCStreamView: NSView {
     private var pointerLockNotificationTokens: [NSObjectProtocol] = []
     private var pointerLockRestoreLocation: CGPoint?
     private var pointerLockCursorHidden = false
+    private var pressedKeyboardEvents: [UInt16: KeyboardEvent] = [:]
+    private var pressedMouseButtons: Set<MouseButton> = []
+    private var activeGamepadStates: [Int: GamepadState] = [:]
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
@@ -72,7 +92,11 @@ public final class NativeWebRTCStreamView: NSView {
         nativeNVSTRendererWindow.isOpaque = true
         nativeNVSTRendererWindow.alphaValue = 0
         nativeNVSTRendererWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
-        gamepadMonitor.onInputEvent = { [weak self] event in self?.onInputEvent?(event) }
+        gamepadMonitor.onInputEvent = { [weak self] event in
+            guard let self, self.remoteInputEnabled else { return }
+            if case .gamepad(let state) = event { self.activeGamepadStates[state.playerIndex] = state }
+            self.onInputEvent?(event)
+        }
         gamepadMonitor.start()
     }
 
@@ -91,7 +115,7 @@ public final class NativeWebRTCStreamView: NSView {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if nativeNVSTRendererEnabled { updateNativeNVSTRendererWindowParent() }
-        window?.makeFirstResponder(self)
+        restoreInputFocus()
         window?.acceptsMouseMovedEvents = true
         if window == nil {
             removeKeyEquivalentMonitor()
@@ -104,7 +128,9 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public func setStreamContentSize(width: Int, height: Int) {
-        streamContentSize = CGSize(width: max(1, width), height: max(1, height))
+        let contentSize = CGSize(width: max(1, width), height: max(1, height))
+        guard streamContentSize != contentSize else { return }
+        streamContentSize = contentSize
         needsLayout = true
     }
 
@@ -124,6 +150,11 @@ public final class NativeWebRTCStreamView: NSView {
 
     public func setNativeNVSTVideoVisible(_ visible: Bool) {
         nativeNVSTRendererWindow.alphaValue = visible ? 1 : 0
+    }
+
+    public func restoreInputFocus() {
+        guard remoteInputEnabled, NSApplication.shared.isActive, window?.isKeyWindow == true else { return }
+        window?.makeFirstResponder(self)
     }
 
     public override func layout() {
@@ -171,67 +202,93 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func mouseDown(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         window?.makeFirstResponder(self)
         if capturePointerForMouseDown() { return }
         emitMouseButton(.left, isPressed: true)
     }
 
     public override func mouseUp(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseButton(.left, isPressed: false)
     }
 
     public override func rightMouseDown(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         window?.makeFirstResponder(self)
         if capturePointerForMouseDown() { return }
         emitMouseButton(.right, isPressed: true)
     }
 
     public override func rightMouseUp(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseButton(.right, isPressed: false)
     }
 
     public override func otherMouseDown(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         window?.makeFirstResponder(self)
         if capturePointerForMouseDown() { return }
         emitMouseButton(mouseButton(event.buttonNumber), isPressed: true)
     }
 
     public override func otherMouseUp(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseButton(mouseButton(event.buttonNumber), isPressed: false)
     }
 
     public override func mouseMoved(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseMove(event)
     }
 
     public override func mouseDragged(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseMove(event)
     }
 
     public override func rightMouseDragged(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseMove(event)
     }
 
     public override func otherMouseDragged(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitMouseMove(event)
     }
 
     public override func scrollWheel(with event: NSEvent) {
+        guard remoteInputEnabled else { return }
         emitScrollWheel(event)
     }
 
     public override func keyDown(with event: NSEvent) {
+        guard remoteInputEnabled else {
+            if handleCommand(event) { return }
+            super.keyDown(with: event)
+            return
+        }
         if handlePasteShortcut(event) { return }
         if handleCommand(event) { return }
         emitKey(event, isPressed: true)
     }
 
     public override func keyUp(with event: NSEvent) {
+        guard remoteInputEnabled else {
+            if handleCommand(event) { return }
+            super.keyUp(with: event)
+            return
+        }
         if handlePasteShortcut(event) { return }
+        if handleCommand(event) { return }
         emitKey(event, isPressed: false)
     }
 
     public override func flagsChanged(with event: NSEvent) {
+        guard remoteInputEnabled else {
+            super.flagsChanged(with: event)
+            return
+        }
         let pressed: Bool
         switch event.keyCode {
         case 54, 55:
@@ -251,7 +308,8 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        handlePasteShortcut(event) || handleCommand(event) || super.performKeyEquivalent(with: event)
+        guard remoteInputEnabled else { return handleCommand(event) || super.performKeyEquivalent(with: event) }
+        return handlePasteShortcut(event) || handleCommand(event) || super.performKeyEquivalent(with: event)
     }
 
     private func emitMouseMove(_ event: NSEvent) {
@@ -278,10 +336,7 @@ public final class NativeWebRTCStreamView: NSView {
         pointerLockRestoreLocation = NSEvent.mouseLocation
         window?.acceptsMouseMovedEvents = true
         window?.makeFirstResponder(self)
-        if !pointerLockCursorHidden {
-            NSCursor.hide()
-            pointerLockCursorHidden = true
-        }
+        updatePointerLockCursorVisibility()
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         installPointerLockMonitor()
         installPointerLockNotifications()
@@ -308,6 +363,18 @@ public final class NativeWebRTCStreamView: NSView {
     private func notifyPointerLockChanged(_ locked: Bool) {
         onPointerLockChanged?(locked)
         WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
+    }
+
+    private func updatePointerLockCursorVisibility() {
+        if hidesCursorWhilePointerLocked {
+            if !pointerLockCursorHidden {
+                NSCursor.hide()
+                pointerLockCursorHidden = true
+            }
+        } else if pointerLockCursorHidden {
+            NSCursor.unhide()
+            pointerLockCursorHidden = false
+        }
     }
 
     private func installPointerLockMonitor() {
@@ -367,7 +434,7 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func capturePointerForMouseDown() -> Bool {
-        guard directMouseInputEnabled, !isPointerLocked else { return false }
+        guard remoteInputEnabled, directMouseInputEnabled, !isPointerLocked else { return false }
         setPointerLocked(true)
         return isPointerLocked
     }
@@ -377,19 +444,51 @@ public final class NativeWebRTCStreamView: NSView {
         let viewAspect = bounds.width / bounds.height
         let contentAspect = streamContentSize.width / streamContentSize.height
         if contentAspect > viewAspect {
-            let width = bounds.height * contentAspect
-            return CGRect(x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height).integral
+            let height = bounds.width / contentAspect
+            return CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height).integral
         }
-        let height = bounds.width / contentAspect
-        return CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height).integral
+        let width = bounds.height * contentAspect
+        return CGRect(x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height).integral
     }
 
     private func emitMouseButton(_ button: MouseButton, isPressed: Bool) {
+        if isPressed {
+            pressedMouseButtons.insert(button)
+        } else {
+            pressedMouseButtons.remove(button)
+        }
         onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: isPressed, timestamp: Self.timestamp())))
+    }
+
+    private func releasePressedInputs() {
+        let timestamp = Self.timestamp()
+        let keyboardEvents = pressedKeyboardEvents.values
+        let mouseButtons = pressedMouseButtons
+        let gamepadStates = activeGamepadStates.values
+        pressedKeyboardEvents.removeAll()
+        pressedMouseButtons.removeAll()
+        activeGamepadStates.removeAll()
+        for event in keyboardEvents {
+            onInputEvent?(.keyboard(KeyboardEvent(
+                deviceID: event.deviceID,
+                keyCode: event.keyCode,
+                scanCode: event.scanCode,
+                modifiers: [],
+                isPressed: false,
+                timestamp: timestamp
+            )))
+        }
+        for button in mouseButtons {
+            onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp)))
+        }
+        for state in gamepadStates {
+            onInputEvent?(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: timestamp)))
+        }
     }
 
     private func handleCommand(_ event: NSEvent) -> Bool {
         guard let command = streamCommand(for: event) else { return false }
+        guard shouldHandleCommand?(command) == true else { return false }
         if event.type == .keyDown { onCommand?(command) }
         return true
     }
@@ -428,6 +527,7 @@ public final class NativeWebRTCStreamView: NSView {
         keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
             guard NSApplication.shared.isActive else { return event }
+            guard self.remoteInputEnabled else { return self.handleCommand(event) ? nil : event }
             if self.handlePasteShortcut(event) { return nil }
             if self.handleCommand(event) { return nil }
             self.emitKey(event, isPressed: event.type == .keyDown)
@@ -442,14 +542,22 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func emitKey(_ event: NSEvent, isPressed: Bool) {
-        onInputEvent?(.keyboard(KeyboardEvent(
+        let keyboardEvent = KeyboardEvent(
             deviceID: "keyboard",
             keyCode: UInt16(event.keyCode),
             scanCode: UInt16(event.keyCode),
             modifiers: Self.modifiers(event.modifierFlags),
             isPressed: isPressed,
             timestamp: Self.timestamp()
-        )))
+        )
+        if keyboardEvent.keyCode == 57 {
+            pressedKeyboardEvents.removeValue(forKey: keyboardEvent.keyCode)
+        } else if isPressed {
+            pressedKeyboardEvents[keyboardEvent.keyCode] = keyboardEvent
+        } else {
+            pressedKeyboardEvents.removeValue(forKey: keyboardEvent.keyCode)
+        }
+        onInputEvent?(.keyboard(keyboardEvent))
     }
 
     private func mouseButton(_ buttonNumber: Int) -> MouseButton {

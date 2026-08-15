@@ -168,6 +168,7 @@ public struct WebRTCMediaStreamSurface: View {
             NativeWebRTCStreamSurface { view in
                 nativeView = view
                 view.onPointerLockChanged = { locked in handlePointerLockChanged(locked) }
+                view.shouldHandleCommand = { _ in true }
                 view.onCommand = { command in
                     handle(command)
                 }

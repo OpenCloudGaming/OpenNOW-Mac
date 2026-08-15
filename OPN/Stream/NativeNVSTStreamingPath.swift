@@ -74,6 +74,7 @@ public actor NativeNVSTStreamingPath {
     private var activeSession: StreamSessionDescriptor?
     private var startedAt: ContinuousClock.Instant?
     private var terminalTask: Task<Void, Never>?
+    private var cancelStartTask: Task<Void, Never>?
     private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
 
     public init(sessionProvider: any NativeNVSTSessionProvider,
@@ -111,7 +112,7 @@ public actor NativeNVSTStreamingPath {
         try await withTaskCancellationHandler {
             try await startStreaming(configuration: configuration, progress: progress)
         } onCancel: {
-            Task { await self.cancelStartingSession() }
+            Task { await self.cancelStart() }
         }
     }
 
@@ -221,11 +222,20 @@ public actor NativeNVSTStreamingPath {
         }
     }
 
-    private func cancelStartingSession() async {
-        await transport.disconnect()
-        if let cancellable = sessionProvider as? any StreamSessionStartCancellable {
-            await cancellable.cancelSessionStart()
+    public func cancelStart() async {
+        if let cancelStartTask {
+            await cancelStartTask.value
+            return
         }
+        let task = Task { [sessionProvider, transport] in
+            await transport.disconnect()
+            if let cancellable = sessionProvider as? any StreamSessionStartCancellable {
+                await cancellable.cancelSessionStart()
+            }
+        }
+        cancelStartTask = task
+        await task.value
+        cancelStartTask = nil
     }
 
     private func stopSessionIfCancelled(_ session: StreamSessionDescriptor) async throws {

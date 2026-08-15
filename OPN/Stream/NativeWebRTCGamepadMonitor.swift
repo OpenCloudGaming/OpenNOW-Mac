@@ -44,6 +44,11 @@ public final class NativeWebRTCGamepadMonitor {
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
 
+    public func refreshInputState() {
+        lastStates.removeAll()
+        if pollingAllowed { pollControllers() }
+    }
+
     private func refreshControllerSlots() {
         controllerSlots.removeAll()
         cachedControllers = Array(GCController.controllers().filter { $0.extendedGamepad != nil }.prefix(4))

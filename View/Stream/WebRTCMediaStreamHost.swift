@@ -91,6 +91,8 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var isConnected = false
     @State private var isEnding = false
     @State private var didEnd = false
+    @State private var streamControlsVisible = false
+    @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     var body: some View {
@@ -98,7 +100,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             Color.black.ignoresSafeArea()
             NativeNVSTStreamHostView { view in
                 nativeView = view
-                configureInput(for: view)
+                configureNativeView(view)
                 startIfNeeded()
             }
             .ignoresSafeArea()
@@ -119,6 +121,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
                 .padding(28)
             }
+            if streamControlsVisible { nativeStreamControlsOverlay }
         }
         .onAppear {
             WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
@@ -133,6 +136,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             statusMessage = "Preparing native NVST video surface..."
             return
         }
+        nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         beginStreamingPerformanceMode()
         let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeVideoSurfaceHandle)
@@ -150,15 +154,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         WebRTCMediaStreamLifecycle.activate(
             configuration.id,
             quitRequestHandler: { completion in
-                Task {
-                    await finish(reason: .paused, message: "Native NVST stream paused before application exit.")
-                    completion(true)
-                }
+                showStreamControls(completion: completion)
                 return true
-            },
-            commandHandler: { command in
-                guard case .showQuitMenu = command else { return }
-                Task { await finish(reason: .paused, message: "Native NVST stream paused.") }
             }
         )
         startTask = Task {
@@ -169,12 +166,19 @@ private struct NativeNVSTMediaStreamSurface: View {
                         onProgress?(progress)
                     }
                 }
-                await MainActor.run {
+                let shouldPresentStream = await MainActor.run {
+                    guard !Task.isCancelled, !didEnd, !isEnding else { return false }
                     isConnected = true
-                    nativeView.setNativeNVSTVideoVisible(true)
+                    nativeView.remoteInputEnabled = !streamControlsVisible
+                    nativeView.setNativeNVSTVideoVisible(!streamControlsVisible)
+                    nativeView.restoreInputFocus()
                     statusMessage = "Connected over native NVST."
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
+                    return true
+                }
+                if !shouldPresentStream {
+                    _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed during startup.")
                 }
             } catch {
                 await MainActor.run { handleStartFailure(error) }
@@ -191,6 +195,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         let message = Self.message(for: error)
         statusMessage = message
         isConnected = false
+        nativeView?.remoteInputEnabled = false
+        nativeView?.setPointerLocked(false)
         nativeView?.setNativeNVSTVideoVisible(false)
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
@@ -202,52 +208,224 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func stopStream() {
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = nil
         startTask?.cancel()
         startTask = nil
         endEventTask?.cancel()
         endEventTask = nil
         endStreamingPerformanceMode()
+        nativeView?.remoteInputEnabled = false
+        isConnected = false
+        streamControlsVisible = false
         nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else { return }
         didEnd = true
         nativeView?.onInputEvent = nil
+        nativeView?.onPointerLockChanged = nil
+        nativeView?.onCommand = nil
+        nativeView?.shouldHandleCommand = nil
         if let path {
             Task { try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.") }
         }
     }
 
-    private func finish(reason: StreamEndReason, message: String) async {
-        guard !isEnding else { return }
-        await MainActor.run { isEnding = true }
-        let report: StreamReport
-        if let path {
-            report = (try? await path.stop(reason: reason, message: message)) ?? StreamReport(title: configuration.title, success: reason != .failed, reason: reason, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"])
-        } else {
-            report = StreamReport(title: configuration.title, success: reason != .failed, reason: reason, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"])
+    private func finish(reason: StreamEndReason, message: String) async -> Bool {
+        guard !isEnding else { return false }
+        await MainActor.run {
+            nativeView?.remoteInputEnabled = false
+            nativeView?.setNativeNVSTVideoVisible(false)
+            isEnding = true
         }
-        await MainActor.run { finishOnce(report: report) }
+        guard let path else {
+            await MainActor.run {
+                isEnding = false
+                showStreamControls()
+            }
+            return false
+        }
+        do {
+            let report = try await path.stop(reason: reason, message: message)
+            await MainActor.run { finishOnce(report: report) }
+            return true
+        } catch {
+            let failureMessage = Self.message(for: error)
+            if reason == .paused {
+                await MainActor.run {
+                    isEnding = false
+                    statusMessage = failureMessage
+                    streamControlsVisible = true
+                    WebRTCMediaTelemetry.capture("nvst.ui.pause.failed", level: .error, message: failureMessage, attributes: ["applicationID": configuration.applicationID])
+                }
+                return false
+            }
+            let report = StreamReport(title: configuration.title, success: false, reason: .failed, message: failureMessage, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"])
+            await MainActor.run { finishOnce(report: report) }
+            return false
+        }
     }
 
     private func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
         didEnd = true
         isConnected = false
+        streamControlsVisible = false
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = nil
+        nativeView?.remoteInputEnabled = false
+        nativeView?.setPointerLocked(false)
         nativeView?.setNativeNVSTVideoVisible(false)
         endEventTask?.cancel()
         endEventTask = nil
         nativeView?.onInputEvent = nil
+        nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
+        nativeView?.shouldHandleCommand = nil
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         onEnd(report.success, report.message, report)
     }
 
+    private func configureNativeView(_ view: NativeWebRTCStreamView) {
+        guard !didEnd, !isEnding else {
+            view.remoteInputEnabled = false
+            view.setNativeNVSTVideoVisible(false)
+            return
+        }
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        view.directMouseInputEnabled = profile.directMouseInput
+        view.hidesCursorWhilePointerLocked = false
+        view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
+        view.remoteInputEnabled = isConnected && !streamControlsVisible
+        configureInput(for: view)
+    }
+
     private func configureInput(for view: NativeWebRTCStreamView) {
-        view.onInputEvent = { [path] event in
-            guard let path else { return }
+        view.onInputEvent = { [path, weak view] event in
+            guard let path, let view, isConnected, !streamControlsVisible, !isEnding, !didEnd else { return }
+            if view.remoteInputEnabled {
+                guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+            }
             Task { try? await path.send(event) }
         }
+        view.shouldHandleCommand = { command in
+            guard isConnected else { return false }
+            return switch command {
+            case .toggleUnifiedHUD, .showQuitMenu:
+                true
+            default:
+                false
+            }
+        }
         view.onCommand = { command in
-            _ = WebRTCMediaStreamLifecycle.sendCommand(command)
+            handleNativeCommand(command)
+        }
+    }
+
+    private func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
+        switch command {
+        case .toggleUnifiedHUD:
+            if streamControlsVisible {
+                dismissStreamControls()
+            } else {
+                showStreamControls()
+            }
+        case .showQuitMenu:
+            if !streamControlsVisible { showStreamControls() }
+        default:
+            break
+        }
+    }
+
+    private func showStreamControls(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
+        guard isConnected else {
+            let pendingStartTask = startTask
+            let pendingPath = path
+            pendingStartTask?.cancel()
+            Task {
+                await pendingStartTask?.value
+                await pendingPath?.cancelStart()
+                completion?(true)
+            }
+            return
+        }
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = completion
+        nativeView?.remoteInputEnabled = false
+        nativeView?.setNativeNVSTVideoVisible(false)
+        streamControlsVisible = true
+        WebRTCMediaTelemetry.capture("nvst.ui.controls.show", level: .info, message: "Native NVST stream controls shown.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func dismissStreamControls() {
+        guard !isEnding else { return }
+        streamControlsVisible = false
+        let completion = pendingApplicationQuitCompletion
+        pendingApplicationQuitCompletion = nil
+        nativeView?.remoteInputEnabled = isConnected
+        nativeView?.setNativeNVSTVideoVisible(isConnected)
+        nativeView?.restoreInputFocus()
+        completion?(false)
+        WebRTCMediaTelemetry.capture("nvst.ui.controls.dismiss", level: .info, message: "Native NVST stream controls dismissed.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func pauseFromStreamControls() {
+        guard !isEnding else { return }
+        let completion = pendingApplicationQuitCompletion
+        pendingApplicationQuitCompletion = nil
+        Task {
+            _ = await finish(reason: .paused, message: "Native NVST stream paused.")
+            completion?(false)
+        }
+    }
+
+    private func endFromStreamControls() {
+        guard !isEnding else { return }
+        let completion = pendingApplicationQuitCompletion
+        let shouldTerminateApplication = completion != nil
+        pendingApplicationQuitCompletion = nil
+        Task {
+            let didFinish = await finish(reason: .userRequested, message: "Native NVST stream ended by user.")
+            completion?(didFinish && shouldTerminateApplication)
+        }
+    }
+
+    private var nativeStreamControlsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.96).ignoresSafeArea()
+            VStack(spacing: 20) {
+                Text("NATIVE NVST")
+                    .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+                    .tracking(2.2)
+                Text("STREAM CONTROLS")
+                    .font(OpenNOWNVIDIAFont.font(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                    .font(OpenNOWNVIDIAFont.font(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.68))
+                Text("Remote input is paused. Resume to return focus to the game.")
+                    .font(OpenNOWNVIDIAFont.font(size: 13, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.54))
+                    .multilineTextAlignment(.center)
+                HStack(spacing: 12) {
+                    Button("Resume", action: dismissStreamControls)
+                        .keyboardShortcut(.cancelAction)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.openNowGreen)
+                    Button("Pause Stream", action: pauseFromStreamControls)
+                        .buttonStyle(.bordered)
+                    Button(pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit OpenNOW", action: endFromStreamControls)
+                        .buttonStyle(.bordered)
+                }
+                .controlSize(.large)
+                .disabled(isEnding)
+                Text("Cmd+G controls  |  Cmd+Q menu  |  Esc resume")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.36))
+            }
+            .padding(36)
+            .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.openNowGreen.opacity(0.32), lineWidth: 1))
         }
     }
 

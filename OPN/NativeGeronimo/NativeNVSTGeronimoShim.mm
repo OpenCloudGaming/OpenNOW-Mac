@@ -277,6 +277,7 @@ constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 64;
+constexpr uint8_t SDLWindowHighDPIEnabled = 0;
 
 static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
 
@@ -1200,7 +1201,7 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     }
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x1c, windowWidth);
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x20, windowHeight);
-    storeUnaligned<uint8_t>(windowParameters.bytes, 0x38, 1);
+    storeUnaligned<uint8_t>(windowParameters.bytes, 0x38, SDLWindowHighDPIEnabled);
     storeUnaligned<void *>(windowParameters.bytes, 0x70, session->videoSurfaceHandle);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x78, 1);
     if (!session->functions.windowInitialize(session->window, session->ioInterface, windowParameters)) {
