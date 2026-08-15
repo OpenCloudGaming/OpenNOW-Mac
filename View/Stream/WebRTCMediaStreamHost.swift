@@ -98,7 +98,10 @@ private struct NativeNVSTMediaStreamSurface: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            NativeNVSTStreamHostView { view in
+            NativeNVSTStreamHostView(
+                overlay: AnyView(nativeStreamControlsOverlay),
+                overlayVisible: streamControlsVisible
+            ) { view in
                 nativeView = view
                 configureNativeView(view)
                 startIfNeeded()
@@ -121,7 +124,6 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
                 .padding(28)
             }
-            if streamControlsVisible { nativeStreamControlsOverlay }
         }
         .onAppear {
             WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
@@ -156,7 +158,8 @@ private struct NativeNVSTMediaStreamSurface: View {
             quitRequestHandler: { completion in
                 showStreamControls(completion: completion)
                 return true
-            }
+            },
+            commandHandler: handleNativeCommand
         )
         startTask = Task {
             do {
@@ -170,7 +173,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     guard !Task.isCancelled, !didEnd, !isEnding else { return false }
                     isConnected = true
                     nativeView.remoteInputEnabled = !streamControlsVisible
-                    nativeView.setNativeNVSTVideoVisible(!streamControlsVisible)
+                    nativeView.setNativeNVSTVideoVisible(true)
                     nativeView.restoreInputFocus()
                     statusMessage = "Connected over native NVST."
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
@@ -351,7 +354,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         nativeView?.remoteInputEnabled = false
-        nativeView?.setNativeNVSTVideoVisible(false)
+        nativeView?.setNativeNVSTVideoVisible(isConnected)
         streamControlsVisible = true
         WebRTCMediaTelemetry.capture("nvst.ui.controls.show", level: .info, message: "Native NVST stream controls shown.", attributes: ["applicationID": configuration.applicationID])
     }
@@ -456,6 +459,8 @@ private struct NativeNVSTMediaStreamSurface: View {
 }
 
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
+    let overlay: AnyView
+    let overlayVisible: Bool
     let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
 
     func makeNSView(context: Context) -> NativeNVSTContainerView {
@@ -463,13 +468,17 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         view.onResolve = { streamView in
             Task { @MainActor in onResolve(streamView) }
         }
+        view.updateOverlay(overlay, visible: overlayVisible)
         return view
     }
 
-    func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {}
+    func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {
+        nsView.updateOverlay(overlay, visible: overlayVisible)
+    }
 
     final class NativeNVSTContainerView: NSView {
         let streamView = NativeWebRTCStreamView(frame: .zero)
+        private let overlayView = NSHostingView(rootView: AnyView(EmptyView()))
         var onResolve: ((NativeWebRTCStreamView) -> Void)?
 
         override init(frame frameRect: NSRect) {
@@ -477,6 +486,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor
             addSubview(streamView)
+            streamView.setNativeNVSTOverlayView(overlayView)
         }
 
         @available(*, unavailable)
@@ -493,6 +503,11 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
             super.layout()
             streamView.frame = bounds
             if window != nil { onResolve?(streamView) }
+        }
+
+        func updateOverlay(_ overlay: AnyView, visible: Bool) {
+            overlayView.rootView = overlay
+            streamView.setNativeNVSTOverlayVisible(visible)
         }
     }
 }
