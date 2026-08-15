@@ -323,8 +323,10 @@ struct GeronimoFunctions {
 };
 
 struct PendingStart {
+    GridAppSetAuthInfo setAuthInfo = nullptr;
     GridAppStart start = nullptr;
     GridAppResume resume = nullptr;
+    uintptr_t authType = 0;
     bool shouldResume = false;
     std::string resumeSessionId;
     SessionControl::SessionParameters parameters;
@@ -1217,6 +1219,15 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
         session->state = NativeSessionState::starting;
         pending = std::move(session->pendingStart);
     }
+    NVbAuthInfo_t authInfo;
+    authInfo.token = session->authToken.c_str();
+    authInfo.authType = pending->authType;
+    if (!pending->setAuthInfo(session->gridApp, &authInfo)) {
+        std::string message = "GridApp::setAuthInfo failed authType=" + std::to_string(authInfo.authType) + ".";
+        setSessionFailure(session, message.c_str());
+        emitEvent(session, 70, 0, 0, 0, -6);
+        return -6;
+    }
     pending->parameters.streamSettingsCount = static_cast<uint32_t>(pending->streamSettings.size());
     pending->parameters.streamSettings = pending->streamSettings.empty() ? nullptr : pending->streamSettings.data();
     if (!pending->streamSettings.empty()) {
@@ -1563,14 +1574,11 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     prepareParameters.clientAppVersion = session->clientAppVersion;
     prepareParameters.applicationHeaders = jsonStringArrayAtPath(geronimo, "applicationHeaders");
 
-    NVbAuthInfo_t authInfo;
-    authInfo.token = session->authToken.c_str();
     uint32_t resolvedAuthType = 0;
     if (!authTypeForTokenType(tokenType, resolvedAuthType)) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo start received an unsupported auth token type.");
         return -6;
     }
-    authInfo.authType = resolvedAuthType;
 
     Nsk::VideoDecoderInitParams decoderParams;
     memset(decoderParams.bytes, 0, sizeof(decoderParams.bytes));
@@ -1601,8 +1609,10 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
 
     auto pending = std::make_unique<PendingStart>();
+    pending->setAuthInfo = setAuthInfo;
     pending->start = start;
     pending->resume = resume;
+    pending->authType = resolvedAuthType;
     pending->shouldResume = shouldResume;
     pending->resumeSessionId = session->sessionId;
     pending->parameters.appId = appId;
@@ -1655,13 +1665,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         session->pendingStart = std::move(pending);
     }
 
-    if (!setAuthInfo(session->gridApp, &authInfo)) {
-        setSessionFailure(session, "GridApp::setAuthInfo rejected the native credentials.");
-        if (errorBuffer != nullptr && errorBufferLength > 0) {
-            snprintf(errorBuffer, errorBufferLength, "GridApp::setAuthInfo failed authType=%lu.", static_cast<unsigned long>(authInfo.authType));
-        }
-        return -6;
-    }
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state != NativeSessionState::configured) {
