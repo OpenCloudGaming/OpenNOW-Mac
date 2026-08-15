@@ -1,0 +1,135 @@
+import AppKit
+import Testing
+@testable import OpenNOW
+
+private actor MouseInputRecorder {
+    private var events: [UserInputEvent] = []
+
+    func append(_ event: UserInputEvent) {
+        events.append(event)
+    }
+
+    func snapshot() -> [UserInputEvent] {
+        events
+    }
+}
+
+private struct MouseButtonTransition: Equatable {
+    let button: MouseButton
+    let isPressed: Bool
+}
+
+@Test @MainActor func streamViewBalancesMouseButtonTransitions() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.directMouseInputEnabled = false
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
+    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
+
+    view.mouseDown(with: mouseDown)
+    view.mouseDown(with: mouseDown)
+    view.mouseUp(with: mouseUp)
+    view.mouseUp(with: mouseUp)
+
+    #expect(mouseButtonTransitions(events) == [
+        MouseButtonTransition(button: .left, isPressed: true),
+        MouseButtonTransition(button: .left, isPressed: false),
+    ])
+}
+
+@Test @MainActor func pointerUnlockReleasesHeldMouseButtonsOnce() throws {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
+    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.hidesCursorWhilePointerLocked = false
+    window.contentView = view
+    var events: [UserInputEvent] = []
+    var releaseObservedWhileLocked = false
+    view.onInputEvent = { event in
+        events.append(event)
+        if case .mouse(.button(_, .right, false, _)) = event {
+            releaseObservedWhileLocked = view.isPointerLocked
+        }
+    }
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
+    let rightMouseDown = try #require(makeMouseEvent(type: .rightMouseDown))
+    let rightMouseUp = try #require(makeMouseEvent(type: .rightMouseUp))
+
+    view.mouseDown(with: mouseDown)
+    view.rightMouseDown(with: rightMouseDown)
+    view.setPointerLocked(false)
+    view.rightMouseUp(with: rightMouseUp)
+
+    #expect(mouseButtonTransitions(events) == [
+        MouseButtonTransition(button: .right, isPressed: true),
+        MouseButtonTransition(button: .right, isPressed: false),
+    ])
+    #expect(releaseObservedWhileLocked)
+}
+
+@Test @MainActor func pointerCaptureSuppressesTheCompleteActivationClick() throws {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
+    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.hidesCursorWhilePointerLocked = false
+    window.contentView = view
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
+    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
+    defer { view.setPointerLocked(false) }
+
+    view.mouseDown(with: mouseDown)
+    view.mouseUp(with: mouseUp)
+
+    #expect(view.isPointerLocked)
+    #expect(mouseButtonTransitions(events).isEmpty)
+}
+
+@Test @MainActor func streamViewHidesCursorWhilePointerLockedByDefault() {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+
+    #expect(view.hidesCursorWhilePointerLocked)
+}
+
+@Test func nativeNVSTMouseDispatcherPreservesEventOrder() async {
+    let recorder = MouseInputRecorder()
+    let dispatcher = NativeNVSTMouseInputDispatcher { event in
+        if case .mouse(.button(_, .left, true, _)) = event {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await recorder.append(event)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let events: [UserInputEvent] = [
+        .mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: timestamp)),
+        .mouse(.moved(deviceID: "mouse", deltaX: 4, deltaY: -2, timestamp: timestamp)),
+        .mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: timestamp)),
+        .mouse(.button(deviceID: "mouse", button: .left, isPressed: false, timestamp: timestamp)),
+    ]
+
+    events.forEach { dispatcher.enqueue($0) }
+    await dispatcher.finish()
+
+    #expect(await recorder.snapshot() == events)
+}
+
+@MainActor private func makeMouseEvent(type: NSEvent.EventType) -> NSEvent? {
+    NSEvent.mouseEvent(
+        with: type,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 1,
+        pressure: 1
+    )
+}
+
+private func mouseButtonTransitions(_ events: [UserInputEvent]) -> [MouseButtonTransition] {
+    events.compactMap { event in
+        guard case .mouse(.button(_, let button, let isPressed, _)) = event else { return nil }
+        return MouseButtonTransition(button: button, isPressed: isPressed)
+    }
+}

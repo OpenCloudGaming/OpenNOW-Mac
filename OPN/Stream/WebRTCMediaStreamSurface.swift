@@ -1085,9 +1085,12 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func setUnifiedHUDVisible(_ visible: Bool) {
-        unifiedHUDVisible = visible
-        guard visible else { return }
-        nativeView?.setPointerLocked(false)
+        if visible {
+            nativeView?.setPointerLocked(false)
+            unifiedHUDVisible = true
+        } else {
+            unifiedHUDVisible = false
+        }
     }
 
     private func toggleRecording() {
@@ -1351,6 +1354,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
+        if let mouse = mouseEvent(from: event), pointerLocked, isMouseButtonRelease(mouse) { return .send }
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
         if unifiedHUDVisible { return .drop }
@@ -1397,6 +1401,11 @@ public struct WebRTCMediaStreamSurface: View {
     private func isMouseMove(_ event: MouseEvent) -> Bool {
         if case .moved = event { return true }
         return false
+    }
+
+    private func isMouseButtonRelease(_ event: MouseEvent) -> Bool {
+        guard case .button(_, _, let isPressed, _) = event else { return false }
+        return !isPressed
     }
 
     private func handle(_ command: WebRTCMediaStreamCommand) {

@@ -241,10 +241,12 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public func setPointerLocked(_ locked: Bool) {
-        guard isPointerLocked != locked else { return }
         if locked {
+            guard !isPointerLocked else { return }
             enablePointerLock()
         } else {
+            releasePressedMouseButtons()
+            guard isPointerLocked else { return }
             disablePointerLock()
         }
     }
@@ -283,14 +285,16 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func otherMouseDown(with event: NSEvent) {
         guard remoteInputEnabled else { return }
+        guard let button = mouseButton(event.buttonNumber) else { return }
         window?.makeFirstResponder(self)
         if capturePointerForMouseDown() { return }
-        emitMouseButton(mouseButton(event.buttonNumber), isPressed: true)
+        emitMouseButton(button, isPressed: true)
     }
 
     public override func otherMouseUp(with event: NSEvent) {
         guard remoteInputEnabled else { return }
-        emitMouseButton(mouseButton(event.buttonNumber), isPressed: false)
+        guard let button = mouseButton(event.buttonNumber) else { return }
+        emitMouseButton(button, isPressed: false)
     }
 
     public override func mouseMoved(with event: NSEvent) {
@@ -509,9 +513,9 @@ public final class NativeWebRTCStreamView: NSView {
 
     private func emitMouseButton(_ button: MouseButton, isPressed: Bool) {
         if isPressed {
-            pressedMouseButtons.insert(button)
+            guard pressedMouseButtons.insert(button).inserted else { return }
         } else {
-            pressedMouseButtons.remove(button)
+            guard pressedMouseButtons.remove(button) != nil else { return }
         }
         onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: isPressed, timestamp: Self.timestamp())))
     }
@@ -522,7 +526,6 @@ public final class NativeWebRTCStreamView: NSView {
         let mouseButtons = pressedMouseButtons
         let gamepadStates = activeGamepadStates.values
         pressedKeyboardEvents.removeAll()
-        pressedMouseButtons.removeAll()
         activeGamepadStates.removeAll()
         for event in keyboardEvents {
             onInputEvent?(.keyboard(KeyboardEvent(
@@ -534,11 +537,20 @@ public final class NativeWebRTCStreamView: NSView {
                 timestamp: timestamp
             )))
         }
-        for button in mouseButtons {
-            onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp)))
-        }
+        releasePressedMouseButtons(mouseButtons, timestamp: timestamp)
         for state in gamepadStates {
             onInputEvent?(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: timestamp)))
+        }
+    }
+
+    private func releasePressedMouseButtons() {
+        releasePressedMouseButtons(pressedMouseButtons, timestamp: Self.timestamp())
+    }
+
+    private func releasePressedMouseButtons(_ buttons: Set<MouseButton>, timestamp: MediaTimestamp) {
+        pressedMouseButtons.subtract(buttons)
+        for button in buttons {
+            onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp)))
         }
     }
 
@@ -616,7 +628,7 @@ public final class NativeWebRTCStreamView: NSView {
         onInputEvent?(.keyboard(keyboardEvent))
     }
 
-    private func mouseButton(_ buttonNumber: Int) -> MouseButton {
+    private func mouseButton(_ buttonNumber: Int) -> MouseButton? {
         switch buttonNumber {
         case 2:
             .middle
@@ -625,7 +637,7 @@ public final class NativeWebRTCStreamView: NSView {
         case 4:
             .forward
         default:
-            .middle
+            nil
         }
     }
 
