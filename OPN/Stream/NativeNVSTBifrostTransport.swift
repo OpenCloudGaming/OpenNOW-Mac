@@ -21,6 +21,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
+    private let cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?
     private var prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
     private let terminationChannel = NativeNVSTTerminationChannel()
     private var bridge: NVSTNativeBridge?
@@ -34,10 +35,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
                 nativeVideoSurfaceHandle: UInt? = nil,
+                cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)? = nil,
                 prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
         self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
+        self.cursorVisibilityHandler = cursorVisibilityHandler
         self.prepareVideoSurfaceForShutdown = prepareVideoSurfaceForShutdown
     }
 
@@ -100,6 +103,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let eventSink = NativeNVSTGeronimoEventSink(
             sessionId: allocation.session.id,
             telemetryAttributes: ["sessionId": allocation.session.id],
+            cursorVisibilityHandler: cursorVisibilityHandler,
             terminationHandler: { [terminationChannel] termination in terminationChannel.send(termination) }
         )
         connectingEventSink = eventSink
@@ -147,6 +151,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard let encoded = inputEncoder.encode(event) else { return }
         guard let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: encoded)
+    }
+
+    public func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: inputEncoder.encodeAbsoluteMouseMove(event))
     }
 
     public func togglePerformanceOverlay() async throws {
@@ -1138,6 +1147,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private let lock = NSLock()
     private let sessionId: String
     private let terminationHandler: @Sendable (NativeNVSTTransportTermination) -> Void
+    private let cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?
     private var telemetryAttributes: [String: String]
     private var startResult: Result<Void, Error>?
     private var startCompletion: CheckedContinuation<Void, Error>?
@@ -1157,9 +1167,13 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private var lastNotification: UInt32?
     private var lastResultCode: Int32?
 
-    init(sessionId: String, telemetryAttributes: [String: String], terminationHandler: @escaping @Sendable (NativeNVSTTransportTermination) -> Void) {
+    init(sessionId: String,
+         telemetryAttributes: [String: String],
+         cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?,
+         terminationHandler: @escaping @Sendable (NativeNVSTTransportTermination) -> Void) {
         self.sessionId = sessionId
         self.telemetryAttributes = telemetryAttributes
+        self.cursorVisibilityHandler = cursorVisibilityHandler
         self.terminationHandler = terminationHandler
     }
 
@@ -1188,6 +1202,12 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         attributes["resultCode"] = String(resultCode)
         if let resultName, !resultName.isEmpty { attributes["resultName"] = resultName }
         WebRTCMediaTelemetry.capture("nvst.geronimo.callback", level: .info, message: "Geronimo native callback observed.", attributes: attributes)
+
+        if phase == 80, notification == 1 || notification == 2 {
+            let visible = notification == 1
+            Task { @MainActor [cursorVisibilityHandler] in cursorVisibilityHandler?(visible) }
+            return
+        }
 
         if phase == 40 {
             resolveStart(.success(()))

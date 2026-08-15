@@ -32,12 +32,29 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case showQuitMenu
 }
 
+public enum NativeStreamMouseInputMode: Equatable, Sendable {
+    case absolute
+    case relative
+}
+
 public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
+    public var onAbsoluteMouseMove: ((NativeNVSTAbsoluteMouseEvent) -> Void)?
     public var onPointerLockChanged: ((Bool) -> Void)?
     public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
     public var shouldHandleCommand: ((WebRTCMediaStreamCommand) -> Bool)?
     public private(set) var isPointerLocked = false
+    public var locksPointerWhenRelativeModeSelected = false
+    public var mouseInputMode: NativeStreamMouseInputMode = .relative {
+        didSet {
+            guard oldValue != mouseInputMode else { return }
+            if mouseInputMode == .absolute {
+                setPointerLocked(false)
+            } else if directMouseInputEnabled {
+                restoreInputFocus()
+            }
+        }
+    }
     public var remoteInputEnabled = true {
         didSet {
             if oldValue && !remoteInputEnabled {
@@ -45,6 +62,7 @@ public final class NativeWebRTCStreamView: NSView {
                 setPointerLocked(false)
             } else if !oldValue && remoteInputEnabled {
                 gamepadMonitor.refreshInputState()
+                restoreInputFocus()
             }
         }
     }
@@ -178,6 +196,7 @@ public final class NativeWebRTCStreamView: NSView {
     public func restoreInputFocus() {
         guard remoteInputEnabled, NSApplication.shared.isActive, window?.isKeyWindow == true else { return }
         window?.makeFirstResponder(self)
+        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative, directMouseInputEnabled { setPointerLocked(true) }
     }
 
     public override func layout() {
@@ -373,6 +392,12 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func emitMouseMove(_ event: NSEvent) {
+        if !isPointerLocked, mouseInputMode == .absolute {
+            let point = convert(event.locationInWindow, from: nil)
+            guard let absoluteEvent = absoluteMouseEvent(at: point, timestamp: Self.timestamp()) else { return }
+            onAbsoluteMouseMove?(absoluteEvent)
+            return
+        }
         emitMouseMove(deltaX: Self.clampedInt16(Int(event.deltaX.rounded())), deltaY: Self.clampedInt16(Int(event.deltaY.rounded())))
     }
 
@@ -494,9 +519,23 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func capturePointerForMouseDown() -> Bool {
-        guard remoteInputEnabled, directMouseInputEnabled, !isPointerLocked else { return false }
+        guard remoteInputEnabled, directMouseInputEnabled, mouseInputMode == .relative, !isPointerLocked else { return false }
         setPointerLocked(true)
         return isPointerLocked
+    }
+
+    func absoluteMouseEvent(at point: CGPoint, timestamp: MediaTimestamp) -> NativeNVSTAbsoluteMouseEvent? {
+        let contentFrame = videoContentFrame()
+        guard contentFrame.width > 0, contentFrame.height > 0,
+              streamContentSize.width > 0, streamContentSize.height > 0,
+              contentFrame.contains(point) else { return nil }
+        let x = floor((point.x - contentFrame.minX) * streamContentSize.width / contentFrame.width)
+        let y = floor((contentFrame.maxY - point.y) * streamContentSize.height / contentFrame.height)
+        return NativeNVSTAbsoluteMouseEvent(
+            x: Int32(clamping: Int(min(max(0, x), streamContentSize.width - 1))),
+            y: Int32(clamping: Int(min(max(0, y), streamContentSize.height - 1))),
+            timestamp: timestamp
+        )
     }
 
     private func videoContentFrame() -> CGRect {

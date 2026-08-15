@@ -23,6 +23,18 @@ public struct NativeNVSTEncodedInputEvent: Equatable, Sendable {
     }
 }
 
+public struct NativeNVSTAbsoluteMouseEvent: Equatable, Sendable {
+    public let x: Int32
+    public let y: Int32
+    public let timestamp: MediaTimestamp
+
+    public init(x: Int32, y: Int32, timestamp: MediaTimestamp) {
+        self.x = x
+        self.y = y
+        self.timestamp = timestamp
+    }
+}
+
 public final class NativeNVSTInputEncoder: Sendable {
     private static let eventByteCount = 0x48
     private static let darwinKeyMap: [UInt32] = [
@@ -59,6 +71,20 @@ public final class NativeNVSTInputEncoder: Sendable {
         case .gamepad(let gamepad):
             return NativeNVSTEncodedInputEvent(event: event, nativePayload: .event(encodeGamepad(gamepad)))
         }
+    }
+
+    public func encodeAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) -> NativeNVSTEncodedInputEvent {
+        var bytes = Data(count: Self.eventByteCount)
+        bytes.writeUInt32LE(2, at: 0)
+        bytes.writeInt32LE(1, at: 8)
+        bytes.writeUInt32LE(0x0800, at: 0x0c)
+        bytes.writeInt32LE(event.x, at: 0x10)
+        bytes.writeInt32LE(event.y, at: 0x14)
+        bytes.writeUInt64LE(event.timestamp.nanoseconds / 1_000, at: 0x28)
+        return NativeNVSTEncodedInputEvent(
+            event: .mouse(.moved(deviceID: "mouse", deltaX: 0, deltaY: 0, timestamp: event.timestamp)),
+            nativePayload: .event(bytes)
+        )
     }
 
     private func encodeKeyboard(_ keyboard: KeyboardEvent, source: UserInputEvent) -> NativeNVSTEncodedInputEvent? {

@@ -3,13 +3,13 @@ import Testing
 @testable import OpenNOW
 
 private actor MouseInputRecorder {
-    private var events: [UserInputEvent] = []
+    private var events: [NativeNVSTMouseInput] = []
 
-    func append(_ event: UserInputEvent) {
+    func append(_ event: NativeNVSTMouseInput) {
         events.append(event)
     }
 
-    func snapshot() -> [UserInputEvent] {
+    func snapshot() -> [NativeNVSTMouseInput] {
         events
     }
 }
@@ -91,10 +91,42 @@ private struct MouseButtonTransition: Equatable {
     #expect(view.hidesCursorWhilePointerLocked)
 }
 
+@Test @MainActor func absoluteMouseModeMapsDisplayedVideoCoordinates() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
+    view.mouseInputMode = .absolute
+    view.setStreamContentSize(width: 1920, height: 1080)
+    view.layoutSubtreeIfNeeded()
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 960, y: 540, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 1079, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1918, y: 1, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == nil)
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == nil)
+}
+
+@Test @MainActor func absoluteMouseModeForwardsCompleteClickWithoutPointerLock() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.mouseInputMode = .absolute
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
+    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
+
+    view.mouseDown(with: mouseDown)
+    view.mouseUp(with: mouseUp)
+
+    #expect(!view.isPointerLocked)
+    #expect(mouseButtonTransitions(events) == [
+        MouseButtonTransition(button: .left, isPressed: true),
+        MouseButtonTransition(button: .left, isPressed: false),
+    ])
+}
+
 @Test func nativeNVSTMouseDispatcherPreservesEventOrder() async {
     let recorder = MouseInputRecorder()
     let dispatcher = NativeNVSTMouseInputDispatcher { event in
-        if case .mouse(.button(_, .left, true, _)) = event {
+        if case .event(.mouse(.button(_, .left, true, _))) = event {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
         await recorder.append(event)
@@ -107,10 +139,18 @@ private struct MouseButtonTransition: Equatable {
         .mouse(.button(deviceID: "mouse", button: .left, isPressed: false, timestamp: timestamp)),
     ]
 
-    events.forEach { dispatcher.enqueue($0) }
+    dispatcher.enqueue(events[0])
+    dispatcher.enqueueAbsoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp))
+    events.dropFirst().forEach { dispatcher.enqueue($0) }
     await dispatcher.finish()
 
-    #expect(await recorder.snapshot() == events)
+    #expect(await recorder.snapshot() == [
+        .event(events[0]),
+        .absoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp)),
+        .event(events[1]),
+        .event(events[2]),
+        .event(events[3]),
+    ])
 }
 
 @MainActor private func makeMouseEvent(type: NSEvent.EventType) -> NSEvent? {

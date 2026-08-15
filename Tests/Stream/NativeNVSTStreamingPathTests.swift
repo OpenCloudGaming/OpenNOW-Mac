@@ -51,6 +51,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private(set) var prepareCount = 0
     private(set) var connectCount = 0
     private(set) var sentEvents: [UserInputEvent] = []
+    private(set) var sentAbsoluteMouseEvents: [NativeNVSTAbsoluteMouseEvent] = []
     private(set) var disconnectCount = 0
     private(set) var pauseCount = 0
     private(set) var performanceOverlayToggleCount = 0
@@ -95,6 +96,10 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     func send(_ event: UserInputEvent) async throws {
         sentEvents.append(event)
+    }
+
+    func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
+        sentAbsoluteMouseEvents.append(event)
     }
 
     func togglePerformanceOverlay() async throws {
@@ -194,7 +199,9 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         }
     }
     let input = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 4, scanCode: 4, isPressed: true, timestamp: MediaTimestamp(nanoseconds: 1)))
+    let absoluteMouseEvent = NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: MediaTimestamp(nanoseconds: 2))
     try await path.send(input)
+    try await path.sendAbsoluteMouseMove(absoluteMouseEvent)
     try await path.togglePerformanceOverlay()
     let report = try await path.stop(reason: .userRequested, message: "Stopped")
 
@@ -203,6 +210,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await progressRecorder.steps.contains(.allocateCloudSession))
     #expect(await progressRecorder.steps.contains(.connected))
     #expect(await transport.sentEvents == [input])
+    #expect(await transport.sentAbsoluteMouseEvents == [absoluteMouseEvent])
     #expect(await transport.performanceOverlayToggleCount == 1)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
     #expect(report.metadata["transport"] == "nvst")
@@ -309,6 +317,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let keyboard = try #require(encoder.encode(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [.shift, .command], isPressed: true, timestamp: timestamp))))
     let capsLock = try #require(encoder.encode(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 57, scanCode: 57, modifiers: [.capsLock], isPressed: true, timestamp: timestamp))))
     let mouseMove = try #require(encoder.encode(.mouse(.moved(deviceID: "mouse", deltaX: -2, deltaY: 513, timestamp: timestamp))))
+    let absoluteMouseMove = encoder.encodeAbsoluteMouseMove(NativeNVSTAbsoluteMouseEvent(x: 1919, y: 1079, timestamp: timestamp))
     let mouseButton = try #require(encoder.encode(.mouse(.button(deviceID: "mouse", button: .right, isPressed: true, timestamp: timestamp))))
     let mouseWheel = try #require(encoder.encode(.mouse(.wheel(deviceID: "mouse", delta: 121, timestamp: timestamp))))
     let gamepad = try #require(encoder.encode(.gamepad(GamepadState(deviceID: "gamepad", playerIndex: 2, buttons: [.south, .rightShoulder, .dpadLeft], leftTrigger: 0.5, rightTrigger: 1, leftStickX: 1, leftStickY: -1, rightStickX: -1, rightStickY: 1, timestamp: timestamp))))
@@ -329,6 +338,11 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         0xfe, 0xff, 0xff, 0xff, 0x01, 0x02, 0, 0,
     ])
     #expect(Array(mouseMove.payload[40..<48]) == [0xd2, 0x04, 0, 0, 0, 0, 0, 0])
+    #expect(Array(absoluteMouseMove.payload[8..<24]) == [
+        1, 0, 0, 0, 0, 8, 0, 0,
+        0x7f, 0x07, 0, 0, 0x37, 0x04, 0, 0,
+    ])
+    #expect(Array(absoluteMouseMove.payload[40..<48]) == [0xd2, 0x04, 0, 0, 0, 0, 0, 0])
     #expect(Array(mouseButton.payload[24..<32]) == [3, 0, 0, 0, 2, 0, 0, 0])
     #expect(Array(mouseWheel.payload[36..<40]) == [2, 0, 0, 0])
     #expect(Array(gamepad.payload[0..<8]) == [18, 0, 0, 0, 0, 0, 0, 0])

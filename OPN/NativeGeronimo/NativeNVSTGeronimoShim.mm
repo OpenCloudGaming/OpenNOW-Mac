@@ -220,6 +220,7 @@ constexpr size_t GridAppSetupFailureSlotOffset = 0xa8;
 constexpr size_t GridAppResumeFailureSlotOffset = 0xb0;
 constexpr size_t GridAppSetupSuccessSlotOffset = 0xc0;
 constexpr size_t GridAppStreamingTerminatedSlotOffset = 0xc8;
+constexpr size_t GridAppCursorInfoSlotOffset = 0x118;
 constexpr size_t GridAppSetupProgressSlotOffset = 0x140;
 constexpr size_t GridAppActiveSessionsSlotOffset = 0x148;
 constexpr size_t GridAppStopResultSlotOffset = 0x158;
@@ -260,6 +261,7 @@ using GridAppSetDecoderInfo = void (*)(void *, uint32_t, uint32_t, uint32_t, uin
 using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GridAppTogglePerfIndicator = void (*)(void *);
+using GridAppCursorInfoUpdate = void (*)(void *, const void *);
 using IOInterfaceGetStatsInterface = void *(*)(void *);
 using StatsInterfaceGetStats = void (*)(void *, GeronimoStats &, std::string &, std::string &, std::string &, std::string &, std::string &, std::string &);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
@@ -340,6 +342,7 @@ struct GeronimoFunctions {
     GridAppHandleGamepadChanged handleGamepadChanged = nullptr;
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
     GridAppTogglePerfIndicator togglePerfIndicator = nullptr;
+    GridAppCursorInfoUpdate cursorInfoUpdate = nullptr;
     IOInterfaceGetStatsInterface ioInterfaceGetStatsInterface = nullptr;
     StatsInterfaceGetStats statsInterfaceGetStats = nullptr;
     ObjectCtor graphicsContextCtor = nullptr;
@@ -702,6 +705,26 @@ void openNOWGridAppStreamingTerminated(void *gridApp, const void *terminationInf
     if (!locallyRequested) { emitEvent(session, 62, 0, 0, terminationReason, extendedCode); }
 }
 
+void openNOWGridAppCursorInfoUpdate(void *gridApp, const void *cursorInfo) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    try {
+        session->functions.cursorInfoUpdate(gridApp, cursorInfo);
+        if (cursorInfo == nullptr) { return; }
+        const uint32_t cursorState = loadUnaligned<uint32_t>(cursorInfo, 0x0c);
+        if (cursorState != 1 && cursorState != 2) { return; }
+        emitEvent(session,
+                  80,
+                  0,
+                  loadUnaligned<uint16_t>(cursorInfo, 0x04),
+                  cursorState,
+                  static_cast<int32_t>(loadUnaligned<uint32_t>(cursorInfo, 0x00)));
+    } catch (...) {
+        setSessionFailureUnlessStopping(session, "GridApp cursor update raised an unexpected C++ exception.");
+    }
+}
+
 void openNOWGridAppSetupProgress(void *gridApp, const void *parameters) {
     OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
@@ -961,6 +984,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.handleGamepadChanged = reinterpret_cast<GridAppHandleGamepadChanged>(resolve(handle, "_ZN7GridApp25handleGamepadChangedEventEhiib", errorBuffer, errorBufferLength));
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
     functions.togglePerfIndicator = reinterpret_cast<GridAppTogglePerfIndicator>(resolve(handle, "_ZN7GridApp29togglePerfIndicatorVisibilityEv", errorBuffer, errorBufferLength));
+    functions.cursorInfoUpdate = reinterpret_cast<GridAppCursorInfoUpdate>(resolve(handle, "_ZN7GridApp18onCursorInfoUpdateERK10CursorInfo", errorBuffer, errorBufferLength));
     functions.ioInterfaceGetStatsInterface = reinterpret_cast<IOInterfaceGetStatsInterface>(resolve(handle, "_ZN11IOInterface17getStatsInterfaceEv", errorBuffer, errorBufferLength));
     functions.statsInterfaceGetStats = reinterpret_cast<StatsInterfaceGetStats>(resolve(handle, "_ZN14StatsInterface8getStatsER13GeronimoStatsRNSt3__112basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEES9_S9_S9_S9_S9_", errorBuffer, errorBufferLength));
     functions.graphicsContextCtor = reinterpret_cast<ObjectCtor>(resolve(handle, "_ZN18SDLGraphicsContextC1Ev", errorBuffer, errorBufferLength));
@@ -987,6 +1011,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.handleGamepadChanged != nullptr &&
            functions.setDecoderInfo != nullptr &&
            functions.togglePerfIndicator != nullptr &&
+           functions.cursorInfoUpdate != nullptr &&
            functions.ioInterfaceGetStatsInterface != nullptr &&
            functions.statsInterfaceGetStats != nullptr &&
            functions.graphicsContextCtor != nullptr &&
@@ -1049,6 +1074,7 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
         {GridAppResumeFailureSlotOffset, "_ZN7GridApp15onResumeFailureERKN14SessionControl23SessionSetUpFailureInfoE"},
         {GridAppSetupSuccessSlotOffset, "_ZN7GridApp21onSessionSetupSuccessERK11SessionInfo"},
         {GridAppStreamingTerminatedSlotOffset, "_ZN7GridApp21onStreamingTerminatedERKNS_22SessionTerminationInfoE"},
+        {GridAppCursorInfoSlotOffset, "_ZN7GridApp18onCursorInfoUpdateERK10CursorInfo"},
         {GridAppSetupProgressSlotOffset, "_ZN7GridApp22onSessionSetupProgressERKN14SessionControl23SessionUpdateParametersE"},
         {GridAppActiveSessionsSlotOffset, "_ZN7GridApp16onActiveSessionsERK20ActiveSessionsResult"},
         {GridAppStopResultSlotOffset, "_ZN7GridApp12onStopResultERKN14SessionControl23SessionSetUpFailureInfoE"},
@@ -1076,6 +1102,7 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
     addressPoint[GridAppResumeFailureSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppResumeFailure);
     addressPoint[GridAppSetupSuccessSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupSuccess);
     addressPoint[GridAppStreamingTerminatedSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStreamingTerminated);
+    addressPoint[GridAppCursorInfoSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppCursorInfoUpdate);
     addressPoint[GridAppSetupProgressSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupProgress);
     addressPoint[GridAppActiveSessionsSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppActiveSessions);
     addressPoint[GridAppStopResultSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStopResult);

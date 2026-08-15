@@ -149,13 +149,22 @@ private struct NativeNVSTMediaStreamSurface: View {
         beginStreamingPerformanceMode()
         let transport = NativeNVSTBifrostTransport(
             nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
+            cursorVisibilityHandler: { [weak nativeView] visible in
+                guard let nativeView else { return }
+                nativeView.mouseInputMode = visible || !nativeView.directMouseInputEnabled ? .absolute : .relative
+            },
             prepareVideoSurfaceForShutdown: {
                 nativeView.prepareNativeNVSTRendererForShutdown()
             }
         )
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
-        let mouseInputDispatcher = NativeNVSTMouseInputDispatcher { event in
-            try? await path.send(event)
+        let mouseInputDispatcher = NativeNVSTMouseInputDispatcher { input in
+            switch input {
+            case .event(let event):
+                try? await path.send(event)
+            case .absoluteMove(let event):
+                try? await path.sendAbsoluteMouseMove(event)
+            }
         }
         self.path = path
         self.mouseInputDispatcher = mouseInputDispatcher
@@ -253,13 +262,14 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         didEnd = true
         nativeView?.onInputEvent = nil
+        nativeView?.onAbsoluteMouseMove = nil
         nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
         if let path {
             Task {
                 await mouseInputDispatcher?.finish()
-                try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
+                _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
             }
         } else {
             mouseInputDispatcher?.cancel()
@@ -294,8 +304,13 @@ private struct NativeNVSTMediaStreamSurface: View {
                 await MainActor.run {
                     isEnding = false
                     statusMessage = failureMessage
-                    self.mouseInputDispatcher = NativeNVSTMouseInputDispatcher { event in
-                        try? await path.send(event)
+                    self.mouseInputDispatcher = NativeNVSTMouseInputDispatcher { input in
+                        switch input {
+                        case .event(let event):
+                            try? await path.send(event)
+                        case .absoluteMove(let event):
+                            try? await path.sendAbsoluteMouseMove(event)
+                        }
                     }
                     streamControlsVisible = true
                     WebRTCMediaTelemetry.capture("nvst.ui.pause.failed", level: .error, message: failureMessage, attributes: ["applicationID": configuration.applicationID])
@@ -328,6 +343,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         endEventTask?.cancel()
         endEventTask = nil
         nativeView?.onInputEvent = nil
+        nativeView?.onAbsoluteMouseMove = nil
         nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
@@ -343,6 +359,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         view.directMouseInputEnabled = profile.directMouseInput
+        view.locksPointerWhenRelativeModeSelected = true
+        view.hidesCursorWhilePointerLocked = true
+        if path == nil { view.mouseInputMode = .absolute }
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
         configureInput(for: view)
@@ -356,7 +375,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
             }
             if case .mouse = event {
-                guard view.isPointerLocked else { return }
+                if view.mouseInputMode == .relative, !view.isPointerLocked { return }
                 mouseInputDispatcher?.enqueue(event)
                 return
             }
@@ -373,6 +392,12 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         view.onCommand = { command in
             handleNativeCommand(command)
+        }
+        view.onAbsoluteMouseMove = { event in
+            guard isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd,
+                  view.remoteInputEnabled, view.mouseInputMode == .absolute,
+                  NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+            mouseInputDispatcher?.enqueueAbsoluteMove(event)
         }
     }
 
@@ -881,6 +906,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         nsView.streamView.remoteInputEnabled = false
         nsView.streamView.setPointerLocked(false)
         nsView.streamView.onInputEvent = nil
+        nsView.streamView.onAbsoluteMouseMove = nil
         nsView.streamView.onPointerLockChanged = nil
         nsView.streamView.onCommand = nil
         nsView.streamView.shouldHandleCommand = nil
