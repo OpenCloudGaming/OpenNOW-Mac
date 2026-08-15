@@ -370,11 +370,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             var preClaimStatus = 0
+            var validatedSession: [String: Any]?
             if let error {
                 OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
                 let json = CloudMatchResponseParser.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
+                validatedSession = session
                 preClaimStatus = int(session?["status"])
                 let requestStatus = json?["requestStatus"] as? [String: Any]
                 let statusCode = int(requestStatus?["statusCode"])
@@ -394,6 +396,26 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     return
                 }
             } else {
+            }
+            if let validatedSession, let state = CloudMatchSessionState(rawValue: preClaimStatus) {
+                let initialProfile = self.negotiatedStreamProfile(from: validatedSession)
+                switch state {
+                case .readyForConnection, .streaming:
+                    var info = self.sessionInfo(from: validatedSession, requestedSessionId: sessionId, baseUrl: base, clientId: clientId, deviceId: deviceId, initialProfile: initialProfile)
+                    info["isResume"] = true
+                    self.mergeAndStoreAdState(&info)
+                    completion(true, info, "")
+                    return
+                case .initializing, .resuming:
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile, completion: completion)
+                    return
+                case .pausedUnintentional, .pausedIntentional:
+                    break
+                case .finished:
+                    self.clearPersistedActiveSessionId(sessionId)
+                    completion(false, [:], "This GeForce NOW session is no longer resumable. End it and launch again.")
+                    return
+                }
             }
             self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: launchAppId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
         }.resume()
@@ -491,7 +513,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
                 if CloudMatchResponseParser.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
@@ -511,7 +533,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
@@ -556,6 +578,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 return
             }
             var info = sessionInfo(from: session, requestedSessionId: context.sessionId, baseUrl: context.base, clientId: context.clientId, deviceId: context.deviceId, initialProfile: context.initialProfile)
+            info["isResume"] = true
             mergeAndStoreAdState(&info)
             context.complete(true, info, "")
         } else if canContinuePollingActiveSessionStatus(status) {

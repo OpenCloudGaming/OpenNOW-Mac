@@ -211,7 +211,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let microphoneEnabled = Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
         startAttributes["operation"] = allocation.isResume ? "resume" : "start"
         startAttributes["microphoneEnabled"] = String(microphoneEnabled)
-        startAttributes["videoSurfaceType"] = "NSView"
+        startAttributes["videoSurfaceType"] = "NSWindow"
         WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: allocation.isResume ? "Preparing Geronimo native NVST resume request." : "Preparing Geronimo native NVST start request.", attributes: startAttributes)
         let gameLanguage = Self.string(settings["gameLanguage"], fallback: "en_US")
         let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW"
@@ -294,10 +294,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             let sessionAddress = UInt(bitPattern: session)
             var attributes = startAttributes
             attributes["library"] = status.libraryURL.lastPathComponent
-            WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for StreamerConnected callback.", attributes: attributes)
+            WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for native start delivery.", attributes: attributes)
             let activePumpTask = Self.makeGeronimoPumpTask(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
             pumpTask = activePumpTask
             do {
+                try await eventSink.waitForStartDelivered(timeoutNanoseconds: 30_000_000_000)
+                WebRTCMediaTelemetry.capture("nvst.geronimo.start.delivered", level: .info, message: "Geronimo delivered native NVST start; waiting for StreamerConnected callback.", attributes: attributes)
                 try await eventSink.waitForStreamerConnected(timeoutNanoseconds: 20_000_000_000)
             } catch is CancellationError {
                 throw CancellationError()
@@ -1043,6 +1045,8 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private let sessionId: String
     private let terminationHandler: @Sendable (NativeNVSTTransportTermination) -> Void
     private var telemetryAttributes: [String: String]
+    private var startResult: Result<Void, Error>?
+    private var startCompletion: CheckedContinuation<Void, Error>?
     private var readinessResult: Result<Void, Error>?
     private var readinessCompletion: CheckedContinuation<Void, Error>?
     private var pausePending = false
@@ -1091,6 +1095,9 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         if let resultName, !resultName.isEmpty { attributes["resultName"] = resultName }
         WebRTCMediaTelemetry.capture("nvst.geronimo.callback", level: .info, message: "Geronimo native callback observed.", attributes: attributes)
 
+        if phase == 40 {
+            resolveStart(.success(()))
+        }
         if callbackType == 2, clientEvent == 14, notification == 1 {
             resolveReadiness(.success(()))
             return
@@ -1099,6 +1106,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             let message = "Native NVST streaming ended with notification \(notification)."
             let error = NativeNVSTError.transportFailed(message)
             let wasReady = hasReachedReadiness
+            resolveStart(.failure(error))
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
             resolveStop(.failure(error))
@@ -1119,6 +1127,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
         if phase == 60 {
             resolveStop(resultCode == 0 ? .success(()) : .failure(NativeNVSTError.transportFailed("Native NVST stop failed with result \(resultCode).")))
+            resolveStart(.failure(NativeNVSTError.transportFailed("Native NVST stopped before Geronimo delivered start.")))
             resolveReadiness(.failure(NativeNVSTError.transportFailed("Native NVST stopped before Geronimo reported readiness.")))
             return
         }
@@ -1126,6 +1135,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             let message = resultCode == 0 ? "Native NVST stream ended remotely." : "Native NVST stream ended remotely with result \(resultCode)."
             let error = NativeNVSTError.transportFailed(message)
             let wasReady = hasReachedReadiness
+            resolveStart(.failure(error))
             resolveStop(resultCode == 0 ? .success(()) : .failure(NativeNVSTError.transportFailed(message)))
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
@@ -1138,6 +1148,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
                 : "Native NVST streaming ended with reason \(notification) and result \(resultCode)."
             let error = NativeNVSTError.transportFailed(message)
             let wasReady = hasReachedReadiness
+            resolveStart(.failure(error))
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
             resolveStop(.failure(error))
@@ -1196,8 +1207,31 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
     }
 
+    func waitForStartDelivered(timeoutNanoseconds: UInt64) async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let startResult {
+                    lock.unlock()
+                    continuation.resume(with: startResult)
+                    return
+                }
+                startCompletion = continuation
+                lock.unlock()
+
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    self?.resolveStart(.failure(NativeNVSTError.transportFailed("Native NVST local setup did not deliver Geronimo start within 30 seconds.")))
+                }
+            }
+        } onCancel: { [weak self] in
+            self?.cancel()
+        }
+    }
+
     func fail(_ error: Error) {
         let wasReady = hasReachedReadiness
+        resolveStart(.failure(error))
         resolveReadiness(.failure(error))
         resolvePause(.failure(error))
         resolveStop(.failure(error))
@@ -1205,6 +1239,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func cancel() {
+        resolveStart(.failure(CancellationError()))
         resolveReadiness(.failure(CancellationError()))
         resolvePause(.failure(CancellationError()))
         resolveStop(.failure(CancellationError()))
@@ -1300,6 +1335,20 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         readinessResult = result
         continuation = readinessCompletion
         readinessCompletion = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
+
+    private func resolveStart(_ result: Result<Void, Error>) {
+        let continuation: CheckedContinuation<Void, Error>?
+        lock.lock()
+        if startResult != nil {
+            lock.unlock()
+            return
+        }
+        startResult = result
+        continuation = startCompletion
+        startCompletion = nil
         lock.unlock()
         continuation?.resume(with: result)
     }

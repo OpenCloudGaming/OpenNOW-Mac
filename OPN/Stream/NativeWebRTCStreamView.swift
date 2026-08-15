@@ -17,6 +17,11 @@ private final class NativeWebRTCVideoSurfaceView: NSView {
     }
 }
 
+private final class NativeNVSTRendererWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleUnifiedHUD
@@ -44,6 +49,14 @@ public final class NativeWebRTCStreamView: NSView {
     private var pointerLockCursorHidden = false
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
+    private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
+        contentRect: .zero,
+        styleMask: .borderless,
+        backing: .buffered,
+        defer: false
+    )
+    private weak var nativeNVSTRendererParentWindow: NSWindow?
+    private var nativeNVSTRendererEnabled = false
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
@@ -51,6 +64,14 @@ public final class NativeWebRTCStreamView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         addSubview(videoSurface)
+        nativeNVSTRendererWindow.backgroundColor = .black
+        nativeNVSTRendererWindow.colorSpace = .sRGB
+        nativeNVSTRendererWindow.contentView = NativeWebRTCVideoSurfaceView(frame: .zero)
+        nativeNVSTRendererWindow.hasShadow = false
+        nativeNVSTRendererWindow.ignoresMouseEvents = true
+        nativeNVSTRendererWindow.isOpaque = true
+        nativeNVSTRendererWindow.alphaValue = 0
+        nativeNVSTRendererWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         gamepadMonitor.onInputEvent = { [weak self] event in self?.onInputEvent?(event) }
         gamepadMonitor.start()
     }
@@ -69,6 +90,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if nativeNVSTRendererEnabled { updateNativeNVSTRendererWindowParent() }
         window?.makeFirstResponder(self)
         window?.acceptsMouseMovedEvents = true
         if window == nil {
@@ -90,9 +112,45 @@ public final class NativeWebRTCStreamView: NSView {
         videoSurface
     }
 
+    public func nativeNVSTVideoWindow() -> NSWindow? {
+        guard window != nil else { return nil }
+        layoutSubtreeIfNeeded()
+        guard videoSurface.bounds.width >= 1, videoSurface.bounds.height >= 1 else { return nil }
+        nativeNVSTRendererEnabled = true
+        updateNativeNVSTRendererWindowParent()
+        updateNativeNVSTRendererWindowFrame()
+        return nativeNVSTRendererWindow
+    }
+
+    public func setNativeNVSTVideoVisible(_ visible: Bool) {
+        nativeNVSTRendererWindow.alphaValue = visible ? 1 : 0
+    }
+
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
+        if nativeNVSTRendererEnabled { updateNativeNVSTRendererWindowFrame() }
+    }
+
+    private func updateNativeNVSTRendererWindowParent() {
+        guard nativeNVSTRendererParentWindow !== window else { return }
+        if let nativeNVSTRendererParentWindow {
+            nativeNVSTRendererParentWindow.removeChildWindow(nativeNVSTRendererWindow)
+        }
+        nativeNVSTRendererParentWindow = window
+        guard let window else {
+            nativeNVSTRendererWindow.orderOut(nil)
+            return
+        }
+        window.addChildWindow(nativeNVSTRendererWindow, ordered: .above)
+        nativeNVSTRendererWindow.orderFront(nil)
+        updateNativeNVSTRendererWindowFrame()
+    }
+
+    private func updateNativeNVSTRendererWindowFrame() {
+        guard let window else { return }
+        let rendererFrameInWindow = videoSurface.convert(videoSurface.bounds, to: nil)
+        nativeNVSTRendererWindow.setFrame(window.convertToScreen(rendererFrameInWindow), display: true)
     }
 
     public func setPointerLocked(_ locked: Bool) {

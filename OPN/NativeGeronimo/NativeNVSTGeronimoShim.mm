@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 
+#import <AppKit/AppKit.h>
+
 #include <stdint.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -1090,6 +1092,23 @@ bool initializeAudioObject(void *object, void *ioInterface, const PlatformAudioS
     return initialize != nullptr && initialize(object, ioInterface, settings);
 }
 
+bool videoSurfaceDimensions(void *nativeHandle, uint32_t &width, uint32_t &height) {
+    if (nativeHandle == nullptr) { return false; }
+    id nativeObject = (__bridge id)nativeHandle;
+    NSView *surfaceView = nil;
+    if ([nativeObject isKindOfClass:[NSWindow class]]) {
+        surfaceView = [static_cast<NSWindow *>(nativeObject) contentView];
+    } else if ([nativeObject isKindOfClass:[NSView class]]) {
+        surfaceView = static_cast<NSView *>(nativeObject);
+    }
+    if (surfaceView == nil) { return false; }
+    NSSize size = surfaceView.bounds.size;
+    if (size.width < 1 || size.height < 1 || size.width > UINT32_MAX || size.height > UINT32_MAX) { return false; }
+    width = static_cast<uint32_t>(size.width);
+    height = static_cast<uint32_t>(size.height);
+    return width > 0 && height > 0;
+}
+
 bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec) {
     if (codec != 1 && codec != 2 && codec != 4) { return false; }
     if (session->videoDecoder != nullptr && session->activeCodec == codec) { return true; }
@@ -1152,8 +1171,7 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
         return false;
     }
     SDLEventProcessorInitParams eventParameters{};
-    eventParameters.bytes[0] = 1;
-    eventParameters.bytes[1] = 1;
+    eventParameters.bytes[3] = 1;
     if (!session->functions.eventProcessorInitialize(session->eventProcessor, session->ioInterface, eventParameters)) {
         setSessionFailure(session, "SDLEventProcessor initialization failed.");
         return false;
@@ -1168,6 +1186,14 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     storeUnaligned<void *>(windowParameters.bytes, 0x00, session->graphicsContext);
     storeUnaligned<void *>(windowParameters.bytes, 0x08, session->eventProcessor);
     storeUnaligned<const char *>(windowParameters.bytes, 0x28, "OpenNOW");
+    uint32_t windowWidth = 0;
+    uint32_t windowHeight = 0;
+    if (!videoSurfaceDimensions(session->videoSurfaceHandle, windowWidth, windowHeight)) {
+        setSessionFailure(session, "Native Geronimo video surface has invalid dimensions.");
+        return false;
+    }
+    storeUnaligned<uint32_t>(windowParameters.bytes, 0x1c, windowWidth);
+    storeUnaligned<uint32_t>(windowParameters.bytes, 0x20, windowHeight);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x38, 1);
     storeUnaligned<void *>(windowParameters.bytes, 0x70, session->videoSurfaceHandle);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x78, 1);

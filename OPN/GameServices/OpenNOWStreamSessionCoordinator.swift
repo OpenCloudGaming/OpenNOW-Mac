@@ -129,7 +129,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         activeSession = descriptor
         return NativeNVSTSessionAllocation(
             session: descriptor,
-            isResume: configuration.resumesExistingSession,
+            isResume: configuration.resumesExistingSession || sessionInfo.isResume,
             signalingServer: sessionInfo.signalingServer,
             signalingURL: sessionInfo.signalingUrl,
             signalingQueryParameters: sessionInfo.signalingQueryParameters,
@@ -759,6 +759,7 @@ private struct AllocatedStreamSession: Sendable {
     let mediaConnectionHost: String
     let mediaConnectionPort: Int
     let deviceId: String
+    let isResume: Bool
     let status: Int
     let queuePosition: Int
     let seatSetupStep: Int
@@ -793,6 +794,7 @@ private struct AllocatedStreamSession: Sendable {
         mediaConnectionHost = Self.string(mediaConnectionInfo?["ip"])
         mediaConnectionPort = Self.int(mediaConnectionInfo?["port"])
         deviceId = Self.string(info["deviceId"])
+        isResume = Self.bool(info["isResume"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
         seatSetupStep = Self.int(info["seatSetupStep"])

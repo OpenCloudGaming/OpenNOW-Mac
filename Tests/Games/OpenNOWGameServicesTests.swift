@@ -1181,7 +1181,7 @@ import Foundation
             getCount += 1
             let count = getCount
             lock.unlock()
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 6 : 2, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
         }
         if request.httpMethod == "PUT", path == "/v2/session/resume-session" {
             return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
@@ -1238,8 +1238,17 @@ import Foundation
 @Test func sessionManagerNVSTPausedResumeSendsNVSTClaimShape() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-nvst-success.example.test"
-    SessionManagerURLProtocol.install(host: host) { _ in
-        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    let lock = NSLock()
+    nonisolated(unsafe) var getCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "GET" {
+            lock.lock()
+            getCount += 1
+            let count = getCount
+            lock.unlock()
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
@@ -1270,13 +1279,44 @@ import Foundation
     }
 }
 
-@Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
+@Test func sessionManagerReadySessionSkipsRedundantResumeClaim() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-not-paused.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
-        let path = request.url?.path ?? ""
-        if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        #expect(request.httpMethod == "GET")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+            continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == true)
+    #expect(result.1 == true)
+    #expect(result.2.isEmpty)
+    #expect(requests.map(\.httpMethod) == ["GET"])
+    }
+}
+
+@Test func sessionManagerSessionNotPausedRacePollsConnectableSession() async {
+    await networkTestIsolationLock.withLock {
+    let host = "resume-not-paused-race.example.test"
+    let lock = NSLock()
+    nonisolated(unsafe) var getCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "GET" {
+            lock.lock()
+            getCount += 1
+            let count = getCount
+            lock.unlock()
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: [
             "requestStatus": [
@@ -1291,15 +1331,16 @@ import Foundation
     OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
-            continuation.resume(returning: (success, error))
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+            continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
         }
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    #expect(result.0 == false)
-    #expect(result.1 == "Session is not paused and cannot be resumed.")
-    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+    #expect(result.0 == true)
+    #expect(result.1 == true)
+    #expect(result.2.isEmpty)
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     }
 }
 

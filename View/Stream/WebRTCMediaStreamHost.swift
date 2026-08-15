@@ -133,6 +133,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             statusMessage = "Preparing native NVST video surface..."
             return
         }
+        nativeView.setNativeNVSTVideoVisible(false)
         beginStreamingPerformanceMode()
         let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeVideoSurfaceHandle)
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
@@ -170,6 +171,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
                 await MainActor.run {
                     isConnected = true
+                    nativeView.setNativeNVSTVideoVisible(true)
                     statusMessage = "Connected over native NVST."
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
@@ -189,6 +191,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let message = Self.message(for: error)
         statusMessage = message
         isConnected = false
+        nativeView?.setNativeNVSTVideoVisible(false)
         endStreamingPerformanceMode()
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"]))
     }
@@ -200,6 +203,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         endEventTask?.cancel()
         endEventTask = nil
         endStreamingPerformanceMode()
+        nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else { return }
         didEnd = true
         nativeView?.onInputEvent = nil
@@ -224,6 +228,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard !didEnd else { return }
         didEnd = true
         isConnected = false
+        nativeView?.setNativeNVSTVideoVisible(false)
         endEventTask?.cancel()
         endEventTask = nil
         nativeView?.onInputEvent = nil
@@ -243,9 +248,8 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private static func nativeVideoSurfaceHandle(for view: NativeWebRTCStreamView) -> UInt? {
-        let videoSurface = view.nativeVideoView()
-        guard videoSurface.window != nil else { return nil }
-        return UInt(bitPattern: Unmanaged.passUnretained(videoSurface).toOpaque())
+        guard let videoWindow = view.nativeNVSTVideoWindow() else { return nil }
+        return UInt(bitPattern: Unmanaged.passUnretained(videoWindow).toOpaque())
     }
 
     private func beginStreamingPerformanceMode() {
@@ -306,6 +310,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         override func layout() {
             super.layout()
             streamView.frame = bounds
+            if window != nil { onResolve?(streamView) }
         }
     }
 }
