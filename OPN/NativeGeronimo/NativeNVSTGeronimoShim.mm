@@ -201,6 +201,7 @@ constexpr size_t GridAppSetupProgressSlotOffset = 0x140;
 constexpr size_t GridAppActiveSessionsSlotOffset = 0x148;
 constexpr size_t GridAppStopResultSlotOffset = 0x158;
 constexpr size_t GridAppPauseResultSlotOffset = 0x160;
+constexpr size_t VideoDecoderInitializeSlotOffset = 0x38;
 constexpr size_t SDLGraphicsContextStorageSize = 0x88;
 constexpr size_t SDLEventProcessorStorageSize = 0xb0;
 constexpr size_t SDLWindowStorageSize = 0x438;
@@ -325,7 +326,7 @@ struct GeronimoFunctions {
     PlatformCreateVideoDecoder createVideoDecoder = nullptr;
     PlatformCreateAudioObject createAudioRenderer = nullptr;
     PlatformCreateAudioObject createAudioCapturer = nullptr;
-    VideoDecoderInitialize videoDecoderInitialize = nullptr;
+    VideoDecoderInitialize vtDecoderInitialize = nullptr;
 };
 
 struct PendingStart {
@@ -943,7 +944,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.createVideoDecoder = reinterpret_cast<PlatformCreateVideoDecoder>(resolve(handle, "_Z26platformCreateVideoDecoderR31PlatformDecoderCreationSettingsj", errorBuffer, errorBufferLength));
     functions.createAudioRenderer = reinterpret_cast<PlatformCreateAudioObject>(resolve(handle, "_Z27platformCreateAudioRendererv", errorBuffer, errorBufferLength));
     functions.createAudioCapturer = reinterpret_cast<PlatformCreateAudioObject>(resolve(handle, "_Z27platformCreateAudioCapturerv", errorBuffer, errorBufferLength));
-    functions.videoDecoderInitialize = reinterpret_cast<VideoDecoderInitialize>(resolve(handle, "_ZN12VideoDecoder10initializeEP11IOInterfaceRK23PlatformDecoderSettingsRKNSt3__110shared_ptrI23AsyncVideoFrameRendererEE", errorBuffer, errorBufferLength));
+    functions.vtDecoderInitialize = reinterpret_cast<VideoDecoderInitialize>(resolve(handle, "_ZN9VTDecoder10initializeEP11IOInterfaceRK23PlatformDecoderSettingsRKNSt3__110shared_ptrI23AsyncVideoFrameRendererEE", errorBuffer, errorBufferLength));
     return functions.gridAppDtor != nullptr &&
            functions.gridAppProcessEvents != nullptr &&
            functions.stop != nullptr &&
@@ -966,7 +967,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.createVideoDecoder != nullptr &&
            functions.createAudioRenderer != nullptr &&
            functions.createAudioCapturer != nullptr &&
-           functions.videoDecoderInitialize != nullptr;
+           functions.vtDecoderInitialize != nullptr;
 }
 
 void *allocateConstructedObject(size_t size, ObjectCtor constructor) {
@@ -1129,11 +1130,16 @@ bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_
         destroyPolymorphicObject(candidate);
         return false;
     }
+    VideoDecoderInitialize initialize = virtualFunction<VideoDecoderInitialize>(candidate, VideoDecoderInitializeSlotOffset);
+    if (initialize == nullptr || initialize != session->functions.vtDecoderInitialize) {
+        destroyPolymorphicObject(candidate);
+        return false;
+    }
     PlatformDecoderSettings decoderSettings{};
     storeUnaligned<uint32_t>(decoderSettings.bytes, 0x00, 42);
     storeUnaligned<uint32_t>(decoderSettings.bytes, 0x0c, codec);
     storeUnaligned<uint8_t>(decoderSettings.bytes, 0x1d, 1);
-    int32_t decoderResult = session->functions.videoDecoderInitialize(candidate, session->ioInterface, decoderSettings, renderer);
+    int32_t decoderResult = initialize(candidate, session->ioInterface, decoderSettings, renderer);
     if (decoderResult != 0) {
         destroyPolymorphicObject(candidate);
         return false;
