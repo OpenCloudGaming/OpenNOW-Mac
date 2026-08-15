@@ -21,6 +21,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
+    private var prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
     private let terminationChannel = NativeNVSTTerminationChannel()
     private var bridge: NVSTNativeBridge?
     private var activeConnection: NativeNVSTTransportConnection?
@@ -32,10 +33,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
-                nativeVideoSurfaceHandle: UInt? = nil) {
+                nativeVideoSurfaceHandle: UInt? = nil,
+                prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
         self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
+        self.prepareVideoSurfaceForShutdown = prepareVideoSurfaceForShutdown
     }
 
     public func prepare() async throws -> NVSTNativeBridgeStatus {
@@ -162,6 +165,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoSessionAddress = nil
         geronimoEventSink = nil
         activeConnection = nil
+        if sessionAddress != nil {
+            await prepareGeronimoVideoSurfaceForShutdown()
+        } else {
+            prepareVideoSurfaceForShutdown = nil
+        }
         if let sessionAddress, let eventSink {
             if !eventSink.hasDeliveredTerminal {
                 eventSink.beginStop()
@@ -197,6 +205,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoSessionAddress = nil
         geronimoEventSink = nil
         activeConnection = nil
+        await prepareGeronimoVideoSurfaceForShutdown()
         pumpTask?.cancel()
         if let pumpTask { await pumpTask.value }
         await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
@@ -204,6 +213,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
         terminationChannel.stream()
+    }
+
+    private func prepareGeronimoVideoSurfaceForShutdown() async {
+        guard let prepareVideoSurfaceForShutdown else { return }
+        self.prepareVideoSurfaceForShutdown = nil
+        await prepareVideoSurfaceForShutdown()
     }
 
     @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?, eventSink: NativeNVSTGeronimoEventSink) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pumpTask: Task<Void, Never>) {

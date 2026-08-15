@@ -145,7 +145,12 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         beginStreamingPerformanceMode()
-        let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeVideoSurfaceHandle)
+        let transport = NativeNVSTBifrostTransport(
+            nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
+            prepareVideoSurfaceForShutdown: {
+                nativeView.prepareNativeNVSTRendererForShutdown()
+            }
+        )
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
         self.path = path
         endEventTask = Task {

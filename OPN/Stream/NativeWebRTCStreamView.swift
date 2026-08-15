@@ -79,6 +79,7 @@ public final class NativeWebRTCStreamView: NSView {
     private weak var nativeNVSTRendererParentWindow: NSWindow?
     private weak var nativeNVSTMetalView: NSView?
     private var nativeNVSTRendererEnabled = false
+    private var nativeNVSTRendererPreparedForShutdown = false
     private var nativeNVSTVideoVisible = false
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
@@ -146,6 +147,7 @@ public final class NativeWebRTCStreamView: NSView {
         layoutSubtreeIfNeeded()
         guard videoSurface.bounds.width >= 1, videoSurface.bounds.height >= 1 else { return nil }
         nativeNVSTRendererEnabled = true
+        nativeNVSTRendererPreparedForShutdown = false
         updateNativeNVSTRendererWindowParent()
         updateNativeNVSTRendererWindowFrame()
         return nativeNVSTRendererWindow
@@ -153,9 +155,24 @@ public final class NativeWebRTCStreamView: NSView {
 
     public func setNativeNVSTVideoVisible(_ visible: Bool) {
         nativeNVSTVideoVisible = visible
-        _ = embedNativeNVSTMetalViewIfAvailable()
+        if visible { nativeNVSTRendererPreparedForShutdown = false }
+        if !nativeNVSTRendererPreparedForShutdown { _ = embedNativeNVSTMetalViewIfAvailable() }
         nativeNVSTMetalView?.isHidden = !visible
         nativeNVSTRendererWindow.alphaValue = 0
+    }
+
+    public func prepareNativeNVSTRendererForShutdown() {
+        nativeNVSTVideoVisible = false
+        nativeNVSTRendererPreparedForShutdown = true
+        nativeNVSTRendererWindow.alphaValue = 0
+        guard let metalView = nativeNVSTMetalView,
+              let rendererContentView = nativeNVSTRendererWindow.contentView else { return }
+        metalView.isHidden = true
+        metalView.removeFromSuperview()
+        metalView.frame = rendererContentView.bounds
+        metalView.autoresizingMask = [.width, .height]
+        rendererContentView.addSubview(metalView)
+        nativeNVSTMetalView = nil
     }
 
     public func restoreInputFocus() {
@@ -169,7 +186,7 @@ public final class NativeWebRTCStreamView: NSView {
         nativeNVSTMetalView?.frame = videoSurface.bounds
         if nativeNVSTRendererEnabled {
             updateNativeNVSTRendererWindowFrame()
-            _ = embedNativeNVSTMetalViewIfAvailable()
+            if !nativeNVSTRendererPreparedForShutdown { _ = embedNativeNVSTMetalViewIfAvailable() }
         }
     }
 
@@ -202,7 +219,8 @@ public final class NativeWebRTCStreamView: NSView {
             updateNativeNVSTMetalDrawableSize(nativeNVSTMetalView)
             return true
         }
-        guard let metalView = nativeNVSTRendererWindow.contentView?.subviews.first(where: { $0.layer is CAMetalLayer }) else { return false }
+        guard nativeNVSTVideoVisible,
+              let metalView = nativeNVSTRendererWindow.contentView?.subviews.first(where: { $0.layer is CAMetalLayer }) else { return false }
         metalView.removeFromSuperview()
         metalView.frame = videoSurface.bounds
         metalView.autoresizingMask = [.width, .height]

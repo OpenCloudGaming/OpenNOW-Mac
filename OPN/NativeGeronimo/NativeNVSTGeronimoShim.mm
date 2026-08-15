@@ -403,7 +403,7 @@ struct OpenNOWNativeNVSTGeronimoSession {
     std::string keyboardLayout;
     std::string deviceId;
     std::string platform;
-    void *videoSurfaceHandle = nullptr;
+    CFTypeRef videoSurfaceHandle = nullptr;
 };
 
 std::mutex gGridAppSessionsMutex;
@@ -1199,14 +1199,15 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     storeUnaligned<const char *>(windowParameters.bytes, 0x28, "OpenNOW");
     uint32_t windowWidth = 0;
     uint32_t windowHeight = 0;
-    if (!videoSurfaceDimensions(session->videoSurfaceHandle, windowWidth, windowHeight)) {
+    void *videoSurfaceHandle = const_cast<void *>(session->videoSurfaceHandle);
+    if (!videoSurfaceDimensions(videoSurfaceHandle, windowWidth, windowHeight)) {
         setSessionFailure(session, "Native Geronimo video surface has invalid dimensions.");
         return false;
     }
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x1c, windowWidth);
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x20, windowHeight);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x38, SDLWindowHighDPIEnabled);
-    storeUnaligned<void *>(windowParameters.bytes, 0x70, session->videoSurfaceHandle);
+    storeUnaligned<void *>(windowParameters.bytes, 0x70, videoSurfaceHandle);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x78, 1);
     if (!session->functions.windowInitialize(session->window, session->ioInterface, windowParameters)) {
         setSessionFailure(session, "SDLWindow initialization failed for the OpenNOW native surface.");
@@ -1472,14 +1473,22 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer
         setError(errorBuffer, errorBufferLength, "Native Geronimo video surface handle is null.");
         return -2;
     }
+    id nativeObject = (__bridge id)nativeHandle;
+    if (![nativeObject isKindOfClass:[NSWindow class]] && ![nativeObject isKindOfClass:[NSView class]]) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo video surface must be an NSWindow or NSView.");
+        return -4;
+    }
+    CFTypeRef previousVideoSurfaceHandle = nullptr;
     {
         std::lock_guard<std::mutex> lock(session->mediaMutex);
         if (session->window != nullptr) {
             setError(errorBuffer, errorBufferLength, "Native Geronimo video surface cannot change after SDLWindow initialization.");
             return -3;
         }
-        session->videoSurfaceHandle = nativeHandle;
+        previousVideoSurfaceHandle = session->videoSurfaceHandle;
+        session->videoSurfaceHandle = CFBridgingRetain(nativeObject);
     }
+    if (previousVideoSurfaceHandle != nullptr) { CFRelease(previousVideoSurfaceHandle); }
     emitEvent(session, 22, 0, 0, 0, 0);
     return 0;
 }
@@ -2124,7 +2133,13 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
         free(session->gridAppVTable);
         session->gridAppVTable = nullptr;
     }
-    session->videoSurfaceHandle = nullptr;
+    CFTypeRef videoSurfaceHandle = nullptr;
+    {
+        std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+        videoSurfaceHandle = session->videoSurfaceHandle;
+        session->videoSurfaceHandle = nullptr;
+    }
+    if (videoSurfaceHandle != nullptr) { CFRelease(videoSurfaceHandle); }
     if (session->libraryHandle != nullptr) {
         dlclose(session->libraryHandle);
         session->libraryHandle = nullptr;

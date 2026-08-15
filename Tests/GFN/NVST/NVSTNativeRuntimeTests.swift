@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import OpenNOW
@@ -78,7 +79,7 @@ import Testing
     }
 }
 
-@Test func nvstGeronimoCreatesWithVendoredGridAppCallbackABI() {
+@Test @MainActor func nvstGeronimoCreatesWithVendoredGridAppCallbackABI() {
     let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
     var errorBuffer = [CChar](repeating: 0, count: 1024)
     let session = frameworksDirectory.path.withCString { frameworksPath in
@@ -96,7 +97,22 @@ import Testing
     let resultName = OpenNOWTestNativeNVSTGeronimoResultCodeName(session, 302)
     #expect(resultName.map { String(cString: $0) } == "NVB_R_SESSION_LIMIT_REACHED")
 
+    var surface: NSView? = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    weak var retainedSurface = surface
+    let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
+        OpenNOWTestNativeNVSTGeronimoSetVideoSurface(
+            session,
+            surface.map { Unmanaged.passUnretained($0).toOpaque() },
+            buffer.baseAddress,
+            buffer.count
+        )
+    }
+    #expect(result == 0)
+    surface = nil
+    #expect(retainedSurface != nil)
+
     OpenNOWTestNativeNVSTGeronimoDestroy(session)
+    #expect(retainedSurface == nil)
 }
 
 @Test func nvstGeronimoConversionRejectsUnsupportedServerAndAuthTypes() {
@@ -140,6 +156,9 @@ private func OpenNOWTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoDestroy")
 private func OpenNOWTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
+private func OpenNOWTestNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoResultCodeName")
 private func OpenNOWTestNativeNVSTGeronimoResultCodeName(_ session: UnsafeMutableRawPointer?, _ resultCode: Int32) -> UnsafePointer<CChar>?
