@@ -211,6 +211,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let microphoneEnabled = Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
         startAttributes["operation"] = allocation.isResume ? "resume" : "start"
         startAttributes["microphoneEnabled"] = String(microphoneEnabled)
+        startAttributes["videoSurfaceType"] = "NSView"
         WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: allocation.isResume ? "Preparing Geronimo native NVST resume request." : "Preparing Geronimo native NVST start request.", attributes: startAttributes)
         let gameLanguage = Self.string(settings["gameLanguage"], fallback: "en_US")
         let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW"
@@ -296,7 +297,18 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for StreamerConnected callback.", attributes: attributes)
             let activePumpTask = Self.makeGeronimoPumpTask(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
             pumpTask = activePumpTask
-            try await eventSink.waitForStreamerConnected(timeoutNanoseconds: 20_000_000_000)
+            do {
+                try await eventSink.waitForStreamerConnected(timeoutNanoseconds: 20_000_000_000)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                var failureAttributes = attributes
+                failureAttributes.merge(eventSink.readinessDiagnosticAttributes()) { _, new in new }
+                let localizedMessage = (error as? LocalizedError)?.errorDescription
+                failureAttributes["error"] = localizedMessage?.isEmpty == false ? localizedMessage : error.localizedDescription
+                WebRTCMediaTelemetry.capture("nvst.geronimo.readiness.failed", level: .error, message: "Geronimo did not reach native NVST readiness.", attributes: failureAttributes)
+                throw error
+            }
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
             return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePumpTask)
         } catch {
@@ -1040,6 +1052,12 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private var stopResult: Result<Void, Error>?
     private var stopCompletion: CheckedContinuation<Void, Error>?
     private var terminalDelivered = false
+    private var observedPhases: Set<Int32> = []
+    private var lastPhase: Int32?
+    private var lastCallbackType: UInt32?
+    private var lastClientEvent: UInt32?
+    private var lastNotification: UInt32?
+    private var lastResultCode: Int32?
 
     init(sessionId: String, telemetryAttributes: [String: String], terminationHandler: @escaping @Sendable (NativeNVSTTransportTermination) -> Void) {
         self.sessionId = sessionId
@@ -1055,6 +1073,12 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
 
     func handle(phase: Int32, callbackType: UInt32, clientEvent: UInt32, notification: UInt32, resultCode: Int32, resultName: String?) {
         lock.lock()
+        observedPhases.insert(phase)
+        lastPhase = phase
+        lastCallbackType = callbackType
+        lastClientEvent = clientEvent
+        lastNotification = notification
+        lastResultCode = resultCode
         var attributes = telemetryAttributes
         let pausePending = self.pausePending
         lock.unlock()
@@ -1123,6 +1147,31 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         if phase == 70 {
             fail(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoCallbackFailureMessage(resultCode: resultCode, resultName: resultName)))
         }
+    }
+
+    func readinessDiagnosticAttributes() -> [String: String] {
+        lock.lock()
+        let phases = observedPhases.sorted()
+        let lastPhase = self.lastPhase
+        let lastCallbackType = self.lastCallbackType
+        let lastClientEvent = self.lastClientEvent
+        let lastNotification = self.lastNotification
+        let lastResultCode = self.lastResultCode
+        lock.unlock()
+
+        var attributes = [
+            "observedPhases": phases.map(String.init).joined(separator: ","),
+            "startEventDelivered": String(phases.contains(40)),
+            "streamingBegan": String(phases.contains(44)),
+            "setupSucceeded": String(phases.contains(46)),
+            "connectedEventDelivered": String(phases.contains(45)),
+        ]
+        if let lastPhase { attributes["lastPhase"] = String(lastPhase) }
+        if let lastCallbackType { attributes["lastCallbackType"] = String(lastCallbackType) }
+        if let lastClientEvent { attributes["lastClientEvent"] = String(lastClientEvent) }
+        if let lastNotification { attributes["lastNotification"] = String(lastNotification) }
+        if let lastResultCode { attributes["lastResultCode"] = String(lastResultCode) }
+        return attributes
     }
 
     func waitForStreamerConnected(timeoutNanoseconds: UInt64) async throws {

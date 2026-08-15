@@ -567,6 +567,7 @@ void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
             }
         }
         if (!acceptsStreamingBegin) { return; }
+        emitEvent(session, 44, 0, 0, 0, 0);
         {
             std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
             callVoidVirtual(session->audioRenderer, 0x48);
@@ -1267,12 +1268,12 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
         emitEvent(session, 70, 0, 0, 0, -11);
         return -11;
     }
-    emitEvent(session, 40, 0, 0, 0, 0);
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         session->startEventDelivered = true;
         if (session->state == NativeSessionState::starting) { session->state = NativeSessionState::setupPending; }
     }
+    emitEvent(session, 40, 0, 0, 0, 0);
     emitConnectedIfReady(session);
     return 0;
 }

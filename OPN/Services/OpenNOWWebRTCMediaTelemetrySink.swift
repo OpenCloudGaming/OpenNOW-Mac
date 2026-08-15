@@ -4,16 +4,16 @@ struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
         let level = Self.sentryLevel(for: event)
-        let message = OPNSentry.formattedLogMessage(level: level.rawValue, area: "WebRTC", message: "\(event.name): \(event.message)\(suffix)")
+        let message = "\(event.name): \(event.message)\(suffix)"
         switch level {
         case .debug:
-            OPNSentry.logDebugMessage(message)
+            OpenNOWLog.debug(.stream, message)
         case .info:
-            OPNSentry.logInfoMessage(message)
+            OpenNOWLog.info(.stream, message)
         case .warning:
-            OPNSentry.logWarningMessage(message)
+            OpenNOWLog.warning(.stream, message)
         case .error:
-            OPNSentry.logErrorMessage(message)
+            OpenNOWLog.error(.stream, message)
         }
     }
 

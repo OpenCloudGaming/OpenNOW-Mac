@@ -9,6 +9,7 @@ enum OpenNOWLog {
         case catalog = "Catalog"
         case launch = "Launch"
         case shortcut = "GFNShortcut"
+        case stream = "WebRTC"
     }
 
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.OpenNOW"

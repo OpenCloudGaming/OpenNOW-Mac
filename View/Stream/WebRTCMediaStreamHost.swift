@@ -129,12 +129,12 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func startIfNeeded() {
         guard startTask == nil, path == nil, !didEnd else { return }
-        guard let nativeView, let nativeWindowHandle = Self.nativeWindowHandle(for: nativeView) else {
+        guard let nativeView, let nativeVideoSurfaceHandle = Self.nativeVideoSurfaceHandle(for: nativeView) else {
             statusMessage = "Preparing native NVST video surface..."
             return
         }
         beginStreamingPerformanceMode()
-        let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeWindowHandle)
+        let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: nativeVideoSurfaceHandle)
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
         self.path = path
         endEventTask = Task {
@@ -242,9 +242,10 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
     }
 
-    private static func nativeWindowHandle(for view: NativeWebRTCStreamView) -> UInt? {
-        guard let window = view.window else { return nil }
-        return UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
+    private static func nativeVideoSurfaceHandle(for view: NativeWebRTCStreamView) -> UInt? {
+        let videoSurface = view.nativeVideoView()
+        guard videoSurface.window != nil else { return nil }
+        return UInt(bitPattern: Unmanaged.passUnretained(videoSurface).toOpaque())
     }
 
     private func beginStreamingPerformanceMode() {
