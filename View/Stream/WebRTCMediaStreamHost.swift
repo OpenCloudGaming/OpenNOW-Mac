@@ -703,7 +703,8 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor
             addSubview(streamView)
-            streamView.setNativeNVSTOverlayView(overlayView)
+            overlayView.isHidden = true
+            addSubview(overlayView)
         }
 
         @available(*, unavailable)
@@ -719,12 +720,14 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         override func layout() {
             super.layout()
             streamView.frame = bounds
+            overlayView.frame = bounds
             if window != nil { onResolve?(streamView) }
         }
 
         func updateOverlay(_ overlay: AnyView, visible: Bool) {
             overlayView.rootView = overlay
-            streamView.setNativeNVSTOverlayVisible(visible)
+            overlayView.isHidden = !visible
+            if visible { NSCursor.arrow.set() }
         }
     }
 }

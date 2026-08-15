@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 private final class NativeWebRTCVideoSurfaceView: NSView {
     override init(frame frameRect: NSRect) {
@@ -19,11 +20,6 @@ private final class NativeWebRTCVideoSurfaceView: NSView {
 
 private final class NativeNVSTRendererWindow: NSWindow {
     override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
-
-private final class NativeNVSTOverlayWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
 
@@ -80,16 +76,10 @@ public final class NativeWebRTCStreamView: NSView {
         backing: .buffered,
         defer: false
     )
-    private let nativeNVSTOverlayWindow = NativeNVSTOverlayWindow(
-        contentRect: .zero,
-        styleMask: .borderless,
-        backing: .buffered,
-        defer: false
-    )
     private weak var nativeNVSTRendererParentWindow: NSWindow?
+    private weak var nativeNVSTMetalView: NSView?
     private var nativeNVSTRendererEnabled = false
-    private var nativeNVSTOverlayEnabled = false
-    private var nativeNVSTOverlayVisible = false
+    private var nativeNVSTVideoVisible = false
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
@@ -97,20 +87,14 @@ public final class NativeWebRTCStreamView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         addSubview(videoSurface)
-        nativeNVSTRendererWindow.backgroundColor = .black
+        nativeNVSTRendererWindow.backgroundColor = .clear
         nativeNVSTRendererWindow.colorSpace = .sRGB
         nativeNVSTRendererWindow.contentView = NativeWebRTCVideoSurfaceView(frame: .zero)
         nativeNVSTRendererWindow.hasShadow = false
         nativeNVSTRendererWindow.ignoresMouseEvents = true
-        nativeNVSTRendererWindow.isOpaque = true
+        nativeNVSTRendererWindow.isOpaque = false
         nativeNVSTRendererWindow.alphaValue = 0
         nativeNVSTRendererWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
-        nativeNVSTOverlayWindow.backgroundColor = .clear
-        nativeNVSTOverlayWindow.hasShadow = false
-        nativeNVSTOverlayWindow.ignoresMouseEvents = true
-        nativeNVSTOverlayWindow.isOpaque = false
-        nativeNVSTOverlayWindow.alphaValue = 0
-        nativeNVSTOverlayWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         gamepadMonitor.onInputEvent = { [weak self] event in
             guard let self, self.remoteInputEnabled else { return }
             if case .gamepad(let state) = event { self.activeGamepadStates[state.playerIndex] = state }
@@ -133,7 +117,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if nativeNVSTRendererEnabled || nativeNVSTOverlayEnabled { updateNativeNVSTChildWindowParent() }
+        if nativeNVSTRendererEnabled { updateNativeNVSTRendererWindowParent() }
         restoreInputFocus()
         window?.acceptsMouseMovedEvents = true
         if window == nil {
@@ -162,39 +146,16 @@ public final class NativeWebRTCStreamView: NSView {
         layoutSubtreeIfNeeded()
         guard videoSurface.bounds.width >= 1, videoSurface.bounds.height >= 1 else { return nil }
         nativeNVSTRendererEnabled = true
-        updateNativeNVSTChildWindowParent()
-        updateNativeNVSTChildWindowFrames()
+        updateNativeNVSTRendererWindowParent()
+        updateNativeNVSTRendererWindowFrame()
         return nativeNVSTRendererWindow
     }
 
     public func setNativeNVSTVideoVisible(_ visible: Bool) {
-        nativeNVSTRendererWindow.alphaValue = visible ? 1 : 0
-    }
-
-    public func setNativeNVSTOverlayView(_ overlayView: NSView) {
-        guard nativeNVSTOverlayWindow.contentView !== overlayView else { return }
-        nativeNVSTOverlayEnabled = true
-        overlayView.autoresizingMask = [.width, .height]
-        nativeNVSTOverlayWindow.contentView = overlayView
-        updateNativeNVSTChildWindowParent()
-        updateNativeNVSTChildWindowFrames()
-    }
-
-    public func setNativeNVSTOverlayVisible(_ visible: Bool) {
-        guard nativeNVSTOverlayVisible != visible else { return }
-        nativeNVSTOverlayVisible = visible
-        nativeNVSTOverlayWindow.alphaValue = visible ? 1 : 0
-        nativeNVSTOverlayWindow.ignoresMouseEvents = !visible
-        if visible {
-            updateNativeNVSTChildWindowParent()
-            updateNativeNVSTChildWindowFrames()
-            nativeNVSTOverlayWindow.makeKeyAndOrderFront(nil)
-            NSCursor.arrow.set()
-        } else {
-            nativeNVSTOverlayWindow.orderOut(nil)
-            nativeNVSTRendererParentWindow?.makeKey()
-            restoreInputFocus()
-        }
+        nativeNVSTVideoVisible = visible
+        _ = embedNativeNVSTMetalViewIfAvailable()
+        nativeNVSTMetalView?.isHidden = !visible
+        nativeNVSTRendererWindow.alphaValue = 0
     }
 
     public func restoreInputFocus() {
@@ -205,38 +166,60 @@ public final class NativeWebRTCStreamView: NSView {
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
-        if nativeNVSTRendererEnabled || nativeNVSTOverlayEnabled { updateNativeNVSTChildWindowFrames() }
+        nativeNVSTMetalView?.frame = videoSurface.bounds
+        if nativeNVSTRendererEnabled {
+            updateNativeNVSTRendererWindowFrame()
+            _ = embedNativeNVSTMetalViewIfAvailable()
+        }
     }
 
-    private func updateNativeNVSTChildWindowParent() {
-        if nativeNVSTRendererParentWindow !== window {
-            if let nativeNVSTRendererParentWindow {
-                nativeNVSTRendererParentWindow.removeChildWindow(nativeNVSTRendererWindow)
-                nativeNVSTRendererParentWindow.removeChildWindow(nativeNVSTOverlayWindow)
-            }
-            nativeNVSTRendererParentWindow = window
+    private func updateNativeNVSTRendererWindowParent() {
+        guard nativeNVSTRendererParentWindow !== window else { return }
+        if let nativeNVSTRendererParentWindow {
+            nativeNVSTRendererParentWindow.removeChildWindow(nativeNVSTRendererWindow)
         }
+        nativeNVSTRendererParentWindow = window
         guard let window else {
             nativeNVSTRendererWindow.orderOut(nil)
-            nativeNVSTOverlayWindow.orderOut(nil)
             return
         }
-        if nativeNVSTRendererEnabled, nativeNVSTRendererWindow.parent !== window {
-            window.addChildWindow(nativeNVSTRendererWindow, ordered: .above)
-            nativeNVSTRendererWindow.orderFront(nil)
-        }
-        if nativeNVSTOverlayEnabled, nativeNVSTOverlayWindow.parent !== window {
-            window.addChildWindow(nativeNVSTOverlayWindow, ordered: .above)
-        }
-        updateNativeNVSTChildWindowFrames()
+        window.addChildWindow(nativeNVSTRendererWindow, ordered: .above)
+        nativeNVSTRendererWindow.orderFront(nil)
+        updateNativeNVSTRendererWindowFrame()
     }
 
-    private func updateNativeNVSTChildWindowFrames() {
+    private func updateNativeNVSTRendererWindowFrame() {
         guard let window else { return }
         let rendererFrameInWindow = videoSurface.convert(videoSurface.bounds, to: nil)
         nativeNVSTRendererWindow.setFrame(window.convertToScreen(rendererFrameInWindow), display: true)
-        let overlayFrameInWindow = convert(bounds, to: nil)
-        nativeNVSTOverlayWindow.setFrame(window.convertToScreen(overlayFrameInWindow), display: true)
+    }
+
+    @discardableResult
+    private func embedNativeNVSTMetalViewIfAvailable() -> Bool {
+        if let nativeNVSTMetalView {
+            nativeNVSTMetalView.frame = videoSurface.bounds
+            nativeNVSTMetalView.isHidden = !nativeNVSTVideoVisible
+            updateNativeNVSTMetalDrawableSize(nativeNVSTMetalView)
+            return true
+        }
+        guard let metalView = nativeNVSTRendererWindow.contentView?.subviews.first(where: { $0.layer is CAMetalLayer }) else { return false }
+        metalView.removeFromSuperview()
+        metalView.frame = videoSurface.bounds
+        metalView.autoresizingMask = [.width, .height]
+        metalView.isHidden = !nativeNVSTVideoVisible
+        videoSurface.addSubview(metalView)
+        nativeNVSTMetalView = metalView
+        updateNativeNVSTMetalDrawableSize(metalView)
+        return true
+    }
+
+    private func updateNativeNVSTMetalDrawableSize(_ metalView: NSView) {
+        guard let metalLayer = metalView.layer as? CAMetalLayer else { return }
+        let boundsSize = metalView.bounds.size
+        guard boundsSize.width >= 1, boundsSize.height >= 1 else { return }
+        let scale = max(1, metalView.window?.backingScaleFactor ?? window?.backingScaleFactor ?? 1)
+        metalLayer.contentsScale = scale
+        metalLayer.drawableSize = CGSize(width: floor(boundsSize.width * scale), height: floor(boundsSize.height * scale))
     }
 
     public func setPointerLocked(_ locked: Bool) {
@@ -580,7 +563,7 @@ public final class NativeWebRTCStreamView: NSView {
     private func installKeyEquivalentMonitor() {
         guard keyEquivalentMonitor == nil else { return }
         keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self, self.window?.isKeyWindow == true || self.nativeNVSTOverlayWindow.isKeyWindow else { return event }
+            guard let self, self.window?.isKeyWindow == true else { return event }
             guard NSApplication.shared.isActive else { return event }
             guard self.remoteInputEnabled else { return self.handleCommand(event) ? nil : event }
             if self.handlePasteShortcut(event) { return nil }
