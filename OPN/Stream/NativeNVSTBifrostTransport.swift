@@ -154,6 +154,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         try await Self.toggleGeronimoPerformanceOverlayOnMainActor(sessionAddress: sessionAddress)
     }
 
+    public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { return nil }
+        return Self.copyGeronimoPerformanceSnapshot(sessionAddress: sessionAddress)
+    }
+
     public func disconnect() async {
         connectingAttemptID = nil
         connectingEventSink?.cancel()
@@ -394,6 +399,60 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let result = OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo performance overlay failed with result \(result)."))
+        }
+    }
+
+    private static func copyGeronimoPerformanceSnapshot(sessionAddress: UInt) -> NativeNVSTPerformanceSnapshot? {
+        var nativeStatsBytes = [UInt8](repeating: 0, count: NativeNVSTGeronimoPerformanceStats.byteCount)
+        var serverLocation = [CChar](repeating: 0, count: 128)
+        let result = nativeStatsBytes.withUnsafeMutableBytes { statsBuffer in
+            serverLocation.withUnsafeMutableBufferPointer { locationBuffer in
+                OpenNOWNativeNVSTGeronimoCopyPerformanceStats(
+                    UnsafeMutableRawPointer(bitPattern: sessionAddress),
+                    statsBuffer.baseAddress,
+                    statsBuffer.count,
+                    locationBuffer.baseAddress,
+                    locationBuffer.count,
+                    nil,
+                    0
+                )
+            }
+        }
+        guard result == 0, let nativeStats = NativeNVSTGeronimoPerformanceStats(bytes: nativeStatsBytes) else { return nil }
+        let resolution: String
+        if nativeStats.frameWidth > 0, nativeStats.frameHeight > 0 {
+            resolution = "\(nativeStats.frameWidth)x\(nativeStats.frameHeight)"
+        } else {
+            resolution = ""
+        }
+        let resolvedServerLocation = serverLocation.withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return "" }
+            return String(cString: baseAddress).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return NativeNVSTPerformanceSnapshot(
+            available: nativeStats.available != 0,
+            gameFramesPerSecond: nativeStats.gameFramesPerSecond,
+            streamFramesPerSecond: Double(nativeStats.streamFramesPerSecond),
+            latencyMilliseconds: nativeStats.latencyMilliseconds,
+            jitterMilliseconds: nativeStats.jitterMilliseconds,
+            frameLoss: UInt64(nativeStats.frameLoss),
+            totalFrameLoss: UInt64(nativeStats.totalFrameLoss),
+            packetLoss: UInt64(nativeStats.packetLoss),
+            totalPacketLoss: UInt64(nativeStats.totalPacketLoss),
+            bitrateMegabitsPerSecond: nativeStats.bitrateMegabitsPerSecond,
+            bandwidthUtilizationPercent: nativeStats.bandwidthUtilizationPercent,
+            resolution: resolution,
+            codec: nativeCodecName(nativeStats.codec),
+            serverLocation: resolvedServerLocation
+        )
+    }
+
+    private static func nativeCodecName(_ codec: UInt32) -> String {
+        switch codec {
+        case 1: "H264"
+        case 2: "H265"
+        case 4: "AV1"
+        default: ""
         }
     }
 
@@ -1443,6 +1502,67 @@ private func nativeNVSTGeronimoEventCallback(_ context: UnsafeMutableRawPointer?
 
 private typealias NativeNVSTGeronimoEventHandler = @convention(c) (UnsafeMutableRawPointer?, Int32, UInt32, UInt32, UInt32, Int32, UnsafePointer<CChar>?) -> Void
 
+private struct NativeNVSTGeronimoPerformanceStats {
+    static let byteCount = 0x50
+
+    let available: UInt32
+    let frameWidth: UInt32
+    let frameHeight: UInt32
+    let streamFramesPerSecond: UInt32
+    let codec: UInt32
+    let frameLoss: UInt32
+    let totalFrameLoss: UInt32
+    let packetLoss: UInt32
+    let totalPacketLoss: UInt32
+    let gameFramesPerSecond: Double
+    let latencyMilliseconds: Double
+    let jitterMilliseconds: Double
+    let bitrateMegabitsPerSecond: Double
+    let bandwidthUtilizationPercent: Double
+
+    init?(bytes: [UInt8]) {
+        guard
+            bytes.count == Self.byteCount,
+            let available = Self.load(UInt32.self, from: bytes, at: 0x00),
+            let frameWidth = Self.load(UInt32.self, from: bytes, at: 0x04),
+            let frameHeight = Self.load(UInt32.self, from: bytes, at: 0x08),
+            let streamFramesPerSecond = Self.load(UInt32.self, from: bytes, at: 0x0c),
+            let codec = Self.load(UInt32.self, from: bytes, at: 0x10),
+            let frameLoss = Self.load(UInt32.self, from: bytes, at: 0x14),
+            let totalFrameLoss = Self.load(UInt32.self, from: bytes, at: 0x18),
+            let packetLoss = Self.load(UInt32.self, from: bytes, at: 0x1c),
+            let totalPacketLoss = Self.load(UInt32.self, from: bytes, at: 0x20),
+            let gameFramesPerSecond = Self.load(Double.self, from: bytes, at: 0x28),
+            let latencyMilliseconds = Self.load(Double.self, from: bytes, at: 0x30),
+            let jitterMilliseconds = Self.load(Double.self, from: bytes, at: 0x38),
+            let bitrateMegabitsPerSecond = Self.load(Double.self, from: bytes, at: 0x40),
+            let bandwidthUtilizationPercent = Self.load(Double.self, from: bytes, at: 0x48)
+        else { return nil }
+        self.available = available
+        self.frameWidth = frameWidth
+        self.frameHeight = frameHeight
+        self.streamFramesPerSecond = streamFramesPerSecond
+        self.codec = codec
+        self.frameLoss = frameLoss
+        self.totalFrameLoss = totalFrameLoss
+        self.packetLoss = packetLoss
+        self.totalPacketLoss = totalPacketLoss
+        self.gameFramesPerSecond = gameFramesPerSecond
+        self.latencyMilliseconds = latencyMilliseconds
+        self.jitterMilliseconds = jitterMilliseconds
+        self.bitrateMegabitsPerSecond = bitrateMegabitsPerSecond
+        self.bandwidthUtilizationPercent = bandwidthUtilizationPercent
+    }
+
+    private static func load<Value>(_ type: Value.Type, from bytes: [UInt8], at offset: Int) -> Value? {
+        guard offset >= 0, offset + MemoryLayout<Value>.size <= bytes.count else { return nil }
+        return bytes.withUnsafeBytes { buffer in
+            guard let baseAddress = buffer.baseAddress else { return nil }
+            return baseAddress.advanced(by: offset).loadUnaligned(as: type)
+        }
+    }
+}
+
 @_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
 private func OpenNOWNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
 
@@ -1469,6 +1589,9 @@ private func OpenNOWNativeNVSTGeronimoSendInput(_ session: UnsafeMutableRawPoint
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay")
 private func OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoCopyPerformanceStats")
+private func OpenNOWNativeNVSTGeronimoCopyPerformanceStats(_ session: UnsafeMutableRawPointer?, _ performanceStatsBytes: UnsafeMutableRawPointer?, _ performanceStatsByteCount: Int, _ serverLocationBuffer: UnsafeMutablePointer<CChar>?, _ serverLocationBufferLength: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSendText")
 private func OpenNOWNativeNVSTGeronimoSendText(_ session: UnsafeMutableRawPointer?, _ utf8Bytes: UnsafePointer<UInt8>?, _ utf8ByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

@@ -19,6 +19,53 @@ public struct NativeNVSTTransportConnection: Equatable, Sendable {
     }
 }
 
+public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
+    public let available: Bool
+    public let gameFramesPerSecond: Double
+    public let streamFramesPerSecond: Double
+    public let latencyMilliseconds: Double
+    public let jitterMilliseconds: Double
+    public let frameLoss: UInt64
+    public let totalFrameLoss: UInt64
+    public let packetLoss: UInt64
+    public let totalPacketLoss: UInt64
+    public let bitrateMegabitsPerSecond: Double
+    public let bandwidthUtilizationPercent: Double
+    public let resolution: String
+    public let codec: String
+    public let serverLocation: String
+
+    public init(available: Bool,
+                gameFramesPerSecond: Double,
+                streamFramesPerSecond: Double,
+                latencyMilliseconds: Double,
+                jitterMilliseconds: Double,
+                frameLoss: UInt64,
+                totalFrameLoss: UInt64,
+                packetLoss: UInt64,
+                totalPacketLoss: UInt64,
+                bitrateMegabitsPerSecond: Double,
+                bandwidthUtilizationPercent: Double,
+                resolution: String,
+                codec: String,
+                serverLocation: String) {
+        self.available = available
+        self.gameFramesPerSecond = gameFramesPerSecond
+        self.streamFramesPerSecond = streamFramesPerSecond
+        self.latencyMilliseconds = latencyMilliseconds
+        self.jitterMilliseconds = jitterMilliseconds
+        self.frameLoss = frameLoss
+        self.totalFrameLoss = totalFrameLoss
+        self.packetLoss = packetLoss
+        self.totalPacketLoss = totalPacketLoss
+        self.bitrateMegabitsPerSecond = bitrateMegabitsPerSecond
+        self.bandwidthUtilizationPercent = bandwidthUtilizationPercent
+        self.resolution = resolution
+        self.codec = codec
+        self.serverLocation = serverLocation
+    }
+}
+
 public enum NativeNVSTTransportTermination: Equatable, Sendable {
     case remoteStopped(String)
     case failed(String)
@@ -29,12 +76,17 @@ public protocol NativeNVSTTransport: Sendable {
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
     func send(_ event: UserInputEvent) async throws
     func togglePerformanceOverlay() async throws
+    func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func pause() async throws
     func disconnect() async
     func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination>
 }
 
 public extension NativeNVSTTransport {
+    func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
+        nil
+    }
+
     func pause() async throws {
         throw NativeNVSTError.notRunning
     }
@@ -182,6 +234,11 @@ public actor NativeNVSTStreamingPath {
     public func togglePerformanceOverlay() async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.togglePerformanceOverlay()
+    }
+
+    public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
+        guard activeSession != nil else { return nil }
+        return await transport.performanceSnapshot()
     }
 
     public func stop(reason: StreamEndReason = .userRequested, message: String = "Native NVST stream ended.") async throws -> StreamReport {

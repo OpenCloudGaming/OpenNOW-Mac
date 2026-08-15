@@ -54,6 +54,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private(set) var disconnectCount = 0
     private(set) var pauseCount = 0
     private(set) var performanceOverlayToggleCount = 0
+    private(set) var performanceSnapshotReadCount = 0
     private let mode: Mode
     private let terminalStream: AsyncStream<NativeNVSTTransportTermination>
     private let terminalContinuation: AsyncStream<NativeNVSTTransportTermination>.Continuation
@@ -98,6 +99,11 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     func togglePerformanceOverlay() async throws {
         performanceOverlayToggleCount += 1
+    }
+
+    func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
+        performanceSnapshotReadCount += 1
+        return nativePerformanceSnapshot()
     }
 
     func disconnect() async {
@@ -214,6 +220,22 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
 
     #expect(await transport.performanceOverlayToggleCount == 0)
+}
+
+@Test func nativeNVSTPathReadsPerformanceStatsOnlyWhileRunning() async throws {
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: RecordingNativeNVSTSessionProvider(), transport: transport)
+
+    #expect(await path.performanceSnapshot() == nil)
+    #expect(await transport.performanceSnapshotReadCount == 0)
+
+    _ = try await path.start(configuration: nativeConfiguration())
+    #expect(await path.performanceSnapshot() == nativePerformanceSnapshot())
+    #expect(await transport.performanceSnapshotReadCount == 1)
+
+    _ = try await path.stop()
+    #expect(await path.performanceSnapshot() == nil)
+    #expect(await transport.performanceSnapshotReadCount == 1)
 }
 
 @Test func nativeNVSTPathPausesNativeAndCloudSessions() async throws {
@@ -814,6 +836,25 @@ private func nativeConfiguration() -> StreamLaunchConfiguration {
 
 private func nativeFinish(_ reason: StreamEndReason) -> RecordedNativeNVSTFinish {
     RecordedNativeNVSTFinish(session: nativeAllocation().session, reason: reason)
+}
+
+private func nativePerformanceSnapshot() -> NativeNVSTPerformanceSnapshot {
+    NativeNVSTPerformanceSnapshot(
+        available: true,
+        gameFramesPerSecond: 59.8,
+        streamFramesPerSecond: 60,
+        latencyMilliseconds: 31,
+        jitterMilliseconds: 1.4,
+        frameLoss: 0,
+        totalFrameLoss: 2,
+        packetLoss: 0,
+        totalPacketLoss: 3,
+        bitrateMegabitsPerSecond: 42.5,
+        bandwidthUtilizationPercent: 64,
+        resolution: "1920x1080",
+        codec: "H264",
+        serverLocation: "US-WEST"
+    )
 }
 
 private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", serverType: Int = 5, authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}") -> NativeNVSTSessionAllocation {

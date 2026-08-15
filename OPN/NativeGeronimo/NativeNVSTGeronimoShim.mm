@@ -11,6 +11,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -136,6 +137,25 @@ struct SessionParameters {
 };
 }
 
+struct GeronimoStats { alignas(8) unsigned char bytes[0x450]; };
+
+struct OpenNOWNativeNVSTPerformanceStats {
+    uint32_t available = 0;
+    uint32_t frameWidth = 0;
+    uint32_t frameHeight = 0;
+    uint32_t streamFramesPerSecond = 0;
+    uint32_t codec = 0;
+    uint32_t frameLoss = 0;
+    uint32_t totalFrameLoss = 0;
+    uint32_t packetLoss = 0;
+    uint32_t totalPacketLoss = 0;
+    double gameFramesPerSecond = -1;
+    double latencyMilliseconds = -1;
+    double jitterMilliseconds = -1;
+    double bitrateMegabitsPerSecond = -1;
+    double bandwidthUtilizationPercent = -1;
+};
+
 static_assert(sizeof(std::string) == 0x18, "libGeronimo std::string ABI changed");
 static_assert(sizeof(Nsk::DownstreamVideoSettings) == 0x90, "libGeronimo DownstreamVideoSettings ABI changed");
 static_assert(sizeof(Nsk::AudioStreamSettings) == 0x2, "libGeronimo AudioStreamSettings ABI changed");
@@ -187,6 +207,9 @@ static_assert(offsetof(SessionControl::SessionParameters, bifrostSessionId) == 0
 static_assert(offsetof(SessionControl::SessionParameters, connectionInfo) == 0x268, "libGeronimo SessionParameters connectionInfo offset changed");
 static_assert(offsetof(SessionControl::SessionParameters, userAge) == 0x280, "libGeronimo SessionParameters userAge offset changed");
 static_assert(sizeof(SessionControl::SessionParameters) == 0x288, "libGeronimo SessionParameters size changed");
+static_assert(sizeof(GeronimoStats) == 0x450, "libGeronimo GeronimoStats size changed");
+static_assert(offsetof(OpenNOWNativeNVSTPerformanceStats, gameFramesPerSecond) == 0x28, "Native performance stats double alignment changed");
+static_assert(sizeof(OpenNOWNativeNVSTPerformanceStats) == 0x50, "Native performance stats ABI changed");
 
 namespace {
 constexpr size_t GridAppStorageSize = 0x2000;
@@ -237,6 +260,8 @@ using GridAppSetDecoderInfo = void (*)(void *, uint32_t, uint32_t, uint32_t, uin
 using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GridAppTogglePerfIndicator = void (*)(void *);
+using IOInterfaceGetStatsInterface = void *(*)(void *);
+using StatsInterfaceGetStats = void (*)(void *, GeronimoStats &, std::string &, std::string &, std::string &, std::string &, std::string &, std::string &);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
@@ -315,6 +340,8 @@ struct GeronimoFunctions {
     GridAppHandleGamepadChanged handleGamepadChanged = nullptr;
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
     GridAppTogglePerfIndicator togglePerfIndicator = nullptr;
+    IOInterfaceGetStatsInterface ioInterfaceGetStatsInterface = nullptr;
+    StatsInterfaceGetStats statsInterfaceGetStats = nullptr;
     ObjectCtor graphicsContextCtor = nullptr;
     ObjectDtor graphicsContextDtor = nullptr;
     SDLGraphicsContextInitialize graphicsContextInitialize = nullptr;
@@ -934,6 +961,8 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.handleGamepadChanged = reinterpret_cast<GridAppHandleGamepadChanged>(resolve(handle, "_ZN7GridApp25handleGamepadChangedEventEhiib", errorBuffer, errorBufferLength));
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
     functions.togglePerfIndicator = reinterpret_cast<GridAppTogglePerfIndicator>(resolve(handle, "_ZN7GridApp29togglePerfIndicatorVisibilityEv", errorBuffer, errorBufferLength));
+    functions.ioInterfaceGetStatsInterface = reinterpret_cast<IOInterfaceGetStatsInterface>(resolve(handle, "_ZN11IOInterface17getStatsInterfaceEv", errorBuffer, errorBufferLength));
+    functions.statsInterfaceGetStats = reinterpret_cast<StatsInterfaceGetStats>(resolve(handle, "_ZN14StatsInterface8getStatsER13GeronimoStatsRNSt3__112basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEES9_S9_S9_S9_S9_", errorBuffer, errorBufferLength));
     functions.graphicsContextCtor = reinterpret_cast<ObjectCtor>(resolve(handle, "_ZN18SDLGraphicsContextC1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextDtor = reinterpret_cast<ObjectDtor>(resolve(handle, "_ZN18SDLGraphicsContextD1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextInitialize = reinterpret_cast<SDLGraphicsContextInitialize>(resolve(handle, "_ZN18SDLGraphicsContext10initializeERKNS_14InitParametersE", errorBuffer, errorBufferLength));
@@ -958,6 +987,8 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.handleGamepadChanged != nullptr &&
            functions.setDecoderInfo != nullptr &&
            functions.togglePerfIndicator != nullptr &&
+           functions.ioInterfaceGetStatsInterface != nullptr &&
+           functions.statsInterfaceGetStats != nullptr &&
            functions.graphicsContextCtor != nullptr &&
            functions.graphicsContextDtor != nullptr &&
            functions.graphicsContextInitialize != nullptr &&
@@ -2002,6 +2033,84 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(void *sessi
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "GridApp::togglePerfIndicatorVisibility raised an unexpected C++ exception.");
         return -3;
+    }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoCopyPerformanceStats(void *sessionPointer,
+                                                                    void *performanceStatsBytes,
+                                                                    size_t performanceStatsByteCount,
+                                                                    char *serverLocationBuffer,
+                                                                    size_t serverLocationBufferLength,
+                                                                    char *errorBuffer,
+                                                                    size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (performanceStatsBytes == nullptr || performanceStatsByteCount != sizeof(OpenNOWNativeNVSTPerformanceStats)) {
+        if (errorBuffer != nullptr && errorBufferLength > 0) {
+            snprintf(errorBuffer, errorBufferLength, "Native Geronimo performance stats require %zu output bytes.", sizeof(OpenNOWNativeNVSTPerformanceStats));
+        }
+        return -1;
+    }
+    if (serverLocationBuffer != nullptr && serverLocationBufferLength > 0) { serverLocationBuffer[0] = '\0'; }
+    if (session == nullptr || session->ioInterface == nullptr ||
+        session->functions.ioInterfaceGetStatsInterface == nullptr || session->functions.statsInterfaceGetStats == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for performance stats.");
+        return -2;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo stream is not active for performance stats.");
+            return -3;
+        }
+    }
+    try {
+        void *statsInterface = session->functions.ioInterfaceGetStatsInterface(session->ioInterface);
+        if (statsInterface == nullptr) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo stats interface is unavailable.");
+            return -4;
+        }
+        GeronimoStats rawStats{};
+        std::string gpuType;
+        std::string rendererType;
+        std::string clientAppVersion;
+        std::string locale;
+        std::string region;
+        std::string zone;
+        session->functions.statsInterfaceGetStats(statsInterface, rawStats, gpuType, rendererType, clientAppVersion, locale, region, zone);
+
+        OpenNOWNativeNVSTPerformanceStats performanceStats;
+        const uint32_t bitrateKilobitsPerSecond = loadUnaligned<uint32_t>(rawStats.bytes, 0xa0);
+        const double gameFramesPerSecond = loadUnaligned<double>(rawStats.bytes, 0x410);
+        const bool hasLiveStats = bitrateKilobitsPerSecond > 0 || (std::isfinite(gameFramesPerSecond) && gameFramesPerSecond > 0);
+        const uint32_t currentWidth = loadUnaligned<uint16_t>(rawStats.bytes, 0x3ea);
+        const uint32_t currentHeight = loadUnaligned<uint16_t>(rawStats.bytes, 0x3ec);
+        performanceStats.available = hasLiveStats ? 1 : 0;
+        performanceStats.frameWidth = currentWidth > 0 ? currentWidth : loadUnaligned<uint16_t>(rawStats.bytes, 0x3e4);
+        performanceStats.frameHeight = currentHeight > 0 ? currentHeight : loadUnaligned<uint16_t>(rawStats.bytes, 0x3e6);
+        performanceStats.streamFramesPerSecond = loadUnaligned<uint16_t>(rawStats.bytes, 0x3e8);
+        performanceStats.codec = loadUnaligned<uint32_t>(rawStats.bytes, 0x3bc);
+        performanceStats.frameLoss = loadUnaligned<uint32_t>(rawStats.bytes, 0x3f0);
+        performanceStats.totalFrameLoss = loadUnaligned<uint32_t>(rawStats.bytes, 0x08);
+        performanceStats.packetLoss = loadUnaligned<uint32_t>(rawStats.bytes, 0xa8);
+        performanceStats.totalPacketLoss = loadUnaligned<uint32_t>(rawStats.bytes, 0x3f4);
+        performanceStats.gameFramesPerSecond = std::isfinite(gameFramesPerSecond) && gameFramesPerSecond >= 0 ? gameFramesPerSecond : -1;
+        if (hasLiveStats) {
+            const int32_t jitterMicroseconds = loadUnaligned<int32_t>(rawStats.bytes, 0x24);
+            performanceStats.latencyMilliseconds = loadUnaligned<uint32_t>(rawStats.bytes, 0xac);
+            performanceStats.jitterMilliseconds = jitterMicroseconds >= 0 ? static_cast<double>(jitterMicroseconds) / 1'000.0 : -1;
+            performanceStats.bitrateMegabitsPerSecond = static_cast<double>(bitrateKilobitsPerSecond) / 1'000.0;
+            performanceStats.bandwidthUtilizationPercent = loadUnaligned<uint32_t>(rawStats.bytes, 0xa4);
+        }
+        const std::string &serverLocation = zone.empty() ? region : zone;
+        if (serverLocationBuffer != nullptr && serverLocationBufferLength > 0) {
+            snprintf(serverLocationBuffer, serverLocationBufferLength, "%s", serverLocation.c_str());
+        }
+        memcpy(performanceStatsBytes, &performanceStats, sizeof(performanceStats));
+        return 0;
+    } catch (...) {
+        setError(errorBuffer, errorBufferLength, "Reading native Geronimo performance stats raised an unexpected C++ exception.");
+        return -5;
     }
 }
 

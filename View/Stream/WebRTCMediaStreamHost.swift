@@ -94,8 +94,8 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var unifiedHUDVisible = false
     @State private var streamControlsVisible = false
     @State private var nativeStatsVisible = false
-    @State private var statsTogglePending = false
-    @State private var statsToggleTask: Task<Void, Never>?
+    @State private var latestNativeStats: NativeNVSTPerformanceSnapshot?
+    @State private var nativeStatsTask: Task<Void, Never>?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
@@ -104,7 +104,8 @@ private struct NativeNVSTMediaStreamSurface: View {
             Color.black.ignoresSafeArea()
             NativeNVSTStreamHostView(
                 overlay: AnyView(nativeWindowOverlay),
-                overlayVisible: unifiedHUDVisible || streamControlsVisible
+                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible,
+                overlayCapturesInput: unifiedHUDVisible || streamControlsVisible
             ) { view in
                 nativeView = view
                 configureNativeView(view)
@@ -185,6 +186,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     nativeView.setNativeNVSTVideoVisible(true)
                     nativeView.restoreInputFocus()
                     statusMessage = "Connected over native NVST."
+                    startNativeStatsPolling(path: path)
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
                     return true
@@ -226,9 +228,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         startTask = nil
         endEventTask?.cancel()
         endEventTask = nil
-        statsToggleTask?.cancel()
-        statsToggleTask = nil
-        statsTogglePending = false
+        nativeStatsTask?.cancel()
+        nativeStatsTask = nil
+        latestNativeStats = nil
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
         isConnected = false
@@ -289,9 +291,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false
-        statsToggleTask?.cancel()
-        statsToggleTask = nil
-        statsTogglePending = false
+        nativeStatsTask?.cancel()
+        nativeStatsTask = nil
+        latestNativeStats = nil
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         nativeView?.remoteInputEnabled = false
@@ -401,30 +403,22 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private func toggleNativeStatsHUD() {
-        guard isConnected, !statsTogglePending, let path else { return }
-        statsTogglePending = true
-        statsToggleTask = Task {
-            do {
-                try await path.togglePerformanceOverlay()
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    defer {
-                        statsTogglePending = false
-                        statsToggleTask = nil
-                    }
-                    guard isConnected, !isEnding, !didEnd else { return }
-                    nativeStatsVisible.toggle()
-                    WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "Native NVST stats shown." : "Native NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+        guard isConnected, !isEnding, !didEnd else { return }
+        nativeStatsVisible.toggle()
+        WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+    }
+
+    private func startNativeStatsPolling(path: NativeNVSTStreamingPath) {
+        nativeStatsTask?.cancel()
+        nativeStatsTask = Task {
+            while !Task.isCancelled {
+                if let snapshot = await path.performanceSnapshot(), isConnected, !isEnding, !didEnd {
+                    latestNativeStats = snapshot
                 }
-            } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    defer {
-                        statsTogglePending = false
-                        statsToggleTask = nil
-                    }
-                    guard isConnected, !isEnding, !didEnd else { return }
-                    WebRTCMediaTelemetry.capture("nvst.ui.stats.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": configuration.applicationID])
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                } catch {
+                    return
                 }
             }
         }
@@ -453,9 +447,154 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder private var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
+            if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD }
             if unifiedHUDVisible { nativeUnifiedHUD }
             if streamControlsVisible { nativeStreamControlsOverlay }
         }
+    }
+
+    private var nativeStatsHUD: some View {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let streamFramesPerSecond = latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
+        let resolution = nonEmptyNativeStat(latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
+        let codec = nonEmptyNativeStat(latestNativeStats?.codec, fallback: profile.codec.value.uppercased())
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(latestNativeStats?.gameFramesPerSecond), label: "GAME FPS", color: nativeGameFPSColor(target: streamFramesPerSecond))
+                nativeStatsVerticalDivider
+                nativeStatsCompactBox(value: nativeStatsWholeNumber(streamFramesPerSecond), label: "STREAM FPS", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsVerticalDivider
+                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(latestNativeStats?.latencyMilliseconds), label: "MS", color: nativeLatencyColor)
+            }
+            .frame(height: 48)
+
+            nativeStatsHorizontalDivider
+
+            VStack(alignment: .leading, spacing: 5) {
+                nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(latestNativeStats?.frameLoss), detail: nativeStatsTotal(latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
+                nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsCount(latestNativeStats?.packetLoss), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
+                nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+            }
+        }
+        .padding(10)
+        .frame(width: 264, alignment: .topLeading)
+        .background(Color.black.opacity(0.90))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(WebRTCMediaStreamTheme.accent)
+                .frame(height: 2)
+        }
+        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+        .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
+        .padding(.top, 5)
+        .padding(.trailing, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(false)
+    }
+
+    private func nativeStatsCompactBox(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.streamNvidia(size: 22, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+            Text(label)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.055))
+    }
+
+    private var nativeStatsVerticalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(width: 1)
+            .padding(.vertical, 4)
+    }
+
+    private var nativeStatsHorizontalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(height: 1)
+    }
+
+    private func nativeStatsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            if let detail {
+                Text(detail)
+                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func nativeGameFPSColor(target: Double) -> Color {
+        guard let latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestNativeStats.gameFramesPerSecond >= max(1, target * 0.9) ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private var nativeLatencyColor: Color {
+        guard let latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
+        if latestNativeStats.latencyMilliseconds >= 120 { return WebRTCMediaStreamTheme.danger }
+        if latestNativeStats.latencyMilliseconds >= 90 { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
+    private var nativeFrameLossColor: Color {
+        guard let latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestNativeStats.frameLoss == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private var nativePacketLossColor: Color {
+        guard let latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestNativeStats.packetLoss == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private func nativeStatsWholeNumber(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.0f", value)
+    }
+
+    private func nativeLiveStatsWholeNumber(_ value: Double?) -> String {
+        guard latestNativeStats?.available == true else { return "--" }
+        return nativeStatsWholeNumber(value)
+    }
+
+    private func nativeStatsCount(_ value: UInt64?) -> String {
+        guard latestNativeStats?.available == true, let value else { return "--" }
+        return String(value)
+    }
+
+    private func nativeStatsTotal(_ value: UInt64?) -> String {
+        guard latestNativeStats?.available == true, let value else { return "(-- Total)" }
+        return "(\(value) Total)"
+    }
+
+    private func nativeStatsMegabits(_ value: Double?) -> String {
+        guard latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        return String(format: "%.1f", value)
+    }
+
+    private func nonEmptyNativeStat(_ value: String?, fallback: String) -> String {
+        guard let value, !value.isEmpty else { return fallback }
+        return value
     }
 
     private var nativeUnifiedHUD: some View {
@@ -541,10 +680,10 @@ private struct NativeNVSTMediaStreamSurface: View {
             HStack(spacing: 8) {
                 StreamHUDActionRow(
                     title: nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                    subtitle: "Geronimo performance overlay",
+                    subtitle: "OpenNOW live NVST metrics",
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: nativeStatsVisible,
-                    isDisabled: statsTogglePending,
+                    isDisabled: false,
                     action: toggleNativeStatsHUD
                 )
                 StreamHUDActionRow(
@@ -683,6 +822,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
     let overlay: AnyView
     let overlayVisible: Bool
+    let overlayCapturesInput: Bool
     let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
 
     func makeNSView(context: Context) -> NativeNVSTContainerView {
@@ -690,17 +830,17 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         view.onResolve = { streamView in
             Task { @MainActor in onResolve(streamView) }
         }
-        view.updateOverlay(overlay, visible: overlayVisible)
+        view.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
         return view
     }
 
     func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {
-        nsView.updateOverlay(overlay, visible: overlayVisible)
+        nsView.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
     }
 
     final class NativeNVSTContainerView: NSView {
         let streamView = NativeWebRTCStreamView(frame: .zero)
-        private let overlayView = NSHostingView(rootView: AnyView(EmptyView()))
+        private let overlayView = NativeNVSTOverlayHostingView(rootView: AnyView(EmptyView()))
         var onResolve: ((NativeWebRTCStreamView) -> Void)?
 
         override init(frame frameRect: NSRect) {
@@ -729,10 +869,19 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
             if window != nil { onResolve?(streamView) }
         }
 
-        func updateOverlay(_ overlay: AnyView, visible: Bool) {
+        func updateOverlay(_ overlay: AnyView, visible: Bool, capturesInput: Bool) {
             overlayView.rootView = overlay
             overlayView.isHidden = !visible
-            if visible { NSCursor.arrow.set() }
+            overlayView.capturesInput = capturesInput
+            if visible && capturesInput { NSCursor.arrow.set() }
+        }
+    }
+
+    final class NativeNVSTOverlayHostingView: NSHostingView<AnyView> {
+        var capturesInput = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            capturesInput ? super.hitTest(point) : nil
         }
     }
 }
