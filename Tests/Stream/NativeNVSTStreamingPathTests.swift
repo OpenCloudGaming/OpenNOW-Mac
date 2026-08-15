@@ -43,6 +43,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     enum Mode: Sendable {
         case prepareFailure
         case connectFailure
+        case sessionLimitFailure
         case suspendedConnect
         case success
     }
@@ -77,6 +78,9 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         connectCount += 1
         if case .connectFailure = mode {
             throw NativeNVSTError.privateABIUnavailable("abi unavailable")
+        }
+        if case .sessionLimitFailure = mode {
+            throw NativeNVSTError.sessionLimitReached
         }
         if case .suspendedConnect = mode {
             return try await withCheckedThrowingContinuation { continuation in
@@ -140,6 +144,30 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     #expect(await provider.startCount == 1)
     #expect(await provider.finished == [nativeFinish(.failed)])
+    #expect(await transport.disconnectCount == 1)
+}
+
+@Test func nativeNVSTPathSessionLimitPreservesAllocatedSessionForUserDecision() async throws {
+    let allocation = nativeAllocation()
+    let provider = RecordingNativeNVSTSessionProvider(allocation: allocation)
+    let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    do {
+        _ = try await path.start(configuration: nativeConfiguration())
+        Issue.record("Expected active-session conflict")
+    } catch let error as OpenNOWStreamSessionError {
+        guard case .activeSessionConflict(let conflict) = error else {
+            Issue.record("Expected active-session conflict, received \(error)")
+            return
+        }
+        #expect(conflict.sessionID == allocation.session.id)
+        #expect(conflict.applicationID == allocation.session.applicationID)
+        #expect(conflict.serverAddress == allocation.session.serverAddress)
+        #expect(StreamSessionConflict(reportMetadata: conflict.reportMetadata) == conflict)
+    }
+
+    #expect(await provider.finished.isEmpty)
     #expect(await transport.disconnectCount == 1)
 }
 
@@ -334,10 +362,12 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
 @Test func nativeNVSTGeronimoSessionLimitFailureIsActionable() {
     let message = NativeNVSTBifrostTransport.geronimoCallbackFailureMessage(resultCode: 302, resultName: "NVB_R_SESSION_LIMIT_REACHED")
+    let error = NativeNVSTBifrostTransport.geronimoCallbackError(resultCode: 302, resultName: "NVB_R_SESSION_LIMIT_REACHED")
 
     #expect(message.contains("active session limit"))
     #expect(message.contains("End another session"))
     #expect(message.contains("302") == false)
+    #expect(error == .sessionLimitReached)
 }
 
 @Test func nativeNVSTLaunchPayloadModelsVerifiedGeForceNOWStartFields() throws {

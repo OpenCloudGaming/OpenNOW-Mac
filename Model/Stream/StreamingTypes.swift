@@ -221,6 +221,39 @@ public struct StreamSessionDescriptor: Identifiable, Codable, Equatable, Hashabl
     }
 }
 
+public struct StreamSessionConflict: Equatable, Sendable {
+    public let sessionID: String
+    public let applicationID: String
+    public let serverAddress: String
+
+    public init(sessionID: String, applicationID: String, serverAddress: String) {
+        self.sessionID = sessionID
+        self.applicationID = applicationID
+        self.serverAddress = serverAddress
+    }
+
+    public var reportMetadata: [String: String] {
+        [
+            "sessionConflictReason": "sessionLimit",
+            "sessionConflictSessionID": sessionID,
+            "sessionConflictApplicationID": applicationID,
+            "sessionConflictServerAddress": serverAddress,
+        ]
+    }
+
+    public init?(reportMetadata: [String: String]) {
+        guard reportMetadata["sessionConflictReason"] == "sessionLimit" else { return nil }
+        let sessionID = reportMetadata["sessionConflictSessionID"] ?? ""
+        let serverAddress = reportMetadata["sessionConflictServerAddress"] ?? ""
+        guard !sessionID.isEmpty, !serverAddress.isEmpty else { return nil }
+        self.init(
+            sessionID: sessionID,
+            applicationID: reportMetadata["sessionConflictApplicationID"] ?? "",
+            serverAddress: serverAddress
+        )
+    }
+}
+
 public struct StreamOffer: Codable, Equatable, Sendable {
     public let session: StreamSessionDescriptor
     public let sdp: String

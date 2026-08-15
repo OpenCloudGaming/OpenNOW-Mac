@@ -112,7 +112,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
 
         nonisolated(unsafe) let createCompletion = completion
-        nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -141,11 +140,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     return
                 }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
-                    if self.isReadyActiveSessionStatus(int(selected["status"])) {
-                        self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
-                    } else {
-                        self.pollClaimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: createCompletion)
-                    }
+                    var conflict = selected
+                    conflict["isSessionLimitConflict"] = true
+                    createCompletion(false, conflict, "A GeForce NOW session is already active. Resume it or end it before launching another game.")
                     return
                 }
                 createCompletion(false, [:], errorMessage)
@@ -827,6 +824,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             ?? validSessions.first { isReadyActiveSessionStatus(int($0["status"])) }
             ?? validSessions.first { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }
             ?? validSessions.first { int($0["status"]) == 1 }
+            ?? validSessions.first { int($0["appId"]) == requestedAppId }
+            ?? validSessions.first
     }
 
     private func currentAccessToken() -> String { lock.withLock { accessToken } }

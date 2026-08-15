@@ -193,7 +193,11 @@ private struct NativeNVSTMediaStreamSurface: View {
         isConnected = false
         nativeView?.setNativeNVSTVideoVisible(false)
         endStreamingPerformanceMode()
-        finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"]))
+        var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
+        if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+            metadata.merge(conflict.reportMetadata) { current, _ in current }
+        }
+        finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))
     }
 
     private func stopStream() {

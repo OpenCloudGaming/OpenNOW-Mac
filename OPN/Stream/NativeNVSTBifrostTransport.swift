@@ -13,6 +13,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return "Native NVST callback reported failure \(resultCode)."
     }
 
+    static func geronimoCallbackError(resultCode: Int32, resultName: String?) -> NativeNVSTError {
+        if resultName == "NVB_R_SESSION_LIMIT_REACHED" { return .sessionLimitReached }
+        return .transportFailed(geronimoCallbackFailureMessage(resultCode: resultCode, resultName: resultName))
+    }
+
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
@@ -1156,7 +1161,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             return
         }
         if phase == 70 {
-            fail(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoCallbackFailureMessage(resultCode: resultCode, resultName: resultName)))
+            fail(NativeNVSTBifrostTransport.geronimoCallbackError(resultCode: resultCode, resultName: resultName))
         }
     }
 

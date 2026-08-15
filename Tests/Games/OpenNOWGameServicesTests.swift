@@ -1423,6 +1423,45 @@ import Foundation
     }
 }
 
+@Test func sessionManagerSessionLimitReturnsActiveSessionForUserDecision() async {
+    await networkTestIsolationLock.withLock {
+    let host = "create-session-limit.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 11,
+                "statusDescription": "NVB_R_SESSION_LIMIT_REACHED",
+            ],
+            "otherUserSessions": [[
+                "sessionId": "active-session",
+                "status": 5,
+                "sessionRequestData": ["appId": 456],
+                "sessionControlInfo": ["ip": host],
+            ]],
+        ], status: 400)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
+            continuation.resume(returning: (success, info, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1["isSessionLimitConflict"] as? Bool == true)
+    #expect(result.1["sessionId"] as? String == "active-session")
+    #expect(result.1["appId"] as? Int == 456)
+    #expect(result.1["serverIp"] as? String == host)
+    #expect(result.2.contains("Resume it or end it"))
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["POST"])
+    }
+}
+
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
     let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
         "sessionId": "stale-session",

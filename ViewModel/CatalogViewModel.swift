@@ -200,6 +200,7 @@ final class CatalogViewModel: ObservableObject {
     private var pendingLaunchVariantIndex = -1
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
+    private var activeStreamReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
     private var activeStreamAdContinuation: CheckedContinuation<Int, Error>?
     private var settingsPreferencesGeneration = 0
@@ -670,6 +671,7 @@ final class CatalogViewModel: ObservableObject {
         activeLaunchSession = nil
         activeSessionResumeConfiguration = nil
         activeSessionReplacementConfiguration = nil
+        activeStreamReplacementConfiguration = nil
         launchFlowTitle = game.title.isEmpty ? "GeForce NOW" : game.title
         launchFlowMessage = "Checking for active GeForce NOW sessions..."
         launchFlowError = ""
@@ -759,7 +761,8 @@ final class CatalogViewModel: ObservableObject {
             return
         }
         guard let configuration = activeSessionResumeConfiguration else { return }
-        startPreparedStream(configuration, message: "Resuming \(configuration.title)...")
+        let replacement = activeSessionReplacementConfiguration
+        startPreparedStream(configuration, message: "Resuming \(configuration.title)...", replacementConfiguration: replacement)
     }
 
     func endActiveSessionAndLaunchSelectedGame() {
@@ -790,6 +793,7 @@ final class CatalogViewModel: ObservableObject {
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
+        activeStreamReplacementConfiguration = nil
         clearLaunchFlow()
         launchMessage = ""
         actionMessage = "Stream launch cancelled."
@@ -803,13 +807,19 @@ final class CatalogViewModel: ObservableObject {
 
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
+        let replacementConfiguration = activeStreamReplacementConfiguration ?? finishedConfiguration
         cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
+        activeStreamReplacementConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
         streamProgressGeneration += 1
         clearLaunchFlow()
         launchMessage = ""
+        if let replacementConfiguration, let report, let conflict = StreamSessionConflict(reportMetadata: report.metadata) {
+            presentSessionConflict(conflict, replacementConfiguration: replacementConfiguration)
+            return
+        }
         if let finishedConfiguration {
             let session = CatalogPreviousGameSession(configuration: finishedConfiguration, success: success, message: message, report: report)
             previousGameSession = session
@@ -894,13 +904,14 @@ final class CatalogViewModel: ObservableObject {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
 
-    private func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
+    private func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String, replacementConfiguration: StreamLaunchConfiguration? = nil) {
         launchFlowState = .startingStream
         launchFlowMessage = message.isEmpty ? "Starting GeForce NOW stream..." : message
         launchFlowError = ""
         streamProgressGeneration += 1
         isActiveStreamLaunchOverlayVisible = true
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
+        activeStreamReplacementConfiguration = replacementConfiguration ?? configuration
         activeStreamConfiguration = configuration
         clearLaunchFlow()
     }
@@ -937,6 +948,40 @@ final class CatalogViewModel: ObservableObject {
             if !title.isEmpty { return title }
         }
         return fallback.isEmpty ? "Current Stream" : fallback
+    }
+
+    private func presentSessionConflict(_ conflict: StreamSessionConflict, replacementConfiguration: StreamLaunchConfiguration) {
+        let applicationID = conflict.applicationID.isEmpty ? replacementConfiguration.applicationID : conflict.applicationID
+        let appID = Int(applicationID) ?? 0
+        let unresolvedSession = OPNActiveStreamSessionDescriptor(
+            sessionId: conflict.sessionID,
+            appId: appID,
+            serverIp: conflict.serverAddress,
+            title: "Current Stream"
+        )
+        let activeTitle = title(forActiveSession: unresolvedSession)
+        activeLaunchSession = OPNActiveStreamSessionDescriptor(
+            sessionId: conflict.sessionID,
+            appId: appID,
+            serverIp: conflict.serverAddress,
+            title: activeTitle
+        )
+        activeSessionResumeConfiguration = StreamLaunchConfiguration(
+            title: activeTitle,
+            applicationID: applicationID,
+            accessToken: replacementConfiguration.accessToken,
+            accountLinked: true,
+            selectedStore: "",
+            resumeSessionID: conflict.sessionID,
+            resumeServer: conflict.serverAddress,
+            metadata: replacementConfiguration.metadata
+        )
+        activeSessionReplacementConfiguration = replacementConfiguration
+        launchFlowTitle = replacementConfiguration.title.isEmpty ? "GeForce NOW" : replacementConfiguration.title
+        launchFlowMessage = "GeForce NOW reports an active session. Resume it or end it before launching \(launchFlowTitle)."
+        launchFlowError = ""
+        errorMessage = ""
+        launchFlowState = .activeSessionPrompt
     }
 
     private func clearLaunchFlow() {

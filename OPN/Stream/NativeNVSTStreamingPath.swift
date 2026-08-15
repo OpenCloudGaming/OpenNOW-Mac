@@ -46,6 +46,7 @@ public extension NativeNVSTTransport {
 public enum NativeNVSTError: LocalizedError, Equatable, Sendable {
     case alreadyRunning
     case notRunning
+    case sessionLimitReached
     case invalidSession(String)
     case runtimeUnavailable(String)
     case privateABIUnavailable(String)
@@ -57,6 +58,8 @@ public enum NativeNVSTError: LocalizedError, Equatable, Sendable {
             "Native NVST stream is already running."
         case .notRunning:
             "Native NVST stream is not running."
+        case .sessionLimitReached:
+            "GeForce NOW reports that another session is already active."
         case .invalidSession(let message), .runtimeUnavailable(let message), .privateABIUnavailable(let message), .transportFailed(let message):
             message
         }
@@ -147,6 +150,13 @@ public actor NativeNVSTStreamingPath {
         } catch {
             await transport.disconnect()
             await mediaSession.finish()
+            if error as? NativeNVSTError == .sessionLimitReached {
+                throw OpenNOWStreamSessionError.activeSessionConflict(StreamSessionConflict(
+                    sessionID: allocation.session.id,
+                    applicationID: allocation.session.applicationID,
+                    serverAddress: allocation.session.serverAddress
+                ))
+            }
             try? await sessionProvider.finishSession(allocation.session, reason: Task.isCancelled ? .userRequested : .failed)
             if error is CancellationError || Task.isCancelled { throw error }
             WebRTCMediaTelemetry.capture("nvst.path.transport.error", level: .error, message: Self.message(for: error), attributes: ["sessionId": allocation.session.id])
