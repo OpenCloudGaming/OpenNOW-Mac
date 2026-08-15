@@ -268,10 +268,13 @@ constexpr uintptr_t FreeStreamingParamsOffset = 0x9d3a0;
 constexpr uint32_t NVbCallbackTypeEvent = 2;
 constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
 constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
+constexpr bool GeronimoPrepareSynchronous = false;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 64;
+
+static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
 
 struct NVbAuthInfo_t {
     const char *token = nullptr;
@@ -1565,7 +1568,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     prepareParameters.deviceId = session->deviceId;
     const uint32_t communicationParameters[] = {3, 3, 13, 500, 1000, 10000, 1000, 50, 3000, 1000, 300};
     memcpy(prepareParameters.communicationParams, communicationParameters, sizeof(communicationParameters));
-    prepareParameters.synchronous = true;
+    prepareParameters.synchronous = GeronimoPrepareSynchronous;
     prepareParameters.serverType = nativeServerType;
     prepareParameters.locale = session->clientLocale;
     prepareParameters.applicationIdentifier = "GFN-PC";
