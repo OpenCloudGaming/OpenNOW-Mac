@@ -3,6 +3,16 @@ import Foundation
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
 
+    static func geronimoCallbackFailureMessage(resultCode: Int32, resultName: String?) -> String {
+        if resultName == "NVB_R_SESSION_LIMIT_REACHED" {
+            return "GeForce NOW refused the stream because the active session limit was reached. End another session and try again."
+        }
+        if let resultName, !resultName.isEmpty {
+            return "Native NVST callback reported \(resultName) (\(resultCode))."
+        }
+        return "Native NVST callback reported failure \(resultCode)."
+    }
+
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
@@ -1043,7 +1053,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         lock.unlock()
     }
 
-    func handle(phase: Int32, callbackType: UInt32, clientEvent: UInt32, notification: UInt32, resultCode: Int32) {
+    func handle(phase: Int32, callbackType: UInt32, clientEvent: UInt32, notification: UInt32, resultCode: Int32, resultName: String?) {
         lock.lock()
         var attributes = telemetryAttributes
         let pausePending = self.pausePending
@@ -1054,6 +1064,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         attributes["clientEvent"] = String(clientEvent)
         attributes["notification"] = String(notification)
         attributes["resultCode"] = String(resultCode)
+        if let resultName, !resultName.isEmpty { attributes["resultName"] = resultName }
         WebRTCMediaTelemetry.capture("nvst.geronimo.callback", level: .info, message: "Geronimo native callback observed.", attributes: attributes)
 
         if callbackType == 2, clientEvent == 14, notification == 1 {
@@ -1110,7 +1121,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             return
         }
         if phase == 70 {
-            fail(NativeNVSTError.transportFailed("Native NVST callback reported failure \(resultCode)."))
+            fail(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoCallbackFailureMessage(resultCode: resultCode, resultName: resultName)))
         }
     }
 
@@ -1291,13 +1302,13 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 }
 
-private func nativeNVSTGeronimoEventCallback(_ context: UnsafeMutableRawPointer?, _ phase: Int32, _ callbackType: UInt32, _ clientEvent: UInt32, _ notification: UInt32, _ resultCode: Int32) {
+private func nativeNVSTGeronimoEventCallback(_ context: UnsafeMutableRawPointer?, _ phase: Int32, _ callbackType: UInt32, _ clientEvent: UInt32, _ notification: UInt32, _ resultCode: Int32, _ resultName: UnsafePointer<CChar>?) {
     guard let context else { return }
     let sink = Unmanaged<NativeNVSTGeronimoEventSink>.fromOpaque(context).takeUnretainedValue()
-    sink.handle(phase: phase, callbackType: callbackType, clientEvent: clientEvent, notification: notification, resultCode: resultCode)
+    sink.handle(phase: phase, callbackType: callbackType, clientEvent: clientEvent, notification: notification, resultCode: resultCode, resultName: resultName.map { String(cString: $0) })
 }
 
-private typealias NativeNVSTGeronimoEventHandler = @convention(c) (UnsafeMutableRawPointer?, Int32, UInt32, UInt32, UInt32, Int32) -> Void
+private typealias NativeNVSTGeronimoEventHandler = @convention(c) (UnsafeMutableRawPointer?, Int32, UInt32, UInt32, UInt32, Int32, UnsafePointer<CChar>?) -> Void
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
 private func OpenNOWNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?

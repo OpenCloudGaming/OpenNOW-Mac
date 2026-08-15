@@ -332,6 +332,14 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(message.contains("diagnostics"))
 }
 
+@Test func nativeNVSTGeronimoSessionLimitFailureIsActionable() {
+    let message = NativeNVSTBifrostTransport.geronimoCallbackFailureMessage(resultCode: 302, resultName: "NVB_R_SESSION_LIMIT_REACHED")
+
+    #expect(message.contains("active session limit"))
+    #expect(message.contains("End another session"))
+    #expect(message.contains("302") == false)
+}
+
 @Test func nativeNVSTLaunchPayloadModelsVerifiedGeForceNOWStartFields() throws {
     let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: """

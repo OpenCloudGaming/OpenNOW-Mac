@@ -236,7 +236,8 @@ using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
-using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t);
+using NVbEnumToString = const char *(*)(int32_t, int32_t);
+using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *);
 using ObjectCtor = void (*)(void *);
 using ObjectDtor = void (*)(void *);
 using SDLGraphicsContextInitialize = uint32_t (*)(void *, const SDLGraphicsContextInitParameters &);
@@ -353,6 +354,7 @@ struct OpenNOWNativeNVSTGeronimoSession {
     void **gridAppVTable = nullptr;
     void *ioInterface = nullptr;
     PlatformShutdown platformShutdown = nullptr;
+    NVbEnumToString enumToString = nullptr;
     GeronimoFunctions functions;
     std::mutex eventMutex;
     OpenNOWGeronimoEventHandler eventHandler = nullptr;
@@ -444,7 +446,13 @@ void storeUnaligned(void *base, size_t offset, T value) {
     if (base != nullptr) { memcpy(static_cast<uint8_t *>(base) + offset, &value, sizeof(T)); }
 }
 
-void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_t callbackType, uint32_t clientEvent, uint32_t notification, int32_t resultCode) {
+const char *nvbResultName(OpenNOWNativeNVSTGeronimoSession *session, int32_t resultCode) {
+    if (session == nullptr || session->enumToString == nullptr) { return nullptr; }
+    const char *name = session->enumToString(0, resultCode);
+    return name != nullptr && strncmp(name, "NVB_R_", 6) == 0 ? name : nullptr;
+}
+
+void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_t callbackType, uint32_t clientEvent, uint32_t notification, int32_t resultCode, const char *resultName = nullptr) {
     if (session == nullptr) { return; }
     OpenNOWGeronimoEventHandler handler = nullptr;
     void *context = nullptr;
@@ -453,7 +461,7 @@ void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_
         handler = session->eventHandler;
         context = session->eventContext;
     }
-    if (handler != nullptr) { handler(context, phase, callbackType, clientEvent, notification, resultCode); }
+    if (handler != nullptr) { handler(context, phase, callbackType, clientEvent, notification, resultCode, resultName); }
 }
 
 OpenNOWNativeNVSTGeronimoSession *beginGridAppCallback(void *gridApp) {
@@ -533,7 +541,7 @@ void openNOWGridAppPrepareResult(void *gridApp, const NVbResult_t *result, void 
                 }
             }
         }
-        if (shouldEmitFailure) { emitEvent(session, 30, 0, 0, 0, resultCode); }
+        if (shouldEmitFailure) { emitEvent(session, 30, 0, 0, 0, resultCode, nvbResultName(session, resultCode)); }
     } catch (...) {
         try {
             setSessionFailure(session, "GridApp prepare callback handling raised an unexpected C++ exception.");
@@ -584,8 +592,11 @@ void openNOWGridAppSetupFailure(void *gridApp, const void *failureInfo) {
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
-    if (setSessionFailureUnlessStopping(session, "GridApp session setup failed.")) {
-        emitEvent(session, 70, 0, 0, 0, resultCode);
+    const char *resultName = failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode);
+    std::string message = "GridApp session setup failed.";
+    if (resultName != nullptr) { message = "GridApp session setup failed with " + std::string(resultName) + "."; }
+    if (setSessionFailureUnlessStopping(session, message.c_str())) {
+        emitEvent(session, 70, 0, 0, 0, resultCode, resultName);
     }
 }
 
@@ -594,8 +605,11 @@ void openNOWGridAppResumeFailure(void *gridApp, const void *failureInfo) {
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
-    if (setSessionFailureUnlessStopping(session, "GridApp resume failed.")) {
-        emitEvent(session, 70, 0, 0, 0, resultCode);
+    const char *resultName = failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode);
+    std::string message = "GridApp resume failed.";
+    if (resultName != nullptr) { message = "GridApp resume failed with " + std::string(resultName) + "."; }
+    if (setSessionFailureUnlessStopping(session, message.c_str())) {
+        emitEvent(session, 70, 0, 0, 0, resultCode, resultName);
     }
 }
 
@@ -669,7 +683,7 @@ void openNOWGridAppActiveSessions(void *gridApp, const void *result) {
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = result == nullptr ? -1 : loadUnaligned<int32_t>(result, 0);
-    emitEvent(session, 36, 0, 0, 0, resultCode);
+    emitEvent(session, 36, 0, 0, 0, resultCode, result == nullptr ? nullptr : nvbResultName(session, resultCode));
 }
 
 void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
@@ -683,7 +697,7 @@ void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
         locallyRequested = session->stopIssued;
         session->state = NativeSessionState::stopped;
     }
-    emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode);
+    emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode, failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode));
 }
 
 void openNOWGridAppPauseResult(void *gridApp, const void *failureInfo) {
@@ -699,7 +713,7 @@ void openNOWGridAppPauseResult(void *gridApp, const void *failureInfo) {
             wasPending = true;
         }
     }
-    if (wasPending) { emitEvent(session, resultCode == 0 ? 50 : 70, 0, 0, 0, resultCode); }
+    if (wasPending) { emitEvent(session, resultCode == 0 ? 50 : 70, 0, 0, 0, resultCode, failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode)); }
 }
 
 NSDictionary *jsonDictionary(const std::string &json) {
@@ -1297,7 +1311,8 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         auto platformStartup = reinterpret_cast<NskPlatformStartup>(resolve(handle, "_ZN3Nsk15platformStartupERKNS_21PlatformStartupParamsE", errorBuffer, errorBufferLength));
         platformShutdown = reinterpret_cast<PlatformShutdown>(resolve(handle, "_ZN3Nsk16platformShutdownEv", errorBuffer, errorBufferLength));
         auto initialize = reinterpret_cast<GridAppInitialize>(resolve(handle, "_ZN7GridApp10initializeEb", errorBuffer, errorBufferLength));
-        if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr ||
+        auto enumToString = reinterpret_cast<NVbEnumToString>(resolve(bifrostHandle, "nvbEnumToString", errorBuffer, errorBufferLength));
+        if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || enumToString == nullptr ||
             !resolveGeronimoFunctions(handle, functions, errorBuffer, errorBufferLength)) {
             dlclose(bifrostHandle);
             dlclose(handle);
@@ -1349,6 +1364,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         session->gridApp = gridApp;
         session->ioInterface = ioInterface;
         session->platformShutdown = platformShutdown;
+        session->enumToString = enumToString;
         session->functions = functions;
         session->platformStarted = true;
         session->initialized = true;
@@ -1374,6 +1390,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         if (handle != nullptr) { dlclose(handle); }
         return nullptr;
     }
+}
+
+extern "C" const char *OpenNOWNativeNVSTGeronimoResultCodeName(void *sessionPointer, int32_t resultCode) {
+    return nvbResultName(static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer), resultCode);
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoSetEventHandler(void *sessionPointer,

@@ -93,6 +93,9 @@ import Testing
         return
     }
 
+    let resultName = OpenNOWTestNativeNVSTGeronimoResultCodeName(session, 302)
+    #expect(resultName.map { String(cString: $0) } == "NVB_R_SESSION_LIMIT_REACHED")
+
     OpenNOWTestNativeNVSTGeronimoDestroy(session)
 }
 
@@ -137,3 +140,6 @@ private func OpenNOWTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoDestroy")
 private func OpenNOWTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoResultCodeName")
+private func OpenNOWTestNativeNVSTGeronimoResultCodeName(_ session: UnsafeMutableRawPointer?, _ resultCode: Int32) -> UnsafePointer<CChar>?
