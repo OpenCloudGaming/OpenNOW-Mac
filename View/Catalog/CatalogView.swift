@@ -715,6 +715,8 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                             image
                                 .resizable()
                                 .scaledToFill()
+                                .frame(width: proxy.size.width + 40, height: proxy.size.height + 40)
+                                .blur(radius: 30)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
                                 .clipped()
                         default:
@@ -801,12 +803,12 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                         .accessibilityLabel("Cancel stream launch")
 
                     if !steps.isEmpty {
-                        VStack(alignment: .leading, spacing: 9) {
+                        VStack(alignment: .center, spacing: 9) {
                             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                                 VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
                             }
                         }
-                        .frame(width: 320, alignment: .leading)
+                        .frame(width: 320, alignment: .center)
                     }
                 }
                 .padding(.horizontal, 28)
@@ -998,11 +1000,12 @@ private struct VendorStreamLaunchStepRow: View {
             Text(marker)
                 .nvidiaFont(size: 11, weight: .bold)
                 .foregroundStyle(markerColor)
-                .frame(width: 22, alignment: .center)
+                .lineLimit(1)
+                .frame(minWidth: 28, alignment: .center)
             Text(step)
                 .nvidiaFont(size: 12, weight: index == currentIndex ? .bold : .medium)
                 .foregroundStyle(textColor)
-            Spacer(minLength: 0)
+                .lineLimit(1)
         }
         .opacity(index > currentIndex && currentIndex >= 0 ? 0.58 : 1)
     }
