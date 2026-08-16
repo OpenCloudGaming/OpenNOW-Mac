@@ -466,7 +466,7 @@ public enum NVSTSessionDescriptionBuilder {
         let prefilterModel = max(0, settings.prefilterModel)
         let maxReferenceFrames = codec == "H265" ? 1 : 4
         let videoLine = "m=video 0 RTP/AVP"
-        let videoAttributes = [
+        let videoAttributes: [(String, String)] = [
             ("video.clientViewportWd", String(width)),
             ("video.clientViewportHt", String(height)),
             ("video.maxFPS", String(fps)),
