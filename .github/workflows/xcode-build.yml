@@ -96,7 +96,7 @@ jobs:
           BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")
           [[ "$VERSION" == "$EXPECTED_VERSION" ]]
           [[ "$BUILD" == "$EXPECTED_BUILD" ]]
-          codesign --force --sign - --timestamp=none "$APP_PATH"
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements OpenNOW.entitlements "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
           ZIP_PATH="$RELEASE_ROOT/OpenNOW-$VERSION-macOS.zip"
