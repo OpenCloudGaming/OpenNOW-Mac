@@ -616,12 +616,13 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
-    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int) -> Int {
+    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int, vendorRecommendedMbps: Int = 0) -> Int {
         let requested = max(1, requestedMaxBitrateMbps)
         var recommended = requested
         if measuredBandwidthMbps > 1.0, measuredBandwidthMbps.isFinite {
             recommended = min(recommended, max(5, Int((measuredBandwidthMbps * 0.85).rounded(.down))))
         }
+        if vendorRecommendedMbps > 0 { recommended = min(recommended, vendorRecommendedMbps) }
         if packetLossPercent >= 5.0 { recommended = min(recommended, 15) }
         else if packetLossPercent >= 2.0 { recommended = min(recommended, 25) }
         else if packetLossPercent >= 1.0 { recommended = min(recommended, 50) }
@@ -884,8 +885,8 @@ public enum OPNStreamPreferences {
             cached.latencyMs = cachedChoice.latencyMs
             cached.usedAutomaticRegion = selectedRegionUrl.isEmpty
             cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, measuredBandwidthMbps: cached.measuredBandwidthMbps, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
-            DispatchQueue.main.async { completion(cached) }
             fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { _ in }
+            finishNetworkPreflight(cached, token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
             return
         }
         fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { regions in
@@ -1330,7 +1331,7 @@ public enum OPNStreamPreferences {
             result.serverReportedWarning = true
             result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."
         }
-        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs, vendorRecommendedMbps: networkTest.threshold.bandwidthRecommended)
         return result
     }
 

@@ -269,7 +269,7 @@ private struct SettingsContent: View {
         case .connections: return "Manage store accounts used for library sync and ownership detection."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
         case .experimentalFeatures: return "Opt in to alpha, beta, and test features before they appear elsewhere."
-        case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
+        case .serverLocation: return "Use capacity-aware Automatic routing or pin a measured Cloudmatch region."
         case .resolutionUpscaling: return "Control MetalFX presentation, clarity, and noise reduction for Apple Silicon."
         case .system: return "Review decoder, display, network, and device capability state."
         case .about: return "OpenNOW Mac runtime and service identifiers."
@@ -1315,7 +1315,7 @@ private struct ServerLocationSettingsPage: View {
                     Text("Cloudmatch Region")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Automatic chooses the best measured OpenNOW route.")
+                    Text("Automatic keeps NVIDIA's capacity-aware route and runs a fresh network preflight before launch.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
