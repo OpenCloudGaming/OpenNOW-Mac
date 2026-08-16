@@ -1926,6 +1926,13 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
                 }
             }
 
+            session->functions.gridAppProcessEvents(session->gridApp);
+            int32_t startResult = completePreparedStart(session);
+            if (startResult != 0) {
+                std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                setError(errorBuffer, errorBufferLength, session->lastError.c_str());
+                return startResult;
+            }
             void *eventProcessor = nullptr;
             {
                 std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
@@ -1938,13 +1945,6 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
                     setError(errorBuffer, errorBufferLength, "SDL requested native Geronimo event-loop shutdown.");
                     return -6;
                 }
-            }
-            session->functions.gridAppProcessEvents(session->gridApp);
-            int32_t startResult = completePreparedStart(session);
-            if (startResult != 0) {
-                std::lock_guard<std::mutex> stateLock(session->stateMutex);
-                setError(errorBuffer, errorBufferLength, session->lastError.c_str());
-                return startResult;
             }
             {
                 std::lock_guard<std::mutex> stateLock(session->stateMutex);

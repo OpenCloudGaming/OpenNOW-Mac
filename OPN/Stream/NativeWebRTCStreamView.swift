@@ -641,14 +641,34 @@ public final class NativeWebRTCStreamView: NSView {
     private func installKeyEquivalentMonitor() {
         guard keyEquivalentMonitor == nil else { return }
         keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self, self.window?.isKeyWindow == true else { return event }
-            guard NSApplication.shared.isActive else { return event }
+            guard let self else { return event }
+            guard self.window?.isKeyWindow == true,
+                  Self.isStreamWindowKeyEvent(event.window, streamWindow: self.window) else {
+                self.releaseRemotelyPressedKeyIfNeeded(event)
+                return event
+            }
+            guard NSApplication.shared.isActive else {
+                self.releaseRemotelyPressedKeyIfNeeded(event)
+                return event
+            }
             guard self.remoteInputEnabled else { return self.handleCommand(event) ? nil : event }
+            let routesToApplication = Self.reservesApplicationMenuKeyEquivalent(event.modifierFlags)
+            if routesToApplication { self.releaseRemotelyPressedKeyIfNeeded(event) }
             if self.handlePasteShortcut(event) { return nil }
             if self.handleCommand(event) { return nil }
+            if routesToApplication { return event }
             self.emitKey(event, isPressed: event.type == .keyDown)
             return nil
         }
+    }
+
+    static func reservesApplicationMenuKeyEquivalent(_ modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command)
+    }
+
+    static func isStreamWindowKeyEvent(_ eventWindow: NSWindow?, streamWindow: NSWindow?) -> Bool {
+        guard let eventWindow, let streamWindow else { return false }
+        return eventWindow === streamWindow
     }
 
     private func removeKeyEquivalentMonitor() {
@@ -674,6 +694,11 @@ public final class NativeWebRTCStreamView: NSView {
             pressedKeyboardEvents.removeValue(forKey: keyboardEvent.keyCode)
         }
         onInputEvent?(.keyboard(keyboardEvent))
+    }
+
+    private func releaseRemotelyPressedKeyIfNeeded(_ event: NSEvent) {
+        guard event.type == .keyUp, pressedKeyboardEvents[UInt16(event.keyCode)] != nil else { return }
+        emitKey(event, isPressed: false)
     }
 
     private func mouseButton(_ buttonNumber: Int) -> MouseButton? {

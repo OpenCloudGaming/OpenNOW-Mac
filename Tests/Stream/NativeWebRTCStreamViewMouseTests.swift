@@ -91,6 +91,22 @@ private struct MouseButtonTransition: Equatable {
     #expect(view.hidesCursorWhilePointerLocked)
 }
 
+@Test @MainActor func streamViewLeavesApplicationMenuKeyEquivalentsLocal() {
+    #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.command))
+    #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent([.command, .shift]))
+    #expect(!NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.option))
+    #expect(!NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.control))
+}
+
+@Test @MainActor func streamViewOnlyCapturesKeysFromItsOwnWindow() {
+    let streamWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+    let menuWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+
+    #expect(NativeWebRTCStreamView.isStreamWindowKeyEvent(streamWindow, streamWindow: streamWindow))
+    #expect(!NativeWebRTCStreamView.isStreamWindowKeyEvent(menuWindow, streamWindow: streamWindow))
+    #expect(!NativeWebRTCStreamView.isStreamWindowKeyEvent(nil, streamWindow: streamWindow))
+}
+
 @Test @MainActor func absoluteMouseModeMapsDisplayedVideoCoordinates() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
     view.mouseInputMode = .absolute

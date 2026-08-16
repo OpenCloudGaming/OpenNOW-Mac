@@ -1,6 +1,10 @@
 import Foundation
 
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
+    static let geronimoPumpFramesPerSecond = 60.0
+    static let geronimoPumpInterval = 1.0 / geronimoPumpFramesPerSecond
+    static let geronimoPumpRunLoopMode = RunLoop.Mode.default
+
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
 
     static func geronimoCallbackFailureMessage(resultCode: Int32, resultName: String?) -> String {
@@ -30,7 +34,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var connectingEventSink: NativeNVSTGeronimoEventSink?
     private var geronimoSessionAddress: UInt?
     private var geronimoEventSink: NativeNVSTGeronimoEventSink?
-    private var geronimoPumpTask: Task<Void, Never>?
+    private var geronimoPump: NativeNVSTGeronimoPumpDriver?
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
@@ -107,7 +111,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             terminationHandler: { [terminationChannel] termination in terminationChannel.send(termination) }
         )
         connectingEventSink = eventSink
-        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pumpTask: Task<Void, Never>)
+        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver)
         do {
             started = try await withTaskCancellationHandler {
                 try await Self.startGeronimoOnMainActor(
@@ -127,8 +131,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             throw error
         }
         guard connectingAttemptID == attemptID, !Task.isCancelled else {
-            started.pumpTask.cancel()
-            await started.pumpTask.value
+            await started.pump.stop()
             await Self.destroyGeronimoOnMainActor(sessionAddress: started.sessionAddress)
             if connectingAttemptID == attemptID {
                 connectingAttemptID = nil
@@ -141,7 +144,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         connectingEventSink = nil
         geronimoSessionAddress = started.sessionAddress
         geronimoEventSink = eventSink
-        geronimoPumpTask = started.pumpTask
+        geronimoPump = started.pump
         activeConnection = connection
         return connection
     }
@@ -172,10 +175,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         connectingAttemptID = nil
         connectingEventSink?.cancel()
         connectingEventSink = nil
-        let pumpTask = geronimoPumpTask
+        let pump = geronimoPump
         let sessionAddress = geronimoSessionAddress
         let eventSink = geronimoEventSink
-        geronimoPumpTask = nil
+        geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
         activeConnection = nil
@@ -195,8 +198,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 }
             }
         }
-        pumpTask?.cancel()
-        if let pumpTask { await pumpTask.value }
+        if let pump { await pump.stop() }
         if let sessionAddress {
             await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
         }
@@ -214,14 +216,13 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             throw error
         }
         guard geronimoSessionAddress == sessionAddress else { throw CancellationError() }
-        let pumpTask = geronimoPumpTask
-        geronimoPumpTask = nil
+        let pump = geronimoPump
+        geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
         activeConnection = nil
         await prepareGeronimoVideoSurfaceForShutdown()
-        pumpTask?.cancel()
-        if let pumpTask { await pumpTask.value }
+        if let pump { await pump.stop() }
         await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
     }
 
@@ -235,7 +236,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         await prepareVideoSurfaceForShutdown()
     }
 
-    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?, eventSink: NativeNVSTGeronimoEventSink) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pumpTask: Task<Void, Never>) {
+    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?, eventSink: NativeNVSTGeronimoEventSink) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
             throw NativeNVSTError.runtimeUnavailable("Native Geronimo frameworks path could not be encoded.")
         }
@@ -295,7 +296,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             throw NativeNVSTError.privateABIUnavailable(message)
         }
         WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.bound", level: .info, message: "Native Geronimo video surface bound for SDL window creation.", attributes: startAttributes)
-        var pumpTask: Task<Void, Never>?
+        var pump: NativeNVSTGeronimoPumpDriver?
         do {
             let result = geronimoSessionJSON.withCString { rawSessionPointer in
                 streamingProfileJSON.withCString { profilePointer in
@@ -334,8 +335,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             var attributes = startAttributes
             attributes["library"] = status.libraryURL.lastPathComponent
             WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for native start delivery.", attributes: attributes)
-            let activePumpTask = Self.makeGeronimoPumpTask(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
-            pumpTask = activePumpTask
+            let activePump = NativeNVSTGeronimoPumpDriver(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
+            activePump.start()
+            pump = activePump
             do {
                 try await eventSink.waitForStartDelivered(timeoutNanoseconds: 30_000_000_000)
                 WebRTCMediaTelemetry.capture("nvst.geronimo.start.delivered", level: .info, message: "Geronimo delivered native NVST start; waiting for StreamerConnected callback.", attributes: attributes)
@@ -351,39 +353,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 throw error
             }
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
-            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePumpTask)
+            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump)
         } catch {
-            pumpTask?.cancel()
-            if let pumpTask { await pumpTask.value }
+            pump?.stop()
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw error
-        }
-    }
-
-    @MainActor private static func makeGeronimoPumpTask(sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, telemetryAttributes: [String: String]) -> Task<Void, Never> {
-        Task { @MainActor in
-            let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
-            defer { errorBuffer.deallocate() }
-            errorBuffer.initialize(repeating: 0, count: 1024)
-            while !Task.isCancelled {
-                errorBuffer.pointee = 0
-                let result = OpenNOWNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, errorBuffer, 1024)
-                if result < 0 {
-                    let message = errorMessage(errorBuffer, fallback: "Native Geronimo event pump failed with result \(result).")
-                    var attributes = telemetryAttributes
-                    attributes["result"] = String(result)
-                    attributes["error"] = message
-                    WebRTCMediaTelemetry.capture("nvst.geronimo.pump.failed", level: .error, message: message, attributes: attributes)
-                    eventSink.fail(NativeNVSTError.transportFailed(message))
-                    return
-                }
-                if result > 0 { return }
-                do {
-                    try await Task.sleep(nanoseconds: 2_000_000)
-                } catch {
-                    return
-                }
-            }
         }
     }
 
@@ -1113,6 +1087,68 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
         if let scheme = URL(string: allocation.signalingURL)?.scheme?.lowercased(), scheme == "http" { return 80 }
         return 443
+    }
+}
+
+@MainActor
+private final class NativeNVSTGeronimoPumpDriver {
+    private let sessionAddress: UInt
+    private let eventSink: NativeNVSTGeronimoEventSink
+    private let telemetryAttributes: [String: String]
+    private var errorBuffer = [CChar](repeating: 0, count: 1024)
+    private var timer: Timer?
+    private var isRunning = false
+
+    init(sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, telemetryAttributes: [String: String]) {
+        self.sessionAddress = sessionAddress
+        self.eventSink = eventSink
+        self.telemetryAttributes = telemetryAttributes
+    }
+
+    isolated deinit {
+        timer?.invalidate()
+    }
+
+    func start() {
+        guard !isRunning else { return }
+        isRunning = true
+        pumpOnce()
+        guard isRunning else { return }
+        let interval = NativeNVSTBifrostTransport.geronimoPumpInterval
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pumpOnce() }
+        }
+        timer.tolerance = interval * 0.1
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: NativeNVSTBifrostTransport.geronimoPumpRunLoopMode)
+    }
+
+    func stop() {
+        isRunning = false
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func pumpOnce() {
+        guard isRunning else { return }
+        let result = errorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else { return -1 }
+            baseAddress.pointee = 0
+            return OpenNOWNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, baseAddress, buffer.count)
+        }
+        guard result != 0 else { return }
+        stop()
+        guard result < 0 else { return }
+        let message = errorBuffer.withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return "Native Geronimo event pump failed with result \(result)." }
+            let value = String(cString: baseAddress)
+            return value.isEmpty ? "Native Geronimo event pump failed with result \(result)." : value
+        }
+        var attributes = telemetryAttributes
+        attributes["result"] = String(result)
+        attributes["error"] = message
+        WebRTCMediaTelemetry.capture("nvst.geronimo.pump.failed", level: .error, message: message, attributes: attributes)
+        eventSink.fail(NativeNVSTError.transportFailed(message))
     }
 }
 
