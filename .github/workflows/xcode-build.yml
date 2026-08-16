@@ -6,11 +6,11 @@ on:
       version:
         description: Release version
         required: true
-        default: "1.49"
+        default: "1.50"
       build:
         description: Release build number
         required: true
-        default: "51"
+        default: "52"
   push:
     branches:
       - main
@@ -96,7 +96,10 @@ jobs:
           BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")
           [[ "$VERSION" == "$EXPECTED_VERSION" ]]
           [[ "$BUILD" == "$EXPECTED_BUILD" ]]
-          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements OpenNOW.entitlements "$APP_PATH"
+          ADHOC_ENTITLEMENTS="$RELEASE_ROOT/OpenNOW-adhoc.entitlements"
+          cp OpenNOW.entitlements "$ADHOC_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$ADHOC_ENTITLEMENTS"
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements "$ADHOC_ENTITLEMENTS" "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
           ZIP_PATH="$RELEASE_ROOT/OpenNOW-$VERSION-macOS.zip"
@@ -111,6 +114,16 @@ jobs:
           mkdir -p "$VERIFY_PATH"
           ditto -x -k "$ZIP_PATH" "$VERIFY_PATH"
           codesign --verify --deep --strict --verbose=2 "$VERIFY_PATH/OpenNOW.app"
+          "$VERIFY_PATH/OpenNOW.app/Contents/MacOS/OpenNOW" --release-smoke-test > "$RELEASE_ROOT/launch-smoke.log" 2>&1 &
+          APP_PID=$!
+          sleep 3
+          if kill -0 "$APP_PID" 2>/dev/null; then
+            kill "$APP_PID"
+            wait "$APP_PID" || true
+          elif ! wait "$APP_PID"; then
+            cat "$RELEASE_ROOT/launch-smoke.log" >&2
+            exit 1
+          fi
 
           CHECKSUM_PATH="$ZIP_PATH.sha256"
           shasum -a 256 "$ZIP_PATH" > "$CHECKSUM_PATH"
