@@ -1,40 +1,97 @@
+<div align="center">
+
+<img src="Resources/MacForceNow/logo.png" alt="MacForce Now" width="140">
+
 # MacForce Now
 
-MacForce Now is a native macOS cloud gaming client for browsing, launching, streaming, and recording GeForce NOW sessions.
+**A native macOS client for GeForce NOW — built for Mac, built for controllers.**
 
-> **MacForce Now is an independent community project and is not affiliated with, endorsed by, or sponsored by NVIDIA.** NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
+Browse your library, launch in seconds, stream at up to 5K, record your best runs, and play with a Steam Controller 2026 without ever opening Steam.
 
-> **This is a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac) that adds support for the Steam Controller 2026 ("Triton")** — including wired, Bluetooth LE, and 2.4 GHz dongle variants, with full HID input parsing and gamepad forwarding to GeForce NOW streams.
+[**⬇ Download the latest release**](../../releases) · [What's new](CHANGELOG.md) · [Build from source](#build-from-source)
 
-> **Why the rename?** This fork was renamed from OpenNOW to MacForce Now so it can be installed alongside the upstream OpenNOW app on the same Mac without conflicts. The bundle identifier, URL scheme, keychain services, UserDefaults domain, and preference keys are all distinct from upstream, so both apps coexist without overwriting each other's credentials, preferences, or OAuth state.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)
+![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC-orange)
 
-## Installation
+<br>
 
-Download the latest signed `MacForceNow.dmg` from the [Releases](../../releases) page, open it, and drag **MacForce Now** into your Applications folder. Launch the app from Launchpad or Spotlight — on first run, right-click the app in Finder and choose **Open** if macOS blocks it as an unidentified developer.
+<img src="docs/screenshots/catalog.png" alt="MacForce Now catalog with GFN Thursday, Top Sellers, and Free-to-Play rails">
 
-To build from source instead, see [Building](#building).
+</div>
 
-## Current State
+---
 
-The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and a root Swift package for tests. The visible frontend lives under `View` and includes:
+## Why MacForce Now
 
-- OAuth sign-in and branded loading surfaces
-- Catalog home with a six-image hero rotation, game rails, search, filters, and detail panels
-- Persistent favorites and library rails for quick game access across restarts
-- Store ownership picker and launch/session overlays
-- Native WebRTC streaming with input, microphone, audio, video enhancement, and diagnostics paths
-- Local gameplay recordings with saved metadata and a recordings browser
-- Settings for account, connections, gameplay, server location, upscaling, system, and diagnostics
+Not a wrapped web page. A real Mac app — SwiftUI front to back, native WebRTC streaming underneath, and the hardware support the official client never shipped.
 
-## Steam Controller Support (Experimental)
+| | |
+|---|---|
+| 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and 2.4 GHz dongle. Full HID parsing, haptics, back grips, trackpads, custom mappings — no Steam required. |
+| 🖥️ **Built for ultrawide** | 21:9 and 32:9 up to 5120×2160, HEVC, MetalFX upscaling, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
+| ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
+| 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, plus persistent Library and Favorites. |
+| 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session — signed invites, host-approved, native input path. |
+| 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
+| 🕹️ **Full controller navigation** | Drive the entire app — catalog, details, settings — from the pad. Never reach for the mouse. |
+| 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |
 
-MacForce Now can read Valve Steam Controllers directly over HID, bypassing Steam. The pipeline is:
+## Install
 
-1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and product ID (see below), opens them via IOKit HID, disables the firmware's built-in keyboard/mouse emulation ("lizard mode") with periodic heartbeats, and streams raw input reports.
-2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `SteamControllerInputSnapshot` (buttons, triggers, sticks, and trackpads).
-3. Snapshots feed the in-app test screen (Settings → Steam Controller Test) and, during streaming, `NativeWebRTCGamepadMonitor`, which forwards a standard gamepad subset (face buttons, D-pad, bumpers, triggers, sticks, select/start) to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and shown in the test screen but are not forwarded to the stream.
+1. Download `MacForceNow.dmg` from the [Releases](../../releases) page.
+2. Open it and drag **MacForce Now** to Applications.
+3. Launch from Spotlight. If macOS blocks it, right-click the app → **Open**.
 
-### Supported hardware
+Requires macOS 15.6 or later and your own GeForce NOW account.
+
+> **Runs alongside upstream OpenNOW.** MacForce Now uses its own bundle ID, URL scheme, keychain services, and preferences — install both, no conflicts, no overwritten logins.
+
+## Made for Ultrawide
+
+Pick your shape, then pick your resolution — 16:9, 16:10, 21:9, or 32:9, all the way up to **5120×2160** at 30/60/120/240 fps. HEVC keeps true 5K streams sharp where H.264 hardware decode gives out at 4K, and 10-bit 4:2:0/4:4:4 colour is there when the codec supports it. Unavailable hardware codecs grey themselves out instead of failing mid-session.
+
+![Streaming quality settings: aspect ratio, resolution, frame rate, codec, bitrate, and colour precision](docs/screenshots/streaming-quality.png)
+
+### No more black bars
+
+GeForce NOW bakes pillarbox columns into 16:9-only titles — real black pixels, not window padding, so a wide monitor is stuck with them. MacForce Now detects those bars in the incoming frames and lets you decide what fills them:
+
+![Pillarbox fill options: Black, Colour, Blur Mirror, Blur Zoom, Stretch, Crop](docs/screenshots/pillarbox-fill.png)
+
+| Mode | What you get |
+|---|---|
+| **Black** | Leave the encoded bars alone. Zero cost, default. |
+| **Colour** | Flat fill in any colour you pick. |
+| **Blur Mirror** | Mirrors the picture edge outward, blurred. Seamless, no distortion. |
+| **Blur Zoom** | Blown-up blurred copy of the frame behind the sharp image. |
+| **Stretch** | Fills the full width, pushing distortion to the edges so the centre stays true. |
+| **Crop** | Scales to fill and trims top and bottom. No bars, no warping — costs vertical view. |
+
+Blur modes take an adjustable dim. Everything but **Black** runs through the custom Metal render path.
+
+## Steam Controller, Unlocked
+
+<sub>Experimental</sub>
+
+MacForce Now talks to Valve's controllers directly over HID, so you get the pad in your GeForce NOW stream without Steam running in the background.
+
+- **Every 2026 variant** — wired, BLE, and both dongles — plus the original 2015 controller.
+- **Haptics, grips, trackpads** — rumble feedback, four back grips, and both pads parsed and bindable client-side.
+- **Visual mapping editor** — click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
+- **Combos on any control** — bind a back grip to `B + R2`; modifier lands first, press follows a beat later, so games read it as a real combo.
+- **Profiles** — save as many as you like and switch between them.
+- **Built-in tester** — Settings → Steam Controller Test shows every button, axis, and pad live.
+- **Lizard mode off** — the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
+
+![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)
+
+> Steam grabs the controller exclusively while it's running. Quit Steam first.
+
+<details>
+<summary><b>Supported hardware and report formats</b></summary>
+
+<br>
 
 | Product ID | Device |
 |---|---|
@@ -45,9 +102,13 @@ MacForce Now can read Valve Steam Controllers directly over HID, bypassing Steam
 | `0x1304` | Steam Controller (2026) 2.4 GHz dongle ("Proteus") |
 | `0x1305` | Steam Controller (2026) dongle variant ("Nereid") |
 
-### Report formats and mappings
+**Pipeline**
 
-The parser understands three report layouts, with bit/byte mappings verified against Valve's contributions to SDL's HIDAPI drivers:
+1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and the product IDs above, opens them via IOKit HID, disables lizard mode with periodic heartbeats, and streams raw input reports.
+2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `SteamControllerInputSnapshot` (buttons, triggers, sticks, trackpads).
+3. Snapshots feed the in-app test screen and, during streaming, `NativeWebRTCGamepadMonitor`, which forwards a standard gamepad subset to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and bindable client-side but not forwarded as raw stream input.
+
+**Report layouts** — bit/byte mappings verified against Valve's contributions to SDL's HIDAPI drivers:
 
 - **Legacy (2015)** — `ValveInReport_t`-framed packets; buttons across three bytes, trackpads double as stick/D-pad emulation. Reference: [`SDL_hidapi_steam.c`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam.c).
 - **Triton (2026)** — report IDs `0x42` (wired/dongle state), `0x45` (BLE state), and `0x47` (timestamped state; inserts a 16-bit trackpad timestamp before the pad fields, shifting them by 2 bytes). A 32-bit button mask includes the Steam button (`0x0001_0000`), Quick Access (`0x0000_0010`), four back grips, trackpad touch/click bits, and per-pad X/Y plus pressure. Reference: [`SDL_hidapi_steam_triton.c`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c).
@@ -55,65 +116,65 @@ The parser understands three report layouts, with bit/byte mappings verified aga
 
 Struct layouts for all three formats are documented in SDL's [`controller_structs.h`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/steam/controller_structs.h). Axis values normalize to `-1...1` (`Int16` full scale), triggers and pad pressure to `0...1`. Parsing is covered by `Tests/Stream/SteamControllerReportTests.swift`.
 
-Note: Steam grabs the physical controller exclusively while it is running — quit Steam before testing.
+</details>
 
-## Project Layout
-
-- `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `MacForceNowApp.swift` - macOS app entry point and application delegate
-- `Resources` - bundled images, fonts, and store icon assets
-- `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
-- `ViewModel` - observable UI state and presentation coordination for login, catalog, controller catalog, and recordings
-- `OPN` - authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
-- `GFN` - protocol-specific GeForce NOW clients and wire types, including CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, and UDS
-- `Tests` - root SwiftPM test target covering the package-exposed production logic
-
-## Packages
-
-The root `Package.swift` exposes a testable `MacForceNow` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
-
-## Building
-
-Build the macOS app from the repository root:
+## Build from Source
 
 ```sh
 xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
 ```
 
-## Testing
-
-Run package tests from the repository root so SwiftPM uses one shared `.build` graph:
+Run the package tests from the repository root so SwiftPM uses one shared `.build` graph:
 
 ```sh
 swift test --scratch-path .build/shared
 ```
 
-Useful focused checks:
+<details>
+<summary><b>Project layout, packages, and tooling</b></summary>
+
+<br>
+
+**Layout**
+
+- `Model` — persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
+- `MacForceNowApp.swift` — macOS app entry point and application delegate
+- `Resources` — bundled images, fonts, and store icon assets
+- `View` — SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
+- `ViewModel` — observable UI state for login, catalog, controller catalog, and recordings
+- `OPN` — authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
+- `GFN` — protocol-specific GeForce NOW clients and wire types (CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, UDS)
+- `RemoteCoOp` — browser Remote Co-Op reference stack (signaling broker, guest page, TURN launcher, control panel)
+- `Tests` — root SwiftPM test target covering the package-exposed production logic
+
+**Packages**
+
+The root `Package.swift` exposes a testable `MacForceNow` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
+
+**Focused test runs**
 
 ```sh
 swift test --scratch-path .build/shared --filter WebRTCStreamRecording
-```
-
-```sh
 swift test --scratch-path .build/shared --filter MacForceNowGameServicesTests
 ```
 
 Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.
 
-To audit generated SwiftPM disk usage:
-
 ```sh
-scripts/report-spm-build-size.sh
-```
-
-To remove generated SwiftPM build caches and reclaim disk space:
-
-```sh
-scripts/clean-spm-builds.sh
+scripts/report-spm-build-size.sh   # audit generated SwiftPM disk usage
+scripts/clean-spm-builds.sh        # reclaim disk space
 ```
 
 Performance audit entry points are documented under `scripts/perf-audit/PERFORMANCE_AUDIT.md`.
 
+</details>
+
 ## Contributing
 
-Use conventional commit prefixes such as `fix:`, `feat:`, `docs:`, `test:`, `refactor:`, `style:`, and `chore:`. Keep changes focused and verify the relevant package tests or app build before submitting changes.
+Pull requests welcome. Use conventional commit prefixes (`fix:`, `feat:`, `docs:`, `test:`, `refactor:`, `style:`, `chore:`), keep changes focused, and verify the relevant package tests or app build before submitting.
+
+## About
+
+MacForce Now is a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac), extended with Steam Controller 2026 support and renamed so it can live alongside upstream on the same Mac. Licensed under [MIT](LICENSE).
+
+> **Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. Use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
