@@ -3,6 +3,9 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
+@Suite(.serialized)
+struct NVSTNativeRuntimeTests {
+
 @Test func nvstNativeRuntimeLoadsVendoredBifrostSymbols() throws {
     let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
 
@@ -98,7 +101,7 @@ import Testing
     #expect(resultName.map { String(cString: $0) } == "NVB_R_SESSION_LIMIT_REACHED")
 
     var surface: NSView? = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
-    weak var retainedSurface = surface
+    weak let retainedSurface = surface
     let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
         OpenNOWTestNativeNVSTGeronimoSetVideoSurface(
             session,
@@ -140,6 +143,8 @@ import Testing
     }
 
     #expect(result == -1)
+}
+
 }
 
 private func vendoredBridge() throws -> NVSTNativeBridge {

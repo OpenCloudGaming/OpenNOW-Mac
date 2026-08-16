@@ -392,6 +392,8 @@ struct StreamingParamsGuard {
 struct OpenNOWNativeNVSTGeronimoSession {
     void *libraryHandle = nullptr;
     void *bifrostHandle = nullptr;
+    void *audioHandle = nullptr;
+    void *sdlHandle = nullptr;
     void *gridApp = nullptr;
     void **gridAppVTable = nullptr;
     void *ioInterface = nullptr;
@@ -1389,6 +1391,8 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
 extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, char *errorBuffer, size_t errorBufferLength) {
     void *handle = nullptr;
     void *bifrostHandle = nullptr;
+    void *audioHandle = nullptr;
+    void *sdlHandle = nullptr;
     void *gridApp = nullptr;
     bool gridAppConstructed = false;
     bool platformStarted = false;
@@ -1401,17 +1405,34 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             setError(errorBuffer, errorBufferLength, "Native Geronimo NVST frameworks path is empty.");
             return nullptr;
         }
-        std::string libraryPath = directory + "/libGeronimo.dylib";
-        handle = dlopen(libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
-        if (handle == nullptr) {
-            setDLError(errorBuffer, errorBufferLength, "dlopen libGeronimo.dylib failed");
-            return nullptr;
-        }
         std::string bifrostPath = directory + "/libBifrost2.dylib";
         bifrostHandle = dlopen(bifrostPath.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (bifrostHandle == nullptr) {
             setDLError(errorBuffer, errorBufferLength, "dlopen libBifrost2.dylib failed");
-            dlclose(handle);
+            return nullptr;
+        }
+        std::string audioPath = directory + "/libGsAudioWebRTC.dylib";
+        audioHandle = dlopen(audioPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (audioHandle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen libGsAudioWebRTC.dylib failed");
+            dlclose(bifrostHandle);
+            return nullptr;
+        }
+        std::string sdlPath = directory + "/SDL2.framework/Versions/A/SDL2";
+        sdlHandle = dlopen(sdlPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (sdlHandle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen SDL2 failed");
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
+            return nullptr;
+        }
+        std::string libraryPath = directory + "/libGeronimo.dylib";
+        handle = dlopen(libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (handle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen libGeronimo.dylib failed");
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
 
@@ -1422,15 +1443,19 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         auto enumToString = reinterpret_cast<NVbEnumToString>(resolve(bifrostHandle, "nvbEnumToString", errorBuffer, errorBufferLength));
         if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || enumToString == nullptr ||
             !resolveGeronimoFunctions(handle, functions, errorBuffer, errorBufferLength)) {
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
 
         if (!acquirePlatform(platformStartup)) {
             setError(errorBuffer, errorBufferLength, "Geronimo platform startup failed.");
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
         platformStarted = true;
@@ -1439,8 +1464,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         if (gridApp == nullptr) {
             setError(errorBuffer, errorBufferLength, "Failed to allocate GridApp storage.");
             releasePlatform(platformShutdown);
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
         memset(gridApp, 0, GridAppStorageSize);
@@ -1452,8 +1479,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
 
@@ -1463,12 +1492,16 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
         session->libraryHandle = handle;
         session->bifrostHandle = bifrostHandle;
+        session->audioHandle = audioHandle;
+        session->sdlHandle = sdlHandle;
         session->gridApp = gridApp;
         session->ioInterface = ioInterface;
         session->platformShutdown = platformShutdown;
@@ -1480,8 +1513,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
-            dlclose(bifrostHandle);
             dlclose(handle);
+            dlclose(sdlHandle);
+            dlclose(audioHandle);
+            dlclose(bifrostHandle);
             delete session;
             return nullptr;
         }
@@ -1494,8 +1529,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         if (session != nullptr && session->gridAppVTable != nullptr) { free(session->gridAppVTable); }
         delete session;
         if (platformStarted && platformShutdown != nullptr) { releasePlatform(platformShutdown); }
-        if (bifrostHandle != nullptr) { dlclose(bifrostHandle); }
         if (handle != nullptr) { dlclose(handle); }
+        if (sdlHandle != nullptr) { dlclose(sdlHandle); }
+        if (audioHandle != nullptr) { dlclose(audioHandle); }
+        if (bifrostHandle != nullptr) { dlclose(bifrostHandle); }
         return nullptr;
     }
 }
@@ -2383,6 +2420,14 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
     if (session->libraryHandle != nullptr) {
         dlclose(session->libraryHandle);
         session->libraryHandle = nullptr;
+    }
+    if (session->sdlHandle != nullptr) {
+        dlclose(session->sdlHandle);
+        session->sdlHandle = nullptr;
+    }
+    if (session->audioHandle != nullptr) {
+        dlclose(session->audioHandle);
+        session->audioHandle = nullptr;
     }
     if (session->bifrostHandle != nullptr) {
         dlclose(session->bifrostHandle);

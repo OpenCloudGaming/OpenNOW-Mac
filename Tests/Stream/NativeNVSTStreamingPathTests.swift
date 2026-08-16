@@ -633,6 +633,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
           "status": 2,
           "serverType": 4,
           "gpuType": "L40",
+          "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264" },
           "frameStatsEnabled": true,
           "summaryStatsEnabled": false,
           "sessionRequestData": {

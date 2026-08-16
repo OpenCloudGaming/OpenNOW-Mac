@@ -1007,7 +1007,12 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
             throw StarfleetAuthError.transportFailure(error)
         }
 
-        guard response.statusCode == 200 else { throw starfleetOAuthError(data: data, statusCode: response.statusCode) }
+        guard response.statusCode == 200 else {
+            if retryPolicy.retryableHTTPStatuses.contains(response.statusCode) {
+                throw StarfleetAuthError.httpStatus(response.statusCode)
+            }
+            throw starfleetOAuthError(data: data, statusCode: response.statusCode)
+        }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StarfleetAuthError.invalidJSONResponse
         }

@@ -151,7 +151,7 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         if start.serverType <= 0 { missing.append("serverType") }
         if start.appId <= 0 { missing.append("appId") }
         if start.networkSessionId.isEmpty { missing.append("networkSessionId") }
-        if start.streamingProfileJSON.isEmpty { missing.append("streamingProfile") }
+        if !Self.hasValidStreamingProfile(start.streamingProfileJSON) { missing.append("streamingProfile") }
         if start.audioModeFormat.isEmpty { missing.append("audioModeFormat") }
         missingFields = missing
     }
@@ -184,6 +184,12 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
     private static func jsonObject(from json: String) -> [String: Any] {
         guard let data = json.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return object
+    }
+
+    private static func hasValidStreamingProfile(_ json: String) -> Bool {
+        let profile = jsonObject(from: json)
+        guard let selectedVideoMode = profile["selectedVideoMode"] as? [String: Any] else { return false }
+        return int(selectedVideoMode["width"]) > 0 && int(selectedVideoMode["height"]) > 0 && int(selectedVideoMode["fps"]) > 0
     }
 
     private static func string(_ value: Any?) -> String {
