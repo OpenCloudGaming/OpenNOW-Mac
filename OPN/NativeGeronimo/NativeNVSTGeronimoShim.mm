@@ -2001,6 +2001,15 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
                 setError(errorBuffer, errorBufferLength, session->lastError.c_str());
                 return startResult;
             }
+            {
+                std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                if (session->state == NativeSessionState::stopped) { return 1; }
+                if (session->state == NativeSessionState::failed) {
+                    setError(errorBuffer, errorBufferLength, session->lastError.c_str());
+                    return -4;
+                }
+                if (session->state == NativeSessionState::stopping) { return 0; }
+            }
             void *eventProcessor = nullptr;
             {
                 std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
