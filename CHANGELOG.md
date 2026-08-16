@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/anderson-oki/macforce-now/compare/v0.11.1...v0.12.0) (2026-08-16)
+
+
+### Features
+
+* add pillarbox modes ([dfecc46](https://github.com/anderson-oki/macforce-now/commit/dfecc468b5b8b2564c83cc67ea0f4655db56fb44))
+
 ## [0.11.1](https://github.com/anderson-oki/macforce-now/compare/v0.11.0...v0.11.1) (2026-08-11)
 
 
