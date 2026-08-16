@@ -1,0 +1,43 @@
+name: Xcode CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  app-build:
+    name: Build macOS App
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          xcodebuild -version
+        shell: bash
+
+      - name: Build OpenNOW
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project OpenNOW.xcodeproj \
+            -scheme OpenNOW \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+        shell: bash
