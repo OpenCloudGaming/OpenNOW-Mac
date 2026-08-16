@@ -389,10 +389,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static func microphoneCaptureAccess(requested: Bool, authorizationStatus: AVAuthorizationStatus) -> Bool? {
         guard requested else { return false }
         switch authorizationStatus {
-        case .authorized: true
-        case .notDetermined: nil
-        case .denied, .restricted: false
-        @unknown default: false
+        case .authorized: return true
+        case .notDetermined: return nil
+        case .denied, .restricted: return false
+        @unknown default: return false
         }
     }
 
