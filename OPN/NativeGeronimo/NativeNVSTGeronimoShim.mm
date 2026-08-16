@@ -415,6 +415,8 @@ struct OpenNOWNativeNVSTGeronimoSession {
     bool streamingBegan = false;
     bool connectedEventDelivered = false;
     bool stopIssued = false;
+    bool microphoneAvailable = false;
+    bool microphoneSetupSucceeded = false;
     bool microphoneEnabled = false;
     bool registeredGamepads[4] = {};
     std::string lastError;
@@ -612,8 +614,9 @@ void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
         emitEvent(session, 44, 0, 0, 0, 0);
         {
             std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+            session->microphoneSetupSucceeded = session->microphoneAvailable && micSetupSucceeded && session->audioCapturer != nullptr;
             callVoidVirtual(session->audioRenderer, 0x48);
-            callVoidVirtual(session->audioCapturer, session->microphoneEnabled && micSetupSucceeded ? 0x48 : 0x40);
+            callVoidVirtual(session->audioCapturer, session->microphoneEnabled && session->microphoneSetupSucceeded ? 0x48 : 0x40);
             if (!session->videoDecoderStarted) {
                 callVoidVirtual(session->videoDecoder, 0x58);
                 session->videoDecoderStarted = session->videoDecoder != nullptr;
@@ -1289,7 +1292,7 @@ bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
         return false;
     }
 
-    if (session->microphoneEnabled) {
+    if (session->microphoneAvailable) {
         session->audioCapturer = session->functions.createAudioCapturer();
         if (session->audioCapturer != nullptr && !initializeAudioObject(session->audioCapturer, session->ioInterface, audioSettings)) {
             destroyPolymorphicObject(session->audioCapturer);
@@ -1559,6 +1562,41 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer
     return 0;
 }
 
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(void *sessionPointer,
+                                                                    int32_t enabled,
+                                                                    char *errorBuffer,
+                                                                    size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for microphone control.");
+        return -1;
+    }
+    if (![NSThread isMainThread]) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo microphone control must run on the main thread.");
+        return -2;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo microphone control requires a streaming session.");
+            return -3;
+        }
+    }
+    std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+    if (!session->microphoneAvailable || session->audioCapturer == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo microphone capture is unavailable for this session.");
+        return -4;
+    }
+    if (enabled != 0 && !session->microphoneSetupSucceeded) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo microphone setup did not complete for this session.");
+        return -5;
+    }
+    session->microphoneEnabled = enabled != 0;
+    callVoidVirtual(session->audioCapturer, session->microphoneEnabled ? 0x48 : 0x40);
+    return 0;
+}
+
 int32_t startOrResumeGeronimo(void *sessionPointer,
                               const char *rawSessionJSON,
                               const char *streamingProfileJSON,
@@ -1569,6 +1607,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
                               const char *traceParent,
                               const char *authTokenType,
                               const char *authToken,
+                              int32_t microphoneAvailable,
                               int32_t microphoneEnabled,
                               bool shouldResume,
                               char *errorBuffer,
@@ -1634,7 +1673,8 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     NSDictionary *cloud = jsonDictionary(cloudSession);
     NSDictionary *geronimo = jsonDictionary(rawSession);
     NSDictionary *profile = jsonDictionary(streamingProfile);
-    session->microphoneEnabled = microphoneEnabled != 0;
+    session->microphoneAvailable = microphoneAvailable != 0;
+    session->microphoneEnabled = session->microphoneAvailable && microphoneEnabled != 0;
     session->requestedCodec = codecFromJSON(cloud, geronimo);
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
@@ -1839,6 +1879,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
                                                      const char *traceParent,
                                                      const char *authTokenType,
                                                      const char *authToken,
+                                                     int32_t microphoneAvailable,
                                                      int32_t microphoneEnabled,
                                                      char *errorBuffer,
                                                      size_t errorBufferLength) {
@@ -1852,6 +1893,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
                                  traceParent,
                                  authTokenType,
                                  authToken,
+                                 microphoneAvailable,
                                  microphoneEnabled,
                                  false,
                                  errorBuffer,
@@ -1878,6 +1920,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoResume(void *sessionPointer,
                                                       const char *traceParent,
                                                       const char *authTokenType,
                                                       const char *authToken,
+                                                      int32_t microphoneAvailable,
                                                       int32_t microphoneEnabled,
                                                       char *errorBuffer,
                                                       size_t errorBufferLength) {
@@ -1891,6 +1934,7 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoResume(void *sessionPointer,
                                  traceParent,
                                  authTokenType,
                                  authToken,
+                                 microphoneAvailable,
                                  microphoneEnabled,
                                  true,
                                  errorBuffer,

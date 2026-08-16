@@ -52,6 +52,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private(set) var connectCount = 0
     private(set) var sentEvents: [UserInputEvent] = []
     private(set) var sentAbsoluteMouseEvents: [NativeNVSTAbsoluteMouseEvent] = []
+    private(set) var microphoneEnabledUpdates: [Bool] = []
     private(set) var disconnectCount = 0
     private(set) var pauseCount = 0
     private(set) var performanceOverlayToggleCount = 0
@@ -100,6 +101,10 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
         sentAbsoluteMouseEvents.append(event)
+    }
+
+    func setMicrophoneEnabled(_ enabled: Bool) async throws {
+        microphoneEnabledUpdates.append(enabled)
     }
 
     func togglePerformanceOverlay() async throws {
@@ -204,6 +209,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let absoluteMouseEvent = NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: MediaTimestamp(nanoseconds: 2))
     try await path.send(input)
     try await path.sendAbsoluteMouseMove(absoluteMouseEvent)
+    try await path.setMicrophoneEnabled(true)
+    try await path.setMicrophoneEnabled(false)
     try await path.togglePerformanceOverlay()
     let report = try await path.stop(reason: .userRequested, message: "Stopped")
 
@@ -213,6 +220,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await progressRecorder.steps.contains(.connected))
     #expect(await transport.sentEvents == [input])
     #expect(await transport.sentAbsoluteMouseEvents == [absoluteMouseEvent])
+    #expect(await transport.microphoneEnabledUpdates == [true, false])
     #expect(await transport.performanceOverlayToggleCount == 1)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
     #expect(report.metadata["transport"] == "nvst")
@@ -230,6 +238,20 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
 
     #expect(await transport.performanceOverlayToggleCount == 0)
+}
+
+@Test func nativeNVSTPathRejectsMicrophoneUpdateWhenStopped() async throws {
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: RecordingNativeNVSTSessionProvider(), transport: transport)
+
+    do {
+        try await path.setMicrophoneEnabled(true)
+        Issue.record("Expected stopped path to reject microphone update")
+    } catch let error as NativeNVSTError {
+        #expect(error == .notRunning)
+    }
+
+    #expect(await transport.microphoneEnabledUpdates.isEmpty)
 }
 
 @Test func nativeNVSTPathReadsPerformanceStatsOnlyWhileRunning() async throws {

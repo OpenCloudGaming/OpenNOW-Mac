@@ -166,6 +166,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         try await Self.toggleGeronimoPerformanceOverlayOnMainActor(sessionAddress: sessionAddress)
     }
 
+    public func setMicrophoneEnabled(_ enabled: Bool) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.setGeronimoMicrophoneEnabledOnMainActor(enabled, sessionAddress: sessionAddress)
+    }
+
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
         guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { return nil }
         return Self.copyGeronimoPerformanceSnapshot(sessionAddress: sessionAddress)
@@ -248,8 +253,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         var startAttributes = Self.geronimoStartAttributes(allocation: allocation, streamingProfileJSON: streamingProfileJSON, geronimoSessionJSON: geronimoSessionJSON)
         startAttributes.merge(launchPayload.telemetryAttributes) { _, new in new }
         let microphoneMode = Self.string(settings["microphoneMode"], fallback: "disabled")
-        let microphoneEnabled = Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
+        let microphoneAvailable = microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
+        let microphoneEnabled = microphoneAvailable && (Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame)
         startAttributes["operation"] = allocation.isResume ? "resume" : "start"
+        startAttributes["microphoneAvailable"] = String(microphoneAvailable)
         startAttributes["microphoneEnabled"] = String(microphoneEnabled)
         startAttributes["videoSurfaceType"] = "NSWindow"
         WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: allocation.isResume ? "Preparing Geronimo native NVST resume request." : "Preparing Geronimo native NVST start request.", attributes: startAttributes)
@@ -308,9 +315,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                         allocation.authToken.withCString { authTokenPointer in
                                             allocation.rawSessionJSON.withCString { cloudSessionPointer in
                                                 if allocation.isResume {
-                                                    OpenNOWNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
+                                                    OpenNOWNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
                                                 } else {
-                                                    OpenNOWNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
+                                                    OpenNOWNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
                                                 }
                                             }
                                         }
@@ -382,6 +389,16 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let result = OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo performance overlay failed with result \(result)."))
+        }
+    }
+
+    @MainActor private static func setGeronimoMicrophoneEnabledOnMainActor(_ enabled: Bool, sessionAddress: UInt) throws {
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+        defer { errorBuffer.deallocate() }
+        errorBuffer.initialize(repeating: 0, count: 1024)
+        let result = OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(UnsafeMutableRawPointer(bitPattern: sessionAddress), enabled ? 1 : 0, errorBuffer, 1024)
+        guard result == 0 else {
+            throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo microphone update failed with result \(result)."))
         }
     }
 
@@ -1646,10 +1663,13 @@ private func OpenNOWNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRa
 private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoStart")
-private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoResume")
-private func OpenNOWNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+private func OpenNOWNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled")
+private func OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoPump")
 private func OpenNOWNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

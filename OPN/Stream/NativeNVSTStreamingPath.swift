@@ -76,6 +76,7 @@ public protocol NativeNVSTTransport: Sendable {
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
     func send(_ event: UserInputEvent) async throws
     func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws
+    func setMicrophoneEnabled(_ enabled: Bool) async throws
     func togglePerformanceOverlay() async throws
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func pause() async throws
@@ -245,6 +246,11 @@ public actor NativeNVSTStreamingPath {
     public func togglePerformanceOverlay() async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.togglePerformanceOverlay()
+    }
+
+    public func setMicrophoneEnabled(_ enabled: Bool) async throws {
+        guard activeSession != nil else { throw NativeNVSTError.notRunning }
+        try await transport.setMicrophoneEnabled(enabled)
     }
 
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {

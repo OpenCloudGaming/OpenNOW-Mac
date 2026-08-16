@@ -140,10 +140,6 @@ struct OpenNOWApp: App {
 
 @MainActor
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
-    private static let microphoneShortcutKeyCode: UInt16 = 46
-    private static let recordingShortcutKeyCode: UInt16 = 15
-    private static let antiAFKShortcutKeyCode: UInt16 = 40
-
     private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
@@ -230,12 +226,10 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
-        guard modifiers == .command else { return nil }
-        switch event.keyCode {
-        case microphoneShortcutKeyCode: return .toggleMicrophone
-        case recordingShortcutKeyCode: return .toggleRecording
-        case antiAFKShortcutKeyCode: return .toggleAntiAFK
+        guard let command = WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
+        switch command {
+        case .toggleMicrophone, .toggleRecording, .toggleAntiAFK:
+            return command
         default: return nil
         }
     }

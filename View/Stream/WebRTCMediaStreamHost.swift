@@ -97,6 +97,14 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var latestNativeStats: NativeNVSTPerformanceSnapshot?
     @State private var nativeStatsTask: Task<Void, Never>?
     @State private var mouseInputDispatcher: NativeNVSTMouseInputDispatcher?
+    @State private var microphoneAvailable = false
+    @State private var microphoneEnabled = false
+    @State private var microphoneUpdateTask: Task<Void, Never>?
+    @State private var antiAFKMouseMovementEnabled = false
+    @State private var antiAFKMouseMovementTask: Task<Void, Never>?
+    @State private var lastAcceptedStreamInputAt = Date()
+    @State private var transientStreamMessage = ""
+    @State private var transientStreamMessageTask: Task<Void, Never>?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
@@ -105,7 +113,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             Color.black.ignoresSafeArea()
             NativeNVSTStreamHostView(
                 overlay: AnyView(nativeWindowOverlay),
-                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible,
+                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible || !transientStreamMessage.isEmpty,
                 overlayCapturesInput: unifiedHUDVisible || streamControlsVisible
             ) { view in
                 nativeView = view
@@ -146,6 +154,11 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        microphoneAvailable = profile.microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
+        microphoneEnabled = microphoneAvailable && profile.microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
+        antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
+        lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         let transport = NativeNVSTBifrostTransport(
             nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
@@ -201,6 +214,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     nativeView.restoreInputFocus()
                     statusMessage = "Connected over native NVST."
                     startNativeStatsPolling(path: path)
+                    refreshAntiAFKMouseMovementTask()
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
                     return true
@@ -247,6 +261,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        cancelNativeShortcutTasks()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
         let mouseInputDispatcher = self.mouseInputDispatcher
@@ -255,6 +270,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false
+        microphoneAvailable = false
+        microphoneEnabled = false
+        antiAFKMouseMovementEnabled = false
         nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else {
             mouseInputDispatcher?.cancel()
@@ -333,9 +351,13 @@ private struct NativeNVSTMediaStreamSurface: View {
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false
+        microphoneAvailable = false
+        microphoneEnabled = false
+        antiAFKMouseMovementEnabled = false
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        cancelNativeShortcutTasks()
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         nativeView?.setPointerLocked(false)
@@ -374,6 +396,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             if view.remoteInputEnabled && !isLockedMouseRelease {
                 guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
             }
+            lastAcceptedStreamInputAt = Date()
             if case .mouse = event {
                 if view.mouseInputMode == .relative, !view.isPointerLocked { return }
                 mouseInputDispatcher?.enqueue(event)
@@ -381,14 +404,8 @@ private struct NativeNVSTMediaStreamSurface: View {
             }
             Task { try? await path.send(event) }
         }
-        view.shouldHandleCommand = { command in
-            guard isConnected else { return false }
-            return switch command {
-            case .toggleStatsHUD, .toggleUnifiedHUD, .toggleMicrophone, .showQuitMenu:
-                true
-            default:
-                false
-            }
+        view.shouldHandleCommand = { _ in
+            isConnected
         }
         view.onCommand = { command in
             handleNativeCommand(command)
@@ -397,6 +414,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             guard isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd,
                   view.remoteInputEnabled, view.mouseInputMode == .absolute,
                   NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+            lastAcceptedStreamInputAt = Date()
             mouseInputDispatcher?.enqueueAbsoluteMove(event)
         }
     }
@@ -408,16 +426,106 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
         switch command {
-        case .toggleStatsHUD, .toggleMicrophone:
+        case .toggleStatsHUD:
             toggleNativeStatsHUD()
         case .toggleUnifiedHUD:
             guard !streamControlsVisible else { return }
             setUnifiedHUDVisible(!unifiedHUDVisible)
+        case .toggleMicrophone:
+            toggleNativeMicrophone()
+        case .toggleRecording:
+            showNativeTransientStreamMessage("Recording is unavailable with native NVST.")
+            WebRTCMediaTelemetry.capture("nvst.ui.recording.unavailable", level: .warning, message: "Native NVST recording shortcut requested without a registered recorder pipeline.", attributes: ["applicationID": configuration.applicationID])
+        case .toggleAntiAFK:
+            toggleNativeAntiAFKMouseMovement()
         case .showQuitMenu:
             if !streamControlsVisible { showStreamControls() }
-        default:
-            break
         }
+    }
+
+    private func toggleNativeMicrophone() {
+        guard isConnected, !isEnding, !didEnd else { return }
+        guard microphoneAvailable else {
+            microphoneEnabled = false
+            showNativeTransientStreamMessage("Microphone is disabled in Settings.")
+            return
+        }
+        guard microphoneUpdateTask == nil, let path else { return }
+        let nextEnabled = !microphoneEnabled
+        microphoneUpdateTask = Task { @MainActor in
+            defer { microphoneUpdateTask = nil }
+            do {
+                try await path.setMicrophoneEnabled(nextEnabled)
+                guard !Task.isCancelled, !didEnd else { return }
+                microphoneEnabled = nextEnabled
+                showNativeTransientStreamMessage(nextEnabled ? "Microphone On" : "Microphone Muted")
+                WebRTCMediaTelemetry.capture("nvst.ui.microphone.toggle", level: .info, message: nextEnabled ? "Native NVST microphone enabled." : "Native NVST microphone muted.", attributes: ["applicationID": configuration.applicationID, "enabled": String(nextEnabled)])
+            } catch {
+                guard !Task.isCancelled, !didEnd else { return }
+                let message = Self.message(for: error)
+                showNativeTransientStreamMessage(message)
+                WebRTCMediaTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
+            }
+        }
+    }
+
+    private func toggleNativeAntiAFKMouseMovement() {
+        guard isConnected, !isEnding, !didEnd else { return }
+        antiAFKMouseMovementEnabled.toggle()
+        OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(antiAFKMouseMovementEnabled)
+        refreshAntiAFKMouseMovementTask()
+        showNativeTransientStreamMessage(antiAFKMouseMovementEnabled ? "Anti-AFK On" : "Anti-AFK Off")
+        WebRTCMediaTelemetry.capture("nvst.ui.anti_afk.toggle", level: .info, message: antiAFKMouseMovementEnabled ? "Native NVST Anti-AFK mouse movement enabled." : "Native NVST Anti-AFK mouse movement disabled.", attributes: ["applicationID": configuration.applicationID, "enabled": String(antiAFKMouseMovementEnabled)])
+    }
+
+    private func refreshAntiAFKMouseMovementTask() {
+        guard isConnected, antiAFKMouseMovementEnabled else {
+            antiAFKMouseMovementTask?.cancel()
+            antiAFKMouseMovementTask = nil
+            return
+        }
+        guard antiAFKMouseMovementTask == nil else { return }
+        antiAFKMouseMovementTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: StreamAntiAFKInputPolicy.pollInterval)
+                guard !Task.isCancelled else { return }
+                sendNativeAntiAFKMouseMovement()
+            }
+        }
+    }
+
+    private func sendNativeAntiAFKMouseMovement() {
+        guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible, mouseInputDispatcher != nil else { return }
+        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+        let delta = StreamAntiAFKInputPolicy.randomMouseDelta()
+        mouseInputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible else { return }
+            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+            mouseInputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
+        }
+    }
+
+    private func showNativeTransientStreamMessage(_ message: String) {
+        transientStreamMessageTask?.cancel()
+        transientStreamMessage = message
+        transientStreamMessageTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            transientStreamMessage = ""
+            transientStreamMessageTask = nil
+        }
+    }
+
+    private func cancelNativeShortcutTasks() {
+        microphoneUpdateTask?.cancel()
+        microphoneUpdateTask = nil
+        antiAFKMouseMovementTask?.cancel()
+        antiAFKMouseMovementTask = nil
+        transientStreamMessageTask?.cancel()
+        transientStreamMessageTask = nil
+        transientStreamMessage = ""
     }
 
     private func showStreamControls(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
@@ -514,7 +622,22 @@ private struct NativeNVSTMediaStreamSurface: View {
             if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD }
             if unifiedHUDVisible { nativeUnifiedHUD }
             if streamControlsVisible { nativeStreamControlsOverlay }
+            if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay }
         }
+    }
+
+    private var nativeTransientStreamMessageOverlay: some View {
+        Text(transientStreamMessage)
+            .font(.streamNvidia(size: 12, weight: .bold))
+            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.86))
+            .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.55), lineWidth: 1))
+            .shadow(color: .black.opacity(0.5), radius: 12, y: 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.top, 24)
+            .allowsHitTesting(false)
     }
 
     private var nativeStatsHUD: some View {
@@ -680,11 +803,12 @@ private struct NativeNVSTMediaStreamSurface: View {
                 Rectangle()
                     .fill(WebRTCMediaStreamTheme.divider)
                     .frame(height: 1)
-                Text("Cmd+G HUD   Cmd+M Stats   Cmd+Q Quit")
+                Text(WebRTCMediaStreamCommand.shortcutGuide)
                     .font(.streamNvidia(size: 10, weight: .bold))
                     .tracking(0.8)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 9)
             }
@@ -847,7 +971,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
                 .controlSize(.large)
                 .disabled(isEnding)
-                Text("Cmd+G HUD  |  Cmd+M stats  |  Cmd+Q menu  |  Esc resume")
+                Text("\(WebRTCMediaStreamCommand.shortcutGuide)   Esc Resume")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.36))
             }

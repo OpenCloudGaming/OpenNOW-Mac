@@ -98,6 +98,17 @@ private struct MouseButtonTransition: Equatable {
     #expect(!NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.control))
 }
 
+@Test @MainActor func streamShortcutContractMatchesWebRTCControls() {
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 5, modifierFlags: .command) == .toggleUnifiedHUD)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 46, modifierFlags: .command) == .toggleMicrophone)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 15, modifierFlags: .command) == .toggleRecording)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 40, modifierFlags: .command) == .toggleAntiAFK)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 12, modifierFlags: .command) == .showQuitMenu)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 45, modifierFlags: .command) == .toggleStatsHUD)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 46, modifierFlags: [.command, .shift]) == nil)
+    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 46, modifierFlags: .option) == nil)
+}
+
 @Test @MainActor func streamViewOnlyCapturesKeysFromItsOwnWindow() {
     let streamWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
     let menuWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)

@@ -23,13 +23,29 @@ private final class NativeNVSTRendererWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
-public enum WebRTCMediaStreamCommand: Sendable {
+public enum WebRTCMediaStreamCommand: Equatable, Sendable {
     case toggleStatsHUD
     case toggleUnifiedHUD
     case toggleMicrophone
     case toggleRecording
     case toggleAntiAFK
     case showQuitMenu
+
+    static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit"
+
+    static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> WebRTCMediaStreamCommand? {
+        let modifiers = modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
+        guard modifiers == .command else { return nil }
+        switch keyCode {
+        case 46: return .toggleMicrophone
+        case 15: return .toggleRecording
+        case 40: return .toggleAntiAFK
+        case 45: return .toggleStatsHUD
+        case 5: return .toggleUnifiedHUD
+        case 12: return .showQuitMenu
+        default: return nil
+        }
+    }
 }
 
 public enum NativeStreamMouseInputMode: Equatable, Sendable {
@@ -624,18 +640,7 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers.contains(.command) else { return nil }
-        guard modifiers.subtracting([.capsLock, .numericPad]) == .command else { return nil }
-        switch event.keyCode {
-        case 46: return .toggleMicrophone
-        case 15: return .toggleRecording
-        case 40: return .toggleAntiAFK
-        case 45: return .toggleStatsHUD
-        case 5: return .toggleUnifiedHUD
-        case 12: return .showQuitMenu
-        default: return nil
-        }
+        WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags)
     }
 
     private func installKeyEquivalentMonitor() {

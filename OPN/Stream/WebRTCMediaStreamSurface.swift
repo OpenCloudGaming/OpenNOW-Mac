@@ -398,11 +398,12 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudShortcutFooter: some View {
-        Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
+        Text(WebRTCMediaStreamCommand.shortcutGuide)
             .font(.streamNvidia(size: 10, weight: .bold))
             .tracking(0.8)
             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
     }
@@ -1442,7 +1443,7 @@ public struct WebRTCMediaStreamSurface: View {
         guard antiAFKMouseMovementTask == nil else { return }
         antiAFKMouseMovementTask = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: StreamAntiAFKInputPolicy.pollInterval)
                 guard !Task.isCancelled else { return }
                 sendAntiAFKMouseMovement()
             }
@@ -1451,14 +1452,14 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func sendAntiAFKMouseMovement() {
         guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let activeTransport = transport else { return }
-        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
-        let delta = Self.randomAntiAFKMouseDelta()
-        activeTransport.sendNow(Self.mouseMove(deltaX: delta.x, deltaY: delta.y))
+        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+        let delta = StreamAntiAFKInputPolicy.randomMouseDelta()
+        activeTransport.sendNow(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
             guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let transport else { return }
-            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
-            transport.sendNow(Self.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
+            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+            transport.sendNow(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
         }
     }
 
@@ -1471,19 +1472,6 @@ public struct WebRTCMediaStreamSurface: View {
             transientStreamMessage = ""
             transientStreamMessageTask = nil
         }
-    }
-
-    private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
-        var x = Int16(Int.random(in: -5...5))
-        let y = Int16(Int.random(in: -5...5))
-        if x == 0 && y == 0 { x = 1 }
-        return (x, y)
-    }
-
-    private static let antiAFKIdleThresholdSeconds: TimeInterval = 210
-
-    private static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
-        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
     }
 
     private func toggleMicrophone() {

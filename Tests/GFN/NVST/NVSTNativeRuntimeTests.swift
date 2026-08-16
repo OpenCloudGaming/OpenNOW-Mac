@@ -111,6 +111,11 @@ import Testing
     surface = nil
     #expect(retainedSurface != nil)
 
+    let microphoneResult = errorBuffer.withUnsafeMutableBufferPointer { buffer in
+        OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(session, 1, buffer.baseAddress, buffer.count)
+    }
+    #expect(microphoneResult == -3)
+
     OpenNOWTestNativeNVSTGeronimoDestroy(session)
     #expect(retainedSurface == nil)
 }
@@ -126,6 +131,15 @@ import Testing
     #expect(convertedAuthTokenType("jwt-gfn") == 9)
     #expect(convertedAuthTokenType("unsupported") == -1)
     #expect(OpenNOWNativeNVSTGeronimoConvertAuthTokenType(nil) == -1)
+}
+
+@Test func nvstGeronimoMicrophoneControlRejectsMissingSession() {
+    var errorBuffer = [CChar](repeating: 0, count: 256)
+    let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
+        OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(nil, 1, buffer.baseAddress, buffer.count)
+    }
+
+    #expect(result == -1)
 }
 
 private func vendoredBridge() throws -> NVSTNativeBridge {
@@ -159,6 +173,9 @@ private func OpenNOWTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPoi
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
 private func OpenNOWTestNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled")
+private func OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoResultCodeName")
 private func OpenNOWTestNativeNVSTGeronimoResultCodeName(_ session: UnsafeMutableRawPointer?, _ resultCode: Int32) -> UnsafePointer<CChar>?

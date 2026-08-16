@@ -4,6 +4,22 @@ public typealias WebRTCMediaStreamQuitDecisionHandler = @MainActor @Sendable (_ 
 public typealias WebRTCMediaStreamQuitRequestHandler = @MainActor @Sendable (_ completion: @escaping WebRTCMediaStreamQuitDecisionHandler) -> Bool
 public typealias WebRTCMediaStreamCommandHandler = @MainActor @Sendable (_ command: WebRTCMediaStreamCommand) -> Void
 
+enum StreamAntiAFKInputPolicy {
+    static let pollInterval = Duration.seconds(60)
+    static let idleThresholdSeconds: TimeInterval = 210
+
+    static func randomMouseDelta() -> (x: Int16, y: Int16) {
+        var x = Int16(Int.random(in: -5...5))
+        let y = Int16(Int.random(in: -5...5))
+        if x == 0 && y == 0 { x = 1 }
+        return (x, y)
+    }
+
+    static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
+        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
+    }
+}
+
 @MainActor
 public enum WebRTCMediaStreamLifecycle {
     private static var activeStreamIDs: [UUID] = []
