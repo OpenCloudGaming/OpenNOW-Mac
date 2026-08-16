@@ -30,6 +30,23 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
     }
 }
 
+private extension LCARSService {
+    func responseContainsDataValue(_ dataKey: String, requestType: LCARS.RequestType, accessToken: String = "") async throws -> Bool {
+        let json = try await fetch(requestType: requestType, accessToken: accessToken)
+        return (json["data"] as? [String: Any])?[dataKey] != nil
+    }
+
+    func persistedQueryContainsDataValue(_ dataKey: String, operationName: String, queryHash: String, query: String, locale: String) async throws -> Bool {
+        let json = try await fetchPersistedQuery(operationName: operationName, queryHash: queryHash, query: query, variables: ["locale": locale])
+        return (json["data"] as? [String: Any])?[dataKey] != nil
+    }
+
+    func fetchTwice(requestType: LCARS.RequestType) async throws {
+        _ = try await fetch(requestType: requestType)
+        _ = try await fetch(requestType: requestType)
+    }
+}
+
 @Test func lcarsRequestTypesMatchVendorCacheRoutes() {
     #expect(LCARS.systemName == "LCARS")
     #expect(LCARS.productionGraphQLURLString == "https://games.geforce.com/graphql")
@@ -134,9 +151,8 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
         return ["data": ["loginWallData": ["enabled": true]]]
     })
-    let json = try await service.fetch(requestType: .loginWallData, accessToken: "access")
-    let data = try #require(json["data"] as? [String: Any])
-    #expect(data["loginWallData"] != nil)
+    let containsLoginWallData = try await service.responseContainsDataValue("loginWallData", requestType: .loginWallData, accessToken: "access")
+    #expect(containsLoginWallData)
 }
 
 @Test func lcarsServiceFallsBackToInlineQueryOnPersistedQueryMiss() async throws {
@@ -145,9 +161,9 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
         (status: 200, json: ["data": ["panels": []]]),
     ])
     let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: transport)
-    let json = try await service.fetchPersistedQuery(operationName: "panels/MainV2", queryHash: "hash", query: "query Panels { panels { id } }", variables: ["locale": "en_US"])
+    let containsPanels = try await service.persistedQueryContainsDataValue("panels", operationName: "panels/MainV2", queryHash: "hash", query: "query Panels { panels { id } }", locale: "en_US")
     let requests = await transport.requests
-    #expect((json["data"] as? [String: Any])?["panels"] != nil)
+    #expect(containsPanels)
     #expect(requests.count == 2)
     #expect(requests.first?.httpMethod == "GET")
     #expect(requests.last?.httpMethod == "POST")
@@ -160,8 +176,7 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
         (status: 200, json: ["data": ["panels": []]]),
     ])
     let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: transport)
-    _ = try await service.fetch(requestType: .panels)
-    _ = try await service.fetch(requestType: .panels)
+    try await service.fetchTwice(requestType: .panels)
     let requests = await transport.requests
     #expect(requests.first?.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == nil)
     #expect(requests.last?.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == "true")

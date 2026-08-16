@@ -2148,7 +2148,7 @@ private struct SettingsToggleRow: View {
                     .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
             }
             Spacer()
-            Toggle("", isOn: Binding(get: { isOn }, set: action))
+            Toggle("", isOn: Binding(get: { isOn }, set: { newValue in action(newValue) }))
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .disabled(isLocked)
@@ -2177,7 +2177,7 @@ private struct SettingsTextFieldRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(width: 250, alignment: .leading)
-            TextField(placeholder, text: Binding(get: { draft }, set: updateDraft))
+            TextField(placeholder, text: Binding(get: { draft }, set: { newValue in updateDraft(newValue) }))
                 .textFieldStyle(.plain)
                 .font(.settingsNvidia(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
