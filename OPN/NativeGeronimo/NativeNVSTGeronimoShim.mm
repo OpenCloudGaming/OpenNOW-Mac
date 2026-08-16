@@ -236,6 +236,8 @@ struct PlatformAudioSettings { alignas(8) unsigned char bytes[0x08]; };
 struct SDLGraphicsContextInitParameters { alignas(8) unsigned char bytes[0x30]; };
 struct SDLEventProcessorInitParams { alignas(4) unsigned char bytes[0x08]; };
 struct SDLWindowInitParams { alignas(8) unsigned char bytes[0x80]; };
+struct SDLPoint { int32_t x; int32_t y; };
+struct SDLRect { int32_t x; int32_t y; int32_t width; int32_t height; };
 struct AsyncVideoFrameRenderer;
 
 static_assert(sizeof(PlatformDecoderCreationSettings) == 0x28, "libGeronimo PlatformDecoderCreationSettings ABI changed");
@@ -244,6 +246,8 @@ static_assert(sizeof(PlatformAudioSettings) == 0x08, "libGeronimo PlatformAudioS
 static_assert(sizeof(SDLGraphicsContextInitParameters) == 0x30, "libGeronimo SDLGraphicsContext::InitParameters ABI changed");
 static_assert(sizeof(SDLEventProcessorInitParams) == 0x08, "libGeronimo SDLEventProcessor::InitParams ABI changed");
 static_assert(sizeof(SDLWindowInitParams) == 0x80, "libGeronimo SDLWindow::InitParams ABI changed");
+static_assert(sizeof(SDLPoint) == 0x08, "libGeronimo SDL_Point ABI changed");
+static_assert(sizeof(SDLRect) == 0x10, "libGeronimo SDL_Rect ABI changed");
 
 using NskPlatformStartup = bool (*)(const Nsk::PlatformStartupParams &);
 using PlatformShutdown = void (*)();
@@ -276,6 +280,7 @@ using SDLEventProcessorInitialize = bool (*)(void *, void *, const SDLEventProce
 using SDLEventProcessorProcessEvents = bool (*)(void *, int);
 using SDLWindowInitialize = bool (*)(void *, void *, const SDLWindowInitParams &);
 using SDLWindowAsyncRenderer = const std::shared_ptr<AsyncVideoFrameRenderer> &(*)(const void *);
+using SDLWindowConvertPointToVideoFrame = void (*)(const void *, SDLPoint, SDLPoint *, SDLRect *);
 using PlatformCreateVideoDecoder = void *(*)(PlatformDecoderCreationSettings &, uint32_t);
 using PlatformCreateAudioObject = void *(*)();
 using VideoDecoderInitialize = int32_t (*)(void *, void *, const PlatformDecoderSettings &, const std::shared_ptr<AsyncVideoFrameRenderer> &);
@@ -356,6 +361,7 @@ struct GeronimoFunctions {
     ObjectDtor windowDtor = nullptr;
     SDLWindowInitialize windowInitialize = nullptr;
     SDLWindowAsyncRenderer windowAsyncRenderer = nullptr;
+    SDLWindowConvertPointToVideoFrame windowConvertPointToVideoFrame = nullptr;
     PlatformCreateVideoDecoder createVideoDecoder = nullptr;
     PlatformCreateAudioObject createAudioRenderer = nullptr;
     PlatformCreateAudioObject createAudioCapturer = nullptr;
@@ -998,6 +1004,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.windowDtor = reinterpret_cast<ObjectDtor>(resolve(handle, "_ZN9SDLWindowD1Ev", errorBuffer, errorBufferLength));
     functions.windowInitialize = reinterpret_cast<SDLWindowInitialize>(resolve(handle, "_ZN9SDLWindow10initializeEP11IOInterfaceRKNS_10InitParamsE", errorBuffer, errorBufferLength));
     functions.windowAsyncRenderer = reinterpret_cast<SDLWindowAsyncRenderer>(resolve(handle, "_ZNK9SDLWindow13asyncRendererEv", errorBuffer, errorBufferLength));
+    functions.windowConvertPointToVideoFrame = reinterpret_cast<SDLWindowConvertPointToVideoFrame>(resolve(handle, "_ZNK9SDLWindow24convertPointToVideoFrameE9SDL_PointPS0_P8SDL_Rect", errorBuffer, errorBufferLength));
     functions.createVideoDecoder = reinterpret_cast<PlatformCreateVideoDecoder>(resolve(handle, "_Z26platformCreateVideoDecoderR31PlatformDecoderCreationSettingsj", errorBuffer, errorBufferLength));
     functions.createAudioRenderer = reinterpret_cast<PlatformCreateAudioObject>(resolve(handle, "_Z27platformCreateAudioRendererv", errorBuffer, errorBufferLength));
     functions.createAudioCapturer = reinterpret_cast<PlatformCreateAudioObject>(resolve(handle, "_Z27platformCreateAudioCapturerv", errorBuffer, errorBufferLength));
@@ -1025,6 +1032,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.windowDtor != nullptr &&
            functions.windowInitialize != nullptr &&
            functions.windowAsyncRenderer != nullptr &&
+           functions.windowConvertPointToVideoFrame != nullptr &&
            functions.createVideoDecoder != nullptr &&
            functions.createAudioRenderer != nullptr &&
            functions.createAudioCapturer != nullptr &&
@@ -2035,6 +2043,58 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSendInput(void *sessionPointer,
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "GridApp::sendNvstInputEvent raised an unexpected C++ exception.");
         return -4;
+    }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(void *sessionPointer,
+                                                                  int32_t windowX,
+                                                                  int32_t windowY,
+                                                                  uint64_t timestampNanoseconds,
+                                                                  char *errorBuffer,
+                                                                  size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->functions.sendInput == nullptr ||
+        session->functions.windowConvertPointToVideoFrame == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for absolute mouse input.");
+        return -1;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo stream is not active for absolute mouse input.");
+            return -2;
+        }
+    }
+    try {
+        SDLPoint videoPoint{};
+        SDLRect videoFrame{};
+        {
+            std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+            if (session->window == nullptr) {
+                setError(errorBuffer, errorBufferLength, "Native Geronimo window is unavailable for absolute mouse input.");
+                return -3;
+            }
+            session->functions.windowConvertPointToVideoFrame(session->window, SDLPoint{windowX, windowY}, &videoPoint, &videoFrame);
+        }
+        if (videoFrame.width <= 0 || videoFrame.height <= 0) {
+            setError(errorBuffer, errorBufferLength, "Native Geronimo returned an invalid absolute mouse viewport.");
+            return -4;
+        }
+        uint8_t inputEventBytes[NvstInputEventSize] = {};
+        storeUnaligned<uint32_t>(inputEventBytes, 0x00, 2);
+        storeUnaligned<int32_t>(inputEventBytes, 0x08, 1);
+        storeUnaligned<uint16_t>(inputEventBytes, 0x0c, 0x0800);
+        storeUnaligned<int32_t>(inputEventBytes, 0x10, videoPoint.x);
+        storeUnaligned<int32_t>(inputEventBytes, 0x14, videoPoint.y);
+        storeUnaligned<int32_t>(inputEventBytes, 0x18, videoFrame.width);
+        storeUnaligned<int32_t>(inputEventBytes, 0x1c, videoFrame.height);
+        storeUnaligned<uint64_t>(inputEventBytes, 0x28, timestampNanoseconds / 1'000);
+        session->functions.sendInput(session->gridApp, inputEventBytes);
+        return 0;
+    } catch (...) {
+        setError(errorBuffer, errorBufferLength, "GridApp absolute mouse input raised an unexpected C++ exception.");
+        return -5;
     }
 }
 

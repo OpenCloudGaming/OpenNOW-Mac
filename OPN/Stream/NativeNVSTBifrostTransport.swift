@@ -155,7 +155,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
         guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
-        try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: inputEncoder.encodeAbsoluteMouseMove(event))
+        try Self.sendGeronimoAbsoluteMouse(sessionAddress: sessionAddress, event: event)
     }
 
     public func togglePerformanceOverlay() async throws {
@@ -491,6 +491,23 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
         guard result == 0 else {
             throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo input send failed with result \(result)."))
+        }
+    }
+
+    private static func sendGeronimoAbsoluteMouse(sessionAddress: UInt, event: NativeNVSTAbsoluteMouseEvent) throws {
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+        defer { errorBuffer.deallocate() }
+        errorBuffer.initialize(repeating: 0, count: 1024)
+        let result = OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(
+            UnsafeMutableRawPointer(bitPattern: sessionAddress),
+            event.x,
+            event.y,
+            event.timestamp.nanoseconds,
+            errorBuffer,
+            1024
+        )
+        if result != 0 {
+            throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo absolute mouse input failed with result \(result)."))
         }
     }
 
@@ -1606,6 +1623,9 @@ private func OpenNOWNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?,
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSendInput")
 private func OpenNOWNativeNVSTGeronimoSendInput(_ session: UnsafeMutableRawPointer?, _ inputEventBytes: UnsafePointer<UInt8>?, _ inputEventByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSendAbsoluteMouse")
+private func OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(_ session: UnsafeMutableRawPointer?, _ windowX: Int32, _ windowY: Int32, _ timestampNanoseconds: UInt64, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay")
 private func OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

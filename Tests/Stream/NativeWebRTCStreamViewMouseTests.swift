@@ -98,18 +98,26 @@ private struct MouseButtonTransition: Equatable {
     view.layoutSubtreeIfNeeded()
     let timestamp = MediaTimestamp(nanoseconds: 1_000)
 
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 960, y: 540, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 1079, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1918, y: 1, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == nil)
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == nil)
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 450, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 899, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 1, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 899, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 0, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: -100, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 450, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1700, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 450, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: CGFloat.nan, y: 500), timestamp: timestamp) == nil)
 }
 
 @Test @MainActor func absoluteMouseModeForwardsCompleteClickWithoutPointerLock() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
     view.mouseInputMode = .absolute
     var events: [UserInputEvent] = []
-    view.onInputEvent = { events.append($0) }
+    var sequence: [String] = []
+    view.onAbsoluteMouseMove = { event in sequence.append("position:\(event.x),\(event.y)") }
+    view.onInputEvent = { event in
+        events.append(event)
+        if case .mouse(.button(_, _, let isPressed, _)) = event { sequence.append(isPressed ? "down" : "up") }
+    }
     let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
     let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
 
@@ -121,6 +129,27 @@ private struct MouseButtonTransition: Equatable {
         MouseButtonTransition(button: .left, isPressed: true),
         MouseButtonTransition(button: .left, isPressed: false),
     ])
+    #expect(sequence == ["position:0,719", "down", "position:0,719", "up"])
+}
+
+@Test @MainActor func absoluteMouseModeClampsLetterboxClickBeforeEachButtonEdge() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
+    view.mouseInputMode = .absolute
+    view.setStreamContentSize(width: 1920, height: 1080)
+    view.layoutSubtreeIfNeeded()
+    var sequence: [String] = []
+    view.onAbsoluteMouseMove = { event in sequence.append("position:\(event.x),\(event.y)") }
+    view.onInputEvent = { event in
+        if case .mouse(.button(_, _, let isPressed, _)) = event { sequence.append(isPressed ? "down" : "up") }
+    }
+    let location = NSPoint(x: 800, y: 975)
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown, location: location))
+    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp, location: location))
+
+    view.mouseDown(with: mouseDown)
+    view.mouseUp(with: mouseUp)
+
+    #expect(sequence == ["position:800,0", "down", "position:800,0", "up"])
 }
 
 @Test func nativeNVSTMouseDispatcherPreservesEventOrder() async {
@@ -153,10 +182,10 @@ private struct MouseButtonTransition: Equatable {
     ])
 }
 
-@MainActor private func makeMouseEvent(type: NSEvent.EventType) -> NSEvent? {
+@MainActor private func makeMouseEvent(type: NSEvent.EventType, location: NSPoint = .zero) -> NSEvent? {
     NSEvent.mouseEvent(
         with: type,
-        location: .zero,
+        location: location,
         modifierFlags: [],
         timestamp: 0,
         windowNumber: 0,
