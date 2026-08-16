@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import OpenNOW
@@ -450,6 +451,14 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(abs(NativeNVSTBifrostTransport.geronimoPumpInterval - (1.0 / 60.0)) < 0.000_001)
     #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
     #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .common)
+}
+
+@Test func nativeNVSTResolvesMicrophonePermissionBeforeGeronimoStartup() {
+    #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: false, authorizationStatus: .notDetermined) == false)
+    #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .authorized) == true)
+    #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .denied) == false)
+    #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .restricted) == false)
+    #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .notDetermined) == nil)
 }
 
 @Test func nativeNVSTLaunchPayloadModelsVerifiedGeForceNOWStartFields() throws {

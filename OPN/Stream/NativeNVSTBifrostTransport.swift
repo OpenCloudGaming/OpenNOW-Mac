@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
@@ -253,9 +254,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         var startAttributes = Self.geronimoStartAttributes(allocation: allocation, streamingProfileJSON: streamingProfileJSON, geronimoSessionJSON: geronimoSessionJSON)
         startAttributes.merge(launchPayload.telemetryAttributes) { _, new in new }
         let microphoneMode = Self.string(settings["microphoneMode"], fallback: "disabled")
-        let microphoneAvailable = microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
+        let microphoneRequested = microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
+        let microphoneAvailable = await Self.resolveMicrophoneCaptureAccess(requested: microphoneRequested)
         let microphoneEnabled = microphoneAvailable && (Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame)
         startAttributes["operation"] = allocation.isResume ? "resume" : "start"
+        startAttributes["microphoneRequested"] = String(microphoneRequested)
         startAttributes["microphoneAvailable"] = String(microphoneAvailable)
         startAttributes["microphoneEnabled"] = String(microphoneEnabled)
         startAttributes["videoSurfaceType"] = "NSWindow"
@@ -370,6 +373,27 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     @MainActor private static func destroyGeronimoOnMainActor(sessionAddress: UInt) {
         OpenNOWNativeNVSTGeronimoDestroy(UnsafeMutableRawPointer(bitPattern: sessionAddress))
+    }
+
+    @MainActor private static func resolveMicrophoneCaptureAccess(requested: Bool) async -> Bool {
+        if let resolvedAccess = microphoneCaptureAccess(requested: requested, authorizationStatus: AVCaptureDevice.authorizationStatus(for: .audio)) {
+            return resolvedAccess
+        }
+        return await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+
+    static func microphoneCaptureAccess(requested: Bool, authorizationStatus: AVAuthorizationStatus) -> Bool? {
+        guard requested else { return false }
+        switch authorizationStatus {
+        case .authorized: true
+        case .notDetermined: nil
+        case .denied, .restricted: false
+        @unknown default: false
+        }
     }
 
     @MainActor private static func requestPauseGeronimoOnMainActor(sessionAddress: UInt) throws {
