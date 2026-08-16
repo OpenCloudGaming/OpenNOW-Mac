@@ -186,8 +186,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         session.setMicrophoneEnabled(enabled)
     }
 
-    public func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int) {
-        session.setLocalVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+    public func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int, pillarboxFillMode: Int, pillarboxFillDim: Int, pillarboxFillColor: Int) {
+        session.setLocalVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
     }
 
     public func startRecording(configuration: WebRTCStreamRecordingConfiguration) {

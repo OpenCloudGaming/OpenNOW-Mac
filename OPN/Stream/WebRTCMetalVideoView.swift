@@ -170,10 +170,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
-        if enhancement.mode > 0 {
+        // Pillarbox fill is drawn by the custom shader path. WebRTC's own Metal
+        // renderers aspect-fit and clear to black inside the framework, so a frame
+        // that needs fill has to be routed away from them even with upscaling off.
+        let needsCustomPath = enhancement.mode > 0 || enhancement.fillMode.needsCustomRenderPath
+        if needsCustomPath {
             setCustomDrawableRenderingEnabled(true)
         }
-        if enhancement.mode > 0, renderEnhancedFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
+        if needsCustomPath, renderEnhancedFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
@@ -227,19 +231,27 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
         let settings = enhancementSettings
+        // Fill with upscaling off: borrow the spatial path in its cheapest form.
+        // lowCostSpatial selects the plain-sample `fast_*` shaders, so the picture
+        // area is untouched and only the bar columns cost anything extra.
+        let fillOnly = enhancement.mode == 0
         switch enhancement.mode {
         case 4: settings.configuredTier = .temporal
         case 3: settings.configuredTier = .metalFX
         case 2: settings.configuredTier = .spatial
+        case 0: settings.configuredTier = .spatial
         default: settings.configuredTier = automaticEnhancementTier(renderer: enhancementRenderer, device: metalView.device)
         }
-        settings.sharpness = Int(enhancement.sharpness)
-        settings.denoise = Int(enhancement.denoise)
+        settings.pillarboxFillMode = Int(enhancement.pillarboxFillMode)
+        settings.pillarboxFillDim = Float(enhancement.pillarboxFillDim) / 100.0
+        settings.pillarboxFillColor = enhancement.pillarboxFillColor
+        settings.sharpness = fillOnly ? 0 : Int(enhancement.sharpness)
+        settings.denoise = fillOnly ? 0 : Int(enhancement.denoise)
         settings.sourceSize = sourceSize
         settings.drawableSize = metalView.drawableSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.captureEnhancedPixelBuffer = owner?.wantsEnhancedVideoFrames() == true
-        settings.lowCostSpatial = adaptiveEnhancementPenalty > 0
+        settings.lowCostSpatial = fillOnly || adaptiveEnhancementPenalty > 0
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
@@ -284,6 +296,10 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         guard let enhancementRenderer else { return false }
         let settings = enhancementSettings
         settings.configuredTier = .spatial
+        let enhancement = localVideoEnhancement()
+        settings.pillarboxFillMode = Int(enhancement.pillarboxFillMode)
+        settings.pillarboxFillDim = Float(enhancement.pillarboxFillDim) / 100.0
+        settings.pillarboxFillColor = enhancement.pillarboxFillColor
         settings.sharpness = 0
         settings.denoise = 0
         settings.sourceSize = sourceSize
@@ -422,8 +438,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     }
 
     private func localVideoEnhancement() -> VideoEnhancement {
-        let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160)
-        return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3)
+        let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160, 0, 55, 0)
+        return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3, pillarboxFillMode: values.4, pillarboxFillDim: values.5, pillarboxFillColor: values.6)
     }
 
     private func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
@@ -472,6 +488,11 @@ private struct VideoEnhancement {
     var sharpness: Int32
     var denoise: Int32
     var targetHeight: Int32
+    var pillarboxFillMode: Int32
+    var pillarboxFillDim: Int32
+    var pillarboxFillColor: Int32
+
+    var fillMode: OPNPillarboxFillMode { OPNPillarboxFillMode.from(Int(pillarboxFillMode)) }
 }
 
 private struct RenderDiagnostics {

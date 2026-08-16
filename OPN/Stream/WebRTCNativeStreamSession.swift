@@ -44,6 +44,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var localEnhancementSharpness = 10
     private var localEnhancementDenoise = 0
     private var localEnhancementTargetHeight = 2160
+    private var localPillarboxFillMode = 0
+    private var localPillarboxFillDim = 55
+    /// Packed 0xRRGGBB. Parsed once here so the render thread never touches a string.
+    private var localPillarboxFillColor = 0
     private var enhancedVideoFrameCaptureEnabled = false
     private var onAnswer: ((String, String) -> Void)?
     private var onIceCandidate: (([String: Any]) -> Void)?
@@ -113,7 +117,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             mode: int(settings["upscalingMode"]),
             sharpness: int(settings["upscalingSharpness"], fallback: 10),
             denoise: int(settings["upscalingDenoise"]),
-            targetHeight: int(settings["upscalingTargetHeight"], fallback: 2160)
+            targetHeight: int(settings["upscalingTargetHeight"], fallback: 2160),
+            pillarboxFillMode: int(settings["pillarboxFillMode"]),
+            pillarboxFillDim: int(settings["pillarboxFillDim"], fallback: 55),
+            pillarboxFillColor: packedColor(settings["pillarboxFillColor"])
         )
         resetStats(sessionInfo: sessionInfo, settings: settings)
 
@@ -395,7 +402,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func setMicrophoneVolume(_ volume: Double) { microphoneVolume = min(max(volume, 0), 1); audioController.setMicrophoneVolume(microphoneVolume, sessionImpl: impl) }
     func setMaxBitrateMbps(_ mbps: Int) { configuredMaxBitrateMbps = max(1, mbps); applyRuntimeBitrateLimit(configuredMaxBitrateMbps, reason: "user setting") }
     func setEnhancedVideoFrameCaptureEnabled(_ enabled: Bool) { enhancedVideoFrameCaptureEnabled = enabled }
-    func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int) { localEnhancementMode = mode; localEnhancementSharpness = sharpness; localEnhancementDenoise = denoise; localEnhancementTargetHeight = targetHeight }
+    func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int, pillarboxFillMode: Int, pillarboxFillDim: Int, pillarboxFillColor: Int) { localEnhancementMode = mode; localEnhancementSharpness = sharpness; localEnhancementDenoise = denoise; localEnhancementTargetHeight = targetHeight; localPillarboxFillMode = pillarboxFillMode; localPillarboxFillDim = pillarboxFillDim; localPillarboxFillColor = pillarboxFillColor }
     func sendUtf8Text(_ text: String) { inputController.sendUtf8Text(text, sessionImpl: impl) }
     func sendKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, down: Bool) { inputController.sendKey(keycode: keycode, scancode: scancode, modifiers: modifiers, down: down, sessionImpl: impl) }
     func sendMouseMove(dx: Int16, dy: Int16) { inputController.sendMouseMove(dx: dx, dy: dy, sessionImpl: impl) }
@@ -435,7 +442,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     var targetFps: Int { int(settings["fps"], fallback: 60) }
     var gameVolumeLevel: Double { gameVolume }
-    func localVideoEnhancement() -> (Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight)) }
+    func localVideoEnhancement() -> (Int32, Int32, Int32, Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight), Int32(localPillarboxFillMode), Int32(localPillarboxFillDim), Int32(localPillarboxFillColor)) }
     func wantsEnhancedVideoFrames() -> Bool { enhancedVideoFrameCaptureEnabled }
     func nativeWindowHandle() -> UnsafeMutableRawPointer? { nativeWindow }
     func isMicrophoneCaptureEnabled() -> Bool { microphoneEnabled && impl?.localMicrophoneTrack?.isEnabled == true }
@@ -1138,6 +1145,14 @@ private func int64(_ value: Any?) -> Int64 { if let value = value as? Int64 { re
 private func uint64(_ value: Any?) -> UInt64 { if let value = value as? UInt64 { return value }; if let value = value as? NSNumber { return value.uint64Value }; if let value = value as? String { return UInt64(value) ?? 0 }; return 0 }
 private func double(_ value: Any?, fallback: Double = 0) -> Double { if let value = value as? Double { return value }; if let value = value as? NSNumber { return value.doubleValue }; if let value = value as? String { return Double(value) ?? fallback }; return fallback }
 private func clampedDouble(_ value: Any?, fallback: Double, minimum: Double, maximum: Double) -> Double { min(max(double(value, fallback: fallback), minimum), maximum) }
+/// "#RRGGBB" to packed 0xRRGGBB. The settings dictionary carries the colour as a
+/// string, so parsing it as an Int silently yields black.
+private func packedColor(_ value: Any?) -> Int {
+    guard let text = value as? String else { return 0 }
+    let digits = text.hasPrefix("#") ? String(text.dropFirst()) : text
+    guard digits.count == 6, let packed = Int(digits, radix: 16) else { return 0 }
+    return packed
+}
 private func bool(_ value: Any?) -> Bool { if let value = value as? Bool { return value }; if let value = value as? NSNumber { return value.boolValue }; if let value = value as? String { return (value as NSString).boolValue }; return false }
 
 private extension NSLock {

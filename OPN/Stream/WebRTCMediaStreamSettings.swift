@@ -106,6 +106,9 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var upscalingSharpness: Int
     public var upscalingDenoise: Int
     public var upscalingTargetHeight: Int
+    public var pillarboxFillMode: Int
+    public var pillarboxFillDim: Int
+    public var pillarboxFillColor: String
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var antiAFKMouseMovementEnabled: Bool
@@ -143,6 +146,9 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 upscalingSharpness: Int = 10,
                 upscalingDenoise: Int = 0,
                 upscalingTargetHeight: Int = 2160,
+                pillarboxFillMode: Int = 0,
+                pillarboxFillDim: Int = 55,
+                pillarboxFillColor: String = "#000000",
                 suppressInputWhenInactive: Bool = true,
                 directMouseInput: Bool = true,
                 antiAFKMouseMovementEnabled: Bool = false,
@@ -179,6 +185,9 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.upscalingSharpness = upscalingSharpness
         self.upscalingDenoise = upscalingDenoise
         self.upscalingTargetHeight = upscalingTargetHeight
+        self.pillarboxFillMode = pillarboxFillMode
+        self.pillarboxFillDim = pillarboxFillDim
+        self.pillarboxFillColor = pillarboxFillColor
         self.suppressInputWhenInactive = suppressInputWhenInactive
         self.directMouseInput = directMouseInput
         self.antiAFKMouseMovementEnabled = antiAFKMouseMovementEnabled
@@ -219,6 +228,9 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var upscalingSharpness: Int
     public var upscalingDenoise: Int
     public var upscalingTargetHeight: Int
+    public var pillarboxFillMode: Int
+    public var pillarboxFillDim: Int
+    public var pillarboxFillColor: String
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var antiAFKMouseMovementEnabled: Bool
@@ -261,6 +273,9 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "upscalingSharpness": upscalingSharpness,
             "upscalingDenoise": upscalingDenoise,
             "upscalingTargetHeight": upscalingTargetHeight,
+            "pillarboxFillMode": pillarboxFillMode,
+            "pillarboxFillDim": pillarboxFillDim,
+            "pillarboxFillColor": pillarboxFillColor,
             "suppressInputWhenInactive": suppressInputWhenInactive,
             "directMouseInput": directMouseInput,
             "antiAFKMouseMovementEnabled": antiAFKMouseMovementEnabled,
@@ -321,6 +336,9 @@ public enum WebRTCMediaStreamSettingsResolver {
             upscalingSharpness: profile.upscalingSharpness,
             upscalingDenoise: profile.upscalingDenoise,
             upscalingTargetHeight: profile.upscalingTargetHeight,
+            pillarboxFillMode: profile.pillarboxFillMode,
+            pillarboxFillDim: profile.pillarboxFillDim,
+            pillarboxFillColor: profile.pillarboxFillColor,
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
             antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,

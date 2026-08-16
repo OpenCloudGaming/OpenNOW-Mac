@@ -966,6 +966,7 @@ public struct WebRTCMediaStreamSurface: View {
                 statsRow("Drops", String(latestStats?.framesDropped ?? 0))
                 statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
                 statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+                statsRow("Decoded", latestStats?.videoEnhancementSourceResolution.isEmpty == false ? latestStats?.videoEnhancementSourceResolution ?? "-" : "-")
             }
         }
     }
@@ -985,6 +986,20 @@ public struct WebRTCMediaStreamSurface: View {
                 if runtimeSettings.upscalingMode != 0 {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
+                }
+                Picker("Pillarbox Fill", selection: Binding(get: { runtimeSettings.pillarboxFillMode }, set: { updateVideoEnhancement(pillarboxFillMode: $0) })) {
+                    ForEach(OPNPillarboxFillMode.allCases, id: \.rawValue) { fill in
+                        Text(fill.label).tag(fill.rawValue)
+                    }
+                }
+                .font(.streamNvidia(size: 12, weight: .medium))
+                .pickerStyle(.menu)
+                .tint(WebRTCMediaStreamTheme.accent)
+                .disabled(!isStreamReady)
+                if OPNPillarboxFillMode.from(runtimeSettings.pillarboxFillMode).usesDim {
+                    videoStepperRow("Fill Dim", value: runtimeSettings.pillarboxFillDim, range: 0...100, step: 5) { value in
+                        updateVideoEnhancement(pillarboxFillDim: value)
+                    }
                 }
                 settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
                 settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "Display")
@@ -1904,13 +1919,13 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, action: @escaping (Int) -> Void) -> some View {
+    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, step: Int = 1, action: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamNvidia(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
-            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range) {
+            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range, step: step) {
                 Text(String(value))
                     .font(.streamNvidia(size: 11, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
@@ -1920,10 +1935,11 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
-        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+
+    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
+        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
         onVideoEnhancementChange?(runtimeSettings.upscalingMode, runtimeSettings.upscalingSharpness, runtimeSettings.upscalingDenoise)
-        transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight)
+        transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight, pillarboxFillMode: runtimeSettings.pillarboxFillMode, pillarboxFillDim: runtimeSettings.pillarboxFillDim, pillarboxFillColor: runtimeSettings.pillarboxFillColor)
         WebRTCMediaTelemetry.capture(
             "webrtc.ui.video_enhancement.update",
             level: .info,
@@ -2677,6 +2693,9 @@ private struct StreamRuntimeSettings: Equatable {
     var upscalingSharpness = 10
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
+    var pillarboxFillMode = 0
+    var pillarboxFillDim = 55
+    var pillarboxFillColor = 0
     var recordingVideoBitrateMbps = 0
     var recordingAudioBitrateKbps = 160
     var recordingEnhancedVideoEnabled = true
@@ -2691,13 +2710,16 @@ private struct StreamRuntimeSettings: Equatable {
 
     init() {}
 
-    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
+    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
         if let mode {
             upscalingMode = Self.normalizedUpscalingMode(mode)
         }
         if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
         if let targetHeight { upscalingTargetHeight = targetHeight > 0 ? targetHeight : 2160 }
+        if let pillarboxFillMode { self.pillarboxFillMode = OPNPillarboxFillMode.from(pillarboxFillMode).rawValue }
+        if let pillarboxFillDim { self.pillarboxFillDim = min(max(pillarboxFillDim, 0), 100) }
+        if let pillarboxFillColor { self.pillarboxFillColor = pillarboxFillColor }
     }
 
     init(json: String?) {
@@ -2714,6 +2736,9 @@ private struct StreamRuntimeSettings: Equatable {
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
+        pillarboxFillMode = OPNPillarboxFillMode.from(Self.int(dictionary["pillarboxFillMode"], fallback: 0)).rawValue
+        pillarboxFillDim = Self.int(dictionary["pillarboxFillDim"], fallback: 55)
+        pillarboxFillColor = Self.packedColor(Self.string(dictionary["pillarboxFillColor"], fallback: "#000000"))
         upscalingMode = Self.normalizedUpscalingMode(Self.int(dictionary["upscalingMode"]))
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 10)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
@@ -2735,6 +2760,13 @@ private struct StreamRuntimeSettings: Equatable {
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) ?? fallback }
         return fallback
+    }
+
+    /// "#RRGGBB" to packed 0xRRGGBB, so the render path never parses a string.
+    private static func packedColor(_ hex: String) -> Int {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = Int(digits, radix: 16) else { return 0 }
+        return value
     }
 
     private static func bool(_ value: Any?, fallback: Bool = false) -> Bool {

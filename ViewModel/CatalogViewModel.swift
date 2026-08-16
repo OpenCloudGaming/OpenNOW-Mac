@@ -1905,6 +1905,21 @@ final class CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setPillarboxFillModeIndex(_ index: Int) {
+        OPNStreamPreferences.savePillarboxFillModeIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setPillarboxFillColor(_ hex: String) {
+        OPNStreamPreferences.savePillarboxFillColor(hex)
+        loadSettingsPreferences()
+    }
+
+    func setPillarboxFillDim(_ value: Double) {
+        OPNStreamPreferences.savePillarboxFillDim(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
     func setL4SEnabled(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveL4SEnabled(enabled)

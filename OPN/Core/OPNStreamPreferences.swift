@@ -243,6 +243,9 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var upscalingTargetHeight = 2160
     public var upscalingSharpness = 10
     public var upscalingDenoise = 0
+    public var pillarboxFillModeIndex = 0
+    public var pillarboxFillColor = OPNStreamPreferences.defaultPillarboxFillColor
+    public var pillarboxFillDim = 55
     public var recordingVideoBitrateMbps = 0
     public var recordingAudioBitrateKbps = 160
     public var recordingEnhancedVideoEnabled = true
@@ -281,6 +284,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var prefilterModeOption = OPNStreamPreferences.prefilterModeOptions[0]
     public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
     public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
+    public var pillarboxFillMode = OPNPillarboxFillMode.black
 
     public var allowsStreamingCustomization: Bool {
         streamingQualityProfileIndex == 0
@@ -297,6 +301,7 @@ public enum OPNStreamPreferences {
     private static let storage = OPNAppPreferenceStorage.standard
 
     public static let defaultStreamingBaseUrl = CloudMatch.productionBaseURLString + "/"
+    public static let defaultPillarboxFillColor = "#000000"
     public static let aspectOptions = [
         OPNStreamAspectOption(label: "16:9", widthRatio: 16, heightRatio: 9),
         OPNStreamAspectOption(label: "16:10", widthRatio: 16, heightRatio: 10),
@@ -403,6 +408,9 @@ public enum OPNStreamPreferences {
         Keys.upscalingTargetIndex,
         Keys.upscalingSharpness,
         Keys.upscalingDenoise,
+        Keys.pillarboxFillModeIndex,
+        Keys.pillarboxFillColor,
+        Keys.pillarboxFillDim,
         Keys.recordingVideoBitrateMbps,
         Keys.recordingAudioBitrateKbps,
         Keys.recordingEnhancedVideoEnabled,
@@ -578,6 +586,10 @@ public enum OPNStreamPreferences {
             profile.upscalingTargetOption = gameProfile.upscalingTargetOption
             profile.upscalingSharpness = gameProfile.upscalingSharpness
             profile.upscalingDenoise = gameProfile.upscalingDenoise
+            profile.pillarboxFillModeIndex = gameProfile.pillarboxFillModeIndex
+            profile.pillarboxFillMode = gameProfile.pillarboxFillMode
+            profile.pillarboxFillColor = gameProfile.pillarboxFillColor
+            profile.pillarboxFillDim = gameProfile.pillarboxFillDim
         }
         return effectiveProfile(profile, capabilities: capabilities)
     }
@@ -936,6 +948,9 @@ public enum OPNStreamPreferences {
         storage.set(sharpness, forKey: k.upscalingSharpness)
         storage.set(denoise, forKey: k.upscalingDenoise)
     }
+    public static func savePillarboxFillModeIndex(_ value: Int) { storage.set(normalizedPillarboxFillModeIndex(value), forKey: k.pillarboxFillModeIndex) }
+    public static func savePillarboxFillColor(_ value: String) { storage.set(normalizedPillarboxFillColor(value), forKey: k.pillarboxFillColor) }
+    public static func savePillarboxFillDim(_ value: Int) { storage.set(clamp(value, 0, 100), forKey: k.pillarboxFillDim) }
     public static func saveRecordingVideoBitrateMbps(_ value: Int) { storage.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
     public static func saveRecordingAudioBitrateKbps(_ value: Int) { storage.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
@@ -1023,6 +1038,10 @@ public enum OPNStreamPreferences {
         applyDefaultUpscalingTarget(&profile)
         profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 10, 16)
         profile.upscalingDenoise = clampedInt(dictionary, k.upscalingDenoise, 0, 21)
+        profile.pillarboxFillModeIndex = storedPillarboxFillModeIndex(dictionary)
+        profile.pillarboxFillMode = OPNPillarboxFillMode.from(profile.pillarboxFillModeIndex)
+        profile.pillarboxFillColor = normalizedPillarboxFillColor(string(value(dictionary, k.pillarboxFillColor), defaultPillarboxFillColor))
+        profile.pillarboxFillDim = clampedInt(dictionary, k.pillarboxFillDim, 55, 101)
         profile.recordingVideoBitrateMbps = clampedInt(dictionary, k.recordingVideoBitrateMbps, 0, 201)
         profile.recordingAudioBitrateKbps = Int(clampedDouble(dictionary, k.recordingAudioBitrateKbps, 160, 64, 320).rounded())
         profile.recordingEnhancedVideoEnabled = bool(value(dictionary, k.recordingEnhancedVideoEnabled), true)
@@ -1072,6 +1091,9 @@ public enum OPNStreamPreferences {
             k.upscalingTargetIndex: profile.upscalingTargetIndex,
             k.upscalingSharpness: profile.upscalingSharpness,
             k.upscalingDenoise: profile.upscalingDenoise,
+            k.pillarboxFillModeIndex: profile.pillarboxFillModeIndex,
+            k.pillarboxFillColor: profile.pillarboxFillColor,
+            k.pillarboxFillDim: profile.pillarboxFillDim,
             k.recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
@@ -1209,6 +1231,20 @@ public enum OPNStreamPreferences {
         applyDefaultUpscalingTarget(&profile)
         profile.upscalingSharpness = clamp(sharpness, 0, 15)
         profile.upscalingDenoise = clamp(denoise, 0, 20)
+    }
+
+    private static func storedPillarboxFillModeIndex(_ dictionary: [String: Any]?) -> Int {
+        normalizedPillarboxFillModeIndex(int(value(dictionary, k.pillarboxFillModeIndex), 0))
+    }
+
+    private static func normalizedPillarboxFillModeIndex(_ index: Int) -> Int {
+        OPNPillarboxFillMode.from(index).rawValue
+    }
+
+    private static func normalizedPillarboxFillColor(_ value: String) -> String {
+        let digits = value.hasPrefix("#") ? String(value.dropFirst()) : value
+        guard digits.count == 6, digits.allSatisfy(\.isHexDigit) else { return defaultPillarboxFillColor }
+        return "#" + digits.uppercased()
     }
 
     private static func storedPreferenceValue(_ key: String) -> Any? {
@@ -1659,6 +1695,9 @@ public enum OPNStreamPreferences {
         static let upscalingTargetIndex = "MacForceNow.Stream.UpscalingTargetIndex"
         static let upscalingSharpness = "MacForceNow.Stream.UpscalingSharpness"
         static let upscalingDenoise = "MacForceNow.Stream.UpscalingDenoise"
+        static let pillarboxFillModeIndex = "MacForceNow.Stream.PillarboxFillModeIndex"
+        static let pillarboxFillColor = "MacForceNow.Stream.PillarboxFillColor"
+        static let pillarboxFillDim = "MacForceNow.Stream.PillarboxFillDim"
         static let recordingVideoBitrateMbps = "MacForceNow.Stream.RecordingVideoBitrateMbps"
         static let recordingAudioBitrateKbps = "MacForceNow.Stream.RecordingAudioBitrateKbps"
         static let recordingEnhancedVideoEnabled = "MacForceNow.Stream.RecordingEnhancedVideoEnabled"
@@ -1701,6 +1740,10 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
     @objc public let upscalingTargetHeight: Int
     @objc public let upscalingSharpness: Int
     @objc public let upscalingDenoise: Int
+    @objc public let pillarboxFillModeIndex: Int
+    @objc public let pillarboxFillMode: OPNPillarboxFillMode
+    @objc public let pillarboxFillColor: String
+    @objc public let pillarboxFillDim: Int
     @objc public let streamWidth: Int
     @objc public let streamHeight: Int
     @objc public let recordingEnhancedVideoEnabled: Bool
@@ -1721,6 +1764,10 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
         upscalingTargetHeight = profile.upscalingTargetHeight
         upscalingSharpness = profile.upscalingSharpness
         upscalingDenoise = profile.upscalingDenoise
+        pillarboxFillModeIndex = profile.pillarboxFillModeIndex
+        pillarboxFillMode = profile.pillarboxFillMode
+        pillarboxFillColor = profile.pillarboxFillColor
+        pillarboxFillDim = profile.pillarboxFillDim
         streamWidth = profile.resolution.width
         streamHeight = profile.resolution.height
         recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled
@@ -1745,6 +1792,20 @@ public final class OPNStreamViewPreferences: NSObject {
         return OPNStreamPreferences.upscalingModeOptions[clamped].value
     }
 
+    @objc public static func pillarboxFillModeLabels() -> [String] {
+        OPNPillarboxFillMode.allCases.map(\.label)
+    }
+
+    @objc(pillarboxFillModeAtIndex:)
+    public static func pillarboxFillMode(at index: Int) -> OPNPillarboxFillMode {
+        OPNPillarboxFillMode.from(index)
+    }
+
+    @objc(pillarboxFillModeValueAtIndex:)
+    public static func pillarboxFillModeValue(at index: Int) -> Int {
+        OPNPillarboxFillMode.from(index).rawValue
+    }
+
     @objc public static func saveMicrophoneShortcutEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveMicrophoneShortcutEnabled(enabled)
     }
@@ -1767,6 +1828,18 @@ public final class OPNStreamViewPreferences: NSObject {
 
     @objc public static func saveUpscalingDenoise(_ denoise: Int) {
         OPNStreamPreferences.saveUpscalingDenoise(denoise)
+    }
+
+    @objc public static func savePillarboxFillModeIndex(_ index: Int) {
+        OPNStreamPreferences.savePillarboxFillModeIndex(index)
+    }
+
+    @objc public static func savePillarboxFillColor(_ color: String) {
+        OPNStreamPreferences.savePillarboxFillColor(color)
+    }
+
+    @objc public static func savePillarboxFillDim(_ dim: Int) {
+        OPNStreamPreferences.savePillarboxFillDim(dim)
     }
 }
 

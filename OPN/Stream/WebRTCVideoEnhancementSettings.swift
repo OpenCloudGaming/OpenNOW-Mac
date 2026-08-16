@@ -28,6 +28,12 @@ final class OPNVideoEnhancementSettings: NSObject {
     @objc var captureEnhancedPixelBuffer = false
     @objc var lowCostSpatial = false
     @objc var emitDiagnostics = false
+    /// Raw value of `OPNPillarboxFillMode`; how to treat baked-in pillarbox columns.
+    @objc var pillarboxFillMode = 0
+    /// Brightness of the fill at the window edge, relative to the sampled source.
+    @objc var pillarboxFillDim: Float = 0.55
+    /// Packed 0xRRGGBB, used by the solid-colour mode.
+    @objc var pillarboxFillColor: Int32 = 0
 }
 
 @objc(OPNVideoEnhancementResult)
@@ -284,6 +290,99 @@ static float3 opn_i420_rgb(texture2d<float> yTexture, texture2d<float> uTexture,
     float cr = vTexture.sample(s, uv).r - 0.5;
     return saturate(float3(y + 1.5748 * cr, y - 0.1873 * cb - 0.4681 * cr, y + 1.8556 * cb));
 }
+// Pillarbox fill. `fill` carries (contentLeft, contentRight, dim, mode) where the
+// edges are fractions of frame width and mode is an OPNPillarboxFillMode raw value.
+// The server bakes black side bars into 16:9-only titles, so these columns hold
+// no picture data and are repainted by mirroring the adjacent content outward.
+// Modes 1..3 repaint only the bar columns. Mode 0 (black) needs no branch at all
+// because the encoded source pixels are already black, and modes 4..5 remap the
+// picture itself so nothing ever lands outside the content span.
+// Fill mode is an integer carried in a float. Compare against an exact value rather
+// than with open-ended ranges: a `mode > 3.5` style test silently captures every mode
+// added afterwards, which is how "Extend" ended up rendering as "Stretch".
+static bool opn_mode_is(float mode, float value) {
+    return fabs(mode - value) < 0.5;
+}
+static bool opn_fill_active(float2 uv, float4 fill) {
+    bool repaintsBars = opn_mode_is(fill.w, 1.0) || opn_mode_is(fill.w, 2.0) || opn_mode_is(fill.w, 3.0);
+    return repaintsBars && (uv.x < fill.x || uv.x > fill.y);
+}
+// Modes 4 (stretch) and 5 (crop) rewrite where every picture pixel is sampled from.
+// `geom` carries (cropScaleY, stretchK, 0, 0).
+static float2 opn_fill_geometry_uv(float2 uv, float2 texCoord, float4 fill, float4 geom) {
+    float mode = fill.w;
+    float2 t = clamp(texCoord, float2(0.0), float2(1.0));
+    if (opn_mode_is(mode, 5.0)) {
+        // Crop-to-fill: content spans the full width, and the vertical overflow that
+        // the wider window cannot show is trimmed symmetrically.
+        return float2(mix(fill.x, fill.y, t.x), 0.5 + (t.y - 0.5) * geom.x);
+    }
+    if (opn_mode_is(mode, 4.0)) {
+        // Edge stretch: c = k*u + (1-k)*u^3 over u in [-1,1]. The cubic keeps the
+        // endpoints pinned to the content edges while the centre slope k sets how
+        // much of the total stretch is pushed outward. k = window/content aspect
+        // leaves the centre near 1:1; the edges absorb the difference.
+        float u = t.x * 2.0 - 1.0;
+        float k = geom.y;
+        float c = k * u + (1.0 - k) * u * u * u;
+        return float2(mix(fill.x, fill.y, clamp(c, -1.0, 1.0) * 0.5 + 0.5), uv.y);
+    }
+    return uv;
+}
+// Fade toward `dim` at the window edge so the fill reads as ambient spill rather
+// than competing with the picture.
+static float opn_fill_dim(float2 uv, float4 fill) {
+    float distance = uv.x < fill.x ? (fill.x - uv.x) : (uv.x - fill.y);
+    float span = max(uv.x < fill.x ? fill.x : (1.0 - fill.y), 1e-4);
+    return mix(1.0, fill.z, clamp(distance / span, 0.0, 1.0));
+}
+// Where to read the fill history texture, whose [0,1] span covers exactly the
+// picture content. Working in normalised content space makes the mirror a plain
+// reflection about 0 or 1.
+static float2 opn_fill_history_uv(float2 uv, float2 texCoord, float4 fill) {
+    if (opn_mode_is(fill.w, 3.0)) { return clamp(texCoord, float2(0.0), float2(1.0)); }
+    float span = max(fill.y - fill.x, 1e-4);
+    float c = (uv.x - fill.x) / span;
+    c = c < 0.0 ? -c : (c > 1.0 ? 2.0 - c : c);
+    return float2(clamp(c, 0.0, 1.0), clamp(uv.y, 0.0, 1.0));
+}
+// Resolve the colour of a bar pixel for modes 1..3. Solid colour is used as given;
+// the blur modes read the pre-blurred, temporally smoothed history and are dimmed
+// toward the window edge so they behave as ambient spill.
+// Cubic B-spline upsample from four bilinear taps.
+//
+// The history is tiny and gets magnified enormously into the bars, where plain
+// bilinear shows its piecewise-linear seams as visible faceting. The B-spline basis
+// is C2 continuous and slightly smoothing (unlike Catmull-Rom, which sharpens and
+// would reintroduce structure we are trying to lose), so the result reads as a soft
+// wash at any magnification.
+static float3 opn_sample_bspline(texture2d<float> tex, sampler s, float2 uv) {
+    float2 size = float2((float)tex.get_width(), (float)tex.get_height());
+    float2 coord = uv * size - 0.5;
+    float2 f = fract(coord);
+    float2 base = floor(coord);
+    float2 f2 = f * f;
+    float2 f3 = f2 * f;
+    float2 w0 = (-f3 + 3.0 * f2 - 3.0 * f + 1.0) / 6.0;
+    float2 w1 = (3.0 * f3 - 6.0 * f2 + 4.0) / 6.0;
+    float2 w2 = (-3.0 * f3 + 3.0 * f2 + 3.0 * f + 1.0) / 6.0;
+    float2 w3 = f3 / 6.0;
+    float2 g0 = w0 + w1;
+    float2 g1 = w2 + w3;
+    // Offset each bilinear fetch so hardware interpolation performs two of the four
+    // cubic taps for free.
+    float2 h0 = (base - 0.5 + w1 / g0) / size;
+    float2 h1 = (base + 1.5 + w3 / g1) / size;
+    float3 s00 = tex.sample(s, float2(h0.x, h0.y)).rgb;
+    float3 s10 = tex.sample(s, float2(h1.x, h0.y)).rgb;
+    float3 s01 = tex.sample(s, float2(h0.x, h1.y)).rgb;
+    float3 s11 = tex.sample(s, float2(h1.x, h1.y)).rgb;
+    return mix(mix(s11, s01, g0.x), mix(s10, s00, g0.x), g0.y);
+}
+static float3 opn_fill_outside(texture2d<float> fillHistory, sampler s, float2 uv, float2 texCoord, float4 fill, float4 fillColor) {
+    if (opn_mode_is(fill.w, 1.0)) { return fillColor.rgb; }
+    return opn_sample_bspline(fillHistory, s, opn_fill_history_uv(uv, texCoord, fill)) * opn_fill_dim(uv, fill);
+}
 static float3 opn_finish(float3 center, float3 blur, float sharpness, float denoise) {
     float3 denoised = mix(center, blur, clamp(denoise, 0.0, 1.0));
     return clamp(denoised + (denoised - blur) * sharpness, float3(0.0), float3(1.0));
@@ -302,39 +401,111 @@ static float3 opn_rgb_spatial(texture2d<float> sourceTexture, sampler s, float2 
     float3 blur = (sourceTexture.sample(s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(0.0, texel.y), crop)).rgb) * 0.25;
     return opn_finish(center, blur, sharpness, denoise);
 }
-fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
     float2 texel = max(scale, float2(1.0 / 8192.0));
     return float4(opn_rgb_spatial(sourceTexture, s, uv, texel, crop, sharpness, denoise), 1.0);
 }
-fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
     float2 texel = max(scale, float2(1.0 / 8192.0));
     float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);
     float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
     return float4(opn_finish(center, blur, sharpness, denoise), 1.0);
 }
-fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
     float2 texel = max(scale, float2(1.0 / 8192.0));
     float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);
     float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
     return float4(opn_finish(center, blur, sharpness, denoise), 1.0);
 }
-fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
-    return float4(sourceTexture.sample(s, opn_crop_uv(in.texCoord, crop)).rgb, 1.0);
+    float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
+    return float4(sourceTexture.sample(s, uv).rgb, 1.0);
 }
-fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
-    return float4(opn_nv12_rgb(yTexture, uvTexture, s, opn_crop_uv(in.texCoord, crop)), 1.0);
+    float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
+    return float4(opn_nv12_rgb(yTexture, uvTexture, s, uv), 1.0);
 }
-fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
-    return float4(opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_crop_uv(in.texCoord, crop)), 1.0);
+    float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
+    if (opn_fill_active(uv, fill)) {
+        return float4(opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor), 1.0);
+    }
+    return float4(opn_i420_rgb(yTexture, uTexture, vTexture, s, uv), 1.0);
+}
+// Fill history pass. Renders the picture content into a small texture using a 4x4
+// box so the huge downscale does not alias, and returns `emaAlpha` so the pipeline's
+// blend state folds it into the previous frame: dst = a*src + (1-a)*dst.
+//
+// Two jobs in one: the low resolution is the blur, and the running average is what
+// stops heavy blur over moving content from pulsing in peripheral vision.
+static float3 opn_fill_history_box_rgb(texture2d<float> sourceTexture, sampler s, float2 uv, float2 boxStep) {
+    float3 acc = float3(0.0);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            float2 offset = (float2((float)x, (float)y) - 1.5) * boxStep;
+            acc += sourceTexture.sample(s, clamp(uv + offset, float2(0.0), float2(1.0))).rgb;
+        }
+    }
+    return acc / 16.0;
+}
+fragment float4 opn_video_fill_history_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 t = clamp(in.texCoord, float2(0.0), float2(1.0));
+    float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);
+    return float4(opn_fill_history_box_rgb(sourceTexture, s, uv, boxStep), emaAlpha);
+}
+fragment float4 opn_video_fill_history_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 t = clamp(in.texCoord, float2(0.0), float2(1.0));
+    float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);
+    float3 acc = float3(0.0);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            float2 offset = (float2((float)x, (float)y) - 1.5) * boxStep;
+            acc += opn_nv12_rgb(yTexture, uvTexture, s, clamp(uv + offset, float2(0.0), float2(1.0)));
+        }
+    }
+    return float4(acc / 16.0, emaAlpha);
+}
+fragment float4 opn_video_fill_history_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 t = clamp(in.texCoord, float2(0.0), float2(1.0));
+    float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);
+    float3 acc = float3(0.0);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            float2 offset = (float2((float)x, (float)y) - 1.5) * boxStep;
+            acc += opn_i420_rgb(yTexture, uTexture, vTexture, s, clamp(uv + offset, float2(0.0), float2(1.0)));
+        }
+    }
+    return float4(acc / 16.0, emaAlpha);
 }
 fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]], constant float2 &jitterDelta [[buffer(2)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
@@ -613,6 +784,16 @@ final class OPNMetalFXUpscaler: NSObject {
 final class OPNVideoEnhancementRenderer: NSObject {
     private static let renderTargetPixelFormat: MTLPixelFormat = .bgra8Unorm
 
+    /// Resolution of the pillarbox fill history. Deliberately tiny: the downscale is
+    /// what produces the blur, so sampling it back with linear filtering costs one
+    /// fetch instead of a wide multi-tap kernel over a quarter of the screen.
+    private static let fillHistoryWidth = 160
+    private static let fillHistoryHeight = 90
+    /// Weight of the current frame in the running average. ~0.12 settles in about
+    /// eight frames, enough to stop heavy blur pulsing without visible smearing.
+    private static let fillHistoryEMAAlpha: Float = 0.12
+
+
     private let device: (any MTLDevice)?
     private let commandQueue: (any MTLCommandQueue)?
     private let ciContext: CIContext?
@@ -628,6 +809,15 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private var fastSpatialRGBPipeline: (any MTLRenderPipelineState)?
     private var fastSpatialNV12Pipeline: (any MTLRenderPipelineState)?
     private var fastSpatialI420Pipeline: (any MTLRenderPipelineState)?
+    private let pillarboxDetector = OPNPillarboxDetector()
+    private var fillHistoryRGBPipeline: (any MTLRenderPipelineState)?
+    private var fillHistoryNV12Pipeline: (any MTLRenderPipelineState)?
+    private var fillHistoryI420Pipeline: (any MTLRenderPipelineState)?
+    private var fillHistoryTexture: (any MTLTexture)?
+    /// False until the history texture holds a real frame, so the first pass after
+    /// (re)allocation replaces rather than blends into uninitialised contents.
+    private var fillHistoryPrimed = false
+    private var fillHistoryContentRect = OPNPillarboxContentRect.full
     private var temporalMotionPipeline: (any MTLRenderPipelineState)?
     private var temporalCompositePipeline: (any MTLRenderPipelineState)?
     private var temporalPresentPipeline: (any MTLRenderPipelineState)?
@@ -666,6 +856,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
         fastSpatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_rgb")
         fastSpatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_nv12")
         fastSpatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_i420")
+        fillHistoryRGBPipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_rgb")
+        fillHistoryNV12Pipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_nv12")
+        fillHistoryI420Pipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_i420")
         temporalMotionPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_motion", pixelFormat: .rgba16Float)
         temporalCompositePipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_composite")
         temporalPresentPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_present_rgb")
@@ -702,6 +895,13 @@ final class OPNVideoEnhancementRenderer: NSObject {
             result.fallbackReason = "enhancement renderer got empty drawable"
             recordDrop(in: result)
             return false
+        }
+
+        let fillMode = OPNPillarboxFillMode.from(settings.pillarboxFillMode)
+        if fillMode != .black, let cvBuffer = frame.buffer as? RTCCVPixelBuffer {
+            pillarboxDetector.update(with: cvBuffer.pixelBuffer)
+        } else if fillMode == .black, !pillarboxDetector.contentRect.isFull {
+            pillarboxDetector.reset()
         }
 
         if (settings.configuredTier == .spatial || settings.configuredTier == .metalFX || settings.configuredTier == .temporal), !settings.captureEnhancedPixelBuffer {
@@ -945,6 +1145,59 @@ final class OPNVideoEnhancementRenderer: NSObject {
         return true
     }
 
+    /// Builds the three pillarbox fragment uniforms.
+    ///
+    /// Pure so the geometry can be tested without a GPU. Returns a disabled set
+    /// (mode 0) whenever fill cannot be drawn correctly, which keeps every caller
+    /// from having to repeat the same guards.
+    static func pillarboxUniforms(
+        mode: OPNPillarboxFillMode,
+        contentRect: OPNPillarboxContentRect,
+        codecCropIsIdentity: Bool,
+        sourceSize: CGSize,
+        drawableSize: CGSize,
+        dim: Float,
+        packedColor: Int32
+    ) -> (fill: SIMD4<Float>, geometry: SIMD4<Float>, color: SIMD4<Float>) {
+        let clampedDim = min(max(dim, 0), 1)
+        let disabled = (
+            fill: SIMD4<Float>(0, 1, clampedDim, 0),
+            geometry: SIMD4<Float>(1, 1, 0, 0),
+            color: SIMD4<Float>(0, 0, 0, 1)
+        )
+
+        // The detector measures against the full pixel buffer, so a non-identity
+        // codec crop would shift the content edges out from under these numbers.
+        guard mode != .black, !contentRect.isFull, codecCropIsIdentity,
+              sourceSize.width > 0, sourceSize.height > 0,
+              drawableSize.width > 0, drawableSize.height > 0 else {
+            return disabled
+        }
+
+        let contentAspect = contentRect.width * Double(sourceSize.width) / Double(sourceSize.height)
+        let windowAspect = Double(drawableSize.width) / Double(drawableSize.height)
+        guard contentAspect > 0, windowAspect > 0 else { return disabled }
+
+        // Fraction of source height still visible once the picture is scaled to fill
+        // the width. Above 1 would mean sampling past the frame, so cap at no crop.
+        let cropScaleY = min(max(contentAspect / windowAspect, 0.05), 1.0)
+
+        // Centre slope of the stretch cubic. The curve stays monotonic only while
+        // k <= 1.5 (its edge slope is 3 - 2k), so wider-than-1.5x stretches give up
+        // some centre fidelity rather than folding the image back on itself.
+        let stretchK = min(max(windowAspect / contentAspect, 1.0), 1.5)
+
+        let red = Float((packedColor >> 16) & 0xFF) / 255.0
+        let green = Float((packedColor >> 8) & 0xFF) / 255.0
+        let blue = Float(packedColor & 0xFF) / 255.0
+
+        return (
+            fill: SIMD4<Float>(Float(contentRect.left), Float(contentRect.right), clampedDim, Float(mode.rawValue)),
+            geometry: SIMD4<Float>(Float(cropScaleY), Float(stretchK), 0, 0),
+            color: SIMD4<Float>(red, green, blue, 1)
+        )
+    }
+
     private func encodeSpatialTextureFrame(
         _ textureFrame: OPNVideoTextureFrame,
         destinationTexture: any MTLTexture,
@@ -957,16 +1210,6 @@ final class OPNVideoEnhancementRenderer: NSObject {
             result.fallbackReason = "spatial scaler drawable format unsupported"
             return false
         }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = destinationTexture
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].storeAction = .store
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
-            result.fallbackReason = "spatial scaler could not create encoder"
-            return false
-        }
-
         let primaryTexture: (any MTLTexture)?
         let pipeline: (any MTLRenderPipelineState)?
         switch textureFrame.kind {
@@ -981,7 +1224,6 @@ final class OPNVideoEnhancementRenderer: NSObject {
             pipeline = settings.lowCostSpatial ? (fastSpatialRGBPipeline ?? spatialRGBPipeline) : spatialRGBPipeline
         }
         guard let primaryTexture, let pipeline else {
-            encoder.endEncoding()
             result.fallbackReason = "spatial scaler missing texture or pipeline"
             return false
         }
@@ -996,6 +1238,42 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let maxY = min(max(Float(cropRect.maxY), 0), 1)
         var crop = maxX > minX && maxY > minY ? SIMD4<Float>(minX, minY, maxX, maxY) : SIMD4<Float>(0, 0, 1, 1)
         var jitter = suppliedJitter
+        let uniforms = Self.pillarboxUniforms(
+            mode: OPNPillarboxFillMode.from(settings.pillarboxFillMode),
+            contentRect: pillarboxDetector.contentRect,
+            codecCropIsIdentity: minX <= 0.0001 && minY <= 0.0001 && maxX >= 0.9999 && maxY >= 0.9999,
+            sourceSize: CGSize(width: primaryTexture.width, height: primaryTexture.height),
+            drawableSize: settings.drawableSize,
+            dim: settings.pillarboxFillDim,
+            packedColor: settings.pillarboxFillColor
+        )
+        var fill = uniforms.fill
+        var fillGeom = uniforms.geometry
+        var fillColor = uniforms.color
+
+        // The history pass owns its own encoder, so it has to finish before the main
+        // pass opens one. Modes that never read the history skip it entirely.
+        let activeFillMode = OPNPillarboxFillMode.from(settings.pillarboxFillMode)
+        var fillHistory: (any MTLTexture)? = nil
+        // fill.w is 0 whenever pillarboxUniforms disabled the effect.
+        if activeFillMode.usesDim, uniforms.fill.w > 0.5 {
+            fillHistory = encodeFillHistory(textureFrame, commandBuffer: commandBuffer, contentRect: pillarboxDetector.contentRect)
+            if fillHistory == nil {
+                // No history means no spill to draw; fall back to leaving the bars as
+                // encoded rather than sampling an unbound texture.
+                fill.w = 0
+            }
+        }
+
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = destinationTexture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            result.fallbackReason = "spatial scaler could not create encoder"
+            return false
+        }
 
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentTexture(primaryTexture, index: 0)
@@ -1004,11 +1282,17 @@ final class OPNVideoEnhancementRenderer: NSObject {
             encoder.setFragmentTexture(textureFrame.chromaUTexture, index: 1)
             encoder.setFragmentTexture(textureFrame.chromaVTexture, index: 2)
         }
+        // Always bound, even when unused: the shaders declare the binding, and Metal
+        // validation objects to a declared texture being left unset.
+        encoder.setFragmentTexture(fillHistory ?? primaryTexture, index: 3)
         encoder.setFragmentBytes(&texel, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
         encoder.setFragmentBytes(&sharpness, length: MemoryLayout<Float>.size, index: 1)
         encoder.setFragmentBytes(&denoise, length: MemoryLayout<Float>.size, index: 2)
         encoder.setFragmentBytes(&crop, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
         encoder.setFragmentBytes(&jitter, length: MemoryLayout<SIMD2<Float>>.size, index: 4)
+        encoder.setFragmentBytes(&fill, length: MemoryLayout<SIMD4<Float>>.size, index: 5)
+        encoder.setFragmentBytes(&fillGeom, length: MemoryLayout<SIMD4<Float>>.size, index: 6)
+        encoder.setFragmentBytes(&fillColor, length: MemoryLayout<SIMD4<Float>>.size, index: 7)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return true
@@ -1133,6 +1417,117 @@ final class OPNVideoEnhancementRenderer: NSObject {
             return nil
         }
     }
+
+    /// Like `newSpatialPipeline`, but with blending configured so the fragment's
+    /// alpha acts as the EMA weight: dst = a*src + (1-a)*dst.
+    private func newFillHistoryPipeline(fragmentFunctionName: String) -> (any MTLRenderPipelineState)? {
+        guard let device, let shaderLibrary else { return nil }
+        do {
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = shaderLibrary.makeFunction(name: "opn_video_vertex")
+            descriptor.fragmentFunction = shaderLibrary.makeFunction(name: fragmentFunctionName)
+            descriptor.colorAttachments[0].pixelFormat = Self.renderTargetPixelFormat
+            descriptor.colorAttachments[0].isBlendingEnabled = true
+            descriptor.colorAttachments[0].rgbBlendOperation = .add
+            descriptor.colorAttachments[0].alphaBlendOperation = .add
+            descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+            descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+            descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+            descriptor.colorAttachments[0].destinationAlphaBlendFactor = .zero
+            return try device.makeRenderPipelineState(descriptor: descriptor)
+        } catch {
+            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Pillarbox fill history pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
+            return nil
+        }
+    }
+
+    /// Renders the picture content into the small history texture, blending it into
+    /// the running average. Returns the texture to sample, or nil if unavailable.
+    private func encodeFillHistory(
+        _ textureFrame: OPNVideoTextureFrame,
+        commandBuffer: any MTLCommandBuffer,
+        contentRect: OPNPillarboxContentRect
+    ) -> (any MTLTexture)? {
+        let previous = fillHistoryTexture
+        guard let texture = reusableTexture(
+            &fillHistoryTexture,
+            width: Self.fillHistoryWidth,
+            height: Self.fillHistoryHeight,
+            pixelFormat: Self.renderTargetPixelFormat,
+            usage: [.shaderRead, .renderTarget],
+            label: "MacForce Now pillarbox fill history"
+        ) else { return nil }
+
+        // A reallocated texture holds garbage, and a moved content edge means the
+        // stored average now describes a different crop. Either way, restart it.
+        if previous !== texture || contentRect != fillHistoryContentRect {
+            fillHistoryPrimed = false
+            fillHistoryContentRect = contentRect
+        }
+
+        guard encodeContentDownsample(
+            textureFrame,
+            commandBuffer: commandBuffer,
+            contentRect: contentRect,
+            target: texture,
+            emaAlpha: fillHistoryPrimed ? Self.fillHistoryEMAAlpha : 1.0,
+            loadAction: fillHistoryPrimed ? .load : .clear
+        ) else { return nil }
+
+        fillHistoryPrimed = true
+        return texture
+    }
+
+    /// Renders the picture content into `target`, mapping the content span across the
+    /// full [0,1] of the destination. With `emaAlpha` below 1 the pipeline's blend
+    /// state folds the result into whatever the target already holds.
+    private func encodeContentDownsample(
+        _ textureFrame: OPNVideoTextureFrame,
+        commandBuffer: any MTLCommandBuffer,
+        contentRect: OPNPillarboxContentRect,
+        target: any MTLTexture,
+        emaAlpha: Float,
+        loadAction: MTLLoadAction
+    ) -> Bool {
+        let pipeline: (any MTLRenderPipelineState)?
+        let primaryTexture: (any MTLTexture)?
+        switch textureFrame.kind {
+        case 1: pipeline = fillHistoryNV12Pipeline; primaryTexture = textureFrame.lumaTexture
+        case 2: pipeline = fillHistoryI420Pipeline; primaryTexture = textureFrame.lumaTexture
+        default: pipeline = fillHistoryRGBPipeline; primaryTexture = textureFrame.rgbTexture
+        }
+        guard let pipeline, let primaryTexture else { return false }
+
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = loadAction
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return false }
+
+        var fill = SIMD4<Float>(Float(contentRect.left), Float(contentRect.right), 0, 0)
+        // Spread the 4x4 box across one destination texel's worth of source.
+        var boxStep = SIMD2<Float>(
+            Float(contentRect.width) / Float(target.width) / 3.0,
+            1.0 / Float(target.height) / 3.0
+        )
+        var alpha = emaAlpha
+
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setFragmentTexture(primaryTexture, index: 0)
+        if textureFrame.kind == 1 { encoder.setFragmentTexture(textureFrame.chromaTexture, index: 1) }
+        if textureFrame.kind == 2 {
+            encoder.setFragmentTexture(textureFrame.chromaUTexture, index: 1)
+            encoder.setFragmentTexture(textureFrame.chromaVTexture, index: 2)
+        }
+        encoder.setFragmentBytes(&fill, length: MemoryLayout<SIMD4<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&boxStep, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+        encoder.setFragmentBytes(&alpha, length: MemoryLayout<Float>.size, index: 2)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
 
     private static func makeShaderLibrary(device: (any MTLDevice)?) -> (any MTLLibrary)? {
         guard let device else { return nil }

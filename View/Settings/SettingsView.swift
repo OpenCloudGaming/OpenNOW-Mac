@@ -16,6 +16,23 @@ private extension Font {
     }
 }
 
+private extension Color {
+    init(settingsHex hex: String) {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        let packed = digits.count == 6 ? UInt64(digits, radix: 16) ?? 0 : 0
+        self.init(red: Double((packed >> 16) & 0xFF) / 255, green: Double((packed >> 8) & 0xFF) / 255, blue: Double(packed & 0xFF) / 255)
+    }
+
+    var settingsHexString: String {
+        let color = NSColor(self).usingColorSpace(.sRGB) ?? .black
+        // Converting a wide-gamut pick (the P3 wheel) into sRGB is colorimetric and
+        // can land outside 0...1. Unclamped, that formats to more than six hex digits
+        // and the stored value is rejected back to black.
+        func channel(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", channel(color.redComponent), channel(color.greenComponent), channel(color.blueComponent))
+    }
+}
+
 private struct SettingsAccountSnapshot: Sendable {
     let displayName: String
     let membershipTier: String
@@ -1861,6 +1878,18 @@ private struct ResolutionUpscalingSettingsPage: View {
                 SettingsSliderRow(title: "Noise Reduction", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, uiScale: uiScale, action: viewModel.setUpscalingDenoise)
             }
 
+            SettingsCard(title: "Pillarbox", uiScale: uiScale) {
+                SettingsOptionRow(title: "Pillarbox Fill", subtitle: "Repaints the black bars GeForce NOW bakes into 16:9-only titles on wider displays.", options: OPNPillarboxFillMode.allCases.map(\.label), selectedIndex: viewModel.streamProfile.pillarboxFillModeIndex, uiScale: uiScale, action: viewModel.setPillarboxFillModeIndex)
+                if viewModel.streamProfile.pillarboxFillMode == .solidColor {
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsColorRow(title: "Fill Color", subtitle: "Flat color painted into the bar columns.", hex: viewModel.streamProfile.pillarboxFillColor, uiScale: uiScale, action: viewModel.setPillarboxFillColor)
+                }
+                if viewModel.streamProfile.pillarboxFillMode.usesDim {
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsSliderRow(title: "Edge Dimming", valueText: "\(viewModel.streamProfile.pillarboxFillDim)%", value: Double(viewModel.streamProfile.pillarboxFillDim), range: 0...100, uiScale: uiScale, action: viewModel.setPillarboxFillDim)
+                }
+            }
+
             SettingsCard(title: "Image Enhancement", uiScale: uiScale) {
                 SettingsOptionRow(title: "Prefilter Mode", subtitle: "Applies GFN-style prefiltering before presentation.", options: OPNStreamPreferences.prefilterModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.prefilterModeIndex, uiScale: uiScale, action: viewModel.setPrefilterModeIndex)
                 SettingsDivider(uiScale: uiScale)
@@ -2748,6 +2777,35 @@ private struct SettingsSliderRow: View {
                 .tint(Color.openNowGreen)
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)
+        }
+    }
+}
+
+private struct SettingsColorRow: View {
+    let title: String
+    let subtitle: String
+    let hex: String
+    let uiScale: CGFloat
+    let action: (String) -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18 * uiScale) {
+            VStack(alignment: .leading, spacing: 5 * uiScale) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 250 * uiScale, alignment: .leading)
+            ColorPicker("", selection: Binding(get: { Color(settingsHex: hex) }, set: { action($0.settingsHexString) }), supportsOpacity: false)
+                .labelsHidden()
+            Text(hex)
+                .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.42))
+            Spacer(minLength: 0)
         }
     }
 }
