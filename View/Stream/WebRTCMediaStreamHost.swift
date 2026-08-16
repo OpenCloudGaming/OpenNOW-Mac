@@ -605,6 +605,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             while !Task.isCancelled {
                 if let snapshot = await path.performanceSnapshot(), isConnected, !isEnding, !didEnd {
                     latestNativeStats = snapshot
+                    recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
                 }
@@ -615,6 +616,16 @@ private struct NativeNVSTMediaStreamSurface: View {
                 }
             }
         }
+    }
+
+    private func recordNativeNetworkTelemetry(_ snapshot: NativeNVSTPerformanceSnapshot) {
+        let attributes = ["transport": "nvst", "applicationID": configuration.applicationID]
+        if snapshot.latencyMilliseconds >= 0 { WebRTCMediaTelemetry.record("nvst.network.latency_ms", kind: .gauge, value: snapshot.latencyMilliseconds, unit: "millisecond", attributes: attributes) }
+        if snapshot.jitterMilliseconds >= 0 { WebRTCMediaTelemetry.record("nvst.network.jitter_ms", kind: .gauge, value: snapshot.jitterMilliseconds, unit: "millisecond", attributes: attributes) }
+        if snapshot.bitrateMegabitsPerSecond >= 0 { WebRTCMediaTelemetry.record("nvst.network.bitrate_mbps", kind: .gauge, value: snapshot.bitrateMegabitsPerSecond, unit: "megabit/second", attributes: attributes) }
+        if snapshot.bandwidthUtilizationPercent >= 0 { WebRTCMediaTelemetry.record("nvst.network.bandwidth_utilization_percent", kind: .gauge, value: snapshot.bandwidthUtilizationPercent, unit: "percent", attributes: attributes) }
+        WebRTCMediaTelemetry.record("nvst.network.packet_loss", kind: .gauge, value: Double(snapshot.packetLoss), unit: "packet", attributes: attributes)
+        WebRTCMediaTelemetry.record("nvst.network.frame_loss", kind: .gauge, value: Double(snapshot.frameLoss), unit: "frame", attributes: attributes)
     }
 
     private func startNetworkPathMonitoring() {
