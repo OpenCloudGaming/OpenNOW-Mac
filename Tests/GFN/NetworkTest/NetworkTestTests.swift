@@ -51,12 +51,15 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let result = NetworkTestResultParser.parse([
         "networkSessionId": "session",
         "zone": ["address": "zone.example", "name": "np-sjc-01"],
-        "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "status": "COMPLETED"],
+        "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "latencyMs": 42, "jitterMs": 7, "packetLossPercent": 0.4, "status": "COMPLETED"],
     ])
     #expect(result.sessionId == "session")
     #expect(result.zoneAddress == "zone.example")
     #expect(result.downlinkBandwidth == 55_000)
     #expect(result.maxPacketSize == 1_200)
+    #expect(result.latencyMilliseconds == 42)
+    #expect(result.jitterMilliseconds == 7)
+    #expect(result.packetLossPercent == 0.4)
     #expect(result.rawStatus == "COMPLETED")
     #expect(result.isCompleted)
 }

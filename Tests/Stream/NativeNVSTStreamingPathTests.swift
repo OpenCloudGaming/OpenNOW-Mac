@@ -859,7 +859,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         {
           "resolution": "2560x1440",
           "fps": 120,
-          "codec": "auto"
+          "codec": "auto",
+          "maxBitrateMbps": 35
         }
         """
     )
@@ -877,6 +878,28 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(selectedEncodeMode["height"] as? Int == 1440)
     #expect(selectedEncodeMode["fps"] as? Int == 120)
     #expect(selectedFeatures["bitDepth"] as? Int == 8)
+    #expect(selectedFeatures["maxBitrateKbps"] as? Int == 35_000)
+}
+
+@Test func nativeNVSTBifrostTransportPreservesLowerServerBitrateCap() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": {
+            "resolution": "1920x1080",
+            "fps": 60,
+            "codec": "H264",
+            "maxBitrateKbps": 24000
+          }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: "{\"maxBitrateMbps\":35}"
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
+    #expect(selectedFeatures["maxBitrateKbps"] as? Int == 24_000)
 }
 
 private func nativeConfiguration() -> StreamLaunchConfiguration {

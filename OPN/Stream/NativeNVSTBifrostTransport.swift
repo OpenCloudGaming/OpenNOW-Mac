@@ -554,6 +554,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             let codec = normalizedCodec(string(settings["codec"], fallback: ""))
             if !codec.isEmpty { profile["codec"] = codec }
         }
+        let requestedMaxBitrateKbps = min(max(0, int(settings["maxBitrateMbps"])), 1_000) * 1_000
+        if requestedMaxBitrateKbps > 0 {
+            let negotiatedMaxBitrateKbps = int(firstValue(in: profile, keys: ["maxBitrateKbps", "bitrateKbps"]))
+            profile["maxBitrateKbps"] = negotiatedMaxBitrateKbps > 0 ? min(negotiatedMaxBitrateKbps, requestedMaxBitrateKbps) : requestedMaxBitrateKbps
+        }
         guard !profile.isEmpty,
               let dimensions = videoDimensions(from: profile),
               int(profile["fps"]) > 0,
@@ -808,6 +813,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
         if profile["bitDepth"] == nil { profile["bitDepth"] = int(selectedFeatures["bitDepth"]) }
         if profile["chromaFormat"] == nil { profile["chromaFormat"] = int(selectedFeatures["chromaFormat"]) }
+        let selectedMaxBitrateKbps = int(selectedFeatures["maxBitrateKbps"])
+        if selectedMaxBitrateKbps > 0 {
+            let negotiatedMaxBitrateKbps = int(profile["maxBitrateKbps"])
+            profile["maxBitrateKbps"] = negotiatedMaxBitrateKbps > 0 ? min(negotiatedMaxBitrateKbps, selectedMaxBitrateKbps) : selectedMaxBitrateKbps
+        }
         if profile["colorQuality"] == nil {
             profile["colorQuality"] = int(selectedFeatures["bitDepth"]) >= 10 ? "10bit_420" : "8bit_420"
         }

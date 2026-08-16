@@ -235,13 +235,16 @@ public struct NetworkTestResult: Equatable, Sendable {
     public let threshold: NetworkTestThreshold
     public let downlinkBandwidth: Int
     public let maxPacketSize: Int
+    public let latencyMilliseconds: Int
+    public let jitterMilliseconds: Int
+    public let packetLossPercent: Double
     public let rawStatus: String
 
     public var isCompleted: Bool {
         rawStatus.caseInsensitiveCompare("COMPLETED") == .orderedSame || rawStatus.caseInsensitiveCompare("SUCCESS") == .orderedSame
     }
 
-    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, rawStatus: String = "") {
+    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, latencyMilliseconds: Int = -1, jitterMilliseconds: Int = -1, packetLossPercent: Double = -1, rawStatus: String = "") {
         self.sessionId = sessionId
         self.zoneAddress = zoneAddress
         self.zoneName = zoneName
@@ -250,6 +253,9 @@ public struct NetworkTestResult: Equatable, Sendable {
         self.threshold = threshold
         self.downlinkBandwidth = downlinkBandwidth
         self.maxPacketSize = maxPacketSize
+        self.latencyMilliseconds = latencyMilliseconds
+        self.jitterMilliseconds = jitterMilliseconds
+        self.packetLossPercent = packetLossPercent
         self.rawStatus = rawStatus
     }
 }
@@ -283,6 +289,9 @@ public enum NetworkTestResultParser {
             ),
             downlinkBandwidth: intValue(testResult["downlinkBandwidth"]) ?? intValue(testResult["downlink_bandwidth"]) ?? 0,
             maxPacketSize: intValue(testResult["maxPacketSize"]) ?? intValue(testResult["max_packet_size"]) ?? 0,
+            latencyMilliseconds: intValue(testResult["latencyMs"]) ?? intValue(testResult["latencyMS"]) ?? intValue(testResult["rttMs"]) ?? intValue(testResult["roundTripTimeMs"]) ?? -1,
+            jitterMilliseconds: intValue(testResult["jitterMs"]) ?? intValue(testResult["jitterMS"]) ?? intValue(testResult["networkJitterMs"]) ?? -1,
+            packetLossPercent: doubleValue(testResult["packetLossPercent"]) ?? doubleValue(testResult["packetLossPct"]) ?? doubleValue(testResult["packetLoss"]) ?? -1,
             rawStatus: stringValue(json["status"]) ?? stringValue(testResult["status"]) ?? stringValue(requestStatus["statusDescription"]) ?? ""
         )
     }

@@ -620,7 +620,7 @@ public enum OPNStreamPreferences {
         let requested = max(1, requestedMaxBitrateMbps)
         var recommended = requested
         if measuredBandwidthMbps > 1.0, measuredBandwidthMbps.isFinite {
-            recommended = min(recommended, max(5, Int((measuredBandwidthMbps * 0.85).rounded(.down))))
+            recommended = min(recommended, max(1, Int((measuredBandwidthMbps * 0.75).rounded(.down))))
         }
         if vendorRecommendedMbps > 0 { recommended = min(recommended, vendorRecommendedMbps) }
         if packetLossPercent >= 5.0 { recommended = min(recommended, 15) }
@@ -1327,6 +1327,9 @@ public enum OPNStreamPreferences {
         var result = seed
         if !networkTest.sessionId.isEmpty { result.networkTestSessionId = networkTest.sessionId }
         if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
+        if networkTest.latencyMilliseconds >= 0 { result.latencyMs = networkTest.latencyMilliseconds }
+        if networkTest.jitterMilliseconds >= 0 { result.jitterMs = networkTest.jitterMilliseconds }
+        if networkTest.packetLossPercent >= 0, networkTest.packetLossPercent.isFinite { result.packetLossPercent = networkTest.packetLossPercent }
         if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
             result.serverReportedWarning = true
             result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."

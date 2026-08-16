@@ -118,3 +118,8 @@ import Testing
 @Test func recommendedBitrateHonorsVendorNetworkThreshold() {
     #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 75, latencyMs: 20, measuredBandwidthMbps: 100, packetLossPercent: 0, jitterMs: 0, vendorRecommendedMbps: 50) == 50)
 }
+
+@Test func recommendedBitrateReservesNetworkHeadroomWithoutExceedingLowCapacity() {
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 75, latencyMs: 20, measuredBandwidthMbps: 60, packetLossPercent: 0, jitterMs: 0) == 45)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 15, latencyMs: 20, measuredBandwidthMbps: 2, packetLossPercent: 0, jitterMs: 0) == 1)
+}
