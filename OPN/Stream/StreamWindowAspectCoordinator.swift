@@ -13,10 +13,12 @@ final class StreamWindowAspectCoordinator {
     private var fullScreenTransitionObserverTokens: [NSObjectProtocol] = []
     private var isFullScreenTransitioning = false
     private var needsDeferredAspectRatioClear = false
+    private var applyGeneration: UInt = 0
 
     func attach(_ window: NSWindow?) {
         guard self.window !== window else { return }
-        clearAppliedAspectRatio()
+        scheduleCurrentWindowRestoration()
+        applyGeneration &+= 1
         removeFullScreenTransitionObservers()
         self.window = window
         originalFullSizeContentView = window?.styleMask.contains(.fullSizeContentView) == true
@@ -26,18 +28,19 @@ final class StreamWindowAspectCoordinator {
         isFullScreenTransitioning = false
         needsDeferredAspectRatioClear = false
         addFullScreenTransitionObservers(for: window)
-        apply()
+        scheduleApply()
     }
 
     func update(aspectRatio: Double, isLocked: Bool, usesTitlebarExclusiveContent: Bool) {
         self.aspectRatio = aspectRatio
         self.isLocked = isLocked
         self.usesTitlebarExclusiveContent = usesTitlebarExclusiveContent
-        apply()
+        scheduleApply()
     }
 
     func detach() {
-        clearAppliedAspectRatio()
+        scheduleCurrentWindowRestoration()
+        applyGeneration &+= 1
         removeFullScreenTransitionObservers()
         window = nil
         appliedAspectRatio = nil
@@ -48,7 +51,18 @@ final class StreamWindowAspectCoordinator {
         needsDeferredAspectRatioClear = false
     }
 
-    private func apply() {
+    private func scheduleApply() {
+        applyGeneration &+= 1
+        let generation = applyGeneration
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, self.applyGeneration == generation else { return }
+                self.applyNow()
+            }
+        }
+    }
+
+    private func applyNow() {
         guard let window else { return }
         guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
             clearAppliedAspectRatio()
@@ -111,15 +125,7 @@ final class StreamWindowAspectCoordinator {
 
     private func configureWindowStyle(_ window: NSWindow, titlebarExclusiveContent: Bool) {
         let shouldUseFullSizeContentView = titlebarExclusiveContent ? false : originalFullSizeContentView
-        guard window.styleMask.contains(.fullSizeContentView) != shouldUseFullSizeContentView else { return }
-        let topEdge = window.frame.maxY
-        let centerX = window.frame.midX
-        if shouldUseFullSizeContentView {
-            window.styleMask.insert(.fullSizeContentView)
-        } else {
-            window.styleMask.remove(.fullSizeContentView)
-        }
-        positionWindow(window, topEdge: topEdge, centerX: centerX)
+        Self.setFullSizeContentView(shouldUseFullSizeContentView, on: window)
     }
 
     private func resizeContent(_ window: NSWindow, toAspectRatio aspectRatio: Double) {
@@ -148,10 +154,42 @@ final class StreamWindowAspectCoordinator {
             }
         }
         window.setContentSize(NSSize(width: width, height: height))
+        Self.positionWindow(window, topEdge: topEdge, centerX: centerX)
+    }
+
+    private func scheduleCurrentWindowRestoration() {
+        guard let window else { return }
+        let clearsAspectRatio = appliedLockState == true
+        let restoresFullSizeContentView = appliedTitlebarExclusiveContent == true
+        let originalFullSizeContentView = self.originalFullSizeContentView
+        guard clearsAspectRatio || restoresFullSizeContentView else { return }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard !window.styleMask.contains(.fullScreen) else { return }
+                if clearsAspectRatio {
+                    window.contentAspectRatio = .zero
+                    window.aspectRatio = .zero
+                }
+                if restoresFullSizeContentView {
+                    Self.setFullSizeContentView(originalFullSizeContentView, on: window)
+                }
+            }
+        }
+    }
+
+    private static func setFullSizeContentView(_ enabled: Bool, on window: NSWindow) {
+        guard window.styleMask.contains(.fullSizeContentView) != enabled else { return }
+        let topEdge = window.frame.maxY
+        let centerX = window.frame.midX
+        if enabled {
+            window.styleMask.insert(.fullSizeContentView)
+        } else {
+            window.styleMask.remove(.fullSizeContentView)
+        }
         positionWindow(window, topEdge: topEdge, centerX: centerX)
     }
 
-    private func positionWindow(_ window: NSWindow, topEdge: CGFloat, centerX: CGFloat) {
+    private static func positionWindow(_ window: NSWindow, topEdge: CGFloat, centerX: CGFloat) {
         var frame = window.frame
         frame.origin.x = centerX - frame.width / 2
         frame.origin.y = topEdge - frame.height
@@ -192,13 +230,14 @@ final class StreamWindowAspectCoordinator {
 
     private func beginFullScreenTransition() {
         isFullScreenTransitioning = true
+        applyGeneration &+= 1
     }
 
     private func finishFullScreenTransition() {
         DispatchQueue.main.async { [weak self] in
             Task { @MainActor in
                 self?.isFullScreenTransitioning = false
-                self?.apply()
+                self?.scheduleApply()
             }
         }
     }

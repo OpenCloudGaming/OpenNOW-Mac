@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import OpenNOW
 
-@Test @MainActor func streamWindowConstrainsTitlebarExclusiveContentToVideoAspect() throws {
+@Test @MainActor func streamWindowConstrainsTitlebarExclusiveContentToVideoAspect() async throws {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 1000, height: 625),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -18,6 +18,8 @@ import Testing
 
     coordinator.attach(window)
     coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: true)
+    #expect(window.styleMask.contains(.fullSizeContentView))
+    await applyPendingWindowChanges()
 
     let contentView = try #require(window.contentView)
     #expect(!window.styleMask.contains(.fullSizeContentView))
@@ -29,6 +31,7 @@ import Testing
     #expect(abs(window.frame.maxY - originalTopEdge) < 0.001)
 
     coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: false)
+    await applyPendingWindowChanges()
 
     #expect(window.styleMask.contains(.fullSizeContentView))
     #expect(window.contentAspectRatio == .zero)
@@ -36,7 +39,7 @@ import Testing
     #expect(abs(window.frame.maxY - originalTopEdge) < 0.001)
 }
 
-@Test @MainActor func unlockingStreamWindowRestoresOriginalFullSizeContentStyle() {
+@Test @MainActor func unlockingStreamWindowRestoresOriginalFullSizeContentStyle() async {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 1000, height: 625),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -51,14 +54,16 @@ import Testing
 
     coordinator.attach(window)
     coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: true)
+    await applyPendingWindowChanges()
     coordinator.update(aspectRatio: 1.6, isLocked: false, usesTitlebarExclusiveContent: true)
+    await applyPendingWindowChanges()
 
     #expect(window.styleMask.contains(.fullSizeContentView))
     #expect(window.contentAspectRatio == .zero)
     #expect(window.aspectRatio == .zero)
 }
 
-@Test @MainActor func streamWindowPreservesAspectWhenMinimumContentHeightRequiresMoreWidth() throws {
+@Test @MainActor func streamWindowPreservesAspectWhenMinimumContentHeightRequiresMoreWidth() async throws {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 800, height: 500),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -74,9 +79,18 @@ import Testing
 
     coordinator.attach(window)
     coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: true)
+    await applyPendingWindowChanges()
 
     let contentView = try #require(window.contentView)
     #expect(contentView.bounds.width >= 960)
     #expect(contentView.bounds.height >= 600)
     #expect(abs(contentView.bounds.width / contentView.bounds.height - 1.6) < 0.001)
+}
+
+@MainActor private func applyPendingWindowChanges() async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async {
+            continuation.resume()
+        }
+    }
 }
