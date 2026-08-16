@@ -29,7 +29,7 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let request = try #require(NetworkTestRequestFactory.sessionRequest(accessToken: "access", payload: NetworkTestSessionRequestPayload(appId: 123, videoProfile: NetworkTestVideoProfile(width: 1280, height: 720, frameRate: 60))))
     #expect(request.url?.absoluteString == "https://prod.cloudmatchbeta.nvidiagrid.net/v2/nettestsession")
     #expect(request.httpMethod == "POST")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
     #expect(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix(NetworkTest.defaultUserAgent) == true)
     #expect(request.value(forHTTPHeaderField: "User-Agent")?.contains("Chrome/") == true)

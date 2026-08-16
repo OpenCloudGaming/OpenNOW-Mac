@@ -186,7 +186,7 @@ public enum NetworkTestRequestFactory {
         request.setValue(configuration.userAgent, forHTTPHeaderField: "x-nv-client-identity")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "nv-client-identity")
         request.setValue("1.0", forHTTPHeaderField: "x-nv-client-version")
-        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
         request.httpBody = body
         return request
     }
@@ -372,14 +372,30 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
             throw NetworkTestServiceError.invalidSessionURL
         }
         do {
-            let json = try await performJSONRequest(request)
-            let result = NetworkTestResultParser.parse(json)
-            lifecycle = lifecycle.finishing(result: result)
-            return result
+            for attempt in 0..<4 {
+                do {
+                    let json = try await performJSONRequest(request)
+                    let result = NetworkTestResultParser.parse(json)
+                    guard !result.sessionId.isEmpty, !result.connectionEndpoint.address.isEmpty else { throw NetworkTestServiceError.invalidJSONResponse }
+                    lifecycle = lifecycle.finishing(result: result)
+                    return result
+                } catch {
+                    guard attempt < 3, Self.isRetryable(error) else { throw error }
+                    try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                }
+            }
+            throw NetworkTestServiceError.invalidHTTPResponse
         } catch {
             lifecycle = lifecycle.failing(errorName: .failed)
             throw error
         }
+    }
+
+    private static func isRetryable(_ error: Error) -> Bool {
+        if let serviceError = error as? NetworkTestServiceError, case .httpStatus(let status) = serviceError {
+            return status == 408 || status == 502 || status == 504
+        }
+        return error is URLError
     }
 
     public func cancel() {

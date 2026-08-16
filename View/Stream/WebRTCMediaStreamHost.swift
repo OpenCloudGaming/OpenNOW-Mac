@@ -110,14 +110,17 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
     @State private var sessionLimit: StreamSessionSidebarLimit?
     @State private var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
+    @State private var networkGovernor: NativeNVSTNetworkGovernor?
+    @State private var networkPathTask: Task<Void, Never>?
+    @State private var networkPathAvailable = true
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             NativeNVSTStreamHostView(
                 overlay: AnyView(nativeWindowOverlay),
-                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible || !transientStreamMessage.isEmpty,
-                overlayCapturesInput: unifiedHUDVisible || streamControlsVisible
+                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible || !networkPathAvailable || !transientStreamMessage.isEmpty,
+                overlayCapturesInput: unifiedHUDVisible || streamControlsVisible || !networkPathAvailable
             ) { view in
                 nativeView = view
                 configureNativeView(view)
@@ -161,8 +164,10 @@ private struct NativeNVSTMediaStreamSurface: View {
         microphoneAvailable = profile.microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
         microphoneEnabled = microphoneAvailable && profile.microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
+        networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000), l4sEnabled: profile.enableL4S)
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
+        startNetworkPathMonitoring()
         let transport = NativeNVSTBifrostTransport(
             nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
             cursorVisibilityHandler: { [weak nativeView] visible in
@@ -266,6 +271,10 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask = nil
         latestNativeStats = nil
         sessionLimit = nil
+        networkGovernor = nil
+        networkPathTask?.cancel()
+        networkPathTask = nil
+        networkPathAvailable = true
         cancelNativeShortcutTasks()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
@@ -363,6 +372,10 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask = nil
         latestNativeStats = nil
         sessionLimit = nil
+        networkGovernor = nil
+        networkPathTask?.cancel()
+        networkPathTask = nil
+        networkPathAvailable = true
         cancelNativeShortcutTasks()
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -592,6 +605,8 @@ private struct NativeNVSTMediaStreamSurface: View {
             while !Task.isCancelled {
                 if let snapshot = await path.performanceSnapshot(), isConnected, !isEnding, !didEnd {
                     latestNativeStats = snapshot
+                    let adjustments = networkGovernor?.evaluate(snapshot) ?? []
+                    for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
                 }
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -599,6 +614,39 @@ private struct NativeNVSTMediaStreamSurface: View {
                     return
                 }
             }
+        }
+    }
+
+    private func startNetworkPathMonitoring() {
+        networkPathTask?.cancel()
+        let monitor = NativeNVSTNetworkPathMonitor()
+        networkPathTask = Task { @MainActor in
+            for await networkPath in monitor.updates() {
+                guard !Task.isCancelled, !didEnd else { return }
+                if networkPath.isSatisfied {
+                    networkPathAvailable = true
+                    if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = true }
+                    WebRTCMediaTelemetry.capture("nvst.network.path.available", level: .info, message: "Native NVST network path is available.", attributes: ["wifi": String(networkPath.usesWiFi), "ethernet": String(networkPath.usesWiredEthernet), "expensive": String(networkPath.isExpensive), "constrained": String(networkPath.isConstrained)])
+                } else {
+                    networkPathAvailable = false
+                    nativeView?.remoteInputEnabled = false
+                    showNativeTransientStreamMessage("Network interrupted - waiting to reconnect")
+                    WebRTCMediaTelemetry.capture("nvst.network.path.unavailable", level: .warning, message: "Native NVST network path is unavailable.")
+                }
+            }
+        }
+    }
+
+    private func applyNativeNetworkAdjustment(_ adjustment: NativeNVSTNetworkAdjustment, path: NativeNVSTStreamingPath) async {
+        do {
+            switch adjustment {
+            case .maximumBitrateKbps(let bitrate): try await path.setMaximumBitrateKbps(bitrate)
+            case .dynamicStreamingMode(let mode): try await path.setDynamicStreamingMode(mode)
+            case .l4sEnabled(let enabled): try await path.setL4SEnabled(enabled)
+            }
+            WebRTCMediaTelemetry.capture("nvst.network.adjustment", level: .info, message: "Applied native NVST network adjustment.", attributes: ["adjustment": String(describing: adjustment)])
+        } catch {
+            WebRTCMediaTelemetry.capture("nvst.network.adjustment.failed", level: .warning, message: Self.message(for: error), attributes: ["adjustment": String(describing: adjustment)])
         }
     }
 
@@ -628,7 +676,31 @@ private struct NativeNVSTMediaStreamSurface: View {
             if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD }
             if unifiedHUDVisible { nativeUnifiedHUD }
             if streamControlsVisible { nativeStreamControlsOverlay }
+            if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay }
+        }
+    }
+
+    private var nativeNetworkRecoveryOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 14) {
+                ProgressView().controlSize(.large).tint(WebRTCMediaStreamTheme.accent)
+                Text("CONNECTION INTERRUPTED")
+                    .font(.streamNvidia(size: 16, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                Text("Waiting for a usable network path. OpenNOW will resume the same GeForce NOW session automatically.")
+                    .font(.streamNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+                Button("End Stream", action: endFromStreamControls)
+                    .buttonStyle(.bordered)
+            }
+            .padding(30)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.96))
+            .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.4), lineWidth: 1))
         }
     }
 

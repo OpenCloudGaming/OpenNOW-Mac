@@ -177,6 +177,27 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return Self.copyGeronimoPerformanceSnapshot(sessionAddress: sessionAddress)
     }
 
+    public func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST bitrate update failed.") { session, errorBuffer, length in
+            OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(session, bitrateKbps, errorBuffer, length)
+        }
+    }
+
+    public func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST dynamic streaming update failed.") { session, errorBuffer, length in
+            OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(session, mode.rawValue, errorBuffer, length)
+        }
+    }
+
+    public func setL4SEnabled(_ enabled: Bool) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST L4S update failed.") { session, errorBuffer, length in
+            OpenNOWNativeNVSTGeronimoSetL4SState(session, enabled ? 1 : 0, errorBuffer, length)
+        }
+    }
+
     public func disconnect() async {
         connectingAttemptID = nil
         connectingEventSink?.cancel()
@@ -210,6 +231,22 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
+    public func resetForRecovery() async {
+        connectingAttemptID = nil
+        connectingEventSink?.cancel()
+        connectingEventSink = nil
+        let pump = geronimoPump
+        let sessionAddress = geronimoSessionAddress
+        geronimoPump = nil
+        geronimoSessionAddress = nil
+        geronimoEventSink?.cancel()
+        geronimoEventSink = nil
+        activeConnection = nil
+        if sessionAddress != nil { await prepareGeronimoVideoSurfaceForShutdown() }
+        if let pump { await pump.stop() }
+        if let sessionAddress { await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress) }
+    }
+
     public func pause() async throws {
         guard let sessionAddress = geronimoSessionAddress,
               let eventSink = geronimoEventSink else { throw NativeNVSTError.notRunning }
@@ -238,7 +275,6 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     private func prepareGeronimoVideoSurfaceForShutdown() async {
         guard let prepareVideoSurfaceForShutdown else { return }
-        self.prepareVideoSurfaceForShutdown = nil
         await prepareVideoSurfaceForShutdown()
     }
 
@@ -424,6 +460,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard result == 0 else {
             throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo microphone update failed with result \(result)."))
         }
+    }
+
+    @MainActor private static func applyRuntimeNetworkControlOnMainActor(sessionAddress: UInt, fallback: String, operation: (UnsafeMutableRawPointer?, UnsafeMutablePointer<CChar>?, Int) -> Int32) throws {
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+        defer { errorBuffer.deallocate() }
+        errorBuffer.initialize(repeating: 0, count: 1024)
+        let result = operation(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
+        guard result == 0 else { throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "\(fallback) Result \(result).")) }
     }
 
     private static func copyGeronimoPerformanceSnapshot(sessionAddress: UInt) -> NativeNVSTPerformanceSnapshot? {
@@ -1719,6 +1763,15 @@ private func OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(_ session: UnsafeMutable
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay")
 private func OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate")
+private func OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(_ session: UnsafeMutableRawPointer?, _ bitrateKbps: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode")
+private func OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(_ session: UnsafeMutableRawPointer?, _ mode: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetL4SState")
+private func OpenNOWNativeNVSTGeronimoSetL4SState(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoCopyPerformanceStats")
 private func OpenNOWNativeNVSTGeronimoCopyPerformanceStats(_ session: UnsafeMutableRawPointer?, _ performanceStatsBytes: UnsafeMutableRawPointer?, _ performanceStatsByteCount: Int, _ serverLocationBuffer: UnsafeMutablePointer<CChar>?, _ serverLocationBufferLength: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

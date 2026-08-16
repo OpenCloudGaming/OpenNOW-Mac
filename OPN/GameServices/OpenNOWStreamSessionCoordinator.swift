@@ -146,6 +146,21 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         )
     }
 
+    public func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
+        let recoveryConfiguration = StreamLaunchConfiguration(
+            id: configuration.id,
+            title: configuration.title,
+            applicationID: session.applicationID,
+            accessToken: configuration.accessToken,
+            accountLinked: configuration.accountLinked,
+            selectedStore: configuration.selectedStore,
+            resumeSessionID: session.id,
+            resumeServer: session.serverAddress,
+            metadata: configuration.metadata
+        )
+        return try await startNativeNVSTSession(configuration: recoveryConfiguration)
+    }
+
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
         lock.withLock {
             signaling?.disconnect()

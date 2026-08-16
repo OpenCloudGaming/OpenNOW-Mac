@@ -20,6 +20,7 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
     private(set) var startCount = 0
     private(set) var finished: [RecordedNativeNVSTFinish] = []
     private(set) var cancelCount = 0
+    private(set) var recoveryCount = 0
     let allocation: NativeNVSTSessionAllocation
 
     init(allocation: NativeNVSTSessionAllocation = nativeAllocation()) {
@@ -33,6 +34,11 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
 
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
         finished.append(RecordedNativeNVSTFinish(session: session, reason: reason))
+    }
+
+    func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
+        recoveryCount += 1
+        return allocation
     }
 
     func cancelSessionStart() async {
@@ -307,6 +313,24 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     } else {
         Issue.record("Expected ended state after native transport termination")
     }
+}
+
+@Test func nativeNVSTPathRecoversFailedTransportWithoutEndingCloudSession() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    _ = try await path.start(configuration: nativeConfiguration())
+    await transport.sendTermination(.failed("network interrupted"))
+    for _ in 0..<200 {
+        if await transport.connectCount >= 2 { break }
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+
+    #expect(await provider.recoveryCount == 1)
+    #expect(await provider.finished.isEmpty)
+    #expect(await transport.connectCount == 2)
+    #expect(await path.currentState() == .running(nativeAllocation().session))
 }
 
 @Test func nativeNVSTPathCancelsSuspendedConnectAndCloudAllocation() async throws {

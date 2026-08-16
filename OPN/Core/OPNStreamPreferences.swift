@@ -1306,7 +1306,7 @@ public enum OPNStreamPreferences {
             var result = seed
             do {
                 let baseURLString = networkTestBaseURL(seed: seed, providerStreamingBaseUrl: providerStreamingBaseUrl)
-                let service = NetworkTestService(configuration: NetworkTestConfiguration(baseURLString: baseURLString, timeoutInterval: 4), transport: NetworkTestURLSessionTransport())
+                let service = NetworkTestService(configuration: NetworkTestConfiguration(baseURLString: baseURLString, timeoutInterval: 8), transport: NetworkTestURLSessionTransport())
                 let networkTest = try await service.startSession(accessToken: token)
                 result = mergeNetworkTest(networkTest, into: result, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
                 OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTest, parameters: ["status": networkTest.rawStatus.isEmpty ? "completed" : networkTest.rawStatus, "continued": "true"]))

@@ -266,7 +266,13 @@ using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GridAppTogglePerfIndicator = void (*)(void *);
 using GridAppCursorInfoUpdate = void (*)(void *, const void *);
+using GridAppSetStreamingMaxBitrate = void (*)(void *, uint16_t, uint32_t);
+using GridAppSetDynamicStreamingMode = void (*)(void *, uint16_t, uint32_t);
+using GridAppSetL4sState = void (*)(void *, uint16_t, bool);
 using IOInterfaceGetStatsInterface = void *(*)(void *);
+using IOInterfaceGetMaxBitrateKbps = uint32_t (*)(void *);
+using IOInterfaceGetDynamicStreamingMode = uint32_t (*)(void *);
+using IOInterfaceGetL4sState = uint32_t (*)(void *);
 using StatsInterfaceGetStats = void (*)(void *, GeronimoStats &, std::string &, std::string &, std::string &, std::string &, std::string &, std::string &);
 using GetStreamStartParameters = int (*)(const std::string &, const std::string &, const Nsk::ApplicationStreamStartParameters &, Nsk::StreamStartParameters &);
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
@@ -348,7 +354,13 @@ struct GeronimoFunctions {
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
     GridAppTogglePerfIndicator togglePerfIndicator = nullptr;
     GridAppCursorInfoUpdate cursorInfoUpdate = nullptr;
+    GridAppSetStreamingMaxBitrate setStreamingMaxBitrate = nullptr;
+    GridAppSetDynamicStreamingMode setDynamicStreamingMode = nullptr;
+    GridAppSetL4sState setL4sState = nullptr;
     IOInterfaceGetStatsInterface ioInterfaceGetStatsInterface = nullptr;
+    IOInterfaceGetMaxBitrateKbps ioInterfaceGetMaxBitrateKbps = nullptr;
+    IOInterfaceGetDynamicStreamingMode ioInterfaceGetDynamicStreamingMode = nullptr;
+    IOInterfaceGetL4sState ioInterfaceGetL4sState = nullptr;
     StatsInterfaceGetStats statsInterfaceGetStats = nullptr;
     ObjectCtor graphicsContextCtor = nullptr;
     ObjectDtor graphicsContextDtor = nullptr;
@@ -994,7 +1006,13 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
     functions.togglePerfIndicator = reinterpret_cast<GridAppTogglePerfIndicator>(resolve(handle, "_ZN7GridApp29togglePerfIndicatorVisibilityEv", errorBuffer, errorBufferLength));
     functions.cursorInfoUpdate = reinterpret_cast<GridAppCursorInfoUpdate>(resolve(handle, "_ZN7GridApp18onCursorInfoUpdateERK10CursorInfo", errorBuffer, errorBufferLength));
+    functions.setStreamingMaxBitrate = reinterpret_cast<GridAppSetStreamingMaxBitrate>(resolve(handle, "_ZN7GridApp22setStreamingMaxBitrateEtj", errorBuffer, errorBufferLength));
+    functions.setDynamicStreamingMode = reinterpret_cast<GridAppSetDynamicStreamingMode>(resolve(handle, "_ZN7GridApp23setDynamicStreamingModeEt26NvstDynamicStreamingMode_t", errorBuffer, errorBufferLength));
+    functions.setL4sState = reinterpret_cast<GridAppSetL4sState>(resolve(handle, "_ZN7GridApp11setL4sStateEtb", errorBuffer, errorBufferLength));
     functions.ioInterfaceGetStatsInterface = reinterpret_cast<IOInterfaceGetStatsInterface>(resolve(handle, "_ZN11IOInterface17getStatsInterfaceEv", errorBuffer, errorBufferLength));
+    functions.ioInterfaceGetMaxBitrateKbps = reinterpret_cast<IOInterfaceGetMaxBitrateKbps>(resolve(handle, "_ZN11IOInterface17getMaxBitrateKbpsEv", errorBuffer, errorBufferLength));
+    functions.ioInterfaceGetDynamicStreamingMode = reinterpret_cast<IOInterfaceGetDynamicStreamingMode>(resolve(handle, "_ZN11IOInterface23getDynamicStreamingModeEv", errorBuffer, errorBufferLength));
+    functions.ioInterfaceGetL4sState = reinterpret_cast<IOInterfaceGetL4sState>(resolve(handle, "_ZN11IOInterface11getL4sStateEv", errorBuffer, errorBufferLength));
     functions.statsInterfaceGetStats = reinterpret_cast<StatsInterfaceGetStats>(resolve(handle, "_ZN14StatsInterface8getStatsER13GeronimoStatsRNSt3__112basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEES9_S9_S9_S9_S9_", errorBuffer, errorBufferLength));
     functions.graphicsContextCtor = reinterpret_cast<ObjectCtor>(resolve(handle, "_ZN18SDLGraphicsContextC1Ev", errorBuffer, errorBufferLength));
     functions.graphicsContextDtor = reinterpret_cast<ObjectDtor>(resolve(handle, "_ZN18SDLGraphicsContextD1Ev", errorBuffer, errorBufferLength));
@@ -1022,7 +1040,13 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.setDecoderInfo != nullptr &&
            functions.togglePerfIndicator != nullptr &&
            functions.cursorInfoUpdate != nullptr &&
+           functions.setStreamingMaxBitrate != nullptr &&
+           functions.setDynamicStreamingMode != nullptr &&
+           functions.setL4sState != nullptr &&
            functions.ioInterfaceGetStatsInterface != nullptr &&
+           functions.ioInterfaceGetMaxBitrateKbps != nullptr &&
+           functions.ioInterfaceGetDynamicStreamingMode != nullptr &&
+           functions.ioInterfaceGetL4sState != nullptr &&
            functions.statsInterfaceGetStats != nullptr &&
            functions.graphicsContextCtor != nullptr &&
            functions.graphicsContextDtor != nullptr &&
@@ -2165,6 +2189,59 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(void *sessi
         setError(errorBuffer, errorBufferLength, "GridApp::togglePerfIndicatorVisibility raised an unexpected C++ exception.");
         return -3;
     }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(void *sessionPointer,
+                                                                       uint32_t bitrateKbps,
+                                                                       char *errorBuffer,
+                                                                       size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is unavailable for bitrate control.");
+        return -1;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) { return -2; }
+    }
+    session->functions.setStreamingMaxBitrate(session->gridApp, 0, bitrateKbps);
+    return session->functions.ioInterfaceGetMaxBitrateKbps(session->ioInterface) == bitrateKbps ? 0 : -3;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(void *sessionPointer,
+                                                                        uint32_t mode,
+                                                                        char *errorBuffer,
+                                                                        size_t errorBufferLength) {
+    if (mode > 3) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo dynamic streaming mode is invalid.");
+        return -1;
+    }
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) { return -2; }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) { return -3; }
+    }
+    session->functions.setDynamicStreamingMode(session->gridApp, 0, mode);
+    return session->functions.ioInterfaceGetDynamicStreamingMode(session->ioInterface) == mode ? 0 : -4;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetL4SState(void *sessionPointer,
+                                                            int32_t enabled,
+                                                            char *errorBuffer,
+                                                            size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) { return -1; }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(session->stateMutex);
+        if (session->state != NativeSessionState::streaming) { return -2; }
+    }
+    session->functions.setL4sState(session->gridApp, 0, enabled != 0);
+    const uint32_t state = session->functions.ioInterfaceGetL4sState(session->ioInterface);
+    return (enabled != 0 ? (state == 1 || state == 2) : state != 2) ? 0 : -3;
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoCopyPerformanceStats(void *sessionPointer,
