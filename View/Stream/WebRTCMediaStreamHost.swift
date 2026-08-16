@@ -82,6 +82,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     let preventDisplaySleep: Bool
     let onProgress: WebRTCMediaStreamProgressHandler?
     let onEnd: WebRTCMediaStreamCompletion
+    private let sidebarCapabilities = StreamSidebarCapabilities.nativeNVST
 
     @State private var path: NativeNVSTStreamingPath?
     @State private var startTask: Task<Void, Never>?
@@ -107,6 +108,8 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var transientStreamMessageTask: Task<Void, Never>?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
+    @State private var sessionLimit: StreamSessionSidebarLimit?
+    @State private var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
 
     var body: some View {
         ZStack {
@@ -209,6 +212,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 let shouldPresentStream = await MainActor.run {
                     guard !Task.isCancelled, !didEnd, !isEnding else { return false }
                     isConnected = true
+                    sessionLimit = StreamSessionSidebarLimit(session: session)
                     nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
                     nativeView.setNativeNVSTVideoVisible(true)
                     nativeView.restoreInputFocus()
@@ -261,6 +265,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        sessionLimit = nil
         cancelNativeShortcutTasks()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
@@ -357,6 +362,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        sessionLimit = nil
         cancelNativeShortcutTasks()
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -784,148 +790,194 @@ private struct NativeNVSTMediaStreamSurface: View {
         return value
     }
 
-    private var nativeUnifiedHUD: some View {
-        GeometryReader { proxy in
-            VStack(alignment: .leading, spacing: 0) {
-                nativeHUDHeader
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        nativeHUDStatusPanel
-                        nativeHUDControlsPanel
-                        nativeHUDStreamPanel
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
-                }
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                Text(WebRTCMediaStreamCommand.shortcutGuide)
-                    .font(.streamNvidia(size: 10, weight: .bold))
-                    .tracking(0.8)
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 9)
-            }
-            .frame(width: WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(width: 1)
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
-                    .frame(height: 2)
-            }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        }
-        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+    private var nativeMicrophoneStatusText: String {
+        guard microphoneAvailable else { return "Disabled" }
+        return microphoneEnabled ? "On" : "Muted"
     }
 
-    private var nativeHUDHeader: some View {
-        HStack(spacing: 10) {
-            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            Button(action: { setUnifiedHUDVisible(false) }) {
-                Image(systemName: "xmark")
-                    .font(.streamNvidia(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.08))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+    private func nativeSessionLimitText(at date: Date) -> String {
+        guard let sessionLimit else { return "Unlimited" }
+        let remainingSeconds = sessionLimit.remainingSeconds(at: date)
+        return String(format: "%d:%02d", remainingSeconds / 60, remainingSeconds % 60)
+    }
+
+    private func nativeSessionLimitIsHealthy(at date: Date) -> Bool {
+        guard let sessionLimit else { return true }
+        return sessionLimit.remainingSeconds(at: date) > 300
+    }
+
+    private var nativeNetworkHealthText: String {
+        guard latestNativeStats?.available == true else { return "Waiting" }
+        if (latestNativeStats?.packetLoss ?? 0) > 0 || (latestNativeStats?.jitterMilliseconds ?? 0) >= 35 || (latestNativeStats?.latencyMilliseconds ?? 0) >= 120 { return "Poor" }
+        if (latestNativeStats?.jitterMilliseconds ?? 0) >= 20 || (latestNativeStats?.latencyMilliseconds ?? 0) >= 90 { return "Fair" }
+        return "Good"
+    }
+
+    private var nativeNetworkHealthIsGood: Bool {
+        nativeNetworkHealthText == "Good"
+    }
+
+    private var nativeLatencyText: String {
+        guard latestNativeStats?.available == true, let latency = latestNativeStats?.latencyMilliseconds, latency >= 0 else { return "--" }
+        return "\(Int(latency.rounded())) ms"
+    }
+
+    private var nativePacketLossText: String {
+        guard latestNativeStats?.available == true, let packetLoss = latestNativeStats?.packetLoss else { return "--" }
+        return String(packetLoss)
+    }
+
+    private var nativeNetworkWarningText: String {
+        guard latestNativeStats?.available == true else { return "Waiting for native NVST network telemetry." }
+        if (latestNativeStats?.packetLoss ?? 0) > 0 { return "Packet loss is active; image quality or input response may degrade." }
+        if (latestNativeStats?.latencyMilliseconds ?? 0) >= 120 { return "Latency is high; input may feel delayed." }
+        if (latestNativeStats?.jitterMilliseconds ?? 0) >= 35 { return "Network jitter is unstable; gameplay may stutter." }
+        if let bitrate = latestNativeStats?.bitrateMegabitsPerSecond, bitrate >= 0, bitrate < 5 { return "Inbound bitrate is low for cloud gaming quality." }
+        return ""
+    }
+
+    private var nativeUnifiedHUD: some View {
+        StreamUnifiedSidebar(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, closeAction: { setUnifiedHUDVisible(false) }) {
+            VStack(alignment: .leading, spacing: 14) {
+                nativeHUDStatusPanel
+                nativeHUDControlsPanel
+                nativeHUDNetworkPanel
+                if sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), remoteCoOpPreferences.isAlphaOptedIn {
+                    nativeHUDRemoteCoOpPanel
+                }
+                nativeHUDVideoPanel
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
-            .accessibilityLabel("Close stream HUD")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(WebRTCMediaStreamTheme.appBar)
     }
 
     private var nativeHUDStatusPanel: some View {
         HStack(spacing: 8) {
-            nativeHUDMetricCard(title: "Stream", value: isConnected ? "Live" : "Starting", positive: isConnected)
-            nativeHUDMetricCard(title: "Transport", value: "NVST", positive: isConnected)
-            nativeHUDMetricCard(title: "Stats", value: nativeStatsVisible ? "On" : "Off", positive: nativeStatsVisible)
+            StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, positive: microphoneEnabled && microphoneAvailable)
+            StreamHUDMetricCard(title: "Rec", value: "Unavailable", positive: false)
+            StreamHUDMetricCard(title: "AFK", value: antiAFKMouseMovementEnabled ? "On" : "Off", positive: antiAFKMouseMovementEnabled)
+            if sessionLimit != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    StreamHUDMetricCard(title: "Session", value: nativeSessionLimitText(at: context.date), positive: nativeSessionLimitIsHealthy(at: context.date))
+                }
+            }
+            if remoteCoOpPreferences.isAlphaOptedIn {
+                StreamHUDMetricCard(title: "Co-Op", value: "Unavailable", positive: false)
+            }
         }
     }
 
     private var nativeHUDControlsPanel: some View {
-        nativeHUDSection(label: "CONTROLS") {
+        StreamHUDSection(label: "CONTROLS", spacing: 8) {
             HStack(spacing: 8) {
                 StreamHUDActionRow(
-                    title: nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                    subtitle: "OpenNOW live NVST metrics",
-                    systemName: "chart.line.uptrend.xyaxis",
-                    isActive: nativeStatsVisible,
-                    isDisabled: false,
-                    action: toggleNativeStatsHUD
+                    title: microphoneEnabled ? "Mute microphone" : "Unmute microphone",
+                    subtitle: nativeMicrophoneStatusText,
+                    systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
+                    isActive: microphoneEnabled && microphoneAvailable,
+                    isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil,
+                    action: toggleNativeMicrophone
                 )
                 StreamHUDActionRow(
-                    title: "Stream Controls",
-                    subtitle: "Pause or end this stream",
-                    systemName: "power",
+                    title: "Record",
+                    subtitle: "Unavailable with native NVST",
+                    systemName: "record.circle",
                     isActive: false,
-                    isDisabled: isEnding,
-                    action: { showStreamControls() }
+                    isDisabled: !sidebarCapabilities.supports(.recording),
+                    action: {}
+                )
+                StreamHUDActionRow(
+                    title: antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
+                    subtitle: antiAFKMouseMovementEnabled ? "Active" : "Idle",
+                    systemName: "cursorarrow.motionlines",
+                    isActive: antiAFKMouseMovementEnabled,
+                    isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected,
+                    action: toggleNativeAntiAFKMouseMovement
+                )
+                StreamHUDActionRow(
+                    title: nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
+                    subtitle: "Detailed overlay",
+                    systemName: "chart.line.uptrend.xyaxis",
+                    isActive: nativeStatsVisible,
+                    isDisabled: !sidebarCapabilities.supports(.floatingStats),
+                    action: toggleNativeStatsHUD
                 )
             }
         }
     }
 
-    private var nativeHUDStreamPanel: some View {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        return nativeHUDSection(label: "STREAM") {
+    private var nativeHUDNetworkPanel: some View {
+        StreamHUDSection(label: "NETWORK", spacing: 8) {
+            HStack(spacing: 8) {
+                StreamHUDMetricCard(title: "Health", value: nativeNetworkHealthText, positive: nativeNetworkHealthIsGood)
+                StreamHUDMetricCard(title: "Latency", value: nativeLatencyText, positive: (latestNativeStats?.latencyMilliseconds ?? 0) < 90)
+                StreamHUDMetricCard(title: "Loss", value: nativePacketLossText, positive: (latestNativeStats?.packetLoss ?? 0) == 0)
+            }
+            if !nativeNetworkWarningText.isEmpty {
+                Text(nativeNetworkWarningText)
+                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var nativeHUDRemoteCoOpPanel: some View {
+        StreamHUDSection(label: "CO-OP", spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Remote Co-Op")
+                            .font(.streamNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        Text("Video and audio relay require WebRTC transport.")
+                            .font(.streamNvidia(size: 11, weight: .medium))
+                            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 8)
+                    Text("NVST")
+                        .font(.streamNvidia(size: 9, weight: .bold))
+                        .tracking(0.7)
+                        .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(Color.white.opacity(0.07))
+                        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+                }
+                StreamHUDActionRow(
+                    title: "Create Invite",
+                    subtitle: "Unavailable with native NVST",
+                    systemName: "person.badge.plus",
+                    isActive: false,
+                    isDisabled: !sidebarCapabilities.supports(.remoteCoOp),
+                    action: {}
+                )
+                nativeHUDDetailRow(label: "Slots", value: "\(remoteCoOpPreferences.effectiveReservedGuestSlots)")
+                nativeHUDDetailRow(label: "Quality", value: remoteCoOpPreferences.qualityPreset.label)
+                nativeHUDDetailRow(label: "Latency", value: remoteCoOpPreferences.latencyMode.label)
+            }
+        }
+    }
+
+    private var nativeHUDVideoPanel: some View {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        return StreamHUDSection(label: "VIDEO") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("MetalFX Upscaling", selection: Binding.constant(0)) {
+                    Text("Off").tag(0)
+                    Text("MetalFX").tag(3)
+                }
+                .font(.streamNvidia(size: 12, weight: .medium))
+                .pickerStyle(.segmented)
+                .tint(WebRTCMediaStreamTheme.accent)
+                .disabled(!sidebarCapabilities.supports(.videoEnhancement))
+                nativeHUDDetailRow(label: "Active", value: "Native")
+                nativeHUDDetailRow(label: "Target", value: "Native")
                 nativeHUDDetailRow(label: "Resolution", value: "\(profile.resolution.width) x \(profile.resolution.height)")
                 nativeHUDDetailRow(label: "Frame Rate", value: "\(profile.fps) FPS")
                 nativeHUDDetailRow(label: "Codec", value: profile.codec.value.uppercased())
-                nativeHUDDetailRow(label: "Input", value: unifiedHUDVisible ? "Paused for HUD" : "Active")
             }
         }
-    }
-
-    private func nativeHUDSection<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.streamNvidia(size: 9, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            content()
-        }
-        .padding(12)
-        .background(WebRTCMediaStreamTheme.surfaceRaised)
-        .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1))
-    }
-
-    private func nativeHUDMetricCard(title: String, value: String, positive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.streamNvidia(size: 8, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            Text(value)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(positive ? WebRTCMediaStreamTheme.accentSoft : WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(WebRTCMediaStreamTheme.surfaceRaised)
-        .overlay(Rectangle().stroke(positive ? WebRTCMediaStreamTheme.accent.opacity(0.30) : WebRTCMediaStreamTheme.divider, lineWidth: 1))
     }
 
     private func nativeHUDDetailRow(label: String, value: String) -> some View {

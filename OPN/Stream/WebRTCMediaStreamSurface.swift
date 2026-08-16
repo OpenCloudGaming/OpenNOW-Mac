@@ -73,7 +73,123 @@ struct StreamHUDActionRow: View {
     }
 }
 
-private struct WebRTCMediaSessionLimit: Equatable {
+struct StreamUnifiedSidebar<Content: View>: View {
+    let title: String
+    let closeAction: () -> Void
+    let content: Content
+
+    init(title: String, closeAction: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.closeAction = closeAction
+        self.content = content()
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Text(title)
+                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    Button(action: closeAction) {
+                        Image(systemName: "xmark")
+                            .font(.streamNvidia(size: 11, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.08))
+                            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Close stream HUD")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(WebRTCMediaStreamTheme.appBar)
+                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    content
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 14)
+                }
+                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+                Text(WebRTCMediaStreamCommand.shortcutGuide)
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+            }
+            .frame(width: WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) { Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(width: 1) }
+            .overlay(alignment: .top) { Rectangle().fill(WebRTCMediaStreamTheme.accent).frame(height: 2) }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+    }
+}
+
+struct StreamHUDSection<Content: View>: View {
+    let label: String
+    let spacing: CGFloat
+    let content: Content
+
+    init(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            content
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+}
+
+struct StreamHUDMetricCard: View {
+    let title: String
+    let value: String
+    let positive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
+                Text(title.uppercased())
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(value)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+}
+
+struct StreamSessionSidebarLimit: Equatable {
     let startedAt: Date
     let durationSeconds: Int
 
@@ -106,6 +222,7 @@ public struct WebRTCMediaStreamSurface: View {
     private let preventDisplaySleep: Bool
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
+    private let sidebarCapabilities = StreamSidebarCapabilities.webRTC
 
     @State private var path: WebRTCStreamingPath?
     @State private var transport: NativeWebRTCTransport?
@@ -143,7 +260,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
-    @State private var sessionLimit: WebRTCMediaSessionLimit?
+    @State private var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -283,71 +400,17 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var unifiedHUD: some View {
-        GeometryReader { proxy in
-            let dockWidth = WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width)
-            VStack(alignment: .leading, spacing: 0) {
-                hudDockHeader
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        hudStatusPanel
-                        hudControlsPanel
-                        hudNetworkPanel
-                        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-                            hudRemoteCoOpPanel
-                        }
-                        hudVideoPanel
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
+        StreamUnifiedSidebar(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, closeAction: { setUnifiedHUDVisible(false) }) {
+            VStack(alignment: .leading, spacing: 14) {
+                hudStatusPanel
+                hudControlsPanel
+                hudNetworkPanel
+                if sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+                    hudRemoteCoOpPanel
                 }
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                hudShortcutFooter
+                hudVideoPanel
             }
-            .frame(width: dockWidth, height: proxy.size.height, alignment: .topLeading)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(width: 1)
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
-                    .frame(height: 2)
-            }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-    }
-
-    private var hudDockHeader: some View {
-        HStack(spacing: 10) {
-            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            Button(action: { setUnifiedHUDVisible(false) }) {
-                Image(systemName: "xmark")
-                    .font(.streamNvidia(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.08))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close stream HUD")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(WebRTCMediaStreamTheme.appBar)
     }
 
     private var hudStatusPanel: some View {
@@ -397,17 +460,6 @@ public struct WebRTCMediaStreamSurface: View {
         .accessibilityHidden(true)
     }
 
-    private var hudShortcutFooter: some View {
-        Text(WebRTCMediaStreamCommand.shortcutGuide)
-            .font(.streamNvidia(size: 10, weight: .bold))
-            .tracking(0.8)
-            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
-    }
-
     private var hudControlsPanel: some View {
         hudSection(label: "CONTROLS", spacing: 8) {
             HStack(spacing: 8) {
@@ -416,7 +468,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: microphoneStatusText,
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
-                    isDisabled: runtimeSettings.microphoneMode == "disabled",
+                    isDisabled: !sidebarCapabilities.supports(.microphone) || runtimeSettings.microphoneMode == "disabled",
                     action: toggleMicrophone
                 )
                 StreamHUDActionRow(
@@ -424,7 +476,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: recordingStatusText,
                     systemName: "record.circle",
                     isActive: recordingStatus.isRecording,
-                    isDisabled: !isStreamReady || recordingIsBusy,
+                    isDisabled: !sidebarCapabilities.supports(.recording) || !isStreamReady || recordingIsBusy,
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
@@ -432,7 +484,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Active" : "Idle",
                     systemName: "cursorarrow.motionlines",
                     isActive: runtimeSettings.antiAFKMouseMovementEnabled,
-                    isDisabled: !isStreamReady,
+                    isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isStreamReady,
                     action: toggleAntiAFKMouseMovement
                 )
                 StreamHUDActionRow(
@@ -440,7 +492,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: "Detailed overlay",
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: statsVisible,
-                    isDisabled: false,
+                    isDisabled: !sidebarCapabilities.supports(.floatingStats),
                     action: toggleStatsHUD
                 )
             }
@@ -548,17 +600,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func hudSection<Content: View>(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            Text(label)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            content()
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        StreamHUDSection(label: label, spacing: spacing, content: content)
     }
 
     private func participantIconButton(systemName: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -627,7 +669,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .font(.streamNvidia(size: 12, weight: .medium))
                 .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!isStreamReady)
+                .disabled(!sidebarCapabilities.supports(.videoEnhancement) || !isStreamReady)
                 if runtimeSettings.upscalingMode != 0 {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
@@ -641,24 +683,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func hudMetricCard(title: String, value: String, positive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
-                Text(title.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.46))
-            }
-            Text(value)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        StreamHUDMetricCard(title: title, value: value, positive: positive)
     }
 
     private var launchOverlay: some View {
@@ -1256,7 +1281,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             await MainActor.run {
-                sessionLimit = WebRTCMediaSessionLimit(session: session)
+                sessionLimit = StreamSessionSidebarLimit(session: session)
                 publishSessionLimitProgress()
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
                 microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
@@ -1302,7 +1327,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func applySessionLimitUpdate(_ update: StreamSessionLimitUpdate) {
-        guard let limit = WebRTCMediaSessionLimit(update: update) else { return }
+        guard let limit = StreamSessionSidebarLimit(update: update) else { return }
         sessionLimit = limit
         publishSessionLimitProgress()
         WebRTCMediaTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
