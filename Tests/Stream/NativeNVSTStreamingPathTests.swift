@@ -163,7 +163,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.disconnectCount == 1)
 }
 
-@Test func nativeNVSTPathSessionLimitPreservesAllocatedSessionForUserDecision() async throws {
+@Test func nativeNVSTPathSessionLimitDoesNotMakeFreshAllocationResumable() async throws {
     let allocation = nativeAllocation()
     let provider = RecordingNativeNVSTSessionProvider(allocation: allocation)
     let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
@@ -180,6 +180,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         #expect(conflict.sessionID == allocation.session.id)
         #expect(conflict.applicationID == allocation.session.applicationID)
         #expect(conflict.serverAddress == allocation.session.serverAddress)
+        #expect(conflict.isResumable == false)
+        #expect(error.errorDescription?.contains("Resume") == false)
         #expect(StreamSessionConflict(reportMetadata: conflict.reportMetadata) == conflict)
     }
 

@@ -212,6 +212,7 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 
     #expect(descriptor?.resumeServer == "resource.example.test")
     #expect(descriptor?.state.canContinuePolling == true)
+    #expect(descriptor?.state.isVendorResumable == false)
 }
 
 @Test func cloudMatchSessionStatesMatchVendorBackendValues() {
@@ -225,7 +226,16 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(CloudMatchSessionState.pausedUnintentional.canContinuePolling)
     #expect(CloudMatchSessionState.pausedIntentional.canContinuePolling)
     #expect(CloudMatchSessionState.resuming.canContinuePolling)
+    #expect(!CloudMatchSessionState.initializing.isVendorResumable)
+    #expect(CloudMatchSessionState.readyForConnection.isVendorResumable)
+    #expect(CloudMatchSessionState.streaming.isVendorResumable)
+    #expect(CloudMatchSessionState.pausedUnintentional.isVendorResumable)
+    #expect(CloudMatchSessionState.pausedIntentional.isVendorResumable)
+    #expect(!CloudMatchSessionState.resuming.isVendorResumable)
+    #expect(CloudMatchSessionState.initializing.isVendorActive)
+    #expect(CloudMatchSessionState.resuming.isVendorActive)
     #expect(!CloudMatchSessionState.finished.isVendorResumable)
+    #expect(!CloudMatchSessionState.finished.isVendorActive)
 }
 
 @Test func cloudMatchActiveSessionParserRejectsTerminalOrUnusableSessions() {

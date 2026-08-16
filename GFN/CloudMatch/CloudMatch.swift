@@ -345,11 +345,15 @@ public enum CloudMatchSessionState: Int, Sendable {
     case resuming = 6
     case finished = 7
 
+    public var isVendorActive: Bool {
+        self != .finished
+    }
+
     public var isVendorResumable: Bool {
         switch self {
-        case .initializing, .readyForConnection, .streaming, .pausedUnintentional, .pausedIntentional, .resuming:
+        case .readyForConnection, .streaming, .pausedUnintentional, .pausedIntentional:
             true
-        case .finished:
+        case .initializing, .resuming, .finished:
             false
         }
     }
@@ -395,7 +399,7 @@ public enum CloudMatchActiveSessionParser {
     public static func descriptor(from dictionary: [String: Any], streamingBaseURL: String) -> CloudMatchActiveSessionDescriptor? {
         let sessionId = cloudMatchStringValue(dictionary["sessionId"]) ?? ""
         guard !sessionId.isEmpty else { return nil }
-        guard let state = CloudMatchSessionState(rawValue: intValue(dictionary["status"])), state.isVendorResumable else { return nil }
+        guard let state = CloudMatchSessionState(rawValue: intValue(dictionary["status"])), state.isVendorActive else { return nil }
 
         let requestData = dictionary["sessionRequestData"] as? [String: Any]
         let controlInfo = dictionary["sessionControlInfo"] as? [String: Any]

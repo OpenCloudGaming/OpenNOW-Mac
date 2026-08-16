@@ -966,19 +966,23 @@ final class CatalogViewModel: ObservableObject {
             serverIp: conflict.serverAddress,
             title: activeTitle
         )
-        activeSessionResumeConfiguration = StreamLaunchConfiguration(
-            title: activeTitle,
-            applicationID: applicationID,
-            accessToken: replacementConfiguration.accessToken,
-            accountLinked: true,
-            selectedStore: "",
-            resumeSessionID: conflict.sessionID,
-            resumeServer: conflict.serverAddress,
-            metadata: replacementConfiguration.metadata
-        )
+        activeSessionResumeConfiguration = conflict.isResumable
+            ? StreamLaunchConfiguration(
+                title: activeTitle,
+                applicationID: applicationID,
+                accessToken: replacementConfiguration.accessToken,
+                accountLinked: true,
+                selectedStore: "",
+                resumeSessionID: conflict.sessionID,
+                resumeServer: conflict.serverAddress,
+                metadata: replacementConfiguration.metadata
+            )
+            : nil
         activeSessionReplacementConfiguration = replacementConfiguration
         launchFlowTitle = replacementConfiguration.title.isEmpty ? "GeForce NOW" : replacementConfiguration.title
-        launchFlowMessage = "GeForce NOW reports an active session. Resume it or end it before launching \(launchFlowTitle)."
+        launchFlowMessage = conflict.isResumable
+            ? "GeForce NOW reports an active session. Resume it or end it before launching \(launchFlowTitle)."
+            : "GeForce NOW reports an active session that cannot be resumed. End it before launching \(launchFlowTitle)."
         launchFlowError = ""
         errorMessage = ""
         launchFlowState = .activeSessionPrompt

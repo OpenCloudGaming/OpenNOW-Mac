@@ -260,7 +260,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                     continuation.resume(throwing: OpenNOWStreamSessionError.activeSessionConflict(StreamSessionConflict(
                         sessionID: self.string(info["sessionId"]),
                         applicationID: applicationID.isEmpty ? configuration.applicationID : applicationID,
-                        serverAddress: self.string(info["serverIp"])
+                        serverAddress: self.string(info["serverIp"]),
+                        isResumable: self.bool(info["isResumable"])
                     )))
                 } else {
                     continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error))
@@ -939,8 +940,10 @@ public enum OpenNOWStreamSessionError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .activeSessionConflict:
-            "A GeForce NOW session is already active. Resume it or end it before launching another game."
+        case .activeSessionConflict(let conflict):
+            conflict.isResumable
+                ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
+                : "A GeForce NOW session is already active. End it before launching another game."
         case .sessionAllocationFailed(let message), .sessionStopFailed(let message), .signalingFailed(let message):
             message
         case .signalingUnavailable:

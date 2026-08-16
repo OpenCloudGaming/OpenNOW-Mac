@@ -213,7 +213,8 @@ public actor NativeNVSTStreamingPath {
                 throw OpenNOWStreamSessionError.activeSessionConflict(StreamSessionConflict(
                     sessionID: allocation.session.id,
                     applicationID: allocation.session.applicationID,
-                    serverAddress: allocation.session.serverAddress
+                    serverAddress: allocation.session.serverAddress,
+                    isResumable: allocation.isResume
                 ))
             }
             try? await sessionProvider.finishSession(allocation.session, reason: Task.isCancelled ? .userRequested : .failed)

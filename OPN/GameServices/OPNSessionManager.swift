@@ -141,8 +141,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     var conflict = selected
+                    let isResumable = self.isResumableActiveSessionStatus(int(selected["status"]))
                     conflict["isSessionLimitConflict"] = true
-                    createCompletion(false, conflict, "A GeForce NOW session is already active. Resume it or end it before launching another game.")
+                    conflict["isResumable"] = isResumable
+                    let message = isResumable
+                        ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
+                        : "A GeForce NOW session is already active. End it before launching another game."
+                    createCompletion(false, conflict, message)
                     return
                 }
                 createCompletion(false, [:], errorMessage)
@@ -810,6 +815,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "sessionId": descriptor.sessionId,
                 "appId": descriptor.appId,
                 "status": descriptor.status,
+                "isResumable": descriptor.state.isVendorResumable,
                 "serverIp": descriptor.resumeServer,
                 "gpuType": descriptor.gpuType,
                 "streamingBaseUrl": descriptor.streamingBaseURL,
@@ -820,18 +826,20 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func selectSessionLimitReuseEntry(_ sessions: [[String: Any]], requestedAppId: Int) -> [String: Any]? {
         let validSessions = sessions.filter { int($0["appId"]) > 0 }
-        return validSessions.first { int($0["appId"]) == requestedAppId && isReadyActiveSessionStatus(int($0["status"])) }
-            ?? validSessions.first { isReadyActiveSessionStatus(int($0["status"])) }
-            ?? validSessions.first { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }
-            ?? validSessions.first { int($0["status"]) == 1 }
-            ?? validSessions.first { int($0["appId"]) == requestedAppId }
-            ?? validSessions.first
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId && isResumableActiveSessionStatus(int($0["status"])) }) { return session }
+        if let session = validSessions.first(where: { isResumableActiveSessionStatus(int($0["status"])) }) { return session }
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }) { return session }
+        if let session = validSessions.first(where: { int($0["status"]) == 1 }) { return session }
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId }) { return session }
+        return validSessions.first
     }
 
     private func currentAccessToken() -> String { lock.withLock { accessToken } }
     private func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
     private func isReadyActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
+
+    private func isResumableActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isVendorResumable == true }
 
     private func canContinuePollingActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.canContinuePolling == true }
 

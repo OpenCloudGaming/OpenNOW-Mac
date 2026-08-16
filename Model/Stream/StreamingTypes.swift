@@ -225,11 +225,13 @@ public struct StreamSessionConflict: Equatable, Sendable {
     public let sessionID: String
     public let applicationID: String
     public let serverAddress: String
+    public let isResumable: Bool
 
-    public init(sessionID: String, applicationID: String, serverAddress: String) {
+    public init(sessionID: String, applicationID: String, serverAddress: String, isResumable: Bool = false) {
         self.sessionID = sessionID
         self.applicationID = applicationID
         self.serverAddress = serverAddress
+        self.isResumable = isResumable
     }
 
     public var reportMetadata: [String: String] {
@@ -238,6 +240,7 @@ public struct StreamSessionConflict: Equatable, Sendable {
             "sessionConflictSessionID": sessionID,
             "sessionConflictApplicationID": applicationID,
             "sessionConflictServerAddress": serverAddress,
+            "sessionConflictIsResumable": String(isResumable),
         ]
     }
 
@@ -249,7 +252,8 @@ public struct StreamSessionConflict: Equatable, Sendable {
         self.init(
             sessionID: sessionID,
             applicationID: reportMetadata["sessionConflictApplicationID"] ?? "",
-            serverAddress: serverAddress
+            serverAddress: serverAddress,
+            isResumable: reportMetadata["sessionConflictIsResumable"] == "true"
         )
     }
 }
