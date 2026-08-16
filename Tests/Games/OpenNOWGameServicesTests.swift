@@ -1069,11 +1069,11 @@ import Foundation
 
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, info, error in
-            continuation.resume(returning: (success, info, error))
+            continuation.resume(returning: (success, info["rawSessionJSON"] as? String, error))
         }
     }
 
-    let rawSessionJSON = try #require(result.1["rawSessionJSON"] as? String)
+    let rawSessionJSON = try #require(result.1)
     let rawSessionData = try #require(rawSessionJSON.data(using: .utf8))
     let rawSession = try #require(JSONSerialization.jsonObject(with: rawSessionData) as? [String: Any])
     let streamingProfile = try #require(rawSession["streamingProfile"] as? [String: Any])
@@ -1494,17 +1494,25 @@ import Foundation
     manager.setStreamingBaseUrl("https://\(host)")
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
-            continuation.resume(returning: (success, info, error))
+            continuation.resume(returning: (
+                success,
+                info["isSessionLimitConflict"] as? Bool ?? false,
+                info["sessionId"] as? String ?? "",
+                info["appId"] as? Int ?? 0,
+                info["serverIp"] as? String ?? "",
+                info["isResumable"] as? Bool ?? false,
+                error
+            ))
         }
     }
 
     #expect(result.0 == false)
-    #expect(result.1["isSessionLimitConflict"] as? Bool == true)
-    #expect(result.1["sessionId"] as? String == "active-session")
-    #expect(result.1["appId"] as? Int == 456)
-    #expect(result.1["serverIp"] as? String == host)
-    #expect(result.1["isResumable"] as? Bool == true)
-    #expect(result.2.contains("Resume it or end it"))
+    #expect(result.1)
+    #expect(result.2 == "active-session")
+    #expect(result.3 == 456)
+    #expect(result.4 == host)
+    #expect(result.5)
+    #expect(result.6.contains("Resume it or end it"))
     #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["POST"])
     }
 }
@@ -1534,15 +1542,20 @@ import Foundation
     manager.setStreamingBaseUrl("https://\(host)")
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
-            continuation.resume(returning: (success, info, error))
+            continuation.resume(returning: (
+                success,
+                info["isSessionLimitConflict"] as? Bool ?? false,
+                info["isResumable"] as? Bool ?? false,
+                error
+            ))
         }
     }
 
     #expect(result.0 == false)
-    #expect(result.1["isSessionLimitConflict"] as? Bool == true)
-    #expect(result.1["isResumable"] as? Bool == false)
-    #expect(!result.2.contains("Resume"))
-    #expect(result.2.contains("End it"))
+    #expect(result.1)
+    #expect(!result.2)
+    #expect(!result.3.contains("Resume"))
+    #expect(result.3.contains("End it"))
     }
 }
 
