@@ -2249,7 +2249,7 @@ private struct SettingsSliderRow: View {
                     .foregroundStyle(Color.openNowGreen.opacity(isLocked ? 0.48 : 1))
             }
             .frame(width: 250, alignment: .leading)
-            Slider(value: Binding(get: { value }, set: action), in: range, step: step)
+            Slider(value: Binding(get: { value }, set: { newValue in action(newValue) }), in: range, step: step)
                 .tint(Color.openNowGreen)
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)

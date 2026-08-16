@@ -59,19 +59,22 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(request.value(forHTTPHeaderField: "Referer") == "https://nvfile/")
 }
 
-@Test func starfleetBuildsOAuthLoginAndCallbackObjects() throws {
+@Test func starfleetBuildsOAuthLoginAndCallbackObjects() async throws {
     let state = StarfleetOAuthState(codeVerifier: "verifier", codeChallenge: "challenge", state: "state", nonce: "nonce")
     let service = StarfleetService(transport: MockStarfleetTransport { _ in [:] })
-    let request = try service.createOAuthLoginRequest(deviceId: "device", redirectURI: "http://localhost:2259", locale: "en_US", oauthState: state, providerIdpId: "idp")
+    let request = try await service.createOAuthLoginRequest(deviceId: "device", redirectURI: "http://localhost:2259", locale: "en_US", oauthState: state, providerIdpId: "idp")
     #expect(request.url.absoluteString.contains("response_type=code"))
     #expect(request.url.absoluteString.contains("code_challenge=challenge"))
     #expect(request.url.absoluteString.contains("idp_id=idp"))
 
-    let callback = try service.parseCallback(query: "code=abc&state=state", expectedState: "state")
+    let callback = try await service.parseCallback(query: "code=abc&state=state", expectedState: "state")
     #expect(callback.code == "abc")
     #expect(callback.isSuccess)
-    #expect(throws: StarfleetAuthError.stateMismatch) {
-        _ = try service.parseCallback(query: "code=abc&state=wrong", expectedState: "state")
+    do {
+        _ = try await service.parseCallback(query: "code=abc&state=wrong", expectedState: "state")
+        Issue.record("Expected callback state mismatch")
+    } catch let error as StarfleetAuthError {
+        #expect(error == .stateMismatch)
     }
 }
 

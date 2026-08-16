@@ -52,26 +52,7 @@ jobs:
       - name: Run package unit tests
         run: |
           set -euo pipefail
-          packages=(
-            GFN.CloudMatch
-            GFN.GDN
-            GFN.Jarvis
-            GFN.LCARS
-            GFN.NesAuth
-            GFN.NetworkTest
-            GFN.Starfleet
-            GFN.UDS
-            OPN.Common
-            OPN.GameServices
-            OPN.Telemetry
-            OPN.WebRTC.Media
-          )
-
-          for package in "${packages[@]}"; do
-            echo "::group::swift test --package-path ${package}"
-            swift test --package-path "${package}" --scratch-path .build/shared
-            echo "::endgroup::"
-          done
+          swift test --scratch-path .build/shared
         shell: bash
 
   app-build:
