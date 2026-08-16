@@ -28,6 +28,8 @@ final class OPNActiveSessionObject: NSObject {
 
 enum OPNActiveSessionService {
     private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
+    private static let terminationPollLimit = 12
+    private static let terminationPollDelay: TimeInterval = 0.25
 
     static func loadPersistedActiveSessionId() -> String {
         UserDefaults.standard.string(forKey: persistedSessionIdKey) ?? ""
@@ -78,7 +80,7 @@ enum OPNActiveSessionService {
         }.resume()
     }
 
-    static func stopSession(accessToken: String, sessionId: String, serverIp: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    static func stopSession(accessToken: String, sessionId: String, serverIp: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @Sendable (Bool, String) -> Void) {
         guard !accessToken.isEmpty else {
             completion(false, "No access token")
             return
@@ -88,7 +90,7 @@ enum OPNActiveSessionService {
             return
         }
         clearPersistedActiveSessionId(sessionId)
-        let base = normalizedBaseURL(serverIp.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl() : serverIp)
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: streamingBaseUrl, serverIP: serverIp)
         guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             completion(false, "Invalid stop session URL")
             return
@@ -106,8 +108,35 @@ enum OPNActiveSessionService {
                 completion(false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
-            completion(true, "")
+            if let data,
+               let json = CloudMatchResponseParser.jsonDictionary(data),
+               json["requestStatus"] != nil,
+               !CloudMatchResponseParser.requestSucceeded(json) {
+                completion(false, CloudMatchResponseParser.requestStatusError(data: data, fallback: "Unable to end the active session."))
+                return
+            }
+            waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: 0, completion: completion)
         }.resume()
+    }
+
+    private static func waitForTermination(accessToken: String, sessionId: String, streamingBaseUrl: String, attempt: Int, completion: @escaping @Sendable (Bool, String) -> Void) {
+        fetchActiveSessions(accessToken: accessToken, streamingBaseUrl: streamingBaseUrl) { success, sessions, error in
+            guard success else {
+                completion(false, error.isEmpty ? "Unable to confirm that the active session ended." : error)
+                return
+            }
+            guard sessions.contains(where: { $0.sessionId == sessionId }) else {
+                completion(true, "")
+                return
+            }
+            guard attempt + 1 < terminationPollLimit else {
+                completion(false, "GeForce NOW is still ending the active session. Try again in a moment.")
+                return
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + terminationPollDelay) {
+                waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: attempt + 1, completion: completion)
+            }
+        }
     }
 
     private static func activeSession(from dictionary: [String: Any], streamingBaseUrl: String) -> OPNActiveSessionObject? {

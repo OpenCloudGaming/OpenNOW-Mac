@@ -400,6 +400,69 @@ import Foundation
     }
 }
 
+@Test func activeSessionServiceRejectsVendorStopFailure() async {
+    await networkTestIsolationLock.withLock {
+    let host = "stop-vendor-failure.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "DELETE")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 4,
+                "statusDescription": "INTERNAL_ERROR_STATUS",
+            ],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)") { success, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "API error 4: INTERNAL_ERROR_STATUS")
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).count == 1)
+    }
+}
+
+@Test func activeSessionServiceWaitsForSessionTermination() async {
+    await networkTestIsolationLock.withLock {
+    let host = "stop-confirmation.example.test"
+    let lock = NSLock()
+    nonisolated(unsafe) var activeSessionPollCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "DELETE" {
+            return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])
+        }
+        lock.withLock { activeSessionPollCount += 1 }
+        let sessions: [[String: Any]] = lock.withLock {
+            activeSessionPollCount == 1 ? [[
+                "sessionId": "active-session",
+                "status": 2,
+                "sessionRequestData": ["appId": 123],
+                "sessionControlInfo": ["ip": host],
+            ]] : []
+        }
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"],
+            "sessions": sessions,
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)") { success, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["DELETE", "GET", "GET"])
+    }
+}
+
 @Test @MainActor func gameLaunchBridgeBlocksPatchingGamesBeforeNetworkWork() async throws {
     let game = OPNCatalogGameObject()
     game.launchAppId = "123"

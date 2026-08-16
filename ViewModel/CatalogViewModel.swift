@@ -744,7 +744,7 @@ final class CatalogViewModel: ObservableObject {
             case .activeSession(let active, let resume, let replacement):
                 OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
-                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
+                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: self.account.membershipTier)
                 self.launchFlowState = .activeSessionPrompt
@@ -957,6 +957,7 @@ final class CatalogViewModel: ObservableObject {
             sessionId: conflict.sessionID,
             appId: appID,
             serverIp: conflict.serverAddress,
+            streamingBaseUrl: OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: applicationID),
             title: "Current Stream"
         )
         let activeTitle = title(forActiveSession: unresolvedSession)
@@ -964,6 +965,7 @@ final class CatalogViewModel: ObservableObject {
             sessionId: conflict.sessionID,
             appId: appID,
             serverIp: conflict.serverAddress,
+            streamingBaseUrl: unresolvedSession.streamingBaseUrl,
             title: activeTitle
         )
         activeSessionResumeConfiguration = conflict.isResumable
