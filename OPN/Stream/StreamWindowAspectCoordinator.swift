@@ -14,6 +14,7 @@ final class StreamWindowAspectCoordinator {
     private var isFullScreenTransitioning = false
     private var needsDeferredAspectRatioClear = false
     private var applyGeneration: UInt = 0
+    private var waitsForValidGeometry = false
 
     func attach(_ window: NSWindow?) {
         guard self.window !== window else { return }
@@ -27,6 +28,7 @@ final class StreamWindowAspectCoordinator {
         appliedTitlebarExclusiveContent = nil
         isFullScreenTransitioning = false
         needsDeferredAspectRatioClear = false
+        waitsForValidGeometry = false
         addFullScreenTransitionObservers(for: window)
         scheduleApply()
     }
@@ -49,6 +51,12 @@ final class StreamWindowAspectCoordinator {
         originalFullSizeContentView = false
         isFullScreenTransitioning = false
         needsDeferredAspectRatioClear = false
+        waitsForValidGeometry = false
+    }
+
+    func windowGeometryDidChange() {
+        guard waitsForValidGeometry else { return }
+        scheduleApply()
     }
 
     private func scheduleApply() {
@@ -64,6 +72,11 @@ final class StreamWindowAspectCoordinator {
 
     private func applyNow() {
         guard let window else { return }
+        guard Self.hasValidGeometry(window) else {
+            waitsForValidGeometry = true
+            return
+        }
+        waitsForValidGeometry = false
         guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
             clearAppliedAspectRatio()
             return
@@ -83,8 +96,6 @@ final class StreamWindowAspectCoordinator {
             appliedTitlebarExclusiveContent == usesTitlebarExclusiveContent
         guard !alreadyApplied else { return }
         let lockedAspectRatio = NSSize(width: aspectRatio, height: 1)
-        window.contentAspectRatio = .zero
-        window.aspectRatio = .zero
         configureWindowStyle(window, titlebarExclusiveContent: usesTitlebarExclusiveContent)
         if usesTitlebarExclusiveContent {
             resizeContent(window, toAspectRatio: aspectRatio)
@@ -129,19 +140,22 @@ final class StreamWindowAspectCoordinator {
     }
 
     private func resizeContent(_ window: NSWindow, toAspectRatio aspectRatio: Double) {
-        guard let contentView = window.contentView else { return }
+        guard let contentView = window.contentView, Self.hasValidGeometry(window) else { return }
         let currentSize = contentView.bounds.size
         guard currentSize.width > 0, currentSize.height > 0 else { return }
         let topEdge = window.frame.maxY
         let centerX = window.frame.midX
         let minimumSize = window.contentMinSize
-        var width = max(currentSize.width, minimumSize.width)
+        let minimumWidth = minimumSize.width.isFinite ? max(minimumSize.width, 0) : 0
+        let minimumHeight = minimumSize.height.isFinite ? max(minimumSize.height, 0) : 0
+        var width = max(currentSize.width, minimumWidth)
         var height = width / aspectRatio
-        if height < minimumSize.height {
-            height = minimumSize.height
+        let visibleFrame = window.screen?.visibleFrame
+        if height < minimumHeight {
+            height = minimumHeight
             width = height * aspectRatio
         }
-        if let visibleFrame = window.screen?.visibleFrame {
+        if let visibleFrame, Self.isValid(frame: visibleFrame) {
             let chromeWidth = max(window.frame.width - currentSize.width, 0)
             let chromeHeight = max(window.frame.height - currentSize.height, 0)
             let maximumWidth = max(visibleFrame.width - chromeWidth, 1)
@@ -153,8 +167,9 @@ final class StreamWindowAspectCoordinator {
                 width = height * aspectRatio
             }
         }
-        window.setContentSize(NSSize(width: width, height: height))
-        Self.positionWindow(window, topEdge: topEdge, centerX: centerX)
+        let contentRect = NSRect(x: 0, y: 0, width: width, height: height)
+        let targetFrame = NSWindow.frameRect(forContentRect: contentRect, styleMask: window.styleMask)
+        Self.setFrame(window, targetFrame: targetFrame, topEdge: topEdge, centerX: centerX, visibleFrame: visibleFrame)
     }
 
     private func scheduleCurrentWindowRestoration() {
@@ -166,6 +181,7 @@ final class StreamWindowAspectCoordinator {
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 guard !window.styleMask.contains(.fullScreen) else { return }
+                guard Self.hasValidGeometry(window) else { return }
                 if clearsAspectRatio {
                     window.contentAspectRatio = .zero
                     window.aspectRatio = .zero
@@ -179,24 +195,54 @@ final class StreamWindowAspectCoordinator {
 
     private static func setFullSizeContentView(_ enabled: Bool, on window: NSWindow) {
         guard window.styleMask.contains(.fullSizeContentView) != enabled else { return }
-        let topEdge = window.frame.maxY
-        let centerX = window.frame.midX
+        guard let contentView = window.contentView, hasValidGeometry(window) else { return }
+        let currentFrame = window.frame
+        var styleMask = window.styleMask
         if enabled {
-            window.styleMask.insert(.fullSizeContentView)
+            styleMask.insert(.fullSizeContentView)
         } else {
-            window.styleMask.remove(.fullSizeContentView)
+            styleMask.remove(.fullSizeContentView)
         }
-        positionWindow(window, topEdge: topEdge, centerX: centerX)
+        let contentRect = NSRect(origin: .zero, size: contentView.bounds.size)
+        let targetFrame = NSWindow.frameRect(forContentRect: contentRect, styleMask: styleMask)
+        guard isValid(frame: targetFrame) else { return }
+        let visibleFrame = window.screen?.visibleFrame
+        window.styleMask = styleMask
+        setFrame(window, targetFrame: targetFrame, topEdge: currentFrame.maxY, centerX: currentFrame.midX, visibleFrame: visibleFrame)
     }
 
-    private static func positionWindow(_ window: NSWindow, topEdge: CGFloat, centerX: CGFloat) {
-        var frame = window.frame
+    private static func setFrame(_ window: NSWindow, targetFrame: NSRect, topEdge: CGFloat, centerX: CGFloat, visibleFrame: NSRect?) {
+        guard isValid(frame: targetFrame), topEdge.isFinite, centerX.isFinite else { return }
+        var frame = targetFrame
         frame.origin.x = centerX - frame.width / 2
         frame.origin.y = topEdge - frame.height
-        if let screen = window.screen {
-            frame = window.constrainFrameRect(frame, to: screen)
+        if let visibleFrame, isValid(frame: visibleFrame) {
+            if frame.width <= visibleFrame.width {
+                frame.origin.x = min(max(frame.origin.x, visibleFrame.minX), visibleFrame.maxX - frame.width)
+            } else {
+                frame.origin.x = visibleFrame.minX
+            }
+            if frame.height <= visibleFrame.height {
+                frame.origin.y = min(max(frame.origin.y, visibleFrame.minY), visibleFrame.maxY - frame.height)
+            } else {
+                frame.origin.y = visibleFrame.minY
+            }
         }
+        guard isValid(frame: frame) else { return }
         window.setFrame(frame, display: true)
+    }
+
+    private static func hasValidGeometry(_ window: NSWindow) -> Bool {
+        guard let contentView = window.contentView else { return false }
+        return isValid(frame: window.frame) && isValid(size: contentView.bounds.size)
+    }
+
+    private static func isValid(frame: NSRect) -> Bool {
+        frame.origin.x.isFinite && frame.origin.y.isFinite && isValid(size: frame.size)
+    }
+
+    private static func isValid(size: NSSize) -> Bool {
+        size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
     }
 
     private func addFullScreenTransitionObservers(for window: NSWindow?) {

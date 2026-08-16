@@ -29,6 +29,10 @@ import Testing
     #expect(window.aspectRatio == .zero)
     #expect(window.contentAspectRatio == NSSize(width: 1.6, height: 1))
     #expect(abs(window.frame.maxY - originalTopEdge) < 0.001)
+    #expect(window.frame.origin.x.isFinite)
+    #expect(window.frame.origin.y.isFinite)
+    #expect(window.frame.width.isFinite)
+    #expect(window.frame.height.isFinite)
 
     coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: false)
     await applyPendingWindowChanges()
@@ -85,6 +89,36 @@ import Testing
     #expect(contentView.bounds.width >= 960)
     #expect(contentView.bounds.height >= 600)
     #expect(abs(contentView.bounds.width / contentView.bounds.height - 1.6) < 0.001)
+}
+
+@Test @MainActor func streamWindowWaitsForValidGeometryBeforeChangingWindowStyle() async throws {
+    let window = NSWindow(
+        contentRect: .zero,
+        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+        backing: .buffered,
+        defer: false
+    )
+    let coordinator = StreamWindowAspectCoordinator()
+    defer {
+        coordinator.detach()
+        window.close()
+    }
+
+    coordinator.attach(window)
+    coordinator.update(aspectRatio: 1.6, isLocked: true, usesTitlebarExclusiveContent: true)
+    await applyPendingWindowChanges()
+
+    #expect(window.styleMask.contains(.fullSizeContentView))
+
+    window.setFrame(NSRect(x: 100, y: 100, width: 1000, height: 625), display: false)
+    coordinator.windowGeometryDidChange()
+    await applyPendingWindowChanges()
+
+    let contentView = try #require(window.contentView)
+    #expect(!window.styleMask.contains(.fullSizeContentView))
+    #expect(abs(contentView.bounds.width / contentView.bounds.height - 1.6) < 0.001)
+    #expect(window.frame.origin.y.isFinite)
+    #expect(window.frame.height.isFinite)
 }
 
 @MainActor private func applyPendingWindowChanges() async {

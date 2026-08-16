@@ -418,6 +418,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         let view = WindowAspectView(frame: .zero)
         let coordinator = context.coordinator
         view.onWindowChanged = { window in coordinator.attach(window) }
+        view.onLayoutChanged = { coordinator.windowGeometryDidChange() }
         return view
     }
 
@@ -431,15 +432,22 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: WindowAspectView, coordinator: StreamWindowAspectCoordinator) {
         nsView.onWindowChanged = nil
+        nsView.onLayoutChanged = nil
         coordinator.detach()
     }
 
     final class WindowAspectView: NSView {
         var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
+        var onLayoutChanged: (@MainActor () -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             onWindowChanged?(window)
+        }
+
+        override func layout() {
+            super.layout()
+            onLayoutChanged?()
         }
     }
 }
