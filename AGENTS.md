@@ -54,14 +54,16 @@ When a `upstream-sync` PR conflicts on any of these paths, the upstream change a
 
 ## Identifier Re-Application
 
-Upstream commits may reintroduce `OpenNOW`/`opennow`/`OPENNOW_` identifiers on merged lines. After resolving file-level conflicts, run this sweep on the merge result to re-apply the fork's rename:
+Upstream commits may reintroduce `OpenNOW`/`opennow`/`OPENNOW_` identifiers on merged lines. After resolving file-level conflicts, run this sweep on the merge result to re-apply the fork's rename.
+
+**Never sweep `AGENTS.md`** — the rename mapping table above documents `OpenNOW` → `MacForceNow` by name; sweeping rewrites the table into nonsense (`MacForceNow` → `MacForceNow`).
 
 ```sh
 files=$(rg -l 'OpenNOW|opennow|OPENNOW_' \
   --glob '!**/.build/**' --glob '!**/.git/**' --glob '!**/WebRTC.framework/**' \
   --glob '!**/vendor/**' --glob '!**/Package.resolved' --glob '!**/.playwright-mcp/**' \
   --glob '!**/.claude/**' --glob '!**/.opencode/**' --glob '!**/.agents/**' \
-  --glob '!README.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md')
+  --glob '!README.md' --glob '!AGENTS.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md')
 echo "$files" | xargs sed -i '' 's/OpenNOW /MacForce Now /g; s/OpenNOW/MacForceNow/g; s/opennow/macforce-now/g; s/OPENNOW_/MACFORCE_NOW_/g'
 ```
 
@@ -84,12 +86,23 @@ sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/rele
    rg -n 'OpenNOW|opennow|OPENNOW_' --glob '!**/.build/**' --glob '!**/.git/**' \
      --glob '!**/WebRTC.framework/**' --glob '!**/vendor/**' --glob '!**/Package.resolved' \
      --glob '!**/.playwright-mcp/**' --glob '!**/.claude/**' --glob '!**/.opencode/**' \
-     --glob '!**/.agents/**' --glob '!README.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md'
+     --glob '!**/.agents/**' --glob '!README.md' --glob '!AGENTS.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md'
    ```
    Expect zero output.
-5. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`.
-6. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
-7. Commit the merge with `chore: sync upstream` and push.
+5. Verify fork identity survived (the sweep only fixes OpenNOW strings, not these):
+   - `MacForceNow.xcodeproj/project.pbxproj`: Debug `PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev"`, Release `= "com.necorico.macforce-now"`, Debug `PRODUCT_NAME = "MacForce Now Dev"`, `WARNING_CFLAGS = "-Wno-umbrella-headers"` present.
+   - `MacForceNowApp.swift`: updater is `MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")`.
+   - `.github/workflows/`: fork keeps `unit-tests.yml`; do not adopt upstream CI replacements without user approval.
+6. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. **Zero failures required before committing.** Hardware-dependent NVST tests stay gated behind `ENABLE_NVST_HARDWARE_TESTS=1`.
+7. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
+8. Commit the merge with `chore: sync upstream` and push.
+
+## Sync Pitfalls (learned from the 1.51 sync)
+
+- **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In the 1.51 sync, `--theirs` wiped the fork's quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` with the fork version as `ours` and review every conflict.
+- **Upstream feature deletions are decisions, not defaults.** When upstream deletes a subsystem the fork integrated (e.g. Twitch removal in `e688e8a`), surface it to the user before accepting the deletion — the fork may have built UI, settings, and tests around it that must be removed consistently.
+- **Fork features live inside shared files.** Fork-only code (Steam Controller hooks, Discord presence, pillarbox fill UI, Show All grid, uiScale) is inlined in files upstream also edits. After resolving, diff the result against fork `main` and grep for those feature keywords to confirm nothing was dropped.
+- **Modifying vendored dylibs breaks macOS code signing.** `install_name_tool` invalidates signatures; every process that stats the file afterwards (including `git status`) gets SIGKILL'd with `CODESIGNING: Invalid Page`. Re-sign immediately: `codesign --force --sign - <dylib>` (and `codesign --force --deep --sign -` for frameworks).
 
 # Coding Standards
 

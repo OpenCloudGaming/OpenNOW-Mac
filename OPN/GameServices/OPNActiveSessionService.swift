@@ -11,6 +11,10 @@ final class OPNActiveSessionObject: NSObject {
     let streamingBaseUrl: String
     let signalingUrl: String
 
+    var isResumable: Bool {
+        CloudMatchSessionState(rawValue: status)?.isVendorResumable == true
+    }
+
     init(sessionId: String, appId: Int, status: Int, serverIp: String, streamingBaseUrl: String, signalingUrl: String) {
         self.sessionId = sessionId
         self.appId = appId

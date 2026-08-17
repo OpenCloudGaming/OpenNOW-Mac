@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import MacForceNow
 
-@Suite @MainActor struct GamepadUINavigatorTests {
+@Suite(.serialized) @MainActor struct GamepadUINavigatorTests {
     private let activeDeviceID = InputDeviceID("steam-controller-test-device")
 
     private func makeSnapshot(buttons: GamepadButtons = [],

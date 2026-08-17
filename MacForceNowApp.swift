@@ -79,7 +79,6 @@ enum MacForceNowUpdatePreferences {
 @main
 struct MacForceNowApp: App {
     @NSApplicationDelegateAdaptor(MacForceNowAppDelegate.self) private var appDelegate
-    @StateObject private var twitchRealtime = TwitchRealtimeController()
 
     let sharedModelContainer: ModelContainer
 
@@ -133,8 +132,6 @@ struct MacForceNowApp: App {
     var body: some Scene {
         Window("MacForce Now", id: "main") {
             ContentView()
-                .environmentObject(twitchRealtime)
-                .onAppear { twitchRealtime.start() }
         }
         .defaultSize(width: 1100, height: 680)
         .modelContainer(sharedModelContainer)
@@ -258,12 +255,10 @@ final class MacForceNowAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
-        guard modifiers == .command else { return nil }
-        switch event.keyCode {
-        case microphoneShortcutKeyCode: return .toggleMicrophone
-        case recordingShortcutKeyCode: return .toggleRecording
-        case antiAFKShortcutKeyCode: return .toggleAntiAFK
+        guard let command = WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
+        switch command {
+        case .toggleMicrophone, .toggleRecording, .toggleAntiAFK:
+            return command
         default: return nil
         }
     }

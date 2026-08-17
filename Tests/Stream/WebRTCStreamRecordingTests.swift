@@ -20,7 +20,7 @@ private actor StreamRecordingStatusRecorder {
 struct WebRTCStreamRecordingTests {
     @Test("recording writes a video file from pixel buffers")
     func recordingWritesVideoFileFromPixelBuffers() async throws {
-        let recorder = WebRTCStreamRecorder(firstFrameTimeout: .seconds(1))
+        let recorder = WebRTCStreamRecorder()
         let statuses = StreamRecordingStatusRecorder()
         recorder.onStatusChanged = { status in
             Task { await statuses.append(status) }
@@ -37,12 +37,26 @@ struct WebRTCStreamRecordingTests {
             enhancedVideoEnabled: true
         ))
 
-        for frameIndex in 0..<8 {
+        var frameIndex = 0
+        var sawRecording = false
+        var framesAfterStart = 0
+        let feedDeadline = ContinuousClock.now + .seconds(15)
+        while ContinuousClock.now < feedDeadline {
+            if await statuses.terminalStatus() != nil { break }
             guard let pixelBuffer = Self.makeBGRAFrame(width: 64, height: 64, frameIndex: frameIndex) else {
                 Issue.record("Unable to create test pixel buffer")
                 return
             }
             recorder.appendEnhancedPixelBuffer(pixelBuffer)
+            frameIndex += 1
+            if sawRecording { framesAfterStart += 1 }
+            if !sawRecording {
+                sawRecording = await statuses.values.contains { status in
+                    if case .recording = status { return true }
+                    return false
+                }
+            }
+            if sawRecording && framesAfterStart >= 8 { break }
             try await Task.sleep(for: .milliseconds(34))
         }
         recorder.stop()
@@ -271,7 +285,7 @@ struct WebRTCStreamRecordingTests {
     }
 
     private static func makeRecording(title: String, width: Int, height: Int, frames: Int) async throws -> WebRTCStreamRecording {
-        let recorder = WebRTCStreamRecorder(firstFrameTimeout: .seconds(1))
+        let recorder = WebRTCStreamRecorder()
         let statuses = StreamRecordingStatusRecorder()
         recorder.onStatusChanged = { status in
             Task { await statuses.append(status) }
@@ -286,9 +300,30 @@ struct WebRTCStreamRecordingTests {
             audioBitrateKbps: 128,
             enhancedVideoEnabled: true
         ))
-        for frameIndex in 0..<frames {
-            guard let pixelBuffer = makeBGRAFrame(width: width, height: height, frameIndex: frameIndex) else { throw WebRTCStreamRecordingTestError.unableToCreatePixelBuffer }
-            recorder.appendEnhancedPixelBuffer(pixelBuffer)
+
+        // Feed frames until the writer accepts one; on loaded CI runners the asset
+        // writer input reports not-ready during spin-up and a fixed burst would all
+        // be dropped, tripping the first-frame timeout despite frames flowing.
+        var frameIndex = 0
+        var sawRecording = false
+        var framesAfterStart = 0
+        let feedDeadline = ContinuousClock.now + .seconds(15)
+        while ContinuousClock.now < feedDeadline {
+            if await statuses.terminalStatus() != nil { break }
+            if let pixelBuffer = makeBGRAFrame(width: width, height: height, frameIndex: frameIndex) {
+                recorder.appendEnhancedPixelBuffer(pixelBuffer)
+                frameIndex += 1
+                if sawRecording { framesAfterStart += 1 }
+            } else {
+                throw WebRTCStreamRecordingTestError.unableToCreatePixelBuffer
+            }
+            if !sawRecording {
+                sawRecording = await statuses.values.contains { status in
+                    if case .recording = status { return true }
+                    return false
+                }
+            }
+            if sawRecording && framesAfterStart >= frames { break }
             try await Task.sleep(for: .milliseconds(34))
         }
         recorder.stop()

@@ -1,5 +1,55 @@
 import Foundation
 
+public struct NativeNVSTSessionAllocation: Equatable, Sendable {
+    public let session: StreamSessionDescriptor
+    public let isResume: Bool
+    public let signalingServer: String
+    public let signalingURL: String
+    public let signalingQueryParameters: String
+    public let signalingHeaders: [String]
+    public let streamingBaseURL: String
+    public let mediaHost: String
+    public let mediaPort: Int
+    public let serverType: Int
+    public let authTokenType: String
+    public let authToken: String
+    public let settingsJSON: String
+    public let sessionInfoJSON: String
+    public let rawSessionJSON: String
+
+    public init(session: StreamSessionDescriptor,
+                isResume: Bool = false,
+                signalingServer: String,
+                signalingURL: String,
+                signalingQueryParameters: String,
+                signalingHeaders: [String],
+                streamingBaseURL: String,
+                mediaHost: String,
+                mediaPort: Int,
+                serverType: Int,
+                authTokenType: String = "",
+                authToken: String = "",
+                settingsJSON: String,
+                sessionInfoJSON: String,
+                rawSessionJSON: String) {
+        self.session = session
+        self.isResume = isResume
+        self.signalingServer = signalingServer
+        self.signalingURL = signalingURL
+        self.signalingQueryParameters = signalingQueryParameters
+        self.signalingHeaders = signalingHeaders
+        self.streamingBaseURL = streamingBaseURL
+        self.mediaHost = mediaHost
+        self.mediaPort = max(0, mediaPort)
+        self.serverType = serverType
+        self.authTokenType = authTokenType.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.authToken = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.settingsJSON = settingsJSON.isEmpty ? "{}" : settingsJSON
+        self.sessionInfoJSON = sessionInfoJSON.isEmpty ? "{}" : sessionInfoJSON
+        self.rawSessionJSON = rawSessionJSON.isEmpty ? "{}" : rawSessionJSON
+    }
+}
+
 public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
     private static let maxBufferedIceCandidates = 120
 
@@ -46,6 +96,69 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
             }
             throw error
         }
+    }
+
+    public func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
+        guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
+        }
+        let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
+        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        guard profile.transportMode.value.caseInsensitiveCompare("nvst") == .orderedSame else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+        }
+        let launch = await prepareLaunch(configuration: configuration)
+        guard string(launch.settings["transportMode"]).caseInsensitiveCompare("nvst") == .orderedSame else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+        }
+        let serverType: Int
+        do {
+            serverType = try await OPNStreamPreferences.fetchServerType(token: configuration.accessToken, streamingBaseUrl: launch.streamingBaseUrl) ?? 0
+        } catch {
+            try Task.checkCancellation()
+            serverType = 0
+        }
+        try Task.checkCancellation()
+        let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
+        let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
+        if Task.isCancelled {
+            try? await finishSession(descriptor, reason: .userRequested)
+            throw CancellationError()
+        }
+        activeSession = descriptor
+        return NativeNVSTSessionAllocation(
+            session: descriptor,
+            isResume: configuration.resumesExistingSession || sessionInfo.isResume,
+            signalingServer: sessionInfo.signalingServer,
+            signalingURL: sessionInfo.signalingUrl,
+            signalingQueryParameters: sessionInfo.signalingQueryParameters,
+            signalingHeaders: sessionInfo.signalingHeaders,
+            streamingBaseURL: sessionInfo.streamingBaseUrl,
+            mediaHost: sessionInfo.mediaConnectionHost,
+            mediaPort: sessionInfo.mediaConnectionPort,
+            serverType: serverType,
+            authTokenType: "JWT_GFN",
+            authToken: configuration.accessToken,
+            settingsJSON: jsonString(launch.settings),
+            sessionInfoJSON: sessionInfo.rawJSON,
+            rawSessionJSON: sessionInfo.rawSessionJSON
+        )
+    }
+
+    public func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
+        let recoveryConfiguration = StreamLaunchConfiguration(
+            id: configuration.id,
+            title: configuration.title,
+            applicationID: session.applicationID,
+            accessToken: configuration.accessToken,
+            accountLinked: configuration.accountLinked,
+            selectedStore: configuration.selectedStore,
+            resumeSessionID: session.id,
+            resumeServer: session.serverAddress,
+            metadata: configuration.metadata
+        )
+        return try await startNativeNVSTSession(configuration: recoveryConfiguration)
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
@@ -154,9 +267,17 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
         return try await withCheckedThrowingContinuation { continuation in
-            OPNSessionManager.shared.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForce Now" : configuration.title, settings: settings) { success, info, error in
+            OPNSessionManager.shared.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
+                } else if info["isSessionLimitConflict"] as? Bool == true {
+                    let applicationID = self.string(info["appId"])
+                    continuation.resume(throwing: MacForceNowStreamSessionError.activeSessionConflict(StreamSessionConflict(
+                        sessionID: self.string(info["sessionId"]),
+                        applicationID: applicationID.isEmpty ? configuration.applicationID : applicationID,
+                        serverAddress: self.string(info["serverIp"]),
+                        isResumable: self.bool(info["isResumable"])
+                    )))
                 } else {
                     continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error))
                 }
@@ -491,7 +612,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func shouldReportFinishedSession(_ reason: StreamEndReason) -> Bool {
-        reason == .userRequested || reason == .completed || reason == .remoteEnded
+        reason == .userRequested || reason == .completed || reason == .remoteEnded || reason == .failed
     }
 
     private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
@@ -658,7 +779,10 @@ private struct AllocatedStreamSession: Sendable {
     let signalingQueryParameters: String
     let signalingHeaders: [String]
     let streamingBaseUrl: String
+    let mediaConnectionHost: String
+    let mediaConnectionPort: Int
     let deviceId: String
+    let isResume: Bool
     let status: Int
     let queuePosition: Int
     let seatSetupStep: Int
@@ -668,6 +792,7 @@ private struct AllocatedStreamSession: Sendable {
     let remainingSessionLimitSeconds: Int
     let pendingAd: AllocatedSessionAd?
     let rawJSON: String
+    let rawSessionJSON: String
 
     var isReady: Bool {
         (status == 2 || status == 3) && !sessionId.isEmpty && !serverIp.isEmpty
@@ -688,7 +813,11 @@ private struct AllocatedStreamSession: Sendable {
         signalingQueryParameters = Self.string(info["signalingQueryParameters"])
         signalingHeaders = Self.stringArray(info["signalingHeaders"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
+        let mediaConnectionInfo = info["mediaConnectionInfo"] as? [String: Any]
+        mediaConnectionHost = Self.string(mediaConnectionInfo?["ip"])
+        mediaConnectionPort = Self.int(mediaConnectionInfo?["port"])
         deviceId = Self.string(info["deviceId"])
+        isResume = Self.bool(info["isResume"])
         status = Self.int(info["status"])
         queuePosition = Self.int(info["queuePosition"])
         seatSetupStep = Self.int(info["seatSetupStep"])
@@ -698,6 +827,7 @@ private struct AllocatedStreamSession: Sendable {
         requiredAdGateObserved = Self.bool(info["requiredAdGateObserved"])
         remainingSessionLimitSeconds = Self.int(info["remainingSessionLimitSeconds"])
         pendingAd = Self.pendingAd(from: adState)
+        rawSessionJSON = Self.string(info["rawSessionJSON"], fallback: "{}")
         rawJSON = Self.jsonString(info)
     }
 
@@ -729,11 +859,11 @@ private struct AllocatedStreamSession: Sendable {
         return string
     }
 
-    private static func string(_ value: Any?) -> String {
-        if let value = value as? String { return value }
-        if let value = value as? NSString { return value as String }
+    private static func string(_ value: Any?, fallback: String = "") -> String {
+        if let value = value as? String { return value.isEmpty ? fallback : value }
+        if let value = value as? NSString { let string = value as String; return string.isEmpty ? fallback : string }
         if let value = value as? NSNumber { return value.stringValue }
-        return ""
+        return fallback
     }
 
     private static func int(_ value: Any?) -> Int {
@@ -817,6 +947,7 @@ private struct AllocatedSessionAd: Equatable, Sendable {
 }
 
 public enum MacForceNowStreamSessionError: LocalizedError, Sendable {
+    case activeSessionConflict(StreamSessionConflict)
     case sessionAllocationFailed(String)
     case sessionStopFailed(String)
     case signalingFailed(String)
@@ -824,6 +955,10 @@ public enum MacForceNowStreamSessionError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
+        case .activeSessionConflict(let conflict):
+            conflict.isResumable
+                ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
+                : "A GeForce NOW session is already active. End it before launching another game."
         case .sessionAllocationFailed(let message), .sessionStopFailed(let message), .signalingFailed(let message):
             message
         case .signalingUnavailable:

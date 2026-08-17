@@ -128,7 +128,6 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
-    @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @State private var viewModel: CatalogViewModel
@@ -261,9 +260,6 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
-        .onChange(of: viewModel.twitchAccountStatus.isConnected) { _, isConnected in
-            if isConnected { twitchRealtime.restart() } else { twitchRealtime.stop() }
-        }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }
@@ -1444,10 +1440,6 @@ private struct CatalogMainMenuPanel: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
-                        CatalogMainMenuRow(title: catalogBroadcastMenuTitle, subtitle: catalogBroadcastMenuSubtitle, systemImage: "dot.radiowaves.left.and.right", isActive: viewModel.catalogBroadcastStatus.isBroadcasting) {
-                            viewModel.toggleCatalogTwitchBroadcast()
-                            isPresented = false
-                        }
                         CatalogMainMenuRow(title: viewModel.isCatalogRefreshInProgress ? "Refreshing Catalog" : "Refresh Catalog", subtitle: viewModel.isCatalogRefreshInProgress ? "Fetching latest panels and game metadata" : "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false, isLoading: viewModel.isCatalogRefreshInProgress) {
                             viewModel.refresh()
                         }
@@ -1488,27 +1480,6 @@ private struct CatalogMainMenuPanel: View {
                 .frame(height: 2)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-    }
-
-    private var catalogBroadcastMenuTitle: String {
-        switch viewModel.catalogBroadcastStatus {
-        case .idle: return "Start Twitch Broadcast"
-        case .connecting: return "Connecting Twitch"
-        case .publishing, .live: return "Stop Twitch Broadcast"
-        case .stopping: return "Stopping Twitch"
-        case .failed: return "Retry Twitch Broadcast"
-        }
-    }
-
-    private var catalogBroadcastMenuSubtitle: String {
-        switch viewModel.catalogBroadcastStatus {
-        case .idle: return "Stream this session to Twitch"
-        case .connecting: return "Preparing the live broadcast"
-        case .publishing: return "Publishing stream; Twitch confirmation pending"
-        case .live: return "Channel is live"
-        case .stopping: return "Stopping the broadcast"
-        case .failed(let message): return message.isEmpty ? "Broadcast failed" : message
-        }
     }
 
     private func catalogDestinationIcon(_ destination: CatalogDestination) -> String {

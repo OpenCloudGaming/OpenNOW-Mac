@@ -114,11 +114,12 @@ public final class OPNGameLaunchBridge {
                 let game = gameBox.value
                 let sessions = sessionsBox.value
                 if ok {
-                    if let requestedSession = sessions.first(where: { self.activeSession($0, matches: game, appId: appId) }) {
+                    let matchingSessions = sessions.filter { self.activeSession($0, matches: game, appId: appId) }
+                    if let requestedSession = matchingSessions.first(where: \.isResumable) ?? matchingSessions.first {
                         completion(true, "A GeForce NOW session is already active for \(title).", self.activeSessionPlan(activeSession: requestedSession, activeTitle: title, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
                         return
                     }
-                    if let activeSession = sessions.first {
+                    if let activeSession = sessions.first(where: \.isResumable) ?? sessions.first {
                         let activeTitle = activeSession.appId > 0 ? "App ID \(activeSession.appId)" : "Current Stream"
                         completion(true, "Another GeForce NOW session is already active.", self.activeSessionPlan(activeSession: activeSession, activeTitle: activeTitle, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
                         return
@@ -132,14 +133,15 @@ public final class OPNGameLaunchBridge {
 
     private func activeSessionPlan(activeSession: OPNActiveSessionObject, activeTitle: String, fallbackAppId: String, token: String, launchMetadata: [String: String], replacement: OPNStreamLaunchConfiguration) -> OPNGameLaunchPlan {
         let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, title: activeTitle)
+        let isResumable = activeSession.isResumable
         let resume = OPNStreamLaunchConfiguration(
             title: active.title,
             appId: activeSession.appId > 0 ? String(activeSession.appId) : fallbackAppId,
             apiToken: token,
             accountLinked: true,
             selectedStore: "",
-            resumeSessionId: activeSession.sessionId,
-            resumeServer: activeSession.serverIp,
+            resumeSessionId: isResumable ? activeSession.sessionId : "",
+            resumeServer: isResumable ? activeSession.serverIp : "",
             metadata: launchMetadata
         )
         return .activeSession(active: active, resume: resume, replacement: replacement)
