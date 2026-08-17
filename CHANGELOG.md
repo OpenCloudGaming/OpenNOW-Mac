@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/anderson-oki/macforce-now/compare/v0.12.0...v0.13.0) (2026-08-16)
+
+
+### Features
+
+* improve loading stream screen ui ([bbb95ee](https://github.com/anderson-oki/macforce-now/commit/bbb95eeeca2d9f095efc40bdee7af41d678e993e))
+
 ## [0.12.0](https://github.com/anderson-oki/macforce-now/compare/v0.11.1...v0.12.0) (2026-08-16)
 
 
