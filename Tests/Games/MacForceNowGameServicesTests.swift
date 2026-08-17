@@ -989,8 +989,7 @@ import Foundation
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(request.url?.query?.contains("keyboardLayout=us") == true)
-    // WebRTC sessions identify as the native GFN-PC client; a browser identity makes GeForce NOW cap
-    // the server desktop at the web-client resolution (~2560), downscaling 5K requests.
+    // WebRTC sessions use browser identity; NVST native sessions identify as Windows GFN-PC client.
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
     #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
@@ -999,7 +998,7 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
-    #expect(requestData["clientPlatformName"] as? String == "windows")
+    #expect(requestData["clientPlatformName"] as? String == "browser")
     // HDR off (default) -> capabilities must be null to avoid GFN's HDR-pipeline downscale.
     #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
     #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
@@ -1104,7 +1103,7 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
     #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
-    #expect(requestData["clientPlatformName"] as? String == "windows")
+    #expect(requestData["clientPlatformName"] as? String == "browser")
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
     #expect(requestData["transport"] == nil)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
@@ -1326,7 +1325,7 @@ import Foundation
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
     #expect(claimRequestData?["appId"] as? Int == 123)
-    #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
+    #expect(claimRequestData?["clientPlatformName"] as? String == "browser")
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["clientDisplayHdrCapabilities"] is NSNull)
@@ -1382,7 +1381,7 @@ import Foundation
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
-    #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
+    #expect(claimRequestData?["clientPlatformName"] as? String == "browser")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
     #expect(claimRequestData?["transport"] == nil)
     #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
@@ -1462,7 +1461,7 @@ import Foundation
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 7, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
     }
@@ -1484,7 +1483,7 @@ import Foundation
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     #expect(UserDefaults.standard.string(forKey: "MacForceNow.Stream.ActiveSessionId") == nil)
-    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+    #expect(requests.map(\.httpMethod) == ["GET"])
     }
 }
 

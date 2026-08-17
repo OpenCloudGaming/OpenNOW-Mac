@@ -66,6 +66,9 @@ let package = Package(
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(packageRoot)/vendor/gfn-runtime/Frameworks"])
             ]
         )
     ]

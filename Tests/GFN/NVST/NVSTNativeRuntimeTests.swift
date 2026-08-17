@@ -83,6 +83,10 @@ struct NVSTNativeRuntimeTests {
 }
 
 @Test @MainActor func nvstGeronimoCreatesWithVendoredGridAppCallbackABI() {
+    guard ProcessInfo.processInfo.environment["ENABLE_NVST_HARDWARE_TESTS"] == "1" else {
+        return
+    }
+
     let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
     var errorBuffer = [CChar](repeating: 0, count: 1024)
     let session = frameworksDirectory.path.withCString { frameworksPath in

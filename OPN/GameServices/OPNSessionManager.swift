@@ -76,7 +76,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "audioMode": int(effectiveSettings["audioMode"], fallback: 2),
             "metaData": metadata,
             "sdrHdrMode": hdrEnabled ? 1 : 0,
-            "clientDisplayHdrCapabilities": hdrEnabled ? clientDisplayHdrCapabilities(capabilities) : NSNull(),
+            "clientDisplayHdrCapabilities": NSNull(),
             "surroundAudioInfo": int(effectiveSettings["surroundAudioInfo"], fallback: 0),
             "remoteControllersBitmap": int(effectiveSettings["remoteControllersBitmap"]),
             "clientTimezoneOffset": timezoneOffset,
@@ -463,7 +463,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "sdkVersion": "1.0",
             "enhancedStreamMode": int(settings["enhancedStreamMode"], fallback: 1),
             "useOps": bool(settings["useOps"], fallback: true),
-            "clientDisplayHdrCapabilities": hdrEnabled ? clientDisplayHdrCapabilities(capabilities) : NSNull(),
+            "clientDisplayHdrCapabilities": NSNull(),
             "accountLinked": bool(settings["accountLinked"], fallback: true),
             "partnerCustomData": string(settings["partnerCustomData"]),
             "enablePersistingInGameSettings": bool(settings["enablePersistingInGameSettings"]),
@@ -950,12 +950,7 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
         "sdrHdrMode": hdrEnabled ? 1 : 0,
         "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : [:],
         "hdr10PlusGamingData": NSNull(),
-        // MUST be exactly 0 — "native desktop, no scaling". GeForce NOW treats any nonzero dpi as a
-        // Windows display-scaling factor and scales the server desktop DOWN, so the game renders at a
-        // fraction of the requested resolution (e.g. a Retina scale=2 -> dpi 200 -> 200% -> 5120x2160
-        // collapses to a 2560x1080 desktop). 100 is NOT equivalent to 0: any positive value triggers
-        // scaling; only 0 yields the full native desktop. The working reference client (MacForceNow) sends 0.
-        "dpi": 0,
+        "dpi": max(0, capabilities.displayDpi),
     ]
 }
 
@@ -1003,11 +998,7 @@ private func streamTransportMode(_ settings: [String: Any]) -> String {
 }
 
 private func sessionClientPlatformName(_ transportMode: String) -> String {
-    // Always identify as a native "windows" client. Reporting "browser" makes GeForce NOW apply the
-    // web-client resolution cap, which downscales the server desktop (5120x2160 -> 2560x1080). The
-    // working reference client (MacForceNow) sends "windows" on every transport, including WebRTC.
-    _ = transportMode
-    return "windows"
+    transportMode == "nvst" ? "windows" : "browser"
 }
 
 private func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any]? {

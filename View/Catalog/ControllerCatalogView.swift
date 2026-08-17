@@ -126,14 +126,19 @@ private struct ControllerLayoutMetrics {
 }
 
 struct ControllerCatalogView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
 
     @StateObject private var inputRouter = ControllerInputRouter()
+    @StateObject private var steamNavigator = GamepadUINavigator()
     @StateObject private var controllerViewModel = ControllerCatalogViewModel()
+
+    private var activeGlyphs: ControllerInputGlyphSet {
+        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
+    }
 
     private var navigationItems: [ControllerNavigationItem] { controllerViewModel.navigationItems }
 
@@ -141,10 +146,16 @@ struct ControllerCatalogView: View {
         GeometryReader { proxy in
             let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
             ZStack {
-                ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
+                // The search overlay is near-opaque; dropping the hero background and
+                // games page while it is up keeps them from rendering behind it.
+                if isSearchOverlayPresented {
+                    Color.black
+                } else {
+                    ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
+                }
 
                 VStack(spacing: 0) {
-                    ControllerHeader(viewModel: viewModel, glyphs: inputRouter.glyphs, layout: layout)
+                    ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout)
                     ControllerNavigationBar(
                         items: navigationItems,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
@@ -153,8 +164,12 @@ struct ControllerCatalogView: View {
                         layout: layout,
                         select: selectNavigationItem
                     )
-                    controllerPage(layout: layout)
-                    ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
+                    if isSearchOverlayPresented && viewModel.selectedMainPage == .games {
+                        Spacer(minLength: 0)
+                    } else {
+                        controllerPage(layout: layout)
+                    }
+                    ControllerHintBar(hints: hints, glyphs: activeGlyphs, layout: layout)
                 }
                 .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
                 .padding(.leading, layout.leadingInset)
@@ -162,18 +177,15 @@ struct ControllerCatalogView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
-                if controllerViewModel.isSearchVisible {
+                if isSearchOverlayPresented {
                     ControllerSearchOverlay(
                         viewModel: viewModel,
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         rowIndex: controllerViewModel.searchRowIndex,
                         filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                         resultIndex: controllerViewModel.searchResultIndex,
-                        resultColumnCount: $controllerViewModel.searchResultColumnCount,
                         layout: layout,
-                        selectSort: { index in setSort(at: index) },
-                        selectFilter: { group, index in setFilterOption(group: group, index: index) },
-                        selectResult: { game in openDetails(game, sectionId: "catalog-results") },
+                        selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
                         close: { closeSearchOverlay() },
                         clear: { viewModel.clearSearchAndFilters() }
                     )
@@ -187,53 +199,49 @@ struct ControllerCatalogView: View {
                         game: game,
                         selectedActionIndex: controllerViewModel.detailActionIndex,
                         actions: detailActions(for: game),
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         layout: layout,
                         perform: executeDetailAction,
                         close: closeDetails
                     )
                     .transition(.opacity)
-                    .zIndex(28)
+                    .zIndex(35)
                 }
 
-                if let showAllSection = currentShowAllSection {
-                    ControllerShowAllOverlay(
-                        viewModel: viewModel,
-                        section: showAllSection,
-                        selectedIndex: controllerViewModel.showAllIndex,
-                        columnCount: $controllerViewModel.showAllColumnCount,
-                        glyphs: inputRouter.glyphs,
-                        layout: layout,
-                        select: { game in openDetails(game, sectionId: showAllSection.id) },
-                        close: closeShowAll
-                    )
-                    .transition(.opacity)
-                    .zIndex(26)
-                }
-
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+            // Attached as an overlay of the clipped container (rather than as a
+            // ZStack sibling) so the action menu inherits exactly the bounds the
+            // visible content is laid out in and can never anchor past the
+            // window's trailing edge.
+            .overlay {
                 if controllerViewModel.isActionMenuVisible {
                     ControllerActionMenuOverlay(
                         items: actionMenuItems,
                         selectedIndex: controllerViewModel.actionMenuIndex,
-                        glyphs: inputRouter.glyphs,
+                        glyphs: activeGlyphs,
                         layout: layout,
                         isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
                         perform: executeActionMenuItem,
                         close: closeActionMenu
                     )
                     .transition(.opacity)
-                    .zIndex(34)
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
         }
         .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
         .onAppear {
             inputRouter.onCommand = handleInput
+            steamNavigator.onCommand = handleInput
+            steamNavigator.start(capturingInput: true)
             synchronizeNavigationSelection()
         }
-        .onDisappear { inputRouter.onCommand = nil }
+        .onDisappear {
+            inputRouter.onCommand = nil
+            steamNavigator.onCommand = nil
+            steamNavigator.stop()
+        }
         .onChange(of: viewModel.selectedMainPage) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.selectedCatalogDestination) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in clampRailSelection() }
@@ -265,8 +273,12 @@ struct ControllerCatalogView: View {
         }
     }
 
+    private var isSearchOverlayPresented: Bool {
+        controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil
+    }
+
     private var hasModalOverlay: Bool {
-        controllerViewModel.hasControllerOverlay || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
+        controllerViewModel.hasControllerOverlay || viewModel.selectedShowAllSection != nil || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
     }
 
     private var activeNavigationItem: ControllerNavigationItem {
@@ -292,9 +304,8 @@ struct ControllerCatalogView: View {
 
     private var hints: [ControllerHint] {
         if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
-        if controllerViewModel.isSearchVisible { return [.move, .select, .back, .clear] }
+        if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
-        if controllerViewModel.showAllSection != nil { return [.move, .select, .back] }
         if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
         return [.move, .select, .back, .search, .menu]
     }
@@ -302,7 +313,7 @@ struct ControllerCatalogView: View {
     private var actionMenuItems: [ControllerActionMenuItem] {
         var items: [ControllerActionMenuItem] = [.refresh]
         if viewModel.isBrowseMode { items.append(.clearSearch) }
-        items.append(contentsOf: [.home, .library, .favorites, .recordings, .settings])
+        items.append(contentsOf: [.home, .recordings, .settings])
         for account in accounts where account.id != viewModel.account.id {
             items.append(.switchAccount(account))
         }
@@ -313,8 +324,7 @@ struct ControllerCatalogView: View {
     private func handleInput(_ command: ControllerInputCommand) {
         if handleSharedOverlayInput(command) { return }
         if controllerViewModel.isActionMenuVisible { handleActionMenuInput(command); return }
-        if controllerViewModel.isSearchVisible { handleSearchInput(command); return }
-        if controllerViewModel.showAllSection != nil { handleShowAllInput(command); return }
+        if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { handleSearchInput(command); return }
         if controllerViewModel.isDetailVisible { handleDetailInput(command); return }
         handlePageInput(command)
     }
@@ -409,22 +419,6 @@ struct ControllerCatalogView: View {
         }
     }
 
-    private func handleShowAllInput(_ command: ControllerInputCommand) {
-        guard let section = currentShowAllSection else { return }
-        switch command {
-        case .move(.left): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - 1, 0)
-        case .move(.right): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + 1, max(section.games.count - 1, 0))
-        case .move(.up): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - controllerViewModel.showAllColumnCount, 0)
-        case .move(.down): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + controllerViewModel.showAllColumnCount, max(section.games.count - 1, 0))
-        case .confirm:
-            guard section.games.indices.contains(controllerViewModel.showAllIndex) else { return }
-            openDetails(section.games[controllerViewModel.showAllIndex], sectionId: section.id)
-        case .back, .actions, .menu: closeShowAll()
-        case .search: openSearchOverlay()
-        default: break
-        }
-    }
-
     private func handleDetailInput(_ command: ControllerInputCommand) {
         guard let game = viewModel.selectedGame else { return }
         let actions = detailActions(for: game)
@@ -492,7 +486,7 @@ struct ControllerCatalogView: View {
             viewModel.showRecordings()
             controllerViewModel.focusArea = .navigation
         case .settings:
-            viewModel.showSettings(.interface)
+            viewModel.showSettings(.general)
             controllerViewModel.focusArea = .navigation
         case .actions:
             openActionMenu()
@@ -503,11 +497,6 @@ struct ControllerCatalogView: View {
         let sections = viewModel.catalogSections
         guard sections.indices.contains(controllerViewModel.selectedRailIndex) else { return nil }
         return sections[controllerViewModel.selectedRailIndex]
-    }
-
-    private var currentShowAllSection: CatalogSectionModel? {
-        guard let section = controllerViewModel.showAllSection else { return nil }
-        return viewModel.catalogSections.first { $0.id == section.id } ?? section
     }
 
     private func moveRail(delta: Int) {
@@ -533,7 +522,6 @@ struct ControllerCatalogView: View {
         controllerViewModel.detailActionIndex = 0
         controllerViewModel.isDetailVisible = true
         controllerViewModel.isSearchVisible = false
-        controllerViewModel.showAllSection = nil
     }
 
     private func closeDetails() {
@@ -549,6 +537,7 @@ struct ControllerCatalogView: View {
 
     private func closeSearchOverlay() {
         controllerViewModel.isSearchVisible = false
+        viewModel.closeShowAll()
     }
 
     private func openActionMenu() {
@@ -561,14 +550,17 @@ struct ControllerCatalogView: View {
     }
 
     private func openShowAll(_ section: CatalogSectionModel) {
-        controllerViewModel.showAllSection = section
-        controllerViewModel.showAllIndex = clampedSelectedGameIndex(for: section, gameCount: section.games.count)
-        viewModel.loadFullSectionIfNeeded(section)
-    }
-
-    private func closeShowAll() {
-        controllerViewModel.showAllSection = nil
-        controllerViewModel.showAllIndex = 0
+        viewModel.openShowAll(section)
+        controllerViewModel.isSearchVisible = true
+        controllerViewModel.searchRowIndex = 0
+        controllerViewModel.searchResultIndex = 0
+        for group in viewModel.visibleFilterGroups {
+            if let index = group.options.firstIndex(where: { viewModel.selectedFilterIds.contains($0.id) }) {
+                controllerViewModel.searchFilterOptionIndices[group.id] = index
+            } else {
+                controllerViewModel.searchFilterOptionIndices[group.id] = 0
+            }
+        }
     }
 
     private func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
@@ -613,27 +605,18 @@ struct ControllerCatalogView: View {
     }
 
     private var searchRowCount: Int {
-        2 + viewModel.visibleFilterGroups.count + (viewModel.catalogGames.isEmpty ? 0 : 1)
+        2 + (viewModel.catalogGames.isEmpty ? 0 : 1)
     }
 
     private func moveSearchSelection(delta: Int) {
         if controllerViewModel.searchRowIndex == 1 {
-            let count = viewModel.sortOptions.count
-            guard count > 0 else { return }
-            let index = selectedSortIndex()
-            setSort(at: min(max(index + delta, 0), count - 1))
+            let chipCount = 1 + viewModel.visibleFilterGroups.count + (viewModel.selectedFilterCount > 0 ? 1 : 0)
+            let currentChip = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
+            let next = min(max(currentChip + delta, 0), chipCount - 1)
+            controllerViewModel.searchFilterOptionIndices["_barIndex"] = next
             return
         }
-        let filterStart = 2
-        let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
-            guard !group.options.isEmpty else { return }
-            let index = min(max((controllerViewModel.searchFilterOptionIndices[group.id] ?? 0) + delta, 0), group.options.count - 1)
-            controllerViewModel.searchFilterOptionIndices[group.id] = index
-            return
-        }
-        if controllerViewModel.searchRowIndex == filterEnd, !viewModel.catalogGames.isEmpty {
+        if controllerViewModel.searchRowIndex == 2, !viewModel.catalogGames.isEmpty {
             controllerViewModel.searchResultIndex = min(max(controllerViewModel.searchResultIndex + delta, 0), viewModel.catalogGames.count - 1)
         }
     }
@@ -644,36 +627,36 @@ struct ControllerCatalogView: View {
             return
         }
         if controllerViewModel.searchRowIndex == 1 {
-            setSort(at: selectedSortIndex())
+            let chipIndex = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
+            if chipIndex == 0 {
+                cycleSortNavigation()
+            } else if chipIndex <= viewModel.visibleFilterGroups.count {
+                let group = viewModel.visibleFilterGroups[chipIndex - 1]
+                cycleFilterNavigation(group: group)
+            } else {
+                viewModel.clearSearchAndFilters()
+            }
             return
         }
-        let filterStart = 2
-        let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
-            let index = controllerViewModel.searchFilterOptionIndices[group.id] ?? 0
-            guard group.options.indices.contains(index) else { return }
-            viewModel.toggleFilter(group.options[index].id)
-            return
-        }
-        if controllerViewModel.searchRowIndex == filterEnd, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
+        if controllerViewModel.searchRowIndex == 2, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
             openDetails(viewModel.catalogGames[controllerViewModel.searchResultIndex], sectionId: "catalog-results")
         }
     }
 
-    private func selectedSortIndex() -> Int {
-        viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+    private func cycleSortNavigation() {
+        let count = viewModel.sortOptions.count
+        guard count > 0 else { return }
+        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+        let next = (current + 1) % count
+        viewModel.setSort(viewModel.sortOptions[next].id)
     }
 
-    private func setSort(at index: Int) {
-        guard viewModel.sortOptions.indices.contains(index) else { return }
-        viewModel.setSort(viewModel.sortOptions[index].id)
-    }
-
-    private func setFilterOption(group: OPNCatalogFilterGroupObject, index: Int) {
-        guard group.options.indices.contains(index) else { return }
-        controllerViewModel.searchFilterOptionIndices[group.id] = index
-        viewModel.toggleFilter(group.options[index].id)
+    private func cycleFilterNavigation(group: OPNCatalogFilterGroupObject) {
+        guard !group.options.isEmpty else { return }
+        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
+        let next = (current + 1) % group.options.count
+        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
+        viewModel.toggleFilter(group.options[next].id)
     }
 
     private func executeActionMenuItem(_ item: ControllerActionMenuItem) {
@@ -693,7 +676,7 @@ struct ControllerCatalogView: View {
         case .recordings:
             viewModel.showRecordings()
         case .settings:
-            viewModel.showSettings(.interface)
+            viewModel.showSettings(.general)
         case .switchAccount(let account):
             onSwitch(account)
         case .signOut:
@@ -737,19 +720,20 @@ struct ControllerCatalogView: View {
 }
 
 private struct ControllerHeader: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("GEFORCE NOW")
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.6)
                 Text(headerTitle)
-                    .font(.nvidia(size: 24, weight: .bold))
+                    .nvidiaFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
             Spacer(minLength: 0)
@@ -758,6 +742,7 @@ private struct ControllerHeader: View {
         }
         .frame(width: layout.contentWidth)
         .frame(height: 72)
+        .padding(.top, CatalogVendorLayout.windowTopInset(scale: uiScale))
         .background {
             Color.black.opacity(0.24)
             WindowDragArea()
@@ -768,7 +753,7 @@ private struct ControllerHeader: View {
         switch viewModel.selectedMainPage {
         case .games: return viewModel.selectedCatalogDestination.title
         case .recordings: return "Recordings"
-        case .settings: return viewModel.selectedSettingsPage.title
+        case .settings: return viewModel.selectedSettingsGroup.title
         }
     }
 }
@@ -779,10 +764,10 @@ private struct ControllerDeviceBadge: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
-                .font(.nvidia(size: 13, weight: .bold))
+                .nvidiaFont(size: 13, weight: .bold)
                 .foregroundStyle(Color.openNowGreen)
             Text(glyphs.deviceName)
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.white.opacity(0.72))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -813,9 +798,9 @@ private struct ControllerNavigationBar: View {
                     Button { select(item) } label: {
                         HStack(spacing: 9) {
                             Image(systemName: item.icon)
-                                .font(.nvidia(size: 14, weight: .bold))
+                                .nvidiaFont(size: 14, weight: .bold)
                             Text(item.title.uppercased())
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .tracking(0.8)
                         }
                         .foregroundStyle(selected || active ? .black.opacity(0.86) : .white.opacity(0.78))
@@ -836,7 +821,7 @@ private struct ControllerNavigationBar: View {
 }
 
 private struct ControllerGamesPage: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let focusArea: ControllerCatalogFocusArea
     let selectedRailIndex: Int
     @Binding var selectedGameIndices: [String: Int]
@@ -856,11 +841,6 @@ private struct ControllerGamesPage: View {
 
                         if !viewModel.errorMessage.isEmpty {
                             CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                                .frame(width: layout.contentWidth)
-                        }
-
-                        if viewModel.isBrowseMode {
-                            ControllerBrowseSummary(viewModel: viewModel)
                                 .frame(width: layout.contentWidth)
                         }
 
@@ -891,6 +871,12 @@ private struct ControllerGamesPage: View {
                         proxy.scrollTo(sections[index].id, anchor: .center)
                     }
                 }
+                // The page is removed from the hierarchy while the search overlay is
+                // up, so restore the focused rail's scroll position on reinsertion.
+                .onAppear {
+                    guard sections.indices.contains(selectedRailIndex) else { return }
+                    proxy.scrollTo(sections[selectedRailIndex].id, anchor: .center)
+                }
             }
         }
         .overlay {
@@ -919,25 +905,25 @@ private struct ControllerGamesPage: View {
 }
 
 private struct ControllerHeroBillboard: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
     let height: CGFloat
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             if let game {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill)
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                 LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
                 LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 9) {
                     Text("NOW PLAYING IN THE CLOUD")
-                        .font(.nvidia(size: 11, weight: .bold))
+                        .nvidiaFont(size: 11, weight: .bold)
                         .tracking(1.6)
                         .foregroundStyle(Color.openNowGreen)
                     Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                        .font(.nvidia(size: height < 260 ? 31 : 36, weight: .bold))
+                        .nvidiaFont(size: height < 260 ? 31 : 36, weight: .bold)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
@@ -948,7 +934,7 @@ private struct ControllerHeroBillboard: View {
                         if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
                     }
                     Text(heroDescription(game))
-                        .font(.nvidia(size: 13, weight: .medium))
+                        .nvidiaFont(size: 13, weight: .medium)
                         .foregroundStyle(.white.opacity(0.74))
                         .lineLimit(height < 260 ? 1 : 2)
                         .frame(maxWidth: 650, alignment: .leading)
@@ -975,33 +961,8 @@ private struct ControllerHeroBillboard: View {
     }
 }
 
-private struct ControllerBrowseSummary: View {
-    @ObservedObject var viewModel: CatalogViewModel
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(viewModel.resultSummary.uppercased())
-                .font(.nvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.66))
-            Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
-                .font(.nvidia(size: 12, weight: .bold))
-                .foregroundStyle(Color.openNowGreen.opacity(0.90))
-            if viewModel.selectedFilterCount > 0 {
-                Text("\(viewModel.selectedFilterCount) FILTER\(viewModel.selectedFilterCount == 1 ? "" : "S")")
-                    .font(.nvidia(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.66))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 40)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-    }
-}
-
 private struct ControllerGameRail: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     @Binding var selectedIndex: Int
     let isFocused: Bool
@@ -1010,23 +971,23 @@ private struct ControllerGameRail: View {
     let showAll: () -> Void
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
-    private var canShowAll: Bool { section.canLoadFullList || section.games.count > games.count }
+    private var canShowAll: Bool { section.canLoadFullList }
     private var itemSpacing: CGFloat { 18 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: layout.compactHeight ? 10 : 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(section.title)
-                    .font(.nvidia(size: isFocused ? 24 : 21, weight: .bold))
+                    .nvidiaFont(size: isFocused ? 24 : 21, weight: .bold)
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
                 Text("\(section.games.count) games".uppercased())
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen.opacity(0.82))
                 Spacer(minLength: 0)
                 if canShowAll {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
-                        .font(.nvidia(size: 12, weight: .bold))
+                        .nvidiaFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.82))
                 }
             }
@@ -1098,7 +1059,7 @@ private struct ControllerGameTile: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topLeading) {
-                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 720)
                     .frame(width: tileSize.width, height: tileSize.height)
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
@@ -1117,16 +1078,16 @@ private struct ControllerGameTile: View {
                     HStack(spacing: 8) {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
-                                .font(.nvidia(size: 12, weight: .bold))
+                                .nvidiaFont(size: 12, weight: .bold)
                                 .foregroundStyle(Color.openNowGreen)
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .font(.nvidia(size: 16, weight: .bold))
+                            .nvidiaFont(size: 16, weight: .bold)
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     }
                     Text(subtitle)
-                        .font(.nvidia(size: 11, weight: .bold))
+                        .nvidiaFont(size: 11, weight: .bold)
                         .foregroundStyle(.white.opacity(0.62))
                         .lineLimit(1)
                 }
@@ -1165,11 +1126,11 @@ private struct ControllerEmbeddedPage<Content: View>: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.4)
                 Text(subtitle)
-                    .font(.nvidia(size: 15, weight: .medium))
+                    .nvidiaFont(size: 15, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
             }
             .frame(width: layout.contentWidth, alignment: .leading)
@@ -1183,29 +1144,37 @@ private struct ControllerEmbeddedPage<Content: View>: View {
 }
 
 private struct ControllerSearchOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    @Bindable var viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let rowIndex: Int
     let filterOptionIndices: [String: Int]
     let resultIndex: Int
-    @Binding var resultColumnCount: Int
     let layout: ControllerLayoutMetrics
-    let selectSort: (Int) -> Void
-    let selectFilter: (OPNCatalogFilterGroupObject, Int) -> Void
     let selectResult: (OPNCatalogGameObject) -> Void
     let close: () -> Void
     let clear: () -> Void
+
+    private var pageTitle: String {
+        viewModel.selectedShowAllSection?.title.uppercased() ?? "SEARCH CATALOG"
+    }
+
+    private var pageSubtitle: String {
+        if viewModel.selectedShowAllSection != nil {
+            let count = viewModel.totalCatalogCount > 0 ? viewModel.totalCatalogCount : viewModel.catalogGames.count
+            return count == 1 ? "1 game" : "\(count) games"
+        }
+        return "Search, sort, filter, and launch from the full catalog."
+    }
 
     var body: some View {
         GeometryReader { proxy in
             let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250, spacing: 14)
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90)
-                VStack(alignment: .leading, spacing: 18) {
-                    ControllerOverlayHeader(title: "Search Catalog", subtitle: "Search, sort, filter, and launch from the full catalog.", glyphs: glyphs, close: close)
+                Color.black
+                VStack(alignment: .leading, spacing: 16) {
+                    ControllerOverlayHeader(title: pageTitle, subtitle: pageSubtitle, glyphs: glyphs, close: close)
                     searchField
-                    sortRow
-                    filterRows
+                    filterBar
                     resultsGrid(columns: columns)
                 }
                 .frame(width: layout.contentWidth, alignment: .leading)
@@ -1216,25 +1185,23 @@ private struct ControllerSearchOverlay: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
-            .onAppear { resultColumnCount = columns }
-            .onChange(of: columns) { _, value in resultColumnCount = value }
         }
     }
 
     private var searchField: some View {
         HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
-                .font(.nvidia(size: 18, weight: .bold))
+                .nvidiaFont(size: 18, weight: .bold)
                 .foregroundStyle(rowIndex == 0 ? Color.openNowGreen : .white.opacity(0.62))
             TextField("Search games, stores, genres, publishers, controls, ratings, or tags", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .font(.nvidia(size: 20, weight: .medium))
+                .nvidiaFont(size: 20, weight: .medium)
                 .foregroundStyle(.white)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
                 Button("CLEAR", action: { viewModel.searchQuery = "" })
                     .buttonStyle(.plain)
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
             }
         }
@@ -1244,58 +1211,105 @@ private struct ControllerSearchOverlay: View {
         .overlay { Rectangle().stroke(rowIndex == 0 ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: rowIndex == 0 ? 2 : 1) }
     }
 
-    private var sortRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ControllerOverlaySectionTitle("Sort")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(Array(viewModel.sortOptions.enumerated()), id: \.element.id) { index, option in
-                        ControllerOptionChip(
-                            title: option.label.isEmpty ? option.id : option.label,
-                            isSelected: option.id == viewModel.selectedSortId,
-                            isFocused: rowIndex == 1 && selectedSortIndex == index,
-                            action: { selectSort(index) }
-                        )
-                    }
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                sortChip
+                ForEach(Array(viewModel.visibleFilterGroups.enumerated()), id: \.element.id) { groupIndex, group in
+                    filterChip(for: group, groupIndex: groupIndex)
+                }
+                if viewModel.selectedFilterCount > 0 {
+                    clearFiltersChip
                 }
             }
+            .padding(.vertical, 4)
         }
     }
 
-    private var filterRows: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(viewModel.visibleFilterGroups.enumerated()), id: \.element.id) { groupIndex, group in
-                VStack(alignment: .leading, spacing: 10) {
-                    ControllerOverlaySectionTitle(group.label.isEmpty ? group.id : group.label)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(Array(group.options.enumerated()), id: \.element.id) { optionIndex, option in
-                                ControllerOptionChip(
-                                    title: option.label.isEmpty ? option.id : option.label,
-                                    isSelected: viewModel.selectedFilterIds.contains(option.id),
-                                    isFocused: rowIndex == 2 + groupIndex && (filterOptionIndices[group.id] ?? 0) == optionIndex,
-                                    action: { selectFilter(group, optionIndex) }
-                                )
-                            }
-                        }
-                    }
-                }
+    private var sortChip: some View {
+        let sortLabel = viewModel.sortOptions.first { $0.id == viewModel.selectedSortId }?.label ?? viewModel.selectedSortLabel
+        let isFocused = rowIndex == 1
+        return Button {
+            cycleSort()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .nvidiaFont(size: 11, weight: .bold)
+                Text("SORT: \(sortLabel.uppercased())")
+                    .nvidiaFont(size: 12, weight: .bold)
+                    .tracking(0.6)
             }
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(isFocused ? Color.openNowGreen : Color.white.opacity(0.075))
+            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : Color.white.opacity(0.12), lineWidth: isFocused ? 2 : 1) }
         }
+        .buttonStyle(.plain)
+    }
+
+    private func filterChip(for group: OPNCatalogFilterGroupObject, groupIndex: Int) -> some View {
+        let selectedOption = group.options.first { viewModel.selectedFilterIds.contains($0.id) }
+        let label = selectedOption?.label ?? group.label
+        let isSelected = selectedOption != nil
+        let isFocused = rowIndex == 2 && (filterOptionIndices[group.id] ?? 0) >= 0
+        return Button {
+            cycleFilter(group: group)
+        } label: {
+            HStack(spacing: 8) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .nvidiaFont(size: 10, weight: .bold)
+                }
+                Text("\(group.label.uppercased()): \(label.uppercased())")
+                    .nvidiaFont(size: 12, weight: .bold)
+                    .tracking(0.6)
+            }
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? Color.openNowGreen : .white.opacity(0.82)))
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(isFocused ? Color.openNowGreen : (isSelected ? Color.openNowGreen.opacity(0.15) : Color.white.opacity(0.075)))
+            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? Color.openNowGreen : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var clearFiltersChip: some View {
+        Button {
+            viewModel.clearSearchAndFilters()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "xmark.circle.fill")
+                    .nvidiaFont(size: 12, weight: .bold)
+                Text("CLEAR FILTERS")
+                    .nvidiaFont(size: 11, weight: .bold)
+                    .tracking(0.6)
+            }
+            .foregroundStyle(.white.opacity(0.72))
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(Color.white.opacity(0.05))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
     }
 
     private func resultsGrid(columns: Int) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let isResultsRowFocused = rowIndex == 2
+        return VStack(alignment: .leading, spacing: 10) {
             ControllerOverlaySectionTitle(viewModel.resultSummary.isEmpty ? "Results" : viewModel.resultSummary)
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: columns), spacing: 14) {
                     ForEach(Array(viewModel.catalogGames.enumerated()), id: \.element.catalogIdentity) { index, game in
                         ControllerCompactGameCard(
-                            viewModel: viewModel,
-                            game: game,
-                            isFocused: rowIndex == 2 + viewModel.visibleFilterGroups.count && resultIndex == index,
+                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 520),
+                            title: game.title.isEmpty ? "GeForce NOW" : game.title,
+                            subtitle: game.primaryStoreLabel.isEmpty ? (game.isInLibrary ? "In Library" : "Cloud ready") : game.primaryStoreLabel,
+                            badge: game.cardBadgeLabel,
+                            isFocused: isResultsRowFocused && resultIndex == index,
                             action: { selectResult(game) }
                         )
+                        .equatable()
                     }
                 }
                 .padding(.bottom, 12)
@@ -1303,13 +1317,25 @@ private struct ControllerSearchOverlay: View {
         }
     }
 
-    private var selectedSortIndex: Int {
-        viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+    private func cycleSort() {
+        let count = viewModel.sortOptions.count
+        guard count > 0 else { return }
+        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+        let next = (current + 1) % count
+        viewModel.setSort(viewModel.sortOptions[next].id)
+    }
+
+    private func cycleFilter(group: OPNCatalogFilterGroupObject) {
+        guard !group.options.isEmpty else { return }
+        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
+        let next = (current + 1) % group.options.count
+        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
+        viewModel.toggleFilter(group.options[next].id)
     }
 }
 
 private struct ControllerGameDetailOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
     let selectedActionIndex: Int
     let actions: [ControllerDetailAction]
@@ -1324,51 +1350,42 @@ private struct ControllerGameDetailOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let panelWidth = min(layout.contentWidth * 0.62, 900)
-            ZStack(alignment: .leading) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                Color.black.opacity(0.58)
-                LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.64), .clear], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, .black.opacity(0.72)], startPoint: .top, endPoint: .bottom)
+            ZStack {
+                Color.black.ignoresSafeArea()
 
                 VStack(alignment: .leading, spacing: 18) {
                     ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
                     detailMetadata
                     Text(detailDescription)
-                        .font(.nvidia(size: 18, weight: .medium))
+                        .nvidiaFont(size: 18, weight: .medium)
                         .foregroundStyle(.white.opacity(0.82))
                         .lineSpacing(4)
                         .lineLimit(5)
                         .frame(maxWidth: 720, alignment: .leading)
                     detailRows
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
-                                Button { perform(action) } label: {
-                                    HStack(spacing: 9) {
-                                        Image(systemName: action.icon)
-                                            .font(.nvidia(size: 14, weight: .bold))
-                                        Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
-                                            .font(.nvidia(size: 12, weight: .bold))
-                                            .tracking(0.8)
-                                    }
-                                    .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
-                                    .padding(.horizontal, 15)
-                                    .frame(height: 44)
-                                    .background(index == selectedActionIndex ? Color.openNowGreen : Color.white.opacity(0.09))
-                                    .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
+                    FlowLayout(spacing: 12) {
+                        ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                            Button { perform(action) } label: {
+                                HStack(spacing: 9) {
+                                    Image(systemName: action.icon)
+                                        .nvidiaFont(size: 14, weight: .bold)
+                                    Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
+                                        .nvidiaFont(size: 12, weight: .bold)
+                                        .tracking(0.8)
                                 }
-                                .buttonStyle(.plain)
+                                .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
+                                .padding(.horizontal, 15)
+                                .frame(height: 44)
+                                .background(index == selectedActionIndex ? Color.openNowGreen : Color.white.opacity(0.09))
+                                .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.vertical, 8)
                     }
+                    .padding(.vertical, 8)
                 }
                 .frame(width: panelWidth, alignment: .leading)
-                .padding(.leading, layout.leadingInset)
-                .padding(.trailing, layout.trailingInset)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
@@ -1419,59 +1436,6 @@ private struct ControllerGameDetailOverlay: View {
     }
 }
 
-private struct ControllerShowAllOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
-    let section: CatalogSectionModel
-    let selectedIndex: Int
-    @Binding var columnCount: Int
-    let glyphs: ControllerInputGlyphSet
-    let layout: ControllerLayoutMetrics
-    let select: (OPNCatalogGameObject) -> Void
-    let close: () -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 290, spacing: 16)
-            ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90)
-                VStack(alignment: .leading, spacing: 18) {
-                    ControllerOverlayHeader(title: section.title, subtitle: subtitle, glyphs: glyphs, close: close)
-                    ScrollViewReader { scrollProxy in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: columns), spacing: 16) {
-                                ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { index, game in
-                                    ControllerCompactGameCard(viewModel: viewModel, game: game, isFocused: selectedIndex == index, action: { select(game) })
-                                        .id(game.catalogIdentity)
-                                }
-                            }
-                            .padding(.bottom, 18)
-                        }
-                        .onChange(of: selectedIndex) { _, index in
-                            guard section.games.indices.contains(index) else { return }
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                scrollProxy.scrollTo(section.games[index].catalogIdentity, anchor: .center)
-                            }
-                        }
-                    }
-                }
-                .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.leading, layout.leadingInset)
-                .padding(.trailing, layout.trailingInset)
-                .padding(.top, 38)
-                .padding(.bottom, 32)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-            .clipped()
-            .onAppear { columnCount = columns }
-            .onChange(of: columns) { _, value in columnCount = value }
-        }
-    }
-
-    private var subtitle: String {
-        section.isLoadingFullList ? "Loading full list... \(section.games.count) games loaded" : "\(section.games.count) games"
-    }
-}
-
 private func overlayColumnCount(width: CGFloat, minimumWidth: CGFloat, spacing: CGFloat) -> Int {
     max(2, Int((width + spacing) / (minimumWidth + spacing)))
 }
@@ -1484,61 +1448,61 @@ private struct ControllerActionMenuOverlay: View {
     let isRefreshingCatalog: Bool
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .trailing) {
-                Color.black.opacity(0.58).onTapGesture(perform: close)
-                VStack(alignment: .leading, spacing: 0) {
-                    ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
-                        .padding(.horizontal, 22)
-                        .padding(.top, 22)
-                        .padding(.bottom, 12)
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 8) {
-                            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                                Button { perform(item) } label: {
-                                    HStack(spacing: 13) {
-                                        if item.isRefresh, isRefreshingCatalog {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                                .tint(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                                .scaleEffect(0.82)
-                                                .frame(width: 28)
-                                        } else {
-                                            Image(systemName: item.icon)
-                                                .font(.nvidia(size: 15, weight: .bold))
-                                                .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                                .frame(width: 28)
-                                        }
-                                        Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
-                                            .font(.nvidia(size: 15, weight: .bold))
-                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
-                                            .lineLimit(1)
-                                        Spacer(minLength: 0)
+        ZStack(alignment: .trailing) {
+            Color.black.opacity(0.58).onTapGesture(perform: close)
+            VStack(alignment: .leading, spacing: 0) {
+                ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 22 + CatalogVendorLayout.windowTopInset(scale: uiScale))
+                    .padding(.bottom, 12)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 8) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            Button { perform(item) } label: {
+                                HStack(spacing: 13) {
+                                    if item.isRefresh, isRefreshingCatalog {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .tint(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                            .scaleEffect(0.82)
+                                            .frame(width: 28)
+                                    } else {
+                                        Image(systemName: item.icon)
+                                            .nvidiaFont(size: 15, weight: .bold)
+                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                            .frame(width: 28)
                                     }
-                                    .padding(.horizontal, 14)
-                                    .frame(height: 48)
-                                    .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
-                                    .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
+                                    Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
+                                        .nvidiaFont(size: 15, weight: .bold)
+                                        .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(item.isRefresh && isRefreshingCatalog)
+                                .padding(.horizontal, 14)
+                                .frame(height: 48)
+                                .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
+                                .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
                             }
+                            .buttonStyle(.plain)
+                            .disabled(item.isRefresh && isRefreshingCatalog)
                         }
-                        .padding(.horizontal, 22)
-                        .padding(.bottom, 22)
                     }
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 22)
                 }
-                .frame(width: min(420, layout.contentWidth), alignment: .topLeading)
-                .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
-                .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
-                .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
-                .padding(.trailing, layout.trailingInset)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+            .frame(maxWidth: 420, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
+            .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
+            .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
+            .padding(.leading, layout.leadingInset)
+            .padding(.trailing, layout.trailingInset)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 }
 
@@ -1552,11 +1516,11 @@ private struct ControllerOverlayHeader: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.nvidia(size: 27, weight: .bold))
+                    .nvidiaFont(size: 27, weight: .bold)
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.nvidia(size: 14, weight: .medium))
+                    .nvidiaFont(size: 14, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(2)
             }
@@ -1564,12 +1528,12 @@ private struct ControllerOverlayHeader: View {
             HStack(spacing: 8) {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
-                    .font(.nvidia(size: 11, weight: .bold))
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(.white.opacity(0.62))
             }
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.nvidia(size: 16, weight: .bold))
+                    .nvidiaFont(size: 16, weight: .bold)
                     .foregroundStyle(.white.opacity(0.80))
                     .frame(width: 38, height: 38)
                     .background(Color.white.opacity(0.08))
@@ -1580,24 +1544,39 @@ private struct ControllerOverlayHeader: View {
     }
 }
 
-private struct ControllerCompactGameCard: View {
-    @ObservedObject var viewModel: CatalogViewModel
-    let game: OPNCatalogGameObject
+private struct ControllerCompactGameCard: View, Equatable {
+    let imageURL: URL?
+    let title: String
+    let subtitle: String
+    let badge: String?
     let isFocused: Bool
     let action: () -> Void
+
+    // The action closure is deliberately excluded: it is recreated on every parent
+    // render but always targets the same game, and comparing it would defeat the
+    // .equatable() body-skip that keeps d-pad moves from re-evaluating every card.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.imageURL == rhs.imageURL && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.badge == rhs.badge && lhs.isFocused == rhs.isFocused
+    }
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 9) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 520), contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 520)
                     .frame(height: 128)
                     .clipped()
-                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                    .font(.nvidia(size: 14, weight: .bold))
+                    .overlay(alignment: .topLeading) {
+                        if let badge {
+                            CatalogGameCardBadge(label: badge)
+                                .scaleEffect(0.92, anchor: .topLeading)
+                        }
+                    }
+                Text(title)
+                    .nvidiaFont(size: 14, weight: .bold)
                     .foregroundStyle(.white.opacity(0.94))
                     .lineLimit(1)
-                Text(game.primaryStoreLabel.isEmpty ? (game.isInLibrary ? "In Library" : "Cloud ready") : game.primaryStoreLabel)
-                    .font(.nvidia(size: 11, weight: .bold))
+                Text(subtitle)
+                    .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(Color.openNowGreen.opacity(0.84))
                     .lineLimit(1)
             }
@@ -1618,7 +1597,7 @@ private struct ControllerOptionChip: View {
     var body: some View {
         Button(action: action) {
             Text(title.uppercased())
-                .font(.nvidia(size: 12, weight: .bold))
+                .nvidiaFont(size: 12, weight: .bold)
                 .tracking(0.6)
                 .foregroundStyle(isSelected || isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
                 .padding(.horizontal, 13)
@@ -1637,7 +1616,7 @@ private struct ControllerOverlaySectionTitle: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.nvidia(size: 12, weight: .bold))
+            .nvidiaFont(size: 12, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(Color.openNowGreen.opacity(0.86))
     }
@@ -1649,7 +1628,7 @@ private struct ControllerMetadataPill: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.nvidia(size: 11, weight: .bold))
+            .nvidiaFont(size: 11, weight: .bold)
             .tracking(0.7)
             .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
             .padding(.horizontal, 10)
@@ -1667,12 +1646,12 @@ private struct ControllerDetailRow: View {
         if !value.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 Text(label.uppercased())
-                    .font(.nvidia(size: 10, weight: .bold))
+                    .nvidiaFont(size: 10, weight: .bold)
                     .tracking(0.7)
                     .foregroundStyle(.white.opacity(0.42))
                     .frame(width: 96, alignment: .leading)
                 Text(value)
-                    .font(.nvidia(size: 13, weight: .bold))
+                    .nvidiaFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(2)
             }
@@ -1702,7 +1681,7 @@ private struct ControllerHintBar: View {
             }
             Spacer(minLength: 0)
             Text(glyphs.usesControllerGlyphs ? "Controller mode" : "Keyboard fallback")
-                .font(.nvidia(size: 11, weight: .bold))
+                .nvidiaFont(size: 11, weight: .bold)
                 .foregroundStyle(.white.opacity(0.38))
                 .tracking(0.8)
                 .lineLimit(1)
@@ -1729,7 +1708,7 @@ private struct ControllerHintItem: View {
                 }
             }
             Text(title)
-                .font(.nvidia(size: 10, weight: .bold))
+                .nvidiaFont(size: 10, weight: .bold)
                 .foregroundStyle(.white.opacity(0.64))
                 .tracking(0.5)
         }
@@ -1768,11 +1747,11 @@ private struct ControllerGlyphPill: View {
         HStack(spacing: compact ? 0 : 5) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
-                    .font(.nvidia(size: compact ? 11 : 12, weight: .bold))
+                    .nvidiaFont(size: compact ? 11 : 12, weight: .bold)
             }
             if shouldShowText {
                 Text(glyph.fallbackText)
-                    .font(.nvidia(size: compact ? 0 : 9, weight: .bold))
+                    .nvidiaFont(size: compact ? 0 : 9, weight: .bold)
                     .lineLimit(1)
             }
         }
@@ -1802,7 +1781,7 @@ private struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.down.symbolName)
             Image(systemName: glyphs.right.symbolName)
         }
-        .font(.nvidia(size: 11, weight: .bold))
+        .nvidiaFont(size: 11, weight: .bold)
         .foregroundStyle(Color.openNowGreen)
         .padding(.horizontal, 8)
         .frame(height: 22)
@@ -1813,14 +1792,14 @@ private struct ControllerKeyboardMovePill: View {
 }
 
 private struct ControllerCatalogBackground: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
 
     var body: some View {
         ZStack {
             Color.gfnBackgroundGreen.ignoresSafeArea()
             if let game {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill)
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill, maxPixelSize: 1280)
                     .ignoresSafeArea()
                     .blur(radius: 44)
                     .opacity(0.26)
