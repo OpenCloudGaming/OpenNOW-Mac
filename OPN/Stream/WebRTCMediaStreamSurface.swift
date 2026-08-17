@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import GameController
 import Foundation
 import SwiftUI
 
@@ -38,6 +40,7 @@ struct StreamHUDActionRow: View {
     let systemName: String
     let isActive: Bool
     let isDisabled: Bool
+    var isFocused = false
     let action: () -> Void
     @State private var isHovering = false
 
@@ -50,7 +53,7 @@ struct StreamHUDActionRow: View {
                 .background(rowBackground)
                 .overlay {
                     Rectangle()
-                        .stroke(isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -63,6 +66,11 @@ struct StreamHUDActionRow: View {
         .help(subtitle.isEmpty ? title : "\(title): \(subtitle)")
     }
 
+    private var strokeColor: Color {
+        if isFocused { return WebRTCMediaStreamTheme.accent }
+        return isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider
+    }
+
     private var rowBackground: Color {
         if isActive { return WebRTCMediaStreamTheme.accent }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
@@ -70,6 +78,70 @@ struct StreamHUDActionRow: View {
 
     private var iconColor: Color {
         isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.94 : 0.72)
+    }
+}
+
+private struct StreamHUDFocusEntry {
+    let id: String
+    let isDisabled: Bool
+    let action: () -> Void
+}
+
+private struct StreamQuitMenuButton: View {
+    let title: String
+    let isPrimary: Bool
+    let isFocused: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .tracking(0.4)
+                .foregroundStyle(foregroundColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(backgroundColor)
+                .overlay {
+                    Rectangle()
+                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.46 : 1)
+        .onHover { isHovering = $0 }
+    }
+
+    private var strokeColor: Color {
+        if isFocused { return WebRTCMediaStreamTheme.accent }
+        return isPrimary ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider
+    }
+
+    private var backgroundColor: Color {
+        if isPrimary { return WebRTCMediaStreamTheme.accent.opacity(isHovering ? 0.82 : 1) }
+        return Color.white.opacity(isHovering ? 0.14 : 0.075)
+    }
+
+    private var foregroundColor: Color {
+        if isPrimary { return .black.opacity(0.86) }
+        return .white.opacity(isHovering ? 0.94 : 0.82)
+    }
+}
+
+/// Per-device gamepad edge tracking for HUD navigation. A plain class on
+/// purpose: mutating it from input callbacks must not invalidate the view.
+@MainActor
+private final class StreamHUDGamepadTracker {
+    var lastButtons: [InputDeviceID: GamepadButtons] = [:]
+    var lastStickStep: [InputDeviceID: Int] = [:]
+
+    func reset() {
+        lastButtons.removeAll()
+        lastStickStep.removeAll()
     }
 }
 
@@ -212,6 +284,29 @@ struct StreamSessionSidebarLimit: Equatable {
     }
 }
 
+private struct WebRTCMediaSessionLimit: Equatable {
+    let startedAt: Date
+    let durationSeconds: Int
+
+    init?(session: StreamSessionDescriptor, fallbackStartedAt: Date = Date()) {
+        guard let duration = Int(session.metadata["sessionLimitSeconds"] ?? ""), duration > 0 else { return nil }
+        let startedAtEpoch = Double(session.metadata["startedAtEpochSeconds"] ?? "")
+        let startedAt = startedAtEpoch.map { Date(timeIntervalSince1970: $0) } ?? fallbackStartedAt
+        self.startedAt = startedAt
+        self.durationSeconds = duration
+    }
+
+    init?(update: StreamSessionLimitUpdate, receivedAt: Date = Date()) {
+        let durationSeconds = max(3600, update.remainingSeconds)
+        self.startedAt = receivedAt.addingTimeInterval(-Double(durationSeconds - update.remainingSeconds))
+        self.durationSeconds = durationSeconds
+    }
+
+    func remainingSeconds(at now: Date) -> Int {
+        max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
+    }
+}
+
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
@@ -232,7 +327,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var unifiedHUDVisible = false
+    @State private var restorePointerLockOnHUDHide = false
     @State private var quitMenuVisible = false
+    @State private var showingControllerMapping = false
     @State private var isEndingStream = false
     @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
@@ -260,6 +357,13 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
+    @State private var controllerBatteries: [ControllerBatteryInfo] = []
+    @State private var batteryAlertThresholds: [String: Set<Int>] = [:]
+    @State private var hudFocusID: String?
+    @State private var quitMenuFocusIndex = 0
+    @State private var hudGamepadTracker = StreamHUDGamepadTracker()
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     @State private var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -293,22 +397,38 @@ public struct WebRTCMediaStreamSurface: View {
                     startTask = Task { await startIfNeeded(nativeView: view) }
                 }
             }
-            if !isStreamReady { launchOverlay }
-            if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
-            if statsVisible { statsHUD }
-            if unifiedHUDVisible { unifiedHUD }
-            if isStreamReady { sessionLimitCountdownOverlay }
-            if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
-            if quitMenuVisible { quitMenu }
+            hudChrome
+                .macForceNowInterfaceScale(uiScale)
         }
         .background(Color.black)
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
         .onAppear {
             registerStreamLifecycle()
             refreshRemoteCoOpState()
+            refreshControllerBatteries()
         }
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
+        .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
+        .sheet(isPresented: $showingControllerMapping) {
+            SteamControllerMappingView()
+        }
+    }
+
+    private func openControllerMapping() {
+        setUnifiedHUDVisible(false)
+        showingControllerMapping = true
+    }
+
+    @ViewBuilder
+    private var hudChrome: some View {
+        if !isStreamReady { launchOverlay }
+        if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
+        if statsVisible { statsHUD }
+        if unifiedHUDVisible { unifiedHUD }
+        if isStreamReady { sessionLimitCountdownOverlay }
+        if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
+        if quitMenuVisible { quitMenu }
     }
 
     private var statsHUD: some View {
@@ -347,6 +467,53 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(.trailing, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(false)
+    }
+
+    private var unifiedHUD: some View {
+        GeometryReader { proxy in
+            let dockWidth = WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width)
+            VStack(alignment: .leading, spacing: 0) {
+                hudDockHeader
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        hudStatusPanel
+                        hudControlsPanel
+                        hudInputPanel
+                        hudNetworkPanel
+                        hudStatsPanel
+                        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+                            hudRemoteCoOpPanel
+                        }
+                        hudVideoPanel
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                }
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                hudShortcutFooter
+            }
+            .frame(width: dockWidth, height: proxy.size.height, alignment: .topLeading)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(width: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.055))
     }
 
     private func statsCompactBox(value: String, label: String, color: Color) -> some View {
@@ -399,18 +566,42 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private var unifiedHUD: some View {
-        StreamUnifiedSidebar(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, closeAction: { setUnifiedHUDVisible(false) }) {
-            VStack(alignment: .leading, spacing: 14) {
-                hudStatusPanel
-                hudControlsPanel
-                hudNetworkPanel
-                if sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-                    hudRemoteCoOpPanel
+    private var hudDockHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("GFN")
+                        .font(.streamNvidia(size: 11, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text("HUD")
+                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
                 }
-                hudVideoPanel
+                Spacer(minLength: 0)
+                Button(action: { setUnifiedHUDVisible(false) }) {
+                    Image(systemName: "xmark")
+                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close stream HUD")
             }
+
+            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                .font(.streamNvidia(size: 13, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
+        .padding(.horizontal, 22)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+        .background(WebRTCMediaStreamTheme.appBar)
     }
 
     private var hudStatusPanel: some View {
@@ -426,6 +617,46 @@ public struct WebRTCMediaStreamSurface: View {
             if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
                 hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
             }
+            ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
+                hudBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+            }
+        }
+    }
+
+    private func hudBatteryCard(label: String, level: Int, charging: Bool) -> some View {
+        let displayValue = level >= 0 ? "\(level)%" : "—"
+        let isLow = level >= 0 && level <= 20
+        let iconName = charging ? "bolt.fill" : batteryIconName(for: level)
+        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(iconColor)
+                Text(label.uppercased())
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(displayValue)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+
+    private func batteryIconName(for level: Int) -> String {
+        switch level {
+        case 90...: return "battery.100percent"
+        case 60..<90: return "battery.75percent"
+        case 30..<60: return "battery.50percent"
+        case 15..<30: return "battery.25percent"
+        default: return "battery.0percent"
         }
     }
 
@@ -460,6 +691,30 @@ public struct WebRTCMediaStreamSurface: View {
         .accessibilityHidden(true)
     }
 
+    private var hudShortcutFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                Text(Date(), style: .time)
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(Date(), style: .time))
+            Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+    }
+
     private var hudControlsPanel: some View {
         hudSection(label: "CONTROLS", spacing: 8) {
             HStack(spacing: 8) {
@@ -469,6 +724,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
                     isDisabled: !sidebarCapabilities.supports(.microphone) || runtimeSettings.microphoneMode == "disabled",
+                    isFocused: hudFocusID == "microphone",
                     action: toggleMicrophone
                 )
                 StreamHUDActionRow(
@@ -477,6 +733,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: "record.circle",
                     isActive: recordingStatus.isRecording,
                     isDisabled: !sidebarCapabilities.supports(.recording) || !isStreamReady || recordingIsBusy,
+                    isFocused: hudFocusID == "recording",
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
@@ -485,6 +742,7 @@ public struct WebRTCMediaStreamSurface: View {
                     systemName: "cursorarrow.motionlines",
                     isActive: runtimeSettings.antiAFKMouseMovementEnabled,
                     isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isStreamReady,
+                    isFocused: hudFocusID == "anti-afk",
                     action: toggleAntiAFKMouseMovement
                 )
                 StreamHUDActionRow(
@@ -492,10 +750,61 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: "Detailed overlay",
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: statsVisible,
-                    isDisabled: !sidebarCapabilities.supports(.floatingStats),
+                    isDisabled: false,
                     action: toggleStatsHUD
                 )
             }
+        }
+    }
+
+    private var hudInputPanel: some View {
+        hudSection(label: "INPUT", spacing: 8) {
+            HStack(spacing: 8) {
+                StreamHUDActionRow(
+                    title: "Paste Clipboard",
+                    subtitle: "Send text to stream",
+                    systemName: "doc.on.clipboard",
+                    isActive: false,
+                    isDisabled: !clipboardTextAvailable || !isStreamReady,
+                    action: pasteClipboardIntoStream
+                )
+                StreamHUDActionRow(
+                    title: pointerLocked ? "Release Mouse" : "Capture Mouse",
+                    subtitle: pointerLocked ? "Pointer locked" : "Click stream also captures",
+                    systemName: pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
+                    isActive: pointerLocked,
+                    isDisabled: !isStreamReady || !runtimeSettings.directMouseInput,
+                    action: togglePointerLockFromHUD
+                )
+                StreamHUDActionRow(
+                    title: "Toggle Full Screen",
+                    subtitle: "Window full screen",
+                    systemName: "arrow.up.left.and.arrow.down.right",
+                    isActive: nativeView?.window?.styleMask.contains(.fullScreen) == true,
+                    isDisabled: nativeView?.window == nil,
+                    action: toggleFullScreenFromHUD
+                )
+                StreamHUDActionRow(
+                    title: "Controller Mapping",
+                    subtitle: "Steam Controller grip binds",
+                    systemName: "gamecontroller",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "controller-mapping",
+                    action: openControllerMapping
+                )
+                StreamHUDActionRow(
+                    title: "Quit Menu",
+                    subtitle: "End session",
+                    systemName: "power",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "quit",
+                    action: { showQuitMenu() }
+                )
+            }
+            settingsRow("Mouse", pointerLocked ? "Captured" : (runtimeSettings.directMouseInput ? "Available" : "Relative input off"))
+            settingsRow("Clipboard", clipboardTextAvailable ? "Ready" : "Empty")
         }
     }
 
@@ -545,6 +854,7 @@ public struct WebRTCMediaStreamSurface: View {
                         systemName: remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
                         isActive: remoteCoOpSnapshot.invite != nil,
                         isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
+                        isFocused: hudFocusID == "coop-invite",
                         action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
                     )
                     if remoteCoOpSnapshot.invite != nil {
@@ -554,6 +864,7 @@ public struct WebRTCMediaStreamSurface: View {
                             systemName: "doc.on.doc",
                             isActive: false,
                             isDisabled: false,
+                            isFocused: hudFocusID == "coop-copy",
                             action: copyRemoteCoOpInvite
                         )
                     }
@@ -658,6 +969,24 @@ public struct WebRTCMediaStreamSurface: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 
+    private var hudStatsPanel: some View {
+        hudSection(label: "STATS") {
+            VStack(alignment: .leading, spacing: 8) {
+                statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
+                statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
+                statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
+                statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
+                statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
+                statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
+                statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
+                statsRow("Drops", String(latestStats?.framesDropped ?? 0))
+                statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
+                statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+                statsRow("Decoded", latestStats?.videoEnhancementSourceResolution.isEmpty == false ? latestStats?.videoEnhancementSourceResolution ?? "-" : "-")
+            }
+        }
+    }
+
     private var hudVideoPanel: some View {
         hudSection(label: "VIDEO") {
             VStack(alignment: .leading, spacing: 10) {
@@ -673,6 +1002,20 @@ public struct WebRTCMediaStreamSurface: View {
                 if runtimeSettings.upscalingMode != 0 {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
+                }
+                Picker("Pillarbox Fill", selection: Binding(get: { runtimeSettings.pillarboxFillMode }, set: { updateVideoEnhancement(pillarboxFillMode: $0) })) {
+                    ForEach(OPNPillarboxFillMode.allCases, id: \.rawValue) { fill in
+                        Text(fill.label).tag(fill.rawValue)
+                    }
+                }
+                .font(.streamNvidia(size: 12, weight: .medium))
+                .pickerStyle(.menu)
+                .tint(WebRTCMediaStreamTheme.accent)
+                .disabled(!isStreamReady)
+                if OPNPillarboxFillMode.from(runtimeSettings.pillarboxFillMode).usesDim {
+                    videoStepperRow("Fill Dim", value: runtimeSettings.pillarboxFillDim, range: 0...100, step: 5) { value in
+                        updateVideoEnhancement(pillarboxFillDim: value)
+                    }
                 }
                 settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
                 settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "Display")
@@ -715,57 +1058,70 @@ public struct WebRTCMediaStreamSurface: View {
             Rectangle()
                 .fill(.black.opacity(0.54))
                 .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-            VStack(spacing: 18) {
-                Text("STREAM PAUSED")
-                    .font(.system(size: 12, weight: .black, design: .monospaced))
-                    .tracking(2.4)
-                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-                HStack(spacing: 12) {
-                    Button(action: dismissQuitMenu) {
-                        Text("Resume")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.black)
-                            .frame(width: 112, height: 44)
-                            .background(WebRTCMediaStreamTheme.accent, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isEndingStream)
-                    Button(action: pauseFromQuitMenu) {
-                        Text("Pause Stream")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(width: 112, height: 44)
-                            .background(.white.opacity(0.11), in: Capsule())
-                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isEndingStream)
-                    Button(action: quitStreamFromMenu) {
-                        Text(isEndingStream ? "Quitting..." : "Quit")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(width: 112, height: 44)
-                            .background(.white.opacity(0.11), in: Capsule())
-                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isEndingStream)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("STREAM PAUSED")
+                        .font(.streamNvidia(size: 10, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(WebRTCMediaStreamTheme.appBar)
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
+                        .font(.streamNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        StreamQuitMenuButton(
+                            title: "Resume",
+                            isPrimary: true,
+                            isFocused: quitMenuFocusIndex == 0,
+                            isDisabled: isEndingStream,
+                            action: dismissQuitMenu
+                        )
+                        .keyboardShortcut(.cancelAction)
+                        StreamQuitMenuButton(
+                            title: "Pause Stream",
+                            isPrimary: false,
+                            isFocused: quitMenuFocusIndex == 1,
+                            isDisabled: isEndingStream,
+                            action: pauseFromQuitMenu
+                        )
+                        StreamQuitMenuButton(
+                            title: isEndingStream ? "Quitting..." : "Quit",
+                            isPrimary: false,
+                            isFocused: quitMenuFocusIndex == 2,
+                            isDisabled: isEndingStream,
+                            action: quitStreamFromMenu
+                        )
+                    }
+                }
+                .padding(18)
             }
-            .padding(32)
-            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
-            .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
+            .frame(width: 440)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay {
+                Rectangle()
+                    .stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
         }
     }
 
@@ -1110,13 +1466,110 @@ public struct WebRTCMediaStreamSurface: View {
         WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
     }
 
-    private func setUnifiedHUDVisible(_ visible: Bool) {
-        if visible {
-            nativeView?.setPointerLocked(false)
-            unifiedHUDVisible = true
-        } else {
-            unifiedHUDVisible = false
+    private var hudFocusEntries: [StreamHUDFocusEntry] {
+        var entries: [StreamHUDFocusEntry] = [
+            StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
+            StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
+            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
+            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
+        ]
+        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+            entries.append(StreamHUDFocusEntry(
+                id: "coop-invite",
+                isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
+                action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
+            ))
+            if remoteCoOpSnapshot.invite != nil {
+                entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
+            }
         }
+        return entries
+    }
+
+    private func handleHUDGamepad(_ state: GamepadState) {
+        guard let step = gamepadNavigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            moveHUDFocus(by: delta)
+        case .activate:
+            let entries = hudFocusEntries
+            if let entry = entries.first(where: { $0.id == hudFocusID }) ?? entries.first(where: { !$0.isDisabled }) {
+                entry.action()
+            }
+        case .back:
+            setUnifiedHUDVisible(false)
+        }
+    }
+
+    private func moveHUDFocus(by step: Int) {
+        let entries = hudFocusEntries.filter { !$0.isDisabled }
+        guard !entries.isEmpty else { return }
+        guard let currentIndex = entries.firstIndex(where: { $0.id == hudFocusID }) else {
+            hudFocusID = entries.first?.id
+            return
+        }
+        let nextIndex = (currentIndex + step + entries.count) % entries.count
+        hudFocusID = entries[nextIndex].id
+    }
+
+    private func handleQuitMenuGamepad(_ state: GamepadState) {
+        guard let step = gamepadNavigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            quitMenuFocusIndex = (quitMenuFocusIndex + delta + 3) % 3
+        case .activate:
+            switch quitMenuFocusIndex {
+            case 0: dismissQuitMenu()
+            case 1: pauseFromQuitMenu()
+            default: quitStreamFromMenu()
+            }
+        case .back:
+            dismissQuitMenu()
+        }
+    }
+
+    private enum GamepadNavigationStep {
+        case move(Int)
+        case activate
+        case back
+    }
+
+    private func gamepadNavigationStep(_ state: GamepadState) -> GamepadNavigationStep? {
+        let previousButtons = hudGamepadTracker.lastButtons[state.deviceID] ?? state.buttons
+        let pressed = state.buttons.subtracting(previousButtons)
+        hudGamepadTracker.lastButtons[state.deviceID] = state.buttons
+
+        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
+        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
+        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
+        let previousStickStep = hudGamepadTracker.lastStickStep[state.deviceID] ?? 0
+        hudGamepadTracker.lastStickStep[state.deviceID] = stickStep
+
+        if pressed.contains(.south) { return .activate }
+        if pressed.contains(.east) { return .back }
+        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
+        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
+        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
+        return nil
+    }
+
+    private func setUnifiedHUDVisible(_ visible: Bool) {
+        unifiedHUDVisible = visible
+        hudGamepadTracker.reset()
+        guard visible else {
+            hudFocusID = nil
+            if restorePointerLockOnHUDHide {
+                restorePointerLockOnHUDHide = false
+                if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
+                    nativeView?.setPointerLocked(true)
+                }
+            }
+            return
+        }
+        restorePointerLockOnHUDHide = pointerLocked
+        hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
+        nativeView?.setPointerLocked(false)
     }
 
     private func toggleRecording() {
@@ -1164,13 +1617,13 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, action: @escaping (Int) -> Void) -> some View {
+    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, step: Int = 1, action: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamNvidia(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
-            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range) {
+            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range, step: step) {
                 Text(String(value))
                     .font(.streamNvidia(size: 11, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
@@ -1180,8 +1633,9 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
-        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+
+    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
+        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
         onVideoEnhancementChange?(runtimeSettings.upscalingMode, runtimeSettings.upscalingSharpness, runtimeSettings.upscalingDenoise)
         transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight, pillarboxFillMode: runtimeSettings.pillarboxFillMode, pillarboxFillDim: runtimeSettings.pillarboxFillDim, pillarboxFillColor: runtimeSettings.pillarboxFillColor)
         WebRTCMediaTelemetry.capture(
@@ -1196,6 +1650,11 @@ public struct WebRTCMediaStreamSurface: View {
                 "targetHeight": String(runtimeSettings.upscalingTargetHeight),
             ]
         )
+    }
+
+    private var clipboardTextAvailable: Bool {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return false }
+        return !text.isEmpty
     }
 
     private var networkHealthText: String {
@@ -1222,6 +1681,41 @@ public struct WebRTCMediaStreamSurface: View {
     private func toggleStatsHUD() {
         statsVisible.toggle()
         WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
+    }
+
+    private func pasteClipboardIntoStream() {
+        guard isStreamReady, !isEndingStream, !didEndStream else { return }
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            showTransientStreamMessage("Clipboard is empty")
+            return
+        }
+        transport?.sendNow(.text(deviceID: "keyboard", value: text, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
+        lastAcceptedStreamInputAt = Date()
+        showTransientStreamMessage("Clipboard sent")
+        WebRTCMediaTelemetry.capture("webrtc.ui.clipboard.paste", level: .info, message: "Clipboard text sent to stream.", attributes: ["applicationID": configuration.applicationID, "characters": String(text.count)])
+    }
+
+    private func togglePointerLockFromHUD() {
+        guard isStreamReady, runtimeSettings.directMouseInput else { return }
+        nativeView?.setPointerLocked(!pointerLocked)
+    }
+
+    private func toggleFullScreenFromHUD() {
+        guard let window = nativeView?.window else { return }
+        window.toggleFullScreen(nil)
+        showTransientStreamMessage(window.styleMask.contains(.fullScreen) ? "Leaving full screen" : "Entering full screen")
+    }
+
+    private func statsRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            Spacer()
+            Text(value)
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+        }
     }
 
     private func formatted(_ value: Double?, suffix: String) -> String {
@@ -1255,6 +1749,17 @@ public struct WebRTCMediaStreamSurface: View {
             handleRecordingStatusChanged(status)
         }
         nativeView.onInputEvent = { event in
+            if unifiedHUDVisible || quitMenuVisible, !isEndingStream, case .gamepad(let state) = event {
+                if quitMenuVisible {
+                    handleQuitMenuGamepad(state)
+                } else {
+                    handleHUDGamepad(state)
+                }
+                if isStreamReady {
+                    transport.sendNow(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
+                }
+                return
+            }
             switch inputAction(for: event) {
             case .send:
                 guard isStreamReady else { return }
@@ -1499,6 +2004,67 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func refreshControllerBatteries() {
+        var batteries: [ControllerBatteryInfo] = []
+        let steamLevels = SteamControllerHIDMonitor.shared.batteryLevels
+        let steamCharging = SteamControllerHIDMonitor.shared.batteryCharging
+        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
+        for (index, deviceID) in activeIDs.enumerated() {
+            let level = steamLevels[deviceID].map { Int($0) } ?? -1
+            let charging = steamCharging[deviceID] ?? false
+            batteries.append(ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(index + 1)", level: level, charging: charging))
+        }
+        let nativeControllers = GCController.controllers().filter { $0.extendedGamepad != nil }
+        let steamCount = activeIDs.count
+        for (index, controller) in nativeControllers.enumerated() {
+            let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
+            let charging = controller.battery?.batteryState == .charging
+            batteries.append(ControllerBatteryInfo(id: "native-\(ObjectIdentifier(controller).hashValue)", label: "P\(steamCount + index + 1)", level: percent, charging: charging))
+        }
+        let sorted = batteries.sorted { $0.label < $1.label }
+        let relabeled = sorted.enumerated().map { index, info in
+            ControllerBatteryInfo(id: info.id, label: "P\(index + 1)", level: info.level, charging: info.charging)
+        }
+        checkBatteryAlerts(relabeled)
+        controllerBatteries = relabeled
+    }
+
+    private func checkBatteryAlerts(_ batteries: [ControllerBatteryInfo]) {
+        let thresholds = [20, 10, 5]
+        var currentIDs = Set<String>()
+        for battery in batteries {
+            currentIDs.insert(battery.id)
+            let level = battery.level
+            guard level >= 0 else { continue }
+            var fired = batteryAlertThresholds[battery.id] ?? []
+            for threshold in thresholds where level <= threshold && !fired.contains(threshold) {
+                fired.insert(threshold)
+                let severity = threshold <= 5 ? "critical" : "low"
+                showTransientStreamMessage("\(battery.label) \(severity) battery — \(level)%")
+            }
+            if level > 20 {
+                fired.removeAll()
+            }
+            batteryAlertThresholds[battery.id] = fired
+        }
+        for removedID in Set(batteryAlertThresholds.keys).subtracting(currentIDs) {
+            batteryAlertThresholds.removeValue(forKey: removedID)
+        }
+    }
+
+    private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
+        var x = Int16(Int.random(in: -5...5))
+        let y = Int16(Int.random(in: -5...5))
+        if x == 0 && y == 0 { x = 1 }
+        return (x, y)
+    }
+
+    private static let antiAFKIdleThresholdSeconds: TimeInterval = 210
+
+    private static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
+        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
+    }
+
     private func toggleMicrophone() {
         guard runtimeSettings.microphoneMode != "disabled" else {
             microphoneEnabled = false
@@ -1534,6 +2100,8 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        quitMenuFocusIndex = 0
+        hudGamepadTracker.reset()
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }
@@ -1645,6 +2213,8 @@ public struct WebRTCMediaStreamSurface: View {
         transientStreamMessageTask?.cancel()
         transientStreamMessageTask = nil
         transientStreamMessage = ""
+        controllerBatteries.removeAll()
+        batteryAlertThresholds.removeAll()
         sessionLimit = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
@@ -1721,12 +2291,12 @@ private struct StreamRuntimeSettings: Equatable {
     var upscalingSharpness = 10
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
-    var recordingVideoBitrateMbps = 0
-    var recordingAudioBitrateKbps = 160
-    var recordingEnhancedVideoEnabled = true
     var pillarboxFillMode = 0
     var pillarboxFillDim = 55
     var pillarboxFillColor = 0
+    var recordingVideoBitrateMbps = 0
+    var recordingAudioBitrateKbps = 160
+    var recordingEnhancedVideoEnabled = true
 
     var upscalingModeLabel: String {
         switch upscalingMode {
@@ -1738,13 +2308,16 @@ private struct StreamRuntimeSettings: Equatable {
 
     init() {}
 
-    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
+    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
         if let mode {
             upscalingMode = Self.normalizedUpscalingMode(mode)
         }
         if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
         if let targetHeight { upscalingTargetHeight = targetHeight > 0 ? targetHeight : 2160 }
+        if let pillarboxFillMode { self.pillarboxFillMode = OPNPillarboxFillMode.from(pillarboxFillMode).rawValue }
+        if let pillarboxFillDim { self.pillarboxFillDim = min(max(pillarboxFillDim, 0), 100) }
+        if let pillarboxFillColor { self.pillarboxFillColor = pillarboxFillColor }
     }
 
     init(json: String?) {
@@ -1761,6 +2334,9 @@ private struct StreamRuntimeSettings: Equatable {
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
+        pillarboxFillMode = OPNPillarboxFillMode.from(Self.int(dictionary["pillarboxFillMode"], fallback: 0)).rawValue
+        pillarboxFillDim = Self.int(dictionary["pillarboxFillDim"], fallback: 55)
+        pillarboxFillColor = Self.packedColor(Self.string(dictionary["pillarboxFillColor"], fallback: "#000000"))
         upscalingMode = Self.normalizedUpscalingMode(Self.int(dictionary["upscalingMode"]))
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 10)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
@@ -1782,6 +2358,13 @@ private struct StreamRuntimeSettings: Equatable {
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) ?? fallback }
         return fallback
+    }
+
+    /// "#RRGGBB" to packed 0xRRGGBB, so the render path never parses a string.
+    private static func packedColor(_ hex: String) -> Int {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = Int(digits, radix: 16) else { return 0 }
+        return value
     }
 
     private static func bool(_ value: Any?, fallback: Bool = false) -> Bool {
