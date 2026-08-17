@@ -9,6 +9,7 @@ import Testing
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     let coordinator = StreamWindowAspectCoordinator()
     let originalTopEdge = window.frame.maxY
     defer {
@@ -50,6 +51,7 @@ import Testing
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     let coordinator = StreamWindowAspectCoordinator()
     defer {
         coordinator.detach()
@@ -74,6 +76,7 @@ import Testing
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     window.contentMinSize = NSSize(width: 800, height: 600)
     let coordinator = StreamWindowAspectCoordinator()
     defer {
@@ -98,6 +101,7 @@ import Testing
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     let coordinator = StreamWindowAspectCoordinator()
     defer {
         coordinator.detach()
