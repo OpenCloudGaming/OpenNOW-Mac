@@ -64,6 +64,14 @@ jobs:
           }
         shell: bash
 
+      - name: Upload crash reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports
+          path: ~/Library/Logs/DiagnosticReports/
+          if-no-files-found: ignore
+
   app-build:
     name: Build macOS App
     runs-on: macos-26
