@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/anderson-oki/macforce-now/compare/v0.14.0...v0.14.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* ensure CatalogImageCache.swift ends with newline ([41e6226](https://github.com/anderson-oki/macforce-now/commit/41e6226ea37772d398caf7c6d72751ebe0ac38ca))
+
 ## [0.14.0](https://github.com/anderson-oki/macforce-now/compare/v0.13.0...v0.14.0) (2026-08-17)
 
 
