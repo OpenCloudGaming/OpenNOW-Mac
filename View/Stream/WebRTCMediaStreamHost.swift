@@ -229,10 +229,6 @@ private struct NativeNVSTMediaStreamSurface: View {
                         onProgress?(progress)
                     }
                 }
-                try await path.applyInitialNetworkPolicy(
-                    maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000),
-                    l4sEnabled: profile.enableL4S
-                )
                 do {
                     try await path.setMicrophoneEnabled(initialMicrophoneEnabled)
                 } catch {
