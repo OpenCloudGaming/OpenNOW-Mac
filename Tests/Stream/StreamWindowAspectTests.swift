@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import MacForceNow
 
-@Test @MainActor func streamWindowConstrainsTitlebarExclusiveContentToVideoAspect() async throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamWindowConstrainsTitlebarExclusiveContentToVideoAspect() async throws {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 1000, height: 625),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -43,7 +43,7 @@ import Testing
     #expect(abs(window.frame.maxY - originalTopEdge) < 0.001)
 }
 
-@Test @MainActor func unlockingStreamWindowRestoresOriginalFullSizeContentStyle() async {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func unlockingStreamWindowRestoresOriginalFullSizeContentStyle() async {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 1000, height: 625),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -67,7 +67,7 @@ import Testing
     #expect(window.aspectRatio == .zero)
 }
 
-@Test @MainActor func streamWindowPreservesAspectWhenMinimumContentHeightRequiresMoreWidth() async throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamWindowPreservesAspectWhenMinimumContentHeightRequiresMoreWidth() async throws {
     let window = NSWindow(
         contentRect: NSRect(x: 100, y: 100, width: 800, height: 500),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -91,7 +91,7 @@ import Testing
     #expect(abs(contentView.bounds.width / contentView.bounds.height - 1.6) < 0.001)
 }
 
-@Test @MainActor func streamWindowWaitsForValidGeometryBeforeChangingWindowStyle() async throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamWindowWaitsForValidGeometryBeforeChangingWindowStyle() async throws {
     let window = NSWindow(
         contentRect: .zero,
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],

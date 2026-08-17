@@ -1,0 +1,144 @@
+name: Xcode CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: "1.51"
+      build:
+        description: Release build number
+        required: true
+        default: "53"
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  app-build:
+    if: github.event_name != 'workflow_dispatch'
+    name: Build macOS App
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          xcodebuild -version
+        shell: bash
+
+      - name: Build MacForceNow
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project MacForceNow.xcodeproj \
+            -scheme MacForceNow \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+        shell: bash
+
+  release-build:
+    if: github.event_name == 'workflow_dispatch'
+    name: Build macOS Release
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      RELEASE_ROOT: build/release-ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          xcodebuild -version
+        shell: bash
+
+      - name: Build MacForceNow Release
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project MacForceNow.xcodeproj \
+            -scheme MacForceNow \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RELEASE_ROOT/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO
+        shell: bash
+
+      - name: Validate and package release
+        id: package
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$RELEASE_ROOT/DerivedData/Build/Products/Release/MacForceNow.app"
+          INFO_PLIST="$APP_PATH/Contents/Info.plist"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")
+          [[ "$VERSION" == "$EXPECTED_VERSION" ]]
+          [[ "$BUILD" == "$EXPECTED_BUILD" ]]
+          ADHOC_ENTITLEMENTS="$RELEASE_ROOT/MacForceNow-adhoc.entitlements"
+          cp MacForceNow.entitlements "$ADHOC_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$ADHOC_ENTITLEMENTS"
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements "$ADHOC_ENTITLEMENTS" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          ZIP_PATH="$RELEASE_ROOT/MacForceNow-$VERSION-macOS.zip"
+          COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+          unzip -t "$ZIP_PATH"
+          if unzip -Z1 "$ZIP_PATH" | grep -Eq '(^|/)__MACOSX/|/\._'; then
+            echo "Release archive contains AppleDouble metadata." >&2
+            exit 1
+          fi
+
+          VERIFY_PATH="$RELEASE_ROOT/verify"
+          mkdir -p "$VERIFY_PATH"
+          ditto -x -k "$ZIP_PATH" "$VERIFY_PATH"
+          codesign --verify --deep --strict --verbose=2 "$VERIFY_PATH/MacForceNow.app"
+          "$VERIFY_PATH/MacForceNow.app/Contents/MacOS/MacForceNow" --release-smoke-test > "$RELEASE_ROOT/launch-smoke.log" 2>&1 &
+          APP_PID=$!
+          sleep 3
+          if kill -0 "$APP_PID" 2>/dev/null; then
+            kill "$APP_PID"
+            wait "$APP_PID" || true
+          elif ! wait "$APP_PID"; then
+            cat "$RELEASE_ROOT/launch-smoke.log" >&2
+            exit 1
+          fi
+
+          CHECKSUM_PATH="$ZIP_PATH.sha256"
+          shasum -a 256 "$ZIP_PATH" > "$CHECKSUM_PATH"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=$CHECKSUM_PATH" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacForceNow-${{ steps.package.outputs.version }}-macOS
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.checksum_path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

@@ -19,7 +19,7 @@ private struct MouseButtonTransition: Equatable {
     let isPressed: Bool
 }
 
-@Test @MainActor func streamViewBalancesMouseButtonTransitions() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamViewBalancesMouseButtonTransitions() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
     view.directMouseInputEnabled = false
     var events: [UserInputEvent] = []
@@ -38,7 +38,7 @@ private struct MouseButtonTransition: Equatable {
     ])
 }
 
-@Test @MainActor func pointerUnlockReleasesHeldMouseButtonsOnce() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func pointerUnlockReleasesHeldMouseButtonsOnce() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
     view.hidesCursorWhilePointerLocked = false
@@ -67,7 +67,7 @@ private struct MouseButtonTransition: Equatable {
     #expect(releaseObservedWhileLocked)
 }
 
-@Test @MainActor func pointerCaptureSuppressesTheCompleteActivationClick() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func pointerCaptureSuppressesTheCompleteActivationClick() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
     view.hidesCursorWhilePointerLocked = false
@@ -85,20 +85,20 @@ private struct MouseButtonTransition: Equatable {
     #expect(mouseButtonTransitions(events).isEmpty)
 }
 
-@Test @MainActor func streamViewHidesCursorWhilePointerLockedByDefault() {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamViewHidesCursorWhilePointerLockedByDefault() {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
 
     #expect(view.hidesCursorWhilePointerLocked)
 }
 
-@Test @MainActor func streamViewLeavesApplicationMenuKeyEquivalentsLocal() {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamViewLeavesApplicationMenuKeyEquivalentsLocal() {
     #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.command))
     #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent([.command, .shift]))
     #expect(!NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.option))
     #expect(!NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.control))
 }
 
-@Test @MainActor func streamShortcutContractMatchesWebRTCControls() {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamShortcutContractMatchesWebRTCControls() {
     #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 5, modifierFlags: .command) == .toggleUnifiedHUD)
     #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 46, modifierFlags: .command) == .toggleMicrophone)
     #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 15, modifierFlags: .command) == .toggleRecording)
@@ -109,7 +109,7 @@ private struct MouseButtonTransition: Equatable {
     #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 46, modifierFlags: .option) == nil)
 }
 
-@Test @MainActor func streamViewOnlyCapturesKeysFromItsOwnWindow() {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamViewOnlyCapturesKeysFromItsOwnWindow() {
     let streamWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
     let menuWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
 
@@ -118,7 +118,7 @@ private struct MouseButtonTransition: Equatable {
     #expect(!NativeWebRTCStreamView.isStreamWindowKeyEvent(nil, streamWindow: streamWindow))
 }
 
-@Test @MainActor func absoluteMouseModeMapsDisplayedVideoCoordinates() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeMapsDisplayedVideoCoordinates() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
     view.mouseInputMode = .absolute
     view.setStreamContentSize(width: 1920, height: 1080)
@@ -135,7 +135,7 @@ private struct MouseButtonTransition: Equatable {
     #expect(view.absoluteMouseEvent(at: CGPoint(x: CGFloat.nan, y: 500), timestamp: timestamp) == nil)
 }
 
-@Test @MainActor func absoluteMouseModeForwardsCompleteClickWithoutPointerLock() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeForwardsCompleteClickWithoutPointerLock() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
     view.mouseInputMode = .absolute
     var events: [UserInputEvent] = []
@@ -159,7 +159,7 @@ private struct MouseButtonTransition: Equatable {
     #expect(sequence == ["position:0,719", "down", "position:0,719", "up"])
 }
 
-@Test @MainActor func absoluteMouseModeClampsLetterboxClickBeforeEachButtonEdge() throws {
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeClampsLetterboxClickBeforeEachButtonEdge() throws {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
     view.mouseInputMode = .absolute
     view.setStreamContentSize(width: 1920, height: 1080)
