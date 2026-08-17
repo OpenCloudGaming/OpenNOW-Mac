@@ -8,6 +8,10 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      workflows: write
     steps:
       - uses: actions/checkout@v4
         with:
