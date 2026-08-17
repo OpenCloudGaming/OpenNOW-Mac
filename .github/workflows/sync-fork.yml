@@ -24,6 +24,7 @@ jobs:
           git remote add upstream https://github.com/OpenCloudGaming/OpenNOW-Mac.git
           git fetch upstream main
           git checkout -b upstream/main upstream/main
+          git rm -rf .github/workflows/ 2>/dev/null || true
           git checkout origin/main -- .github/workflows/
           git add .github/workflows/
           git commit -m "chore: keep fork workflows during upstream sync" --allow-empty || true
