@@ -22,9 +22,14 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
     private(set) var cancelCount = 0
     private(set) var recoveryCount = 0
     let allocation: NativeNVSTSessionAllocation
+    let recoveryError: NativeNVSTError?
+    let suspendsRecovery: Bool
+    private var recoveryContinuation: CheckedContinuation<NativeNVSTSessionAllocation, Error>?
 
-    init(allocation: NativeNVSTSessionAllocation = nativeAllocation()) {
+    init(allocation: NativeNVSTSessionAllocation = nativeAllocation(), recoveryError: NativeNVSTError? = nil, suspendsRecovery: Bool = false) {
         self.allocation = allocation
+        self.recoveryError = recoveryError
+        self.suspendsRecovery = suspendsRecovery
     }
 
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
@@ -38,7 +43,18 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
 
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
         recoveryCount += 1
+        if let recoveryError { throw recoveryError }
+        if suspendsRecovery {
+            return try await withCheckedThrowingContinuation { continuation in
+                recoveryContinuation = continuation
+            }
+        }
         return allocation
+    }
+
+    func failSuspendedRecovery() {
+        recoveryContinuation?.resume(throwing: NativeNVSTError.invalidSession("resume cancelled"))
+        recoveryContinuation = nil
     }
 
     func cancelSessionStart() async {
@@ -60,10 +76,14 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private(set) var sentEvents: [UserInputEvent] = []
     private(set) var sentAbsoluteMouseEvents: [NativeNVSTAbsoluteMouseEvent] = []
     private(set) var microphoneEnabledUpdates: [Bool] = []
+    private(set) var microphoneConfigurations: [NativeNVSTMicrophoneConfiguration] = []
     private(set) var disconnectCount = 0
     private(set) var pauseCount = 0
     private(set) var performanceOverlayToggleCount = 0
     private(set) var performanceSnapshotReadCount = 0
+    private(set) var maximumBitrateUpdates: [UInt32] = []
+    private(set) var dynamicStreamingModeUpdates: [NativeNVSTDynamicStreamingMode] = []
+    private(set) var l4sUpdates: [Bool] = []
     private let mode: Mode
     private let terminalStream: AsyncStream<NativeNVSTTransportTermination>
     private let terminalContinuation: AsyncStream<NativeNVSTTransportTermination>.Continuation
@@ -114,6 +134,10 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         microphoneEnabledUpdates.append(enabled)
     }
 
+    func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
+        microphoneConfigurations.append(configuration)
+    }
+
     func togglePerformanceOverlay() async throws {
         performanceOverlayToggleCount += 1
     }
@@ -121,6 +145,18 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
         performanceSnapshotReadCount += 1
         return nativePerformanceSnapshot()
+    }
+
+    func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws {
+        maximumBitrateUpdates.append(bitrateKbps)
+    }
+
+    func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
+        dynamicStreamingModeUpdates.append(mode)
+    }
+
+    func setL4SEnabled(_ enabled: Bool) async throws {
+        l4sUpdates.append(enabled)
     }
 
     func disconnect() async {
@@ -140,6 +176,18 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     func sendTermination(_ termination: NativeNVSTTransportTermination) {
         terminalContinuation.yield(termination)
     }
+}
+
+@Test func nativeNVSTInitialNetworkPolicySynchronizesVerifiedRuntimeControls() async throws {
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: RecordingNativeNVSTSessionProvider(), transport: transport)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    try await path.applyInitialNetworkPolicy(maximumBitrateKbps: 75_000, l4sEnabled: true)
+
+    #expect(await transport.maximumBitrateUpdates == [75_000])
+    #expect(await transport.dynamicStreamingModeUpdates == [.on])
+    #expect(await transport.l4sUpdates == [true])
 }
 
 @Test func nativeNVSTPathPrepareFailureDoesNotAllocateCloudSession() async throws {
@@ -214,6 +262,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
     let input = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 4, scanCode: 4, isPressed: true, timestamp: MediaTimestamp(nanoseconds: 1)))
     let absoluteMouseEvent = NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: MediaTimestamp(nanoseconds: 2))
+    let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 0.5, mode: "voice-activity")
+    try await path.setMicrophoneConfiguration(microphoneConfiguration)
     try await path.send(input)
     try await path.sendAbsoluteMouseMove(absoluteMouseEvent)
     try await path.setMicrophoneEnabled(true)
@@ -228,6 +278,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.sentEvents == [input])
     #expect(await transport.sentAbsoluteMouseEvents == [absoluteMouseEvent])
     #expect(await transport.microphoneEnabledUpdates == [true, false])
+    #expect(await transport.microphoneConfigurations == [microphoneConfiguration])
     #expect(await transport.performanceOverlayToggleCount == 1)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
     #expect(report.metadata["transport"] == "nvst")
@@ -298,7 +349,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
 
     _ = try await path.start(configuration: nativeConfiguration())
-    await transport.sendTermination(.remoteStopped("Remote stop"))
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination(isResumable: false, isSessionAlive: false, message: "Remote stop")))
     for _ in 0..<100 {
         if !(await provider.finished).isEmpty { break }
         try await Task.sleep(nanoseconds: 1_000_000)
@@ -315,13 +366,13 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
 }
 
-@Test func nativeNVSTPathRecoversFailedTransportWithoutEndingCloudSession() async throws {
+@Test func nativeNVSTPathRecoversSameSessionWhenNativeFlagsAndResultsPermit() async throws {
     let provider = RecordingNativeNVSTSessionProvider()
     let transport = RecordingNativeNVSTTransport(mode: .success)
     let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
 
     _ = try await path.start(configuration: nativeConfiguration())
-    await transport.sendTermination(.failed("network interrupted"))
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
     for _ in 0..<200 {
         if await transport.connectCount >= 2 { break }
         try await Task.sleep(nanoseconds: 1_000_000)
@@ -331,6 +382,139 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await provider.finished.isEmpty)
     #expect(await transport.connectCount == 2)
     #expect(await path.currentState() == .running(nativeAllocation().session))
+}
+
+@Test func nativeNVSTSessionRecoveryRequiresBothFlags() {
+    for isResumable in [false, true] {
+        for isSessionAlive in [false, true] {
+            let termination = nativeSessionTermination(isResumable: isResumable, isSessionAlive: isSessionAlive)
+            #expect(termination.permitsSameSessionRecovery == (isResumable && isSessionAlive))
+        }
+    }
+    let unknownReason = NativeNVSTSessionTermination(
+        reason: NativeNVSTTerminationReason(rawValue: 99),
+        extendedResult: NativeNVSTTerminationValue(code: -1, name: "NVB_R_NETWORK_ERROR"),
+        isResumable: true,
+        isSessionAlive: true,
+        message: "unknown reason"
+    )
+    #expect(!unknownReason.permitsSameSessionRecovery)
+}
+
+@Test func nativeNVSTRecoveryPolicyAllowsOnlyExplicitTransientResults() {
+    let retryable = [
+        "NVB_R_NETWORK_ERROR",
+        "NVB_R_CONNECTION_TIMEOUT",
+        "NVB_R_STREAMER_NETWORK_ERROR",
+        "NVB_R_DATA_RECEIVE_TIMEOUT",
+    ]
+    let permanent = [
+        "NVB_R_AUTH_ERR_DEFUNCT_TOKEN",
+        "NVB_R_INVALID_PARAM",
+        "NVB_R_INVALID_VIDEO_DECODER",
+        "NVB_R_SESSION_LIMIT_REACHED",
+        "NVB_R_SESSION_TERMINATED_ANOTHER_CLIENT",
+        "NVB_R_MEMBER_TERMINATED",
+    ]
+
+    for name in retryable {
+        #expect(NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1, name: name)))
+    }
+    for name in permanent {
+        #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1, name: name)))
+    }
+    #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1)))
+    #expect(NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
+        message: "network interrupted",
+        recoveryClassification: .transientNetwork
+    ))))
+    #expect(!NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
+        message: "misclassified auth failure",
+        result: NativeNVSTTerminationValue(code: -1, name: "NVB_R_AUTH_ERR_UNKNOWN"),
+        recoveryClassification: .transientNetwork
+    ))))
+    #expect(!NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
+        message: "decoder failed",
+        recoveryClassification: .permanent
+    ))))
+}
+
+@Test func nativeNVSTPathDoesNotRecoverPermanentSessionTermination() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination(
+        resultName: "NVB_R_SESSION_LIMIT_REACHED",
+        isResumable: true,
+        isSessionAlive: true
+    )))
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination(
+        resultName: "NVB_R_SESSION_LIMIT_REACHED",
+        isResumable: true,
+        isSessionAlive: true
+    )))
+    await waitForNativeNVSTFinish(provider)
+
+    #expect(await provider.recoveryCount == 0)
+    #expect(await provider.finished == [nativeFinish(.remoteEnded)])
+    #expect(await transport.disconnectCount == 1)
+}
+
+@Test func nativeNVSTPathLocalStopSuppressesConcurrentTerminalCleanup() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    _ = try await path.stop(reason: .userRequested, message: "Local stop")
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
+    try await Task.sleep(nanoseconds: 5_000_000)
+
+    #expect(await provider.recoveryCount == 0)
+    #expect(await provider.finished == [nativeFinish(.userRequested)])
+    #expect(await transport.disconnectCount == 1)
+}
+
+@Test func nativeNVSTPathLocalStopDuringRecoveryOwnsCleanupExactlyOnce() async throws {
+    let provider = RecordingNativeNVSTSessionProvider(suspendsRecovery: true)
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
+    for _ in 0..<100 {
+        if await provider.recoveryCount == 1 { break }
+        await Task.yield()
+    }
+    _ = try await path.stop(reason: .userRequested, message: "Local stop during recovery")
+    await provider.failSuspendedRecovery()
+    try await Task.sleep(nanoseconds: 5_000_000)
+
+    #expect(await provider.finished == [nativeFinish(.userRequested)])
+    if case .ended(let report) = await path.currentState() {
+        #expect(report.reason == .userRequested)
+    } else {
+        Issue.record("Expected local stop to retain terminal ownership")
+    }
+}
+
+@Test func nativeNVSTPathFailedResumeCleansUpExactlyOnceWithoutBlanketRetry() async throws {
+    let provider = RecordingNativeNVSTSessionProvider(recoveryError: .invalidSession("resume rejected"))
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
+    await waitForNativeNVSTFinish(provider)
+
+    #expect(await provider.recoveryCount == 1)
+    #expect(await provider.finished == [nativeFinish(.remoteEnded)])
+    guard case .ended = await path.currentState() else {
+        Issue.record("Expected failed same-session resume to end the path")
+        return
+    }
 }
 
 @Test func nativeNVSTPathCancelsSuspendedConnectAndCloudAllocation() async throws {
@@ -539,6 +723,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
       "zoneName": "US-WEST",
       "userAge": 18,
       "summaryStatsEnabled": true,
+      "enablePersistingInGameSettings": true,
       "sessionRequestData": {
         "appId": 123,
         "appName": "Game",
@@ -551,6 +736,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         "frameLossErrorTimeout": 30000,
         "supportedControls": ["KeyboardMouse", "Gamepad"],
         "contentRating": [{"system": "ESRB", "rating": "T"}],
+        "metaData": [{"key": "wssignaling", "value": "1"}],
         "spanData": { "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" }
       }
     }
@@ -567,9 +753,36 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(payload.start.appId == 123)
     #expect(payload.start.networkSessionId == "network-session")
     #expect(payload.start.audioModeFormat == "surround51")
+    #expect(payload.start.metadataCount == 1)
+    #expect(payload.start.persistingInGameSettings)
     #expect(payload.start.supportedControlsCount == 2)
     #expect(payload.start.contentRatingCount == 1)
     #expect(payload.telemetryAttributes.values.contains("private-session-token") == false)
+}
+
+@Test func nativeNVSTNormalizedSessionPreservesMetadataForNativeABIValidation() {
+    let valid = NativeNVSTNormalizedSessionSource(allocation: nativeAllocation(rawSessionJSON: """
+    {
+      "sessionRequestData": {
+        "metaData": [
+          {"key":" spaced ","value":"Grüße 世界"},
+          {"key":"empty","value":""},
+          {"key":"duplicate","value":"first"},
+          {"key":"duplicate","value":"last"}
+        ]
+      }
+    }
+    """))
+    let malformed = NativeNVSTNormalizedSessionSource(allocation: nativeAllocation(rawSessionJSON: """
+    {"sessionRequestData":{"metaData":{"key":"not-an-array","value":"rejected-natively"}}}
+    """))
+
+    let entries = valid.metadata as? [[String: String]]
+    #expect(entries?.compactMap { $0["key"] } == [" spaced ", "empty", "duplicate", "duplicate"])
+    #expect(entries?.compactMap { $0["value"] } == ["Grüße 世界", "", "first", "last"])
+    #expect(valid.metadataCount == 4)
+    #expect((malformed.metadata as? [String: String])?["key"] == "not-an-array")
+    #expect(malformed.metadataCount == 0)
 }
 
 @Test func nativeNVSTLaunchPayloadUsesAllocationServerTypeAndAuthWhenSessionOmitsFields() throws {
@@ -703,6 +916,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
           "streamingProfile": { "streamingProfileGuid": "profile-guid", "resolution": "1920x1080", "fps": 60, "codec": "H264" },
           "frameStatsEnabled": true,
           "summaryStatsEnabled": false,
+          "applicationHeaders": ["x-existing.value"],
           "sessionRequestData": {
             "appId": 123,
             "appName": "Native Game",
@@ -714,11 +928,15 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
             "frameLossErrorTimeout": 10000,
             "supportedControls": ["KeyboardMouse", "Gamepad"],
             "contentRating": [{"system": "ESRB", "rating": "T"}],
-            "metaData": {"source": "cloudmatch"}
+            "metaData": [
+              {"key": "source", "value": "cloudmatch"},
+              {"key": "wssignaling", "value": "1"}
+            ],
+            "enablePersistingInGameSettings": true
           },
           "sessionControlInfo": { "ip": "control.example.test", "port": 443 },
           "connectionInfo": [
-            { "usage": 14, "ip": "signaling.example.test", "port": 443, "resourcePath": "/nvst/" },
+            { "usage": 14, "ip": "signaling.example.test", "port": 443, "resourcePath": "/nvst/", "headers": ["x-vendor.session"], "queryParameters": "vendorToken=opaque" },
             { "usage": 2, "ip": "video.example.test", "port": 47998, "resourcePath": "" },
             { "usage": 17, "ip": "bundle.example.test", "port": 47998, "resourcePath": "" }
           ],
@@ -735,7 +953,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let monitorSettings = try #require(object["monitorSettings"] as? [[String: Any]])
     let connectionInfo = try #require(object["connectionInfo"] as? [[String: Any]])
     let features = try #require(object["finalizedStreamingFeatures"] as? [String: Any])
-    let metadata = try #require(object["metaData"] as? [String: Any])
+    let metadata = try #require(object["metaData"] as? [[String: String]])
+    let applicationHeaders = try #require(object["applicationHeaders"] as? [String])
 
     #expect(object["sessionId"] as? String == "native-session")
     #expect(object["appId"] as? Int == 123)
@@ -750,7 +969,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(object["frameLossErrorTimeout"] as? Int == 10_000)
     #expect((object["supportedControls"] as? [String]) == ["KeyboardMouse", "Gamepad"])
     #expect((object["contentRating"] as? [[String: String]])?.count == 1)
-    #expect(metadata["source"] as? String == "cloudmatch")
+    #expect(metadata.map { $0["key"] ?? "" } == ["source", "wssignaling"])
+    #expect(object["persistingInGameSettings"] as? Bool == true)
     #expect(object["zoneAddress"] as? String == "control.example.test")
     #expect(object["zoneName"] as? String == "CONTROL")
     #expect(streamingProfile["streamingProfileGuid"] as? String == "profile-guid")
@@ -758,10 +978,105 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(streamingProfile["fps"] as? Int == 60)
     #expect(monitorSettings.count == 1)
     #expect(monitorSettings[0]["widthInPixels"] as? Int == 1920)
-    #expect(connectionInfo.count == 2)
-    #expect(connectionInfo.contains { $0["usage"] as? Int == 17 } == false)
+    #expect(connectionInfo.map { $0["usage"] as? Int ?? -1 } == [14, 2, 17])
     #expect(connectionInfo.allSatisfy { $0["protocol"] as? Int == 2 })
+    #expect(connectionInfo[0]["headers"] as? [String] == ["x-vendor.session"])
+    #expect(connectionInfo[0]["queryParameters"] as? String == "vendorToken=opaque")
+    #expect(applicationHeaders == ["x-existing.value", "x-nv-sessionid.native-session", "token=abc"])
     #expect(features["bitDepth"] as? Int == 8)
+}
+
+@Test func nativeNVSTModeSelectionUsesFinalizedThenRequestedFeaturesBeforeSettings() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "resolution": "2560x1440", "fps": 120, "codec": "H265", "colorQuality": "10bit_444" },
+          "sessionRequestData": {
+            "requestedStreamingFeatures": {
+              "reflex": true,
+              "enabledL4S": true,
+              "cloudGsync": true,
+              "trueHdr": true,
+              "supportedHidDevices": 31,
+              "profile": 4,
+              "fallbackToLogicalResolution": true,
+              "bitDepth": 1,
+              "chromaFormat": 2,
+              "prefilterMode": 2,
+              "prefilterSharpness": 7,
+              "prefilterNoiseReduction": 6,
+              "hudStreamingMode": 2
+            }
+          },
+          "finalizedStreamingFeatures": {
+            "reflex": false,
+            "enabledL4S": false,
+            "trueHdr": false,
+            "bitDepth": 0,
+            "prefilterSharpness": 3,
+            "hudStreamingMode": 1
+          }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: """
+        {
+          "enableReflex": true,
+          "enableL4S": true,
+          "enableCloudGsync": false,
+          "enableHdr": true,
+          "supportedHidDevices": 1,
+          "streamingQualityProfile": 1,
+          "fallbackToLogicalResolution": false,
+          "prefilterMode": 0,
+          "prefilterSharpness": 0,
+          "prefilterDenoise": 0,
+          "hudStreamingMode": 0,
+          "colorQuality": "8bit_420"
+        }
+        """
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let features = try #require(profile["selectedFeatures"] as? [String: Any])
+    let prefilter = try #require(features["prefilterParams"] as? [String: Any])
+    let hud = try #require(features["hudStreamingParams"] as? [String: Any])
+
+    #expect(features["reflex"] as? Bool == false)
+    #expect(features["l4s"] as? Bool == false)
+    #expect(features["cloudGsync"] as? Bool == true)
+    #expect(features["hdr"] as? Bool == false)
+    #expect(features["trueHdr"] as? Bool == false)
+    #expect(features["supportedHidDevices"] as? Int == 31)
+    #expect(features["profile"] as? Int == 4)
+    #expect(features["fallbackToLogicalResolution"] as? Bool == true)
+    #expect(features["bitDepth"] as? Int == 8)
+    #expect(features["chromaFormat"] as? Int == 2)
+    #expect(prefilter["mode"] as? Int == 2)
+    #expect(prefilter["sharpnessLevel"] as? Int == 3)
+    #expect(prefilter["denoiseLevel"] as? Double == 6)
+    #expect(hud["mode"] as? Int == 1)
+}
+
+@Test func nativeNVSTDoesNotFabricateNetworkSessionIdFromCloudMatchSessionId() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: "{\"streamingProfile\":{\"resolution\":\"1920x1080\",\"fps\":60,\"codec\":\"H264\"}}",
+        sessionInfoJSON: "{}"
+    )
+    let allocation = nativeAllocation(rawSessionJSON: """
+    {
+      "sessionId": "cloudmatch-session",
+      "tokenType": "JWT_GFN",
+      "token": "private-token",
+      "sessionRequestData": { "appId": 123 }
+    }
+    """)
+    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "OpenNOW")
+    let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: profileJSON)
+    let session = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+
+    #expect(payload.start.networkSessionId.isEmpty)
+    #expect(payload.missingFields.contains("networkSessionId") == false)
+    #expect(session["networkSessionId"] as? String == "")
 }
 
 @Test func nativeNVSTGeronimoSessionJSONGeneratesStableOpenNOWProfileGuidWhenCloudSessionOmitsOne() throws {
@@ -960,12 +1275,55 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(selectedFeatures["maxBitrateKbps"] as? Int == 24_000)
 }
 
+@Test func nativeNVSTNormalizesVerifiedRemoteControllersBitmap() throws {
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(0) == 0)
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(UInt32.max) == UInt64(UInt32.max))
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap("15") == 15)
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(-1) == nil)
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(1.5) == nil)
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(UInt64(UInt32.max) + 1) == nil)
+    #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(true) == nil)
+
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: "{\"streamingProfile\":{\"resolution\":\"1920x1080\",\"fps\":60,\"codec\":\"H264\"}}",
+        sessionInfoJSON: "{}"
+    )
+    let allocation = nativeAllocation(
+        rawSessionJSON: "{\"sessionId\":\"native-session\",\"remoteControllersBitmap\":9,\"sessionRequestData\":{\"appId\":123,\"remoteControllersBitmap\":3}}",
+        settingsJSON: "{\"transportMode\":\"nvst\",\"remoteControllersBitmap\":1}"
+    )
+    let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: profileJSON)
+    let session = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
+
+    #expect((session["remoteControllersBitmap"] as? NSNumber)?.uint64Value == 9)
+}
+
 private func nativeConfiguration() -> StreamLaunchConfiguration {
     StreamLaunchConfiguration(title: "Native Test", applicationID: "123", accessToken: "token", accountLinked: true, selectedStore: "Steam")
 }
 
 private func nativeFinish(_ reason: StreamEndReason) -> RecordedNativeNVSTFinish {
     RecordedNativeNVSTFinish(session: nativeAllocation().session, reason: reason)
+}
+
+private func nativeSessionTermination(resultName: String = "NVB_R_NETWORK_ERROR",
+                                      isResumable: Bool = true,
+                                      isSessionAlive: Bool = true,
+                                      message: String = "network interrupted") -> NativeNVSTSessionTermination {
+    NativeNVSTSessionTermination(
+        reason: NativeNVSTTerminationReason(rawValue: 1, resultName: resultName),
+        extendedResult: NativeNVSTTerminationValue(code: -1, name: resultName),
+        isResumable: isResumable,
+        isSessionAlive: isSessionAlive,
+        message: message
+    )
+}
+
+private func waitForNativeNVSTFinish(_ provider: RecordingNativeNVSTSessionProvider) async {
+    for _ in 0..<200 {
+        if !(await provider.finished).isEmpty { return }
+        try? await Task.sleep(nanoseconds: 1_000_000)
+    }
 }
 
 private func nativePerformanceSnapshot() -> NativeNVSTPerformanceSnapshot {

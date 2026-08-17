@@ -73,9 +73,117 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     }
 }
 
+public struct NativeNVSTTerminationValue: Equatable, Sendable {
+    public let code: Int32
+    public let name: String?
+
+    public init(code: Int32, name: String? = nil) {
+        self.code = code
+        self.name = name
+    }
+}
+
+public struct NativeNVSTTerminationReason: Equatable, Sendable {
+    public let rawValue: UInt32
+    public let resultName: String?
+
+    public init(rawValue: UInt32, resultName: String? = nil) {
+        self.rawValue = rawValue
+        self.resultName = resultName
+    }
+}
+
+public struct NativeNVSTSessionTermination: Equatable, Sendable {
+    public let reason: NativeNVSTTerminationReason
+    public let extendedResult: NativeNVSTTerminationValue
+    public let isResumable: Bool
+    public let isSessionAlive: Bool
+    public let message: String
+
+    public init(reason: NativeNVSTTerminationReason,
+                extendedResult: NativeNVSTTerminationValue,
+                isResumable: Bool,
+                isSessionAlive: Bool,
+                message: String) {
+        self.reason = reason
+        self.extendedResult = extendedResult
+        self.isResumable = isResumable
+        self.isSessionAlive = isSessionAlive
+        self.message = message
+    }
+
+    public var permitsSameSessionRecovery: Bool {
+        isResumable && isSessionAlive && NativeNVSTRecoveryPolicy.isTransient(reason) && NativeNVSTRecoveryPolicy.isTransient(extendedResult)
+    }
+}
+
+public struct NativeNVSTTransportFailure: Equatable, Sendable {
+    public enum RecoveryClassification: Equatable, Sendable {
+        case transientNetwork
+        case permanent
+    }
+
+    public let message: String
+    public let result: NativeNVSTTerminationValue?
+    public let recoveryClassification: RecoveryClassification
+
+    public init(message: String,
+                result: NativeNVSTTerminationValue? = nil,
+                recoveryClassification: RecoveryClassification) {
+        self.message = message
+        self.result = result
+        self.recoveryClassification = recoveryClassification
+    }
+}
+
 public enum NativeNVSTTransportTermination: Equatable, Sendable {
-    case remoteStopped(String)
-    case failed(String)
+    case sessionTerminated(NativeNVSTSessionTermination)
+    case transportFailed(NativeNVSTTransportFailure)
+}
+
+public enum NativeNVSTRecoveryPolicy {
+    private static let transientResults: Set<String> = [
+        "NVB_R_ADDRESS_RESOLVE_FAILED",
+        "NVB_R_CONNECT_FAILED",
+        "NVB_R_CONNECTION_TIMEOUT",
+        "NVB_R_DATA_RECEIVE_FAILURE",
+        "NVB_R_DATA_RECEIVE_TIMEOUT",
+        "NVB_R_DATA_SEND_FAILURE",
+        "NVB_R_NETWORK_ERROR",
+        "NVB_R_NETWORK_ERROR_UNKNOWN",
+        "NVB_R_PEER_NO_RESPONSE",
+        "NVB_R_SERVER_INTERNAL_TIMEOUT",
+        "NVB_R_SOCKET_ERROR",
+        "NVB_R_STREAMER_NETWORK_ERROR",
+    ]
+
+    public static func isTransient(_ value: NativeNVSTTerminationValue) -> Bool {
+        if value.code == 0 { return true }
+        guard let name = value.name else { return false }
+        return transientResults.contains(name)
+    }
+
+    public static func isTransient(_ reason: NativeNVSTTerminationReason) -> Bool {
+        if reason.rawValue == 0 { return true }
+        guard let name = reason.resultName else { return false }
+        return transientResults.contains(name)
+    }
+
+    public static func permitsRecovery(_ termination: NativeNVSTTransportTermination) -> Bool {
+        switch termination {
+        case .sessionTerminated(let info):
+            info.permitsSameSessionRecovery
+        case .transportFailed(let failure):
+            failure.recoveryClassification == .transientNetwork && failure.result.map(isTransient) != false
+        }
+    }
+
+    static func permitsRetry(after error: Error) -> Bool {
+        guard let nativeError = error as? NativeNVSTError,
+              case .transportFailed(let message) = nativeError else { return false }
+        let normalized = message.uppercased()
+        return transientResults.contains { normalized.contains($0) }
+    }
 }
 
 public enum NativeNVSTDynamicStreamingMode: UInt32, Equatable, Sendable {
@@ -85,17 +193,58 @@ public enum NativeNVSTDynamicStreamingMode: UInt32, Equatable, Sendable {
     case on = 3
 }
 
+public struct NativeNVSTMicrophoneConfiguration: Equatable, Sendable {
+    public let volume: Double
+    public let voiceActivityEnabled: Bool
+    public let captureRequested: Bool
+    public let initiallyEnabled: Bool
+
+    public init(volume: Double, voiceActivityEnabled: Bool, captureRequested: Bool, initiallyEnabled: Bool) {
+        self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
+        self.captureRequested = captureRequested
+        self.voiceActivityEnabled = voiceActivityEnabled && captureRequested
+        self.initiallyEnabled = initiallyEnabled && captureRequested
+    }
+
+    public static func settings(volume: Double, mode: String) -> NativeNVSTMicrophoneConfiguration {
+        switch mode.lowercased() {
+        case "voice-activity":
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: true, captureRequested: true, initiallyEnabled: true)
+        case "push-to-talk":
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: true, initiallyEnabled: false)
+        default:
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: false, initiallyEnabled: false)
+        }
+    }
+}
+
+public struct NativeNVSTHapticCommand: Equatable, Sendable {
+    public let playerIndex: Int
+    public let lowFrequency: UInt16
+    public let highFrequency: UInt16
+    public let durationMilliseconds: UInt16
+
+    public init(playerIndex: Int, lowFrequency: UInt16, highFrequency: UInt16, durationMilliseconds: UInt16) {
+        self.playerIndex = playerIndex
+        self.lowFrequency = lowFrequency
+        self.highFrequency = highFrequency
+        self.durationMilliseconds = durationMilliseconds
+    }
+}
+
 public protocol NativeNVSTTransport: Sendable {
     func prepare() async throws -> NVSTNativeBridgeStatus
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
     func send(_ event: UserInputEvent) async throws
     func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws
     func setMicrophoneEnabled(_ enabled: Bool) async throws
+    func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws
     func togglePerformanceOverlay() async throws
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
     func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws
     func setL4SEnabled(_ enabled: Bool) async throws
+    func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws
     func pause() async throws
     func disconnect() async
     func resetForRecovery() async
@@ -114,6 +263,8 @@ public extension NativeNVSTTransport {
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws { throw NativeNVSTError.notRunning }
     func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws { throw NativeNVSTError.notRunning }
     func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
+    func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws { throw NativeNVSTError.notRunning }
+    func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
 
     func pause() async throws {
         throw NativeNVSTError.notRunning
@@ -281,6 +432,10 @@ public actor NativeNVSTStreamingPath {
         try await transport.setMicrophoneEnabled(enabled)
     }
 
+    public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
+        try await transport.setMicrophoneConfiguration(configuration)
+    }
+
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
         guard activeSession != nil else { return nil }
         return await transport.performanceSnapshot()
@@ -299,6 +454,17 @@ public actor NativeNVSTStreamingPath {
     public func setL4SEnabled(_ enabled: Bool) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setL4SEnabled(enabled)
+    }
+
+    public func applyInitialNetworkPolicy(maximumBitrateKbps: UInt32, l4sEnabled: Bool) async throws {
+        try await setMaximumBitrateKbps(maximumBitrateKbps)
+        try await setDynamicStreamingMode(.on)
+        try await setL4SEnabled(l4sEnabled)
+    }
+
+    public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
+        guard activeSession != nil else { throw NativeNVSTError.notRunning }
+        try await transport.updateGamepadTopology(topology)
     }
 
     public func stop(reason: StreamEndReason = .userRequested, message: String = "Native NVST stream ended.") async throws -> StreamReport {
@@ -391,10 +557,11 @@ public actor NativeNVSTStreamingPath {
     private func handleTransportTermination(_ termination: NativeNVSTTransportTermination) async {
         guard let activeSession else { return }
         terminalTask = nil
-        if case .failed = termination, activeAllocation != nil, let launchConfiguration,
+        if NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration,
            await recover(session: activeSession, configuration: launchConfiguration) {
             return
         }
+        guard self.activeSession?.id == activeSession.id else { return }
         let durationSeconds = streamDurationSeconds()
         self.activeSession = nil
         activeAllocation = nil
@@ -403,12 +570,12 @@ public actor NativeNVSTStreamingPath {
         let reason: StreamEndReason
         let message: String
         switch termination {
-        case .remoteStopped(let value):
+        case .sessionTerminated(let info):
             reason = .remoteEnded
-            message = value.isEmpty ? "Native NVST stream ended remotely." : value
-        case .failed(let value):
+            message = info.message.isEmpty ? "Native NVST stream ended remotely." : info.message
+        case .transportFailed(let failure):
             reason = .failed
-            message = value.isEmpty ? "Native NVST transport failed." : value
+            message = failure.message.isEmpty ? "Native NVST transport failed." : failure.message
         }
         await transport.disconnect()
         try? await sessionProvider.finishSession(activeSession, reason: reason)
@@ -440,7 +607,7 @@ public actor NativeNVSTStreamingPath {
             } catch {
                 WebRTCMediaTelemetry.capture("nvst.path.recovery.retry", level: .warning, message: Self.message(for: error), attributes: ["sessionId": session.id, "attempt": String(attempt)])
                 await transport.resetForRecovery()
-                guard attempt < 6 else { break }
+                guard attempt < 6, NativeNVSTRecoveryPolicy.permitsRetry(after: error) else { break }
                 let delaySeconds = min(30, 1 << (attempt - 1))
                 try? await Task.sleep(for: .seconds(delaySeconds))
             }

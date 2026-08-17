@@ -1,5 +1,4 @@
 import Foundation
-import Foundation
 import Testing
 @testable import OpenNOW
 
@@ -113,6 +112,59 @@ import Testing
 
 @Test func networkTestDownlinkBandwidthUsesVendorBitsPerSecondUnits() {
     #expect(OPNStreamPreferences.measuredBandwidthMbps(fromDownlinkBandwidth: 75_000_000) == 75.0)
+}
+
+@Test func networkPreflightIgnoresProvisioningAndNonterminalMeasurementFields() {
+    var seed = OPNStreamNetworkPreflightResult()
+    seed.latencyMs = 44
+    seed.measuredBandwidthMbps = 20
+    let json = """
+    {
+      "networkSessionId": "provisioned-session",
+      "latencyMs": 10,
+      "bandwidthMbps": 100,
+      "testResult": {
+        "status": "RUNNING",
+        "latencyMs": 11,
+        "jitterMs": 2,
+        "packetLossPercent": 0.1,
+        "maxPacketSize": 1400
+      }
+    }
+    """
+
+    let result = OPNStreamPreferences.networkPreflightResult(from: json, seed: seed, requestedMaxBitrateMbps: 75)
+
+    #expect(result.networkTestSessionId == "provisioned-session")
+    #expect(result.latencyMs == 44)
+    #expect(result.measuredBandwidthMbps == 20)
+    #expect(result.jitterMs == -1)
+    #expect(result.packetLossPercent == -1)
+    #expect(result.maxPacketSize == 0)
+}
+
+@Test func networkPreflightConsumesTerminalSuccessfulTestResult() {
+    let json = """
+    {
+      "networkSessionId": "completed-session",
+      "testResult": {
+        "status": "COMPLETED",
+        "latencyMs": 11,
+        "bandwidthMbps": 80,
+        "jitterMs": 2,
+        "packetLossPercent": 0.1,
+        "maxPacketSize": 1400
+      }
+    }
+    """
+
+    let result = OPNStreamPreferences.networkPreflightResult(from: json, seed: OPNStreamNetworkPreflightResult(), requestedMaxBitrateMbps: 75)
+
+    #expect(result.latencyMs == 11)
+    #expect(result.measuredBandwidthMbps == 80)
+    #expect(result.jitterMs == 2)
+    #expect(result.packetLossPercent == 10)
+    #expect(result.maxPacketSize == 1400)
 }
 
 @Test func recommendedBitrateHonorsVendorNetworkThreshold() {

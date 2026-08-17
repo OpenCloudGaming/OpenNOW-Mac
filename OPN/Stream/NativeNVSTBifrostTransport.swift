@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 
@@ -23,11 +24,23 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return .transportFailed(geronimoCallbackFailureMessage(resultCode: resultCode, resultName: resultName))
     }
 
+    static func transportFailure(resultCode: Int32, resultName: String?, message: String) -> NativeNVSTTransportFailure {
+        let result = NativeNVSTTerminationValue(code: resultCode, name: resultName)
+        return NativeNVSTTransportFailure(
+            message: message,
+            result: result,
+            recoveryClassification: NativeNVSTRecoveryPolicy.isTransient(result) ? .transientNetwork : .permanent
+        )
+    }
+
     private let bridgeConfiguration: NVSTNativeBridgeConfiguration
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
     private let cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?
     private var prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
+    private let hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?
+    private let hapticResetHandler: (@MainActor @Sendable () -> Void)?
+    private let authRefreshHandler: @Sendable (UInt32) async throws -> String
     private let terminationChannel = NativeNVSTTerminationChannel()
     private var bridge: NVSTNativeBridge?
     private var activeConnection: NativeNVSTTransportConnection?
@@ -36,17 +49,25 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var geronimoSessionAddress: UInt?
     private var geronimoEventSink: NativeNVSTGeronimoEventSink?
     private var geronimoPump: NativeNVSTGeronimoPumpDriver?
+    private var runtimeHandlers: NativeNVSTRuntimeHandlers?
+    private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
                 nativeVideoSurfaceHandle: UInt? = nil,
                 cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)? = nil,
-                prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil) {
+                prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil,
+                hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)? = nil,
+                hapticResetHandler: (@MainActor @Sendable () -> Void)? = nil,
+                authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String = NativeNVSTAuthRefreshCoordinator.productionToken) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
         self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
         self.cursorVisibilityHandler = cursorVisibilityHandler
         self.prepareVideoSurfaceForShutdown = prepareVideoSurfaceForShutdown
+        self.hapticHandler = hapticHandler
+        self.hapticResetHandler = hapticResetHandler
+        self.authRefreshHandler = authRefreshHandler
     }
 
     public func prepare() async throws -> NVSTNativeBridgeStatus {
@@ -112,14 +133,18 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             terminationHandler: { [terminationChannel] termination in terminationChannel.send(termination) }
         )
         connectingEventSink = eventSink
-        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver)
+        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers)
         do {
             started = try await withTaskCancellationHandler {
                 try await Self.startGeronimoOnMainActor(
                     allocation: allocation,
                     status: status,
                     nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
-                    eventSink: eventSink
+                    eventSink: eventSink,
+                    hapticHandler: hapticHandler,
+                    hapticResetHandler: hapticResetHandler,
+                    authRefreshHandler: authRefreshHandler,
+                    microphoneConfiguration: microphoneConfiguration
                 )
             } onCancel: {
                 eventSink.cancel()
@@ -132,6 +157,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             throw error
         }
         guard connectingAttemptID == attemptID, !Task.isCancelled else {
+            await started.runtimeHandlers.cancel()
             await started.pump.stop()
             await Self.destroyGeronimoOnMainActor(sessionAddress: started.sessionAddress)
             if connectingAttemptID == attemptID {
@@ -146,6 +172,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoSessionAddress = started.sessionAddress
         geronimoEventSink = eventSink
         geronimoPump = started.pump
+        runtimeHandlers = started.runtimeHandlers
         activeConnection = connection
         return connection
     }
@@ -170,6 +197,13 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
         guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.setGeronimoMicrophoneEnabledOnMainActor(enabled, sessionAddress: sessionAddress)
+    }
+
+    public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
+        if let sessionAddress = geronimoSessionAddress {
+            try await Self.setGeronimoMicrophoneConfigurationOnMainActor(configuration, sessionAddress: sessionAddress)
+        }
+        microphoneConfiguration = configuration
     }
 
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
@@ -198,6 +232,13 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
+    public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
+        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST gamepad topology update failed.") { session, errorBuffer, length in
+            OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(session, topology.connectedPlayerBitmap, topology.hapticPlayerBitmap, errorBuffer, length)
+        }
+    }
+
     public func disconnect() async {
         connectingAttemptID = nil
         connectingEventSink?.cancel()
@@ -205,10 +246,13 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let pump = geronimoPump
         let sessionAddress = geronimoSessionAddress
         let eventSink = geronimoEventSink
+        let runtimeHandlers = self.runtimeHandlers
         geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
+        self.runtimeHandlers = nil
         activeConnection = nil
+        await runtimeHandlers?.cancel()
         if sessionAddress != nil {
             await prepareGeronimoVideoSurfaceForShutdown()
         } else {
@@ -237,11 +281,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         connectingEventSink = nil
         let pump = geronimoPump
         let sessionAddress = geronimoSessionAddress
+        let runtimeHandlers = self.runtimeHandlers
         geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink?.cancel()
         geronimoEventSink = nil
+        self.runtimeHandlers = nil
         activeConnection = nil
+        await runtimeHandlers?.cancel()
         if sessionAddress != nil { await prepareGeronimoVideoSurfaceForShutdown() }
         if let pump { await pump.stop() }
         if let sessionAddress { await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress) }
@@ -260,12 +307,15 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
         guard geronimoSessionAddress == sessionAddress else { throw CancellationError() }
         let pump = geronimoPump
+        let runtimeHandlers = self.runtimeHandlers
         geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
+        self.runtimeHandlers = nil
         activeConnection = nil
         await prepareGeronimoVideoSurfaceForShutdown()
         if let pump { await pump.stop() }
+        await runtimeHandlers?.cancel()
         await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
     }
 
@@ -278,21 +328,48 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         await prepareVideoSurfaceForShutdown()
     }
 
-    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation, status: NVSTNativeBridgeStatus, nativeVideoSurfaceHandle: UInt?, eventSink: NativeNVSTGeronimoEventSink) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver) {
+    @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation,
+                                                            status: NVSTNativeBridgeStatus,
+                                                            nativeVideoSurfaceHandle: UInt?,
+                                                            eventSink: NativeNVSTGeronimoEventSink,
+                                                            hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?,
+                                                            hapticResetHandler: (@MainActor @Sendable () -> Void)?,
+                                                            authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String,
+                                                            microphoneConfiguration: NativeNVSTMicrophoneConfiguration) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
             throw NativeNVSTError.runtimeUnavailable("Native Geronimo frameworks path could not be encoded.")
         }
         let settings = Self.jsonObject(from: allocation.settingsJSON)
-        let streamingProfileJSON = try Self.streamingProfileJSON(rawSessionJSON: allocation.rawSessionJSON, sessionInfoJSON: allocation.sessionInfoJSON, settingsJSON: allocation.settingsJSON)
+        let nativeWindow = nativeVideoSurfaceHandle
+            .flatMap(UnsafeMutableRawPointer.init(bitPattern:))
+            .flatMap { Unmanaged<AnyObject>.fromOpaque($0).takeUnretainedValue() as? NSWindow }
+        let streamScreen = nativeWindow?.parent?.screen ?? nativeWindow?.screen
+        let presentationCapabilities = OPNStreamPreferences.loadDeviceCapabilities(screen: streamScreen)
+        let streamingProfileJSON = try Self.streamingProfileJSON(
+            rawSessionJSON: allocation.rawSessionJSON,
+            sessionInfoJSON: allocation.sessionInfoJSON,
+            settingsJSON: allocation.settingsJSON,
+            presentationCapabilities: presentationCapabilities
+        )
+        let selectedProfile = Self.jsonObject(from: streamingProfileJSON)
+        let selectedFeatures = selectedProfile["selectedFeatures"] as? [String: Any] ?? [:]
+        let selectedCodec = Self.selectedCodec(rawSessionJSON: allocation.rawSessionJSON, sessionInfoJSON: allocation.sessionInfoJSON, settingsJSON: allocation.settingsJSON)
+        let presentationCapability = OPNStreamPreferences.presentationCapability(codec: selectedCodec, capabilities: presentationCapabilities)
+        if let nativeWindow {
+            NativeWebRTCStreamView.configureNativeNVSTPresentation(
+                window: nativeWindow,
+                requestedHDR: Self.bool(selectedFeatures["hdr"]),
+                codecSupportsHDR: presentationCapability.supportsHDR
+            )
+        }
         let launchPayload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: streamingProfileJSON, clientAppVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW")
         try launchPayload.validate()
         let geronimoSessionJSON = try Self.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: streamingProfileJSON)
         var startAttributes = Self.geronimoStartAttributes(allocation: allocation, streamingProfileJSON: streamingProfileJSON, geronimoSessionJSON: geronimoSessionJSON)
         startAttributes.merge(launchPayload.telemetryAttributes) { _, new in new }
-        let microphoneMode = Self.string(settings["microphoneMode"], fallback: "disabled")
-        let microphoneRequested = microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
+        let microphoneRequested = microphoneConfiguration.captureRequested
         let microphoneAvailable = await Self.resolveMicrophoneCaptureAccess(requested: microphoneRequested)
-        let microphoneEnabled = microphoneAvailable && (Self.bool(settings["microphoneEnabled"]) || microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame)
+        let microphoneEnabled = microphoneAvailable && microphoneConfiguration.initiallyEnabled
         startAttributes["operation"] = allocation.isResume ? "resume" : "start"
         startAttributes["microphoneRequested"] = String(microphoneRequested)
         startAttributes["microphoneAvailable"] = String(microphoneAvailable)
@@ -313,6 +390,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             WebRTCMediaTelemetry.capture("nvst.geronimo.create.failed", level: .error, message: message, attributes: attributes)
             throw NativeNVSTError.runtimeUnavailable(message)
         }
+        do {
+            try setGeronimoMicrophoneConfigurationOnMainActor(microphoneConfiguration, session: session)
+        } catch {
+            OpenNOWNativeNVSTGeronimoDestroy(session)
+            throw error
+        }
         eventSink.updateTelemetryAttributes(startAttributes)
         let eventContext = Unmanaged.passUnretained(eventSink).toOpaque()
         let callbackResult = OpenNOWNativeNVSTGeronimoSetEventHandler(session, nativeNVSTGeronimoEventCallback, eventContext, errorBuffer, 1024)
@@ -325,9 +408,23 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
+        let runtimeHandlers = NativeNVSTRuntimeHandlers(
+            expectedAuthType: NativeNVSTAuthRefreshCoordinator.authType(for: allocation.authTokenType),
+            authRefreshHandler: authRefreshHandler,
+            hapticHandler: hapticHandler,
+            hapticResetHandler: hapticResetHandler
+        )
+        let hapticResult = OpenNOWNativeNVSTGeronimoSetHapticHandler(session, nativeNVSTGeronimoHapticCallback, runtimeHandlers.hapticContext)
+        let authRefreshResult = OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(session, nativeNVSTGeronimoAuthRefreshCallback, runtimeHandlers.authRefreshContext)
+        guard hapticResult == 0, authRefreshResult == 0 else {
+            await runtimeHandlers.cancel()
+            OpenNOWNativeNVSTGeronimoDestroy(session)
+            throw NativeNVSTError.privateABIUnavailable("Native Geronimo runtime handler registration failed.")
+        }
         guard let nativeVideoSurfaceHandle, let nativeVideoSurface = UnsafeMutableRawPointer(bitPattern: nativeVideoSurfaceHandle) else {
             let message = "Native Geronimo requires an AppKit video surface."
             WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: startAttributes)
+            await runtimeHandlers.cancel()
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
@@ -338,6 +435,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             attributes["result"] = String(surfaceResult)
             attributes["error"] = message
             WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: attributes)
+            await runtimeHandlers.cancel()
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
@@ -399,9 +497,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 throw error
             }
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
-            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump)
+            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump, runtimeHandlers)
         } catch {
             pump?.stop()
+            await runtimeHandlers.cancel()
             OpenNOWNativeNVSTGeronimoDestroy(session)
             throw error
         }
@@ -459,6 +558,18 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let result = OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(UnsafeMutableRawPointer(bitPattern: sessionAddress), enabled ? 1 : 0, errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo microphone update failed with result \(result)."))
+        }
+    }
+
+    @MainActor private static func setGeronimoMicrophoneConfigurationOnMainActor(_ configuration: NativeNVSTMicrophoneConfiguration, sessionAddress: UInt) throws {
+        try setGeronimoMicrophoneConfigurationOnMainActor(configuration, session: UnsafeMutableRawPointer(bitPattern: sessionAddress))
+    }
+
+    @MainActor private static func setGeronimoMicrophoneConfigurationOnMainActor(_ configuration: NativeNVSTMicrophoneConfiguration, session: UnsafeMutableRawPointer?) throws {
+        let volumeResult = OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(session, configuration.volume)
+        let vadResult = OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(session, configuration.voiceActivityEnabled ? 1 : 0)
+        guard volumeResult == 0, vadResult == 0 else {
+            throw NativeNVSTError.privateABIUnavailable("Native Geronimo microphone processing configuration failed.")
         }
     }
 
@@ -570,10 +681,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
-    static func streamingProfileJSON(rawSessionJSON: String, sessionInfoJSON: String, settingsJSON: String = "{}") throws -> String {
+    static func streamingProfileJSON(rawSessionJSON: String,
+                                     sessionInfoJSON: String,
+                                     settingsJSON: String = "{}",
+                                     presentationCapabilities: OPNStreamDeviceCapabilities? = nil) throws -> String {
         let rawSession = jsonObject(from: rawSessionJSON)
         let sessionInfo = jsonObject(from: sessionInfoJSON)
         let settings = jsonObject(from: settingsJSON)
+        let requestData = rawSession["sessionRequestData"] as? [String: Any] ?? [:]
         let candidates = [
             rawSession["streamingProfile"],
             rawSession["negotiatedStreamProfile"],
@@ -613,7 +728,18 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
               !string(profile["codec"], fallback: "").isEmpty else {
             throw NativeNVSTError.invalidSession("Native NVST session is missing a complete streaming profile.")
         }
-        let modeSelection = modeSelectionProfile(from: profile, dimensions: dimensions)
+        let finalizedFeatures = rawSession["finalizedStreamingFeatures"] as? [String: Any] ?? [:]
+        let requestedFeatures = requestData["requestedStreamingFeatures"] as? [String: Any] ?? [:]
+        let modeSelection = modeSelectionProfile(
+            from: profile,
+            dimensions: dimensions,
+            finalizedFeatures: finalizedFeatures,
+            requestedFeatures: requestedFeatures,
+            settings: settings,
+            presentationCapability: presentationCapabilities.map {
+                OPNStreamPreferences.presentationCapability(codec: string(profile["codec"], fallback: "H264"), capabilities: $0)
+            }
+        )
         guard JSONSerialization.isValidJSONObject(modeSelection),
               let data = try? JSONSerialization.data(withJSONObject: modeSelection),
               let string = String(data: data, encoding: .utf8), !string.isEmpty else {
@@ -623,10 +749,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     static func geronimoSessionJSON(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) throws -> String {
-        let rawSession = jsonObject(from: allocation.rawSessionJSON)
-        let sessionInfo = jsonObject(from: allocation.sessionInfoJSON)
-        let settings = jsonObject(from: allocation.settingsJSON)
-        let requestData = rawSession["sessionRequestData"] as? [String: Any] ?? [:]
+        let source = NativeNVSTNormalizedSessionSource(allocation: allocation)
+        let rawSession = source.rawSession
+        let sessionInfo = source.sessionInfo
+        let settings = source.settings
+        let requestData = source.requestData
         let connectionInfo = normalizedConnectionInfo(rawSession: rawSession, sessionInfo: sessionInfo, allocation: allocation)
         let monitorSettings = normalizedMonitorSettings(rawSession: rawSession, requestData: requestData, settings: settings, streamingProfileJSON: streamingProfileJSON)
         let streamingProfile = normalizedNativeStreamingProfile(rawSession: rawSession, sessionInfo: sessionInfo, settings: settings, allocation: allocation, streamingProfileJSON: streamingProfileJSON)
@@ -634,23 +761,21 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let zoneAddress = firstNonEmpty(string(sessionControlInfo["ip"], fallback: ""), string(rawSession["zoneAddress"], fallback: ""), allocation.session.serverAddress)
         let zoneName = firstNonEmpty(string(rawSession["zoneName"], fallback: ""), zoneAddress.split(separator: ".").first.map { String($0).uppercased() } ?? "")
         let sessionId = firstNonEmpty(string(rawSession["sessionId"], fallback: ""), allocation.session.id)
-        let networkSessionId = firstNonEmpty(string(rawSession["networkSessionId"], fallback: ""), string(requestData["networkSessionId"], fallback: ""), sessionId)
         let bifrostSessionId = firstNonEmpty(string(rawSession["bifrostSessionId"], fallback: ""), string(rawSession["session"], fallback: ""), sessionId)
         let deviceId = firstNonEmpty(string(requestData["deviceHashId"], fallback: ""), string(rawSession["deviceId"], fallback: ""), OPNDeviceIdentity.stableCloudmatchDeviceId())
         let serverAddress = firstNonEmpty(string(rawSession["serverAddress"], fallback: ""), zoneAddress)
         let rawServerPort = int(rawSession["port"])
         let serverPort = int(sessionControlInfo["port"]) > 0 ? int(sessionControlInfo["port"]) : (rawServerPort > 0 ? rawServerPort : 443)
-        let applicationHeaders = jsonArray(from: rawSession["applicationHeaders"]).isEmpty ? jsonArray(from: requestData["applicationHeaders"]) : jsonArray(from: rawSession["applicationHeaders"])
+        let applicationHeaders = source.applicationHeaders(allocation: allocation)
         let supportedControls = jsonArray(from: rawSession["supportedControls"]).isEmpty ? jsonArray(from: requestData["supportedControls"]) : jsonArray(from: rawSession["supportedControls"])
         let contentRating = jsonArray(from: rawSession["contentRating"]).isEmpty ? jsonArray(from: requestData["contentRating"]) : jsonArray(from: rawSession["contentRating"])
-        let metadata = requestData["metaData"] as? [String: Any] ?? rawSession["metaData"] as? [String: Any] ?? [:]
         let summaryStatsValue = firstValue(in: rawSession, requestData, keys: ["summaryStatsEnabled"])
         let rawFrameLossWarningTimeout = int(firstValue(in: rawSession, requestData, keys: ["frameLossWarningTimeout"]))
         let rawFrameLossErrorTimeout = int(firstValue(in: rawSession, requestData, keys: ["frameLossErrorTimeout"]))
         var normalized: [String: Any] = [
             "sessionId": sessionId,
             "bifrostSessionId": bifrostSessionId,
-            "networkSessionId": networkSessionId,
+            "networkSessionId": source.networkSessionId,
             "subSessionId": string(rawSession["subSessionId"], fallback: ""),
             "address": serverAddress,
             "serverAddress": serverAddress,
@@ -673,7 +798,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "monitorSettings": monitorSettings,
             "connectionInfo": connectionInfo,
             "finalizedStreamingFeatures": normalizedStreamingFeatures(rawSession: rawSession, requestData: requestData, streamingProfileJSON: streamingProfileJSON),
-            "metaData": metadata,
+            "metaData": source.metadata,
             "frameLossWarningTimeout": rawFrameLossWarningTimeout > 0 ? rawFrameLossWarningTimeout : 500,
             "frameLossErrorTimeout": rawFrameLossErrorTimeout > 0 ? rawFrameLossErrorTimeout : 30_000,
             "resumeType": int(rawSession["resumeType"]),
@@ -685,7 +810,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "partnerCustomData": firstNonEmpty(string(rawSession["partnerCustomData"], fallback: ""), string(requestData["partnerCustomData"], fallback: "")),
             "allowKeyboardLayoutChange": bool(firstValue(in: rawSession, requestData, settings, keys: ["allowKeyboardLayoutChange"])),
             "accountLinked": bool(firstValue(in: rawSession, requestData, settings, keys: ["accountLinked"])),
-            "persistingInGameSettings": bool(firstValue(in: rawSession, requestData, settings, keys: ["persistingInGameSettings"])),
+            "persistingInGameSettings": source.persistingInGameSettings,
             "supportedControls": supportedControls,
             "contentRating": contentRating,
             "heroImage": firstNonEmpty(string(rawSession["heroImage"], fallback: ""), string(requestData["heroImage"], fallback: "")),
@@ -701,6 +826,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "spanData": firstValue(in: requestData, rawSession, keys: ["spanData"]) ?? [:],
             "applicationHeaders": applicationHeaders,
         ]
+        if let remoteControllersBitmap = normalizedRemoteControllersBitmap(firstValue(in: rawSession, requestData, settings, keys: ["remoteControllersBitmap"])) {
+            normalized["remoteControllersBitmap"] = remoteControllersBitmap
+        }
         if let externalAppId = requestData["externalAppId"] { normalized["externalAppId"] = externalAppId }
         if !sessionId.isEmpty { normalized["sessionControlUrl"] = "/v2/session/\(sessionId)" }
         guard JSONSerialization.isValidJSONObject(normalized),
@@ -711,11 +839,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return string
     }
 
-    private static func modeSelectionProfile(from profile: [String: Any], dimensions: (width: Int, height: Int)) -> [String: Any] {
+    private static func modeSelectionProfile(from profile: [String: Any], dimensions: (width: Int, height: Int), finalizedFeatures: [String: Any], requestedFeatures: [String: Any], settings: [String: Any], presentationCapability: OPNStreamPresentationCapability?) -> [String: Any] {
         let fps = int(profile["fps"])
         let scaleFactor = max(int(firstValue(in: profile, keys: ["scaleFactor", "selectedVideoMode.scaleFactor"])), 1)
         let colorQuality = string(profile["colorQuality"], fallback: "")
-        let selectedFeatures = selectedFeatures(from: profile, colorQuality: colorQuality)
+        let selectedFeatures = selectedFeatures(from: profile, colorQuality: colorQuality, finalizedFeatures: finalizedFeatures, requestedFeatures: requestedFeatures, settings: settings, presentationCapability: presentationCapability)
         let selectedVideoMode = ["width": dimensions.width, "height": dimensions.height, "fps": fps, "scaleFactor": scaleFactor]
         let selectedEncodeMode = ["width": dimensions.width, "height": dimensions.height, "fps": fps]
         var selection: [String: Any] = [
@@ -728,41 +856,52 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return selection
     }
 
-    private static func selectedFeatures(from profile: [String: Any], colorQuality: String) -> [String: Any] {
-        let features = profile["selectedFeatures"] as? [String: Any] ?? [:]
+    private static func selectedFeatures(from profile: [String: Any], colorQuality: String, finalizedFeatures: [String: Any], requestedFeatures: [String: Any], settings: [String: Any], presentationCapability: OPNStreamPresentationCapability?) -> [String: Any] {
+        let profileFeatures = profile["selectedFeatures"] as? [String: Any] ?? [:]
+        let sources = [finalizedFeatures, requestedFeatures, profileFeatures, profile, settings]
+        let explicitHDR = featureValue(in: sources, keys: ["hdr", "trueHdr", "enableHdr"])
+        let explicitBitDepth = featureValue(in: sources, keys: ["bitDepth"])
+        let explicitChromaFormat = featureValue(in: sources, keys: ["chromaFormat"])
+        let requestedHDR = explicitHDR == nil ? colorQuality.localizedCaseInsensitiveContains("hdr") : bool(explicitHDR)
+        let hdr = presentationCapability.map { requestedHDR && $0.supportsHDR } ?? requestedHDR
+        let requestedBitDepth = normalizedFeatureBitDepth(explicitBitDepth, colorQuality: colorQuality)
+        let bitDepth = presentationCapability.map { $0.supportsTenBit ? requestedBitDepth : 8 } ?? requestedBitDepth
         return [
-            "vvsync": bool(firstValue(in: features, profile, keys: ["vvsync"])),
-            "vsync": int(firstValue(in: features, profile, keys: ["vsync"])),
-            "hdr": bool(firstValue(in: features, profile, keys: ["hdr"])) || colorQuality.localizedCaseInsensitiveContains("hdr"),
-            "audioChannelCount": max(int(firstValue(in: features, profile, keys: ["audioChannelCount", "channels"])), 2),
-            "reflex": bool(firstValue(in: features, profile, keys: ["reflex"])),
-            "bitDepth": bitDepth(from: firstValue(in: features, profile, keys: ["bitDepth"]), colorQuality: colorQuality),
-            "cloudGsync": bool(firstValue(in: features, profile, keys: ["cloudGsync"])),
-            "l4s": bool(firstValue(in: features, profile, keys: ["l4s"])),
-            "hdr10PlusGaming": bool(firstValue(in: features, profile, keys: ["hdr10PlusGaming"])),
-            "profile": int(firstValue(in: features, profile, keys: ["profile"])),
-            "chromaFormat": int(firstValue(in: features, profile, keys: ["chromaFormat"])),
-            "fallbackToLogicalResolution": bool(firstValue(in: features, profile, keys: ["fallbackToLogicalResolution"])),
-            "maxBitrateKbps": int(firstValue(in: features, profile, keys: ["maxBitrateKbps", "bitrateKbps", "bitrate"])),
-            "dynamicStreamingMode": int(firstValue(in: features, profile, keys: ["dynamicStreamingMode"])),
-            "prefilterParams": prefilterParams(from: features["prefilterParams"] as? [String: Any]),
-            "hudStreamingParams": hudStreamingParams(from: features["hudStreamingParams"] as? [String: Any]),
+            "vvsync": bool(featureValue(in: sources, keys: ["vvsync"])),
+            "vsync": int(featureValue(in: sources, keys: ["vsync"])),
+            "hdr": hdr,
+            "trueHdr": hdr,
+            "audioChannelCount": max(int(featureValue(in: sources, keys: ["audioChannelCount", "channels"])), 2),
+            "reflex": bool(featureValue(in: sources, keys: ["reflex", "enableReflex"])),
+            "bitDepth": bitDepth,
+            "cloudGsync": bool(featureValue(in: sources, keys: ["cloudGsync", "enableCloudGsync"])),
+            "l4s": bool(featureValue(in: sources, keys: ["l4s", "enabledL4S", "enableL4S"])),
+            "hdr10PlusGaming": bool(featureValue(in: sources, keys: ["hdr10PlusGaming"])),
+            "supportedHidDevices": int(featureValue(in: sources, keys: ["supportedHidDevices"])),
+            "hidDevices": featureValue(in: sources, keys: ["hidDevices"]) ?? [],
+            "profile": int(featureValue(in: sources, keys: ["profile", "streamingQualityProfile"])),
+            "chromaFormat": explicitChromaFormat == nil ? chromaFormat(from: colorQuality) : int(explicitChromaFormat),
+            "fallbackToLogicalResolution": bool(featureValue(in: sources, keys: ["fallbackToLogicalResolution"])),
+            "maxBitrateKbps": int(featureValue(in: sources, keys: ["maxBitrateKbps", "bitrateKbps", "bitrate"])),
+            "dynamicStreamingMode": int(featureValue(in: sources, keys: ["dynamicStreamingMode"])),
+            "prefilterParams": prefilterParams(from: sources),
+            "hudStreamingParams": hudStreamingParams(from: sources),
         ]
     }
 
-    private static func prefilterParams(from source: [String: Any]?) -> [String: Any] {
+    private static func prefilterParams(from sources: [[String: Any]]) -> [String: Any] {
         [
-            "mode": int(source?["mode"]),
-            "denoiseLevel": double(source?["denoiseLevel"]),
-            "sharpnessLevel": int(source?["sharpnessLevel"]),
-            "model": int(source?["model"]),
+            "mode": int(featureValue(in: sources, keys: ["prefilterParams.mode", "prefilterMode"])),
+            "denoiseLevel": double(featureValue(in: sources, keys: ["prefilterParams.denoiseLevel", "prefilterNoiseReduction", "prefilterDenoise"])),
+            "sharpnessLevel": int(featureValue(in: sources, keys: ["prefilterParams.sharpnessLevel", "prefilterSharpness"])),
+            "model": int(featureValue(in: sources, keys: ["prefilterParams.model", "prefilterModel"])),
         ]
     }
 
-    private static func hudStreamingParams(from source: [String: Any]?) -> [String: Any] {
+    private static func hudStreamingParams(from sources: [[String: Any]]) -> [String: Any] {
         [
-            "mode": int(source?["mode"]),
-            "scxQpDelta": double(source?["scxQpDelta"]),
+            "mode": int(featureValue(in: sources, keys: ["hudStreamingParams.mode", "hudStreamingMode"])),
+            "scxQpDelta": double(featureValue(in: sources, keys: ["hudStreamingParams.scxQpDelta"])),
         ]
     }
 
@@ -804,10 +943,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     private static func normalizedConnectionInfo(rawSession: [String: Any], sessionInfo: [String: Any], allocation: NativeNVSTSessionAllocation) -> [Any] {
         let rawConnections = jsonArray(from: rawSession["connectionInfo"]).compactMap { normalizedConnection($0 as? [String: Any]) }
-        if !rawConnections.isEmpty {
-            let hasVideo = rawConnections.contains { int($0["usage"]) == 2 }
-            return hasVideo ? rawConnections.filter { int($0["usage"]) != 17 } : rawConnections
-        }
+        if !rawConnections.isEmpty { return rawConnections }
         var connections: [[String: Any]] = []
         let signalingHost = signalingHost(sessionInfo: sessionInfo, allocation: allocation)
         if !signalingHost.isEmpty {
@@ -896,14 +1032,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     private static func normalizedConnection(_ source: [String: Any]?) -> [String: Any]? {
         guard let source else { return nil }
-        return [
-            "usage": int(source["usage"]),
-            "ip": string(source["ip"], fallback: ""),
-            "port": int(source["port"]),
-            "protocol": connectionProtocol(source["protocol"]),
-            "resourcePath": string(source["resourcePath"], fallback: ""),
-            "appLevelProtocol": int(source["appLevelProtocol"]),
-        ]
+        var connection = source
+        connection["usage"] = int(source["usage"])
+        connection["ip"] = string(source["ip"], fallback: "")
+        connection["port"] = int(source["port"])
+        connection["protocol"] = connectionProtocol(source["protocol"])
+        connection["resourcePath"] = string(source["resourcePath"], fallback: "")
+        connection["appLevelProtocol"] = int(source["appLevelProtocol"])
+        return connection
     }
 
     private static func connectionProtocol(_ value: Any?) -> Int {
@@ -992,11 +1128,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     private static func normalizedStreamingFeatures(rawSession: [String: Any], requestData: [String: Any], streamingProfileJSON: String) -> [String: Any] {
-        if let features = rawSession["finalizedStreamingFeatures"] as? [String: Any], !features.isEmpty { return features }
-        if let features = requestData["requestedStreamingFeatures"] as? [String: Any], !features.isEmpty { return features }
         let profile = jsonObject(from: streamingProfileJSON)
         let selectedFeatures = profile["selectedFeatures"] as? [String: Any] ?? [:]
-        return [
+        var normalized = (rawSession["finalizedStreamingFeatures"] as? [String: Any])
+            ?? (requestData["requestedStreamingFeatures"] as? [String: Any])
+            ?? [:]
+        normalized.merge([
             "reflex": bool(selectedFeatures["reflex"]),
             "bitDepth": int(selectedFeatures["bitDepth"]),
             "cloudGsync": bool(selectedFeatures["cloudGsync"]),
@@ -1014,7 +1151,26 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "hudStreamingMode": int((selectedFeatures["hudStreamingParams"] as? [String: Any])?["mode"]),
             "qosPolicy": int(selectedFeatures["qosPolicy"]),
             "touchSupport": bool(selectedFeatures["touchSupport"]),
-        ]
+        ]) { _, selected in selected }
+        normalized["hdr"] = bool(selectedFeatures["hdr"])
+        return normalized
+    }
+
+    private static func selectedCodec(rawSessionJSON: String, sessionInfoJSON: String, settingsJSON: String) -> String {
+        let rawSession = jsonObject(from: rawSessionJSON)
+        let sessionInfo = jsonObject(from: sessionInfoJSON)
+        let settings = jsonObject(from: settingsJSON)
+        for value in [
+            (rawSession["streamingProfile"] as? [String: Any])?["codec"],
+            (rawSession["negotiatedStreamProfile"] as? [String: Any])?["codec"],
+            (sessionInfo["streamingProfile"] as? [String: Any])?["codec"],
+            (sessionInfo["negotiatedStreamProfile"] as? [String: Any])?["codec"],
+            settings["codec"],
+        ] {
+            let codec = normalizedCodec(string(value, fallback: ""))
+            if !codec.isEmpty { return codec }
+        }
+        return "H264"
     }
 
     private static func geronimoAppLaunchMode(_ value: Any?) -> Int {
@@ -1094,6 +1250,51 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let explicit = int(value)
         if explicit > 0 { return explicit }
         return colorQuality.localizedCaseInsensitiveContains("10") ? 10 : 8
+    }
+
+    private static func normalizedFeatureBitDepth(_ value: Any?, colorQuality: String) -> Int {
+        guard let value else { return bitDepth(from: nil, colorQuality: colorQuality) }
+        let numeric = int(value)
+        if numeric == 0 { return 8 }
+        if numeric == 1 { return 10 }
+        return bitDepth(from: value, colorQuality: colorQuality)
+    }
+
+    private static func chromaFormat(from colorQuality: String) -> Int {
+        colorQuality.localizedCaseInsensitiveContains("444") ? 2 : 0
+    }
+
+    static func normalizedRemoteControllersBitmap(_ value: Any?) -> UInt64? {
+        guard !(value is Bool) else { return nil }
+        let numeric: UInt64?
+        switch value {
+        case let value as UInt64:
+            numeric = value
+        case let value as UInt32:
+            numeric = UInt64(value)
+        case let value as UInt:
+            numeric = UInt64(value)
+        case let value as Int where value >= 0:
+            numeric = UInt64(value)
+        case let value as NSNumber:
+            let doubleValue = value.doubleValue
+            numeric = doubleValue.isFinite && doubleValue >= 0 && doubleValue.rounded(.towardZero) == doubleValue ? UInt64(exactly: doubleValue) : nil
+        case let value as String:
+            numeric = UInt64(value)
+        default:
+            numeric = nil
+        }
+        guard let numeric, numeric <= UInt64(UInt32.max) else { return nil }
+        return numeric
+    }
+
+    private static func featureValue(in sources: [[String: Any]], keys: [String]) -> Any? {
+        for source in sources {
+            for key in keys {
+                if let value = nestedValue(in: source, keyPath: key), !isEmptyProfileValue(value) { return value }
+            }
+        }
+        return nil
     }
 
     private static func firstPositiveInt(in dictionary: [String: Any], keys: [String]) -> Int? {
@@ -1339,7 +1540,15 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         lock.unlock()
     }
 
-    func handle(phase: Int32, callbackType: UInt32, clientEvent: UInt32, notification: UInt32, resultCode: Int32, resultName: String?) {
+    func handle(phase: Int32,
+                callbackType: UInt32,
+                clientEvent: UInt32,
+                notification: UInt32,
+                resultCode: Int32,
+                resultName: String?,
+                resumable: Bool,
+                sessionAlive: Bool,
+                reasonName: String?) {
         lock.lock()
         observedPhases.insert(phase)
         lastPhase = phase
@@ -1357,6 +1566,11 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         attributes["notification"] = String(notification)
         attributes["resultCode"] = String(resultCode)
         if let resultName, !resultName.isEmpty { attributes["resultName"] = resultName }
+        if phase == 62 {
+            attributes["resumable"] = String(resumable)
+            attributes["sessionAlive"] = String(sessionAlive)
+            if let reasonName, !reasonName.isEmpty { attributes["reasonName"] = reasonName }
+        }
         WebRTCMediaTelemetry.capture("nvst.geronimo.callback", level: .info, message: "Geronimo native callback observed.", attributes: attributes)
 
         if phase == 80, notification == 1 || notification == 2 {
@@ -1380,7 +1594,15 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
             resolveStop(.failure(error))
-            if wasReady { deliverTerminal(.remoteStopped(message)) }
+            if wasReady {
+                deliverTerminal(.sessionTerminated(NativeNVSTSessionTermination(
+                    reason: NativeNVSTTerminationReason(rawValue: notification),
+                    extendedResult: NativeNVSTTerminationValue(code: resultCode, name: resultName),
+                    isResumable: false,
+                    isSessionAlive: false,
+                    message: message
+                )))
+            }
             return
         }
         if phase == 30, resultCode != 0 {
@@ -1409,7 +1631,15 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             resolveStop(resultCode == 0 ? .success(()) : .failure(NativeNVSTError.transportFailed(message)))
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
-            if wasReady { deliverTerminal(.remoteStopped(message)) }
+            if wasReady {
+                deliverTerminal(.sessionTerminated(NativeNVSTSessionTermination(
+                    reason: NativeNVSTTerminationReason(rawValue: 0),
+                    extendedResult: NativeNVSTTerminationValue(code: resultCode, name: resultName),
+                    isResumable: false,
+                    isSessionAlive: false,
+                    message: message
+                )))
+            }
             return
         }
         if phase == 62 {
@@ -1422,11 +1652,20 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             resolveReadiness(.failure(error))
             resolvePause(.failure(error))
             resolveStop(.failure(error))
-            if wasReady { deliverTerminal(.remoteStopped(message)) }
+            if wasReady {
+                deliverTerminal(.sessionTerminated(NativeNVSTSessionTermination(
+                    reason: NativeNVSTTerminationReason(rawValue: notification, resultName: reasonName),
+                    extendedResult: NativeNVSTTerminationValue(code: resultCode, name: resultName),
+                    isResumable: resumable,
+                    isSessionAlive: sessionAlive,
+                    message: message
+                )))
+            }
             return
         }
         if phase == 70 {
-            fail(NativeNVSTBifrostTransport.geronimoCallbackError(resultCode: resultCode, resultName: resultName))
+            let error = NativeNVSTBifrostTransport.geronimoCallbackError(resultCode: resultCode, resultName: resultName)
+            fail(error, transportFailure: NativeNVSTBifrostTransport.transportFailure(resultCode: resultCode, resultName: resultName, message: Self.message(for: error)))
         }
     }
 
@@ -1499,13 +1738,18 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
     }
 
-    func fail(_ error: Error) {
+    func fail(_ error: Error, transportFailure: NativeNVSTTransportFailure? = nil) {
         let wasReady = hasReachedReadiness
         resolveStart(.failure(error))
         resolveReadiness(.failure(error))
         resolvePause(.failure(error))
         resolveStop(.failure(error))
-        if wasReady { deliverTerminal(.failed(Self.message(for: error))) }
+        if wasReady {
+            deliverTerminal(.transportFailed(transportFailure ?? NativeNVSTTransportFailure(
+                message: Self.message(for: error),
+                recoveryClassification: .permanent
+            )))
+        }
     }
 
     func cancel() {
@@ -1670,13 +1914,230 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 }
 
-private func nativeNVSTGeronimoEventCallback(_ context: UnsafeMutableRawPointer?, _ phase: Int32, _ callbackType: UInt32, _ clientEvent: UInt32, _ notification: UInt32, _ resultCode: Int32, _ resultName: UnsafePointer<CChar>?) {
-    guard let context else { return }
-    let sink = Unmanaged<NativeNVSTGeronimoEventSink>.fromOpaque(context).takeUnretainedValue()
-    sink.handle(phase: phase, callbackType: callbackType, clientEvent: clientEvent, notification: notification, resultCode: resultCode, resultName: resultName.map { String(cString: $0) })
+public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
+    public typealias Handler = @Sendable (UInt32) async throws -> String
+
+    private let expectedAuthType: UInt32?
+    private let timeout: DispatchTimeInterval
+    private let handler: Handler
+    private let lock = NSLock()
+    private var requests: [UUID: NativeNVSTAuthRefreshRequest] = [:]
+    private var cancelled = false
+
+    public init(expectedAuthType: UInt32?, timeout: DispatchTimeInterval = .seconds(29), handler: @escaping Handler) {
+        self.expectedAuthType = expectedAuthType
+        self.timeout = timeout
+        self.handler = handler
+    }
+
+    public static func authType(for tokenType: String) -> UInt32? {
+        switch tokenType.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "7", "JARVIS", "NVB_AUTH_JARVIS": 7
+        case "8", "JWT", "NVB_AUTH_JWT": 8
+        case "9", "JWT_GFN", "JWT-GFN", "NVB_AUTH_JWT_GFN": 9
+        default: nil
+        }
+    }
+
+    public static func productionToken(authType: UInt32) async throws -> String {
+        let session = try await OPNAuthService.shared.refreshSession(forceRefresh: true)
+        let token = token(from: session, authType: authType)
+        guard (7...9).contains(authType), !token.isEmpty else {
+            throw NativeNVSTError.invalidSession("Forced session refresh did not return the required authentication token.")
+        }
+        return token
+    }
+
+    static func token(from session: OPNAuthSession, authType: UInt32) -> String {
+        authType == 8 ? session.idToken : session.accessToken
+    }
+
+    public func copyRefreshedToken(authType: UInt32, response: UnsafeMutablePointer<CChar>, capacity: Int) {
+        guard capacity > 0 else { return }
+        response[0] = 0
+        guard expectedAuthType == nil || expectedAuthType == authType else { return }
+        let id = UUID()
+        let request = NativeNVSTAuthRefreshRequest()
+        lock.lock()
+        guard !cancelled else {
+            lock.unlock()
+            return
+        }
+        requests[id] = request
+        lock.unlock()
+        let handler = self.handler
+        request.setTask(Task.detached(priority: .userInitiated) {
+            do {
+                request.complete(with: Data(try await handler(authType).utf8))
+            } catch {
+                request.complete(with: nil)
+            }
+        })
+        let data = request.wait(timeout: timeout)
+        lock.lock()
+        requests.removeValue(forKey: id)
+        lock.unlock()
+        guard let data else {
+            request.cancel()
+            return
+        }
+        let byteCount = min(data.count, capacity - 1)
+        data.copyBytes(to: UnsafeMutableRawBufferPointer(start: response, count: byteCount), count: byteCount)
+        response[byteCount] = 0
+    }
+
+    public func cancel() {
+        lock.lock()
+        cancelled = true
+        let activeRequests = Array(requests.values)
+        requests.removeAll()
+        lock.unlock()
+        activeRequests.forEach { $0.cancel() }
+    }
 }
 
-private typealias NativeNVSTGeronimoEventHandler = @convention(c) (UnsafeMutableRawPointer?, Int32, UInt32, UInt32, UInt32, Int32, UnsafePointer<CChar>?) -> Void
+private final class NativeNVSTAuthRefreshRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var task: Task<Void, Never>?
+    private var result: Data?
+    private var completed = false
+
+    func setTask(_ task: Task<Void, Never>) {
+        lock.lock()
+        if completed {
+            lock.unlock()
+            task.cancel()
+            return
+        }
+        self.task = task
+        lock.unlock()
+    }
+
+    func complete(with result: Data?) {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        self.result = result
+        task = nil
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    func wait(timeout: DispatchTimeInterval) -> Data? {
+        guard semaphore.wait(timeout: .now() + timeout) == .success else { return nil }
+        lock.lock()
+        let result = self.result
+        lock.unlock()
+        return result
+    }
+
+    func cancel() {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        let task = self.task
+        self.task = nil
+        lock.unlock()
+        task?.cancel()
+        semaphore.signal()
+    }
+}
+
+private final class NativeNVSTHapticSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?
+    private var resetHandler: (@MainActor @Sendable () -> Void)?
+
+    init(handler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?, resetHandler: (@MainActor @Sendable () -> Void)?) {
+        self.handler = handler
+        self.resetHandler = resetHandler
+    }
+
+    func receive(_ command: NativeNVSTHapticCommand) {
+        lock.lock()
+        let handler = self.handler
+        lock.unlock()
+        guard let handler else { return }
+        Task { @MainActor in handler(command) }
+    }
+
+    func cancel() async {
+        let resetHandler = detach()
+        if let resetHandler { await MainActor.run { resetHandler() } }
+    }
+
+    private func detach() -> (@MainActor @Sendable () -> Void)? {
+        lock.lock()
+        let resetHandler = self.resetHandler
+        handler = nil
+        self.resetHandler = nil
+        lock.unlock()
+        return resetHandler
+    }
+}
+
+private final class NativeNVSTRuntimeHandlers: @unchecked Sendable {
+    let authRefresh: NativeNVSTAuthRefreshCoordinator
+    let haptic: NativeNVSTHapticSink
+
+    init(expectedAuthType: UInt32?,
+         authRefreshHandler: @escaping NativeNVSTAuthRefreshCoordinator.Handler,
+         hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?,
+         hapticResetHandler: (@MainActor @Sendable () -> Void)?) {
+        authRefresh = NativeNVSTAuthRefreshCoordinator(expectedAuthType: expectedAuthType, handler: authRefreshHandler)
+        haptic = NativeNVSTHapticSink(handler: hapticHandler, resetHandler: hapticResetHandler)
+    }
+
+    var authRefreshContext: UnsafeMutableRawPointer { Unmanaged.passUnretained(authRefresh).toOpaque() }
+    var hapticContext: UnsafeMutableRawPointer { Unmanaged.passUnretained(haptic).toOpaque() }
+
+    func cancel() async {
+        authRefresh.cancel()
+        await haptic.cancel()
+    }
+}
+
+private func nativeNVSTGeronimoHapticCallback(_ context: UnsafeMutableRawPointer?, _ player: UInt16, _ lowFrequency: UInt16, _ highFrequency: UInt16, _ durationMilliseconds: UInt16) {
+    guard let context else { return }
+    Unmanaged<NativeNVSTHapticSink>.fromOpaque(context).takeUnretainedValue().receive(NativeNVSTHapticCommand(
+        playerIndex: Int(player),
+        lowFrequency: lowFrequency,
+        highFrequency: highFrequency,
+        durationMilliseconds: durationMilliseconds
+    ))
+}
+
+private func nativeNVSTGeronimoAuthRefreshCallback(_ context: UnsafeMutableRawPointer?, _ authType: UInt32, _ response: UnsafeMutablePointer<CChar>?, _ capacity: Int) {
+    guard let context, let response else { return }
+    Unmanaged<NativeNVSTAuthRefreshCoordinator>.fromOpaque(context).takeUnretainedValue().copyRefreshedToken(authType: authType, response: response, capacity: capacity)
+}
+
+private func nativeNVSTGeronimoEventCallback(_ context: UnsafeMutableRawPointer?, _ phase: Int32, _ callbackType: UInt32, _ clientEvent: UInt32, _ notification: UInt32, _ resultCode: Int32, _ resultName: UnsafePointer<CChar>?, _ resumable: UInt32, _ sessionAlive: UInt32, _ reasonName: UnsafePointer<CChar>?) {
+    guard let context else { return }
+    let sink = Unmanaged<NativeNVSTGeronimoEventSink>.fromOpaque(context).takeUnretainedValue()
+    sink.handle(
+        phase: phase,
+        callbackType: callbackType,
+        clientEvent: clientEvent,
+        notification: notification,
+        resultCode: resultCode,
+        resultName: resultName.map { String(cString: $0) },
+        resumable: resumable != 0,
+        sessionAlive: sessionAlive != 0,
+        reasonName: reasonName.map { String(cString: $0) }
+    )
+}
+
+private typealias NativeNVSTGeronimoEventHandler = @convention(c) (UnsafeMutableRawPointer?, Int32, UInt32, UInt32, UInt32, Int32, UnsafePointer<CChar>?, UInt32, UInt32, UnsafePointer<CChar>?) -> Void
+private typealias NativeNVSTGeronimoHapticHandler = @convention(c) (UnsafeMutableRawPointer?, UInt16, UInt16, UInt16, UInt16) -> Void
+private typealias NativeNVSTGeronimoAuthRefreshHandler = @convention(c) (UnsafeMutableRawPointer?, UInt32, UnsafeMutablePointer<CChar>?, Int) -> Void
 
 private struct NativeNVSTGeronimoPerformanceStats {
     static let byteCount = 0x50
@@ -1745,6 +2206,12 @@ private func OpenNOWNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CCh
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetEventHandler")
 private func OpenNOWNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRawPointer?, _ eventHandler: NativeNVSTGeronimoEventHandler?, _ eventContext: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetHapticHandler")
+private func OpenNOWNativeNVSTGeronimoSetHapticHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoHapticHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler")
+private func OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoAuthRefreshHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
+
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
 private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
@@ -1756,6 +2223,12 @@ private func OpenNOWNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled")
 private func OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneVolume")
+private func OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(_ session: UnsafeMutableRawPointer?, _ volume: Double) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled")
+private func OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoPump")
 private func OpenNOWNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
@@ -1780,6 +2253,9 @@ private func OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(_ session: UnsafeM
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetL4SState")
 private func OpenNOWNativeNVSTGeronimoSetL4SState(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoUpdateGamepadTopology")
+private func OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(_ session: UnsafeMutableRawPointer?, _ connectedPlayerBitmap: UInt8, _ hapticPlayerBitmap: UInt8, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoCopyPerformanceStats")
 private func OpenNOWNativeNVSTGeronimoCopyPerformanceStats(_ session: UnsafeMutableRawPointer?, _ performanceStatsBytes: UnsafeMutableRawPointer?, _ performanceStatsByteCount: Int, _ serverLocationBuffer: UnsafeMutablePointer<CChar>?, _ serverLocationBufferLength: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

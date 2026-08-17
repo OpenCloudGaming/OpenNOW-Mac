@@ -17,7 +17,18 @@
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000003 /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OpenNOWApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
+		C00000000000000000000001 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C00000000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7729CE6E2FDEDAB300D5C9D5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7729CE752FDEDAB300D5C9D5;
+			remoteInfo = OpenNOW;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		7729CE892FDEDAB500D5C9D5 /* Embed Frameworks */ = {
@@ -47,6 +58,7 @@
 		7729CE9A2FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "vendor/gfn-runtime/Frameworks/SDL2.framework"; sourceTree = "<group>"; };
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000004 /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenNOWApp.swift; sourceTree = "<group>"; };
+		C00000000000000000000002 /* OpenNOWTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenNOWTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +87,11 @@
 			path = ViewModel;
 			sourceTree = "<group>";
 		};
+		C00000000000000000000003 /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,12 +105,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C00000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C00000000000000000000001 /* WebRTC.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		7729CE6D2FDEDAB300D5C9D5 = {
 			isa = PBXGroup;
 			children = (
+				C00000000000000000000003 /* Tests */,
 				B00000000000000000000101 /* Model */,
 				B00000000000000000000102 /* View */,
 				B00000000000000000000110 /* ViewModel */,
@@ -115,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */,
+				C00000000000000000000002 /* OpenNOWTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -150,6 +177,29 @@
 			productReference = 7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C00000000000000000000005 /* OpenNOWTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0000000000000000000000C /* Build configuration list for PBXNativeTarget "OpenNOWTests" */;
+			buildPhases = (
+				C00000000000000000000009 /* Sources */,
+				C00000000000000000000004 /* Frameworks */,
+				C00000000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C00000000000000000000006 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C00000000000000000000003 /* Tests */,
+			);
+			name = OpenNOWTests;
+			packageProductDependencies = (
+			);
+			productName = OpenNOWTests;
+			productReference = C00000000000000000000002 /* OpenNOWTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -162,6 +212,10 @@
 				TargetAttributes = {
 					7729CE752FDEDAB300D5C9D5 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					C00000000000000000000005 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 7729CE752FDEDAB300D5C9D5;
 					};
 				};
 			};
@@ -183,6 +237,7 @@
 			projectRoot = "";
 			targets = (
 				7729CE752FDEDAB300D5C9D5 /* OpenNOW */,
+				C00000000000000000000005 /* OpenNOWTests */,
 			);
 		};
 /* End PBXProject section */
@@ -193,6 +248,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000001 /* Resources in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,7 +269,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C00000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C00000000000000000000006 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7729CE752FDEDAB300D5C9D5 /* OpenNOW */;
+			targetProxy = C00000000000000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7729CE812FDEDAB500D5C9D5 /* Debug */ = {
@@ -416,6 +493,60 @@
 			};
 			name = Release;
 		};
+		C0000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MPZW7ERR2D;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.OpenNOWTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenNOW.app/Contents/MacOS/OpenNOW";
+			};
+			name = Debug;
+		};
+		C0000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MPZW7ERR2D;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.OpenNOWTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenNOW.app/Contents/MacOS/OpenNOW";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -433,6 +564,15 @@
 			buildConfigurations = (
 				7729CE842FDEDAB500D5C9D5 /* Debug */,
 				7729CE852FDEDAB500D5C9D5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0000000000000000000000C /* Build configuration list for PBXNativeTarget "OpenNOWTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0000000000000000000000A /* Debug */,
+				C0000000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

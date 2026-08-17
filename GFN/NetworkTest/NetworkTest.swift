@@ -34,6 +34,7 @@ public extension NetworkTest {
     enum LifecycleState: String, CaseIterable, Sendable {
         case idle = "Idle"
         case started = "Started"
+        case provisioned = "Provisioned"
         case finished = "Finished"
         case cancelled = "Cancelled"
         case failed = "Failed"
@@ -72,6 +73,10 @@ public struct NetworkTestLifecycle: Equatable, Sendable {
 
     public func finishing(result: NetworkTestResult) -> NetworkTestLifecycle {
         NetworkTestLifecycle(state: .finished, result: result)
+    }
+
+    public func provisioning(result: NetworkTestResult) -> NetworkTestLifecycle {
+        NetworkTestLifecycle(state: .provisioned, result: result)
     }
 
     public func cancelling() -> NetworkTestLifecycle {
@@ -239,12 +244,13 @@ public struct NetworkTestResult: Equatable, Sendable {
     public let jitterMilliseconds: Int
     public let packetLossPercent: Double
     public let rawStatus: String
+    public let hasTestResult: Bool
 
     public var isCompleted: Bool {
-        rawStatus.caseInsensitiveCompare("COMPLETED") == .orderedSame || rawStatus.caseInsensitiveCompare("SUCCESS") == .orderedSame
+        hasTestResult && Self.successfulTerminalStatuses.contains(rawStatus.uppercased())
     }
 
-    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, latencyMilliseconds: Int = -1, jitterMilliseconds: Int = -1, packetLossPercent: Double = -1, rawStatus: String = "") {
+    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, latencyMilliseconds: Int = -1, jitterMilliseconds: Int = -1, packetLossPercent: Double = -1, rawStatus: String = "", hasTestResult: Bool = false) {
         self.sessionId = sessionId
         self.zoneAddress = zoneAddress
         self.zoneName = zoneName
@@ -257,15 +263,20 @@ public struct NetworkTestResult: Equatable, Sendable {
         self.jitterMilliseconds = jitterMilliseconds
         self.packetLossPercent = packetLossPercent
         self.rawStatus = rawStatus
+        self.hasTestResult = hasTestResult
     }
+
+    private static let successfulTerminalStatuses: Set<String> = ["COMPLETED", "SUCCESS"]
 }
 
 public enum NetworkTestResultParser {
     public static func parse(_ json: [String: Any]) -> NetworkTestResult {
         let requestStatus = dictionaryValue(json["requestStatus"]) ?? [:]
         let netTestSession = dictionaryValue(json["netTestSession"]) ?? dictionaryValue(json["net_test_session"])
-        let testResult = dictionaryValue(json["testResult"]) ?? dictionaryValue(json["test_result"]) ?? json
-        let zone = dictionaryValue(json["zone"]) ?? dictionaryValue(testResult["zone"]) ?? [:]
+        let testResult = dictionaryValue(json["testResult"]) ?? dictionaryValue(json["test_result"])
+        let testStatus = stringValue(testResult?["status"]) ?? ""
+        let completedMeasurement = testResult != nil && ["COMPLETED", "SUCCESS"].contains(testStatus.uppercased())
+        let zone = dictionaryValue(json["zone"]) ?? dictionaryValue(testResult?["zone"]) ?? [:]
         let connectionInfo = arrayValue(netTestSession?["connectionInfo"]).compactMap { dictionaryValue($0) }.first ?? [:]
         let endpoint = NetworkTestConnectionEndpoint(
             address: stringValue(connectionInfo["ip"]) ?? "",
@@ -287,12 +298,13 @@ public enum NetworkTestResultParser {
                 packetLossRecommended: doubleValue(thresholds["recommendedPacketLossPct"]) ?? 0,
                 packetLossLimit: doubleValue(thresholds["requiredPacketLossPct"]) ?? 0
             ),
-            downlinkBandwidth: intValue(testResult["downlinkBandwidth"]) ?? intValue(testResult["downlink_bandwidth"]) ?? 0,
-            maxPacketSize: intValue(testResult["maxPacketSize"]) ?? intValue(testResult["max_packet_size"]) ?? 0,
-            latencyMilliseconds: intValue(testResult["latencyMs"]) ?? intValue(testResult["latencyMS"]) ?? intValue(testResult["rttMs"]) ?? intValue(testResult["roundTripTimeMs"]) ?? -1,
-            jitterMilliseconds: intValue(testResult["jitterMs"]) ?? intValue(testResult["jitterMS"]) ?? intValue(testResult["networkJitterMs"]) ?? -1,
-            packetLossPercent: doubleValue(testResult["packetLossPercent"]) ?? doubleValue(testResult["packetLossPct"]) ?? doubleValue(testResult["packetLoss"]) ?? -1,
-            rawStatus: stringValue(json["status"]) ?? stringValue(testResult["status"]) ?? stringValue(requestStatus["statusDescription"]) ?? ""
+            downlinkBandwidth: completedMeasurement ? (intValue(testResult?["downlinkBandwidth"]) ?? intValue(testResult?["downlink_bandwidth"]) ?? 0) : 0,
+            maxPacketSize: completedMeasurement ? (intValue(testResult?["maxPacketSize"]) ?? intValue(testResult?["max_packet_size"]) ?? 0) : 0,
+            latencyMilliseconds: completedMeasurement ? (intValue(testResult?["latencyMs"]) ?? intValue(testResult?["latencyMS"]) ?? intValue(testResult?["rttMs"]) ?? intValue(testResult?["roundTripTimeMs"]) ?? -1) : -1,
+            jitterMilliseconds: completedMeasurement ? (intValue(testResult?["jitterMs"]) ?? intValue(testResult?["jitterMS"]) ?? intValue(testResult?["networkJitterMs"]) ?? -1) : -1,
+            packetLossPercent: completedMeasurement ? (doubleValue(testResult?["packetLossPercent"]) ?? doubleValue(testResult?["packetLossPct"]) ?? doubleValue(testResult?["packetLoss"]) ?? -1) : -1,
+            rawStatus: testStatus.isEmpty ? (stringValue(requestStatus["statusDescription"]) ?? "PROVISIONED") : testStatus,
+            hasTestResult: testResult != nil
         )
     }
 
@@ -340,14 +352,14 @@ public struct NetworkTestURLSessionTransport: NetworkTestHTTPTransport {
 public enum NetworkTestServiceError: LocalizedError, Equatable, Sendable {
     case invalidSessionURL
     case invalidHTTPResponse
-    case httpStatus(Int)
+    case httpStatus(Int, retryAfterSeconds: TimeInterval?)
     case invalidJSONResponse
 
     public var errorDescription: String? {
         switch self {
         case .invalidSessionURL: "Invalid NetworkTest session URL"
         case .invalidHTTPResponse: "Invalid NetworkTest HTTP response"
-        case .httpStatus(let status): "NetworkTest HTTP status \(status)"
+        case .httpStatus(let status, _): "NetworkTest HTTP status \(status)"
         case .invalidJSONResponse: "Invalid NetworkTest JSON response"
         }
     }
@@ -358,6 +370,8 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
 
     private let configuration: NetworkTestConfiguration
     private let transport: Transport
+    private var activeTask: Task<NetworkTestResult, Error>?
+    private var activeOperationID: UUID?
 
     public init(configuration: NetworkTestConfiguration = .gfnPC, transport: Transport, lifecycle: NetworkTestLifecycle = NetworkTestLifecycle()) {
         self.configuration = configuration
@@ -366,46 +380,93 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
     }
 
     public func startSession(accessToken: String = "", queryItems: [URLQueryItem] = [], payload: NetworkTestSessionRequestPayload = .gfnPC) async throws -> NetworkTestResult {
+        activeTask?.cancel()
         lifecycle = lifecycle.starting()
         guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, payload: payload, configuration: configuration, timeoutInterval: configuration.timeoutInterval) else {
             lifecycle = lifecycle.failing(errorName: .sdkError)
             throw NetworkTestServiceError.invalidSessionURL
         }
+        let task = Task { [transport] in
+            try await Self.perform(request: request, transport: transport)
+        }
+        let operationID = UUID()
+        activeTask = task
+        activeOperationID = operationID
         do {
-            for attempt in 0..<4 {
-                do {
-                    let json = try await performJSONRequest(request)
-                    let result = NetworkTestResultParser.parse(json)
-                    guard !result.sessionId.isEmpty, !result.connectionEndpoint.address.isEmpty else { throw NetworkTestServiceError.invalidJSONResponse }
-                    lifecycle = lifecycle.finishing(result: result)
-                    return result
-                } catch {
-                    guard attempt < 3, Self.isRetryable(error) else { throw error }
-                    try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
-                }
+            let result = try await withTaskCancellationHandler {
+                try await task.value
+            } onCancel: {
+                task.cancel()
             }
-            throw NetworkTestServiceError.invalidHTTPResponse
+            if activeOperationID == operationID {
+                activeTask = nil
+                activeOperationID = nil
+                lifecycle = result.isCompleted ? lifecycle.finishing(result: result) : lifecycle.provisioning(result: result)
+            }
+            return result
         } catch {
-            lifecycle = lifecycle.failing(errorName: .failed)
+            if activeOperationID == operationID {
+                activeTask = nil
+                activeOperationID = nil
+                lifecycle = error is CancellationError ? lifecycle.cancelling() : lifecycle.failing(errorName: .failed)
+            }
             throw error
         }
     }
 
-    private static func isRetryable(_ error: Error) -> Bool {
-        if let serviceError = error as? NetworkTestServiceError, case .httpStatus(let status) = serviceError {
-            return status == 408 || status == 502 || status == 504
+    private static func perform(request: URLRequest, transport: Transport) async throws -> NetworkTestResult {
+        for attempt in 0..<4 {
+            do {
+                try Task.checkCancellation()
+                let json = try await performJSONRequest(request, transport: transport)
+                let result = NetworkTestResultParser.parse(json)
+                guard !result.sessionId.isEmpty, !result.connectionEndpoint.address.isEmpty else { throw NetworkTestServiceError.invalidJSONResponse }
+                return result
+            } catch {
+                guard attempt < 3, let delay = retryDelay(for: error, attempt: attempt) else { throw error }
+                try await Task.sleep(for: delay)
+            }
         }
-        return error is URLError
+        throw NetworkTestServiceError.invalidHTTPResponse
+    }
+
+    private static func retryDelay(for error: Error, attempt: Int) -> Duration? {
+        if error is CancellationError { return nil }
+        if let serviceError = error as? NetworkTestServiceError,
+           case .httpStatus(let status, let retryAfterSeconds) = serviceError,
+           [408, 425, 429, 500, 502, 503, 504].contains(status) {
+            let seconds = min(max(retryAfterSeconds ?? (0.5 * Double(attempt + 1)), 0), 30)
+            return .milliseconds(Int64((seconds * 1_000).rounded()))
+        }
+        guard let urlError = error as? URLError else { return nil }
+        let transientCodes: Set<URLError.Code> = [.timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed, .notConnectedToInternet, .resourceUnavailable]
+        return transientCodes.contains(urlError.code) ? .milliseconds(500 * Int64(attempt + 1)) : nil
     }
 
     public func cancel() {
+        activeTask?.cancel()
+        activeTask = nil
+        activeOperationID = nil
         lifecycle = lifecycle.cancelling()
     }
 
-    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+    private static func performJSONRequest(_ request: URLRequest, transport: Transport) async throws -> [String: Any] {
         let (data, response) = try await transport.send(request)
-        guard response.statusCode == 200 else { throw NetworkTestServiceError.httpStatus(response.statusCode) }
+        guard response.statusCode == 200 else {
+            throw NetworkTestServiceError.httpStatus(response.statusCode, retryAfterSeconds: retryAfterSeconds(from: response))
+        }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw NetworkTestServiceError.invalidJSONResponse }
         return json
+    }
+
+    private static func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+        guard let value = response.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if let seconds = TimeInterval(value), seconds >= 0 { return seconds }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss z"
+        guard let date = formatter.date(from: value) else { return nil }
+        return max(0, date.timeIntervalSinceNow)
     }
 }

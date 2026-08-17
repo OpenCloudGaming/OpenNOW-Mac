@@ -4,12 +4,17 @@
 
 #include <stdint.h>
 #include <dlfcn.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
+#include <mach-o/nlist.h>
+#include <mach/mach.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <atomic>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <condition_variable>
@@ -19,6 +24,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Nsk {
@@ -81,6 +87,11 @@ struct NVbTracingContext_t {
 };
 }
 
+struct NVbKeyValuePair_t {
+    const char *key = nullptr;
+    const char *value = nullptr;
+};
+
 namespace SessionControl {
 struct PrepareParameters {
     std::string serverAddress;
@@ -116,7 +127,7 @@ struct SessionParameters {
     Nsk::NVbStreamSettings_t defaultStreamSettings;
     unsigned char pad1c0[0x0c] = {};
     uint32_t appLaunchMode = 0;
-    void *metadata = nullptr;
+    NVbKeyValuePair_t *metadata = nullptr;
     uint32_t metadataCount = 0;
     bool networkPacketCaptureEnabled = false;
     unsigned char pad1dd[0x0b] = {};
@@ -164,6 +175,10 @@ static_assert(sizeof(Nsk::VideoDecoderCapabilityParams) == 0x68, "libGeronimo Vi
 static_assert(sizeof(Nsk::NVbStreamSettings_t) == 0x170, "libGeronimo NVbStreamSettings_t ABI changed");
 static_assert(sizeof(Nsk::NVbConnectionInfo_t) == 0x40c, "libGeronimo NVbConnectionInfo_t ABI changed");
 static_assert(sizeof(Nsk::NVbTracingContext_t) == 0x20, "libGeronimo NVbTracingContext_t ABI changed");
+static_assert(sizeof(NVbKeyValuePair_t) == 0x10, "libBifrost2 NVbKeyValuePair_t size changed");
+static_assert(alignof(NVbKeyValuePair_t) == 0x08, "libBifrost2 NVbKeyValuePair_t alignment changed");
+static_assert(offsetof(NVbKeyValuePair_t, key) == 0x00, "libBifrost2 NVbKeyValuePair_t key offset changed");
+static_assert(offsetof(NVbKeyValuePair_t, value) == 0x08, "libBifrost2 NVbKeyValuePair_t value offset changed");
 static_assert(offsetof(Nsk::ApplicationStreamStartParameters, gameLanguage) == 0x30, "libGeronimo gameLanguage offset changed");
 static_assert(offsetof(Nsk::ApplicationStreamStartParameters, clientAppVersion) == 0x48, "libGeronimo clientAppVersion offset changed");
 static_assert(offsetof(Nsk::ApplicationStreamStartParameters, clientLocale) == 0x60, "libGeronimo clientLocale offset changed");
@@ -220,6 +235,7 @@ constexpr size_t GridAppSetupFailureSlotOffset = 0xa8;
 constexpr size_t GridAppResumeFailureSlotOffset = 0xb0;
 constexpr size_t GridAppSetupSuccessSlotOffset = 0xc0;
 constexpr size_t GridAppStreamingTerminatedSlotOffset = 0xc8;
+constexpr size_t GridAppUpdateAuthTokenSlotOffset = 0xf0;
 constexpr size_t GridAppCursorInfoSlotOffset = 0x118;
 constexpr size_t GridAppSetupProgressSlotOffset = 0x140;
 constexpr size_t GridAppActiveSessionsSlotOffset = 0x148;
@@ -264,6 +280,7 @@ using GridAppResume = bool (*)(void *, const char *, const SessionControl::Sessi
 using GridAppSetDecoderInfo = void (*)(void *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool);
 using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
+using GridAppControlFeatures = bool (*)(void *, uint32_t, uint32_t);
 using GridAppTogglePerfIndicator = void (*)(void *);
 using GridAppCursorInfoUpdate = void (*)(void *, const void *);
 using GridAppSetStreamingMaxBitrate = bool (*)(void *, uint16_t, uint32_t);
@@ -278,7 +295,10 @@ using GetStreamStartParameters = int (*)(const std::string &, const std::string 
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
 using NVbEnumToString = const char *(*)(int32_t, int32_t);
-using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *);
+using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *, uint32_t, uint32_t, const char *);
+using OpenNOWGeronimoHapticHandler = void (*)(void *, uint16_t, uint16_t, uint16_t, uint16_t);
+using OpenNOWGeronimoAuthRefreshHandler = void (*)(void *, uint32_t, char *, size_t);
+using NVbCallback = bool (*)(void *, uint32_t, void *);
 using ObjectCtor = void (*)(void *);
 using ObjectDtor = void (*)(void *);
 using SDLGraphicsContextInitialize = uint32_t (*)(void *, const SDLGraphicsContextInitParameters &);
@@ -296,6 +316,14 @@ struct NVbResult_t {
     unsigned char bytes[0x10] = {};
 };
 
+using NVbRegisterCallback = NVbResult_t (*)(void *, void *, NVbCallback);
+
+struct NvstAudioFrame_t {
+    alignas(8) unsigned char bytes[0x58];
+};
+
+using NVbSendMicAudioFrame = NVbResult_t (*)(void *, const char *, NvstAudioFrame_t);
+
 constexpr size_t NvstInputEventSize = 0x48;
 #if defined(__arm64__)
 constexpr uintptr_t GetStreamStartParametersJSONStringOffset = 0x767b4;
@@ -310,15 +338,29 @@ constexpr uintptr_t FreeStreamingParamsOffset = 0x9d3a0;
 #endif
 constexpr uint32_t NVbCallbackTypeEvent = 2;
 constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
+constexpr uint32_t NVbClientEventHaptic = 0x14;
 constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
+constexpr uint32_t NVbFeatureGamepadHaptics = 6;
+constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
+constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
 constexpr bool GeronimoPrepareSynchronous = false;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 64;
+constexpr uint32_t MaximumMetadataCount = 64;
 constexpr uint16_t MinimumNVbPacketSize = 512;
 constexpr size_t NVbStreamSettingsPacketSizeOffset = 0x48;
 constexpr uint8_t SDLWindowHighDPIEnabled = 1;
+constexpr size_t MicrophoneRouteCapacity = 8;
+constexpr size_t MicrophonePCMByteCount = 1920;
+constexpr size_t MicrophoneSampleCount = MicrophonePCMByteCount / sizeof(int16_t);
+constexpr uint32_t MicrophoneSampleRate = 48000;
+constexpr uint32_t MicrophoneBitsPerSample = 16;
+constexpr uint32_t MicrophoneChannelCount = 2;
+constexpr uint32_t MicrophoneFormat = 4;
+constexpr uint32_t VoiceAttackFrames = 2;
+constexpr uint32_t VoiceHangoverFrames = 20;
 
 static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
 
@@ -329,6 +371,7 @@ struct NVbAuthInfo_t {
 
 static_assert(sizeof(NVbResult_t) == 0x14, "libBifrost2 NVbResult_t ABI changed");
 static_assert(sizeof(NVbAuthInfo_t) == 0x10, "libGeronimo NVbAuthInfo_t ABI changed");
+static_assert(sizeof(NvstAudioFrame_t) == 0x58, "libGeronimo NvstAudioFrame_t ABI changed");
 
 enum class NativeSessionState {
     created,
@@ -353,6 +396,7 @@ struct GeronimoFunctions {
     GridAppResume resume = nullptr;
     GridAppSendInput sendInput = nullptr;
     GridAppHandleGamepadChanged handleGamepadChanged = nullptr;
+    GridAppControlFeatures controlFeatures = nullptr;
     GridAppSetDecoderInfo setDecoderInfo = nullptr;
     GridAppTogglePerfIndicator togglePerfIndicator = nullptr;
     GridAppCursorInfoUpdate cursorInfoUpdate = nullptr;
@@ -391,6 +435,8 @@ struct PendingStart {
     std::string resumeSessionId;
     SessionControl::SessionParameters parameters;
     std::vector<Nsk::NVbStreamSettings_t> streamSettings;
+    std::vector<std::pair<std::string, std::string>> metadataStrings;
+    std::vector<NVbKeyValuePair_t> metadataPointers;
     std::string traceParent;
 };
 
@@ -402,6 +448,32 @@ struct StreamingParamsGuard {
         if (parameters != nullptr && release != nullptr) { release(*parameters); }
     }
 };
+
+struct AdaptiveVoiceActivityState {
+    double noiseFloor = 0.008;
+    uint32_t attackFrames = 0;
+    uint32_t hangoverFrames = 0;
+    bool speaking = false;
+};
+
+struct MicrophoneRouteSlot {
+    std::atomic<void *> client{nullptr};
+    std::atomic<uint32_t> inFlight{0};
+    std::atomic<float> volume{1.0f};
+    std::atomic<bool> vadEnabled{false};
+    std::mutex stateMutex;
+    std::condition_variable drained;
+    AdaptiveVoiceActivityState vad;
+};
+
+std::array<MicrophoneRouteSlot, MicrophoneRouteCapacity> gMicrophoneRoutes;
+std::mutex gMicrophoneRoutesMutex;
+std::mutex gMicrophoneHookMutex;
+void **gMicrophoneImportSlot = nullptr;
+std::atomic<NVbSendMicAudioFrame> gOriginalSendMicAudioFrame{nullptr};
+size_t gMicrophoneHookLeaseCount = 0;
+
+NVbResult_t openNOWSendMicAudioFrame(void *client, const char *sessionIdentifier, NvstAudioFrame_t frame);
 
 struct OpenNOWNativeNVSTGeronimoSession {
     void *libraryHandle = nullptr;
@@ -415,6 +487,11 @@ struct OpenNOWNativeNVSTGeronimoSession {
     std::mutex eventMutex;
     OpenNOWGeronimoEventHandler eventHandler = nullptr;
     void *eventContext = nullptr;
+    std::mutex runtimeHandlerMutex;
+    OpenNOWGeronimoHapticHandler hapticHandler = nullptr;
+    void *hapticContext = nullptr;
+    OpenNOWGeronimoAuthRefreshHandler authRefreshHandler = nullptr;
+    void *authRefreshContext = nullptr;
     std::atomic<uint32_t> callbacksInFlight{0};
     std::atomic<bool> acceptsCallbacks{true};
     std::mutex callbackMutex;
@@ -432,7 +509,15 @@ struct OpenNOWNativeNVSTGeronimoSession {
     bool microphoneAvailable = false;
     bool microphoneSetupSucceeded = false;
     bool microphoneEnabled = false;
+    float microphoneVolume = 1.0f;
+    bool voiceActivityEnabled = false;
+    MicrophoneRouteSlot *microphoneRoute = nullptr;
+    bool microphoneHookLeaseAcquired = false;
     bool registeredGamepads[4] = {};
+    bool hapticFeatureEnabled = false;
+    NVbRegisterCallback registerBifrostCallback = nullptr;
+    NVbCallback originalBifrostCallback = nullptr;
+    bool bifrostCallbackInstalled = false;
     std::string lastError;
     bool platformStarted = false;
     bool initialized = false;
@@ -504,13 +589,284 @@ void storeUnaligned(void *base, size_t offset, T value) {
     if (base != nullptr) { memcpy(static_cast<uint8_t *>(base) + offset, &value, sizeof(T)); }
 }
 
+void resetVoiceActivity(AdaptiveVoiceActivityState &state) {
+    state = AdaptiveVoiceActivityState{};
+}
+
+bool processVoiceActivity(AdaptiveVoiceActivityState &state, double rms) {
+    const double attackThreshold = std::max(0.015, state.noiseFloor * 3.0);
+    const double releaseThreshold = std::max(0.010, state.noiseFloor * 1.8);
+    if (!state.speaking) {
+        if (rms >= attackThreshold) {
+            ++state.attackFrames;
+            if (state.attackFrames >= VoiceAttackFrames) {
+                state.speaking = true;
+                state.hangoverFrames = VoiceHangoverFrames;
+            }
+        } else {
+            state.attackFrames = 0;
+            state.noiseFloor = std::clamp(state.noiseFloor * 0.95 + rms * 0.05, 0.0005, 0.08);
+        }
+    } else if (rms >= releaseThreshold) {
+        state.hangoverFrames = VoiceHangoverFrames;
+    } else if (state.hangoverFrames > 0) {
+        --state.hangoverFrames;
+    } else {
+        state.speaking = false;
+        state.attackFrames = 0;
+        state.noiseFloor = std::clamp(state.noiseFloor * 0.95 + rms * 0.05, 0.0005, 0.08);
+    }
+    return state.speaking;
+}
+
+bool processMicrophonePCM(const int16_t *input,
+                          int16_t *output,
+                          size_t sampleCount,
+                          float volume,
+                          bool vadEnabled,
+                          AdaptiveVoiceActivityState &vad) {
+    if (input == nullptr || output == nullptr || sampleCount == 0 || sampleCount > MicrophoneSampleCount) { return false; }
+    long double sumSquares = 0;
+    for (size_t index = 0; index < sampleCount; ++index) {
+        const long double normalized = static_cast<long double>(input[index]) / 32768.0L;
+        sumSquares += normalized * normalized;
+    }
+    const double rms = std::sqrt(static_cast<double>(sumSquares / sampleCount));
+    const bool forwardAudio = !vadEnabled || processVoiceActivity(vad, rms);
+    const double boundedVolume = std::clamp(static_cast<double>(volume), 0.0, 1.0);
+    for (size_t index = 0; index < sampleCount; ++index) {
+        if (!forwardAudio || boundedVolume == 0) {
+            output[index] = 0;
+            continue;
+        }
+        const double scaled = std::round(static_cast<double>(input[index]) * boundedVolume);
+        output[index] = static_cast<int16_t>(std::clamp(scaled, -32768.0, 32767.0));
+    }
+    return true;
+}
+
+bool isSupportedMicrophoneFrame(const NvstAudioFrame_t &frame) {
+    return loadUnaligned<uint32_t>(frame.bytes, 0x08) == MicrophoneBitsPerSample &&
+           loadUnaligned<uint32_t>(frame.bytes, 0x0c) == MicrophoneSampleRate &&
+           loadUnaligned<uint32_t>(frame.bytes, 0x10) == MicrophoneChannelCount &&
+           loadUnaligned<uint32_t>(frame.bytes, 0x14) == MicrophoneFormat &&
+           loadUnaligned<const void *>(frame.bytes, 0x28) != nullptr &&
+           loadUnaligned<uint32_t>(frame.bytes, 0x30) == MicrophonePCMByteCount;
+}
+
+MicrophoneRouteSlot *acquireMicrophoneRoute(void *client) {
+    if (client == nullptr) { return nullptr; }
+    for (MicrophoneRouteSlot &slot : gMicrophoneRoutes) {
+        if (slot.client.load(std::memory_order_acquire) != client) { continue; }
+        slot.inFlight.fetch_add(1, std::memory_order_acq_rel);
+        if (slot.client.load(std::memory_order_acquire) == client) { return &slot; }
+        if (slot.inFlight.fetch_sub(1, std::memory_order_acq_rel) == 1) { slot.drained.notify_all(); }
+    }
+    return nullptr;
+}
+
+void releaseMicrophoneRoute(MicrophoneRouteSlot *slot) {
+    if (slot != nullptr && slot->inFlight.fetch_sub(1, std::memory_order_acq_rel) == 1) { slot->drained.notify_all(); }
+}
+
+MicrophoneRouteSlot *registerMicrophoneRoute(void *client) {
+    if (client == nullptr) { return nullptr; }
+    std::lock_guard<std::mutex> routesLock(gMicrophoneRoutesMutex);
+    for (MicrophoneRouteSlot &slot : gMicrophoneRoutes) {
+        if (slot.client.load(std::memory_order_acquire) != nullptr || slot.inFlight.load(std::memory_order_acquire) != 0) { continue; }
+        {
+            std::lock_guard<std::mutex> stateLock(slot.stateMutex);
+            resetVoiceActivity(slot.vad);
+        }
+        slot.volume.store(1.0f, std::memory_order_release);
+        slot.vadEnabled.store(false, std::memory_order_release);
+        slot.client.store(client, std::memory_order_release);
+        return &slot;
+    }
+    return nullptr;
+}
+
+void unregisterMicrophoneRoute(MicrophoneRouteSlot *slot) {
+    if (slot == nullptr) { return; }
+    std::unique_lock<std::mutex> routesLock(gMicrophoneRoutesMutex);
+    slot->client.store(nullptr, std::memory_order_release);
+    slot->drained.wait(routesLock, [slot] { return slot->inFlight.load(std::memory_order_acquire) == 0; });
+    {
+        std::lock_guard<std::mutex> stateLock(slot->stateMutex);
+        resetVoiceActivity(slot->vad);
+    }
+    slot->volume.store(1.0f, std::memory_order_release);
+    slot->vadEnabled.store(false, std::memory_order_release);
+}
+
+bool boundedRange(uint64_t offset, uint64_t size, uint64_t limit) {
+    return offset <= limit && size <= limit - offset;
+}
+
+void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
+    Dl_info imageInfo{};
+    if (imageSymbol == nullptr || symbolName == nullptr || dladdr(imageSymbol, &imageInfo) == 0 || imageInfo.dli_fbase == nullptr) { return nullptr; }
+    const auto *header = static_cast<const mach_header_64 *>(imageInfo.dli_fbase);
+    if (header->magic != MH_MAGIC_64 || header->ncmds == 0 || header->ncmds > 4096 || header->sizeofcmds > 16 * 1024 * 1024) { return nullptr; }
+    const uint8_t *commands = reinterpret_cast<const uint8_t *>(header) + sizeof(*header);
+    const uint64_t commandsSize = header->sizeofcmds;
+    const segment_command_64 *textSegment = nullptr;
+    const segment_command_64 *linkeditSegment = nullptr;
+    const symtab_command *symtab = nullptr;
+    const dysymtab_command *dysymtab = nullptr;
+    std::vector<const section_64 *> lazySections;
+    uint64_t commandOffset = 0;
+    for (uint32_t index = 0; index < header->ncmds; ++index) {
+        if (!boundedRange(commandOffset, sizeof(load_command), commandsSize)) { return nullptr; }
+        const auto *command = reinterpret_cast<const load_command *>(commands + commandOffset);
+        if (command->cmdsize < sizeof(load_command) || !boundedRange(commandOffset, command->cmdsize, commandsSize)) { return nullptr; }
+        if (command->cmd == LC_SEGMENT_64) {
+            if (command->cmdsize < sizeof(segment_command_64)) { return nullptr; }
+            const auto *segment = reinterpret_cast<const segment_command_64 *>(command);
+            if (segment->nsects > 4096 || sizeof(segment_command_64) + static_cast<uint64_t>(segment->nsects) * sizeof(section_64) > command->cmdsize) { return nullptr; }
+            if (strncmp(segment->segname, SEG_TEXT, sizeof(segment->segname)) == 0) { textSegment = segment; }
+            if (strncmp(segment->segname, SEG_LINKEDIT, sizeof(segment->segname)) == 0) { linkeditSegment = segment; }
+            const auto *sections = reinterpret_cast<const section_64 *>(segment + 1);
+            for (uint32_t sectionIndex = 0; sectionIndex < segment->nsects; ++sectionIndex) {
+                const section_64 &section = sections[sectionIndex];
+                if (segment->vmaddr > UINT64_MAX - segment->vmsize || section.addr < segment->vmaddr ||
+                    !boundedRange(section.addr, section.size, segment->vmaddr + segment->vmsize)) { return nullptr; }
+                if ((section.flags & SECTION_TYPE) == S_LAZY_SYMBOL_POINTERS) { lazySections.push_back(&section); }
+            }
+        } else if (command->cmd == LC_SYMTAB && command->cmdsize >= sizeof(symtab_command)) {
+            symtab = reinterpret_cast<const symtab_command *>(command);
+        } else if (command->cmd == LC_DYSYMTAB && command->cmdsize >= sizeof(dysymtab_command)) {
+            dysymtab = reinterpret_cast<const dysymtab_command *>(command);
+        }
+        commandOffset += command->cmdsize;
+    }
+    if (textSegment == nullptr || linkeditSegment == nullptr || symtab == nullptr || dysymtab == nullptr || lazySections.empty()) { return nullptr; }
+    const uintptr_t headerAddress = reinterpret_cast<uintptr_t>(header);
+    if (headerAddress < textSegment->vmaddr || linkeditSegment->vmaddr < linkeditSegment->fileoff ||
+        linkeditSegment->fileoff > UINT64_MAX - linkeditSegment->filesize) { return nullptr; }
+    const uintptr_t slide = headerAddress - textSegment->vmaddr;
+    const uint64_t linkeditDelta = linkeditSegment->vmaddr - linkeditSegment->fileoff;
+    if (slide > UINTPTR_MAX - linkeditDelta) { return nullptr; }
+    const uintptr_t linkeditBase = slide + linkeditDelta;
+    const uint64_t linkeditEnd = linkeditSegment->fileoff + linkeditSegment->filesize;
+    if (symtab->symoff < linkeditSegment->fileoff || symtab->stroff < linkeditSegment->fileoff || dysymtab->indirectsymoff < linkeditSegment->fileoff ||
+        !boundedRange(symtab->symoff, static_cast<uint64_t>(symtab->nsyms) * sizeof(nlist_64), linkeditEnd) ||
+        !boundedRange(symtab->stroff, symtab->strsize, linkeditEnd) ||
+        !boundedRange(dysymtab->indirectsymoff, static_cast<uint64_t>(dysymtab->nindirectsyms) * sizeof(uint32_t), linkeditEnd)) { return nullptr; }
+    const auto *symbols = reinterpret_cast<const nlist_64 *>(linkeditBase + symtab->symoff);
+    const char *strings = reinterpret_cast<const char *>(linkeditBase + symtab->stroff);
+    const auto *indirectSymbols = reinterpret_cast<const uint32_t *>(linkeditBase + dysymtab->indirectsymoff);
+    for (const section_64 *section : lazySections) {
+        if (section->size % sizeof(void *) != 0) { continue; }
+        const uint64_t pointerCount = section->size / sizeof(void *);
+        if (!boundedRange(section->reserved1, pointerCount, dysymtab->nindirectsyms)) { continue; }
+        if (slide > UINTPTR_MAX - section->addr) { continue; }
+        auto **pointers = reinterpret_cast<void **>(slide + section->addr);
+        for (uint64_t pointerIndex = 0; pointerIndex < pointerCount; ++pointerIndex) {
+            const uint32_t symbolIndex = indirectSymbols[section->reserved1 + pointerIndex];
+            if ((symbolIndex & (INDIRECT_SYMBOL_LOCAL | INDIRECT_SYMBOL_ABS)) != 0 || symbolIndex >= symtab->nsyms) { continue; }
+            const uint32_t stringIndex = symbols[symbolIndex].n_un.n_strx;
+            if (stringIndex >= symtab->strsize) { continue; }
+            const char *candidate = strings + stringIndex;
+            const size_t remaining = symtab->strsize - stringIndex;
+            if (memchr(candidate, '\0', remaining) != nullptr && strcmp(candidate, symbolName) == 0) { return &pointers[pointerIndex]; }
+        }
+    }
+    return nullptr;
+}
+
+bool acquireMicrophoneHook(void *geronimoHandle, void *bifrostHandle, char *errorBuffer, size_t errorBufferLength) {
+    std::lock_guard<std::mutex> hookLock(gMicrophoneHookMutex);
+    void *resolved = dlsym(bifrostHandle, "nvbSendMicAudioFrame");
+    void *anchor = dlsym(geronimoHandle, "_ZN18BifrostSDKExecutor17sendMicAudioFrameERK16NvstAudioFrame_t");
+    if (resolved == nullptr || anchor == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Geronimo microphone hook symbols are unavailable.");
+        return false;
+    }
+    void **slot = findLazySymbolPointer(anchor, "_nvbSendMicAudioFrame");
+    if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) {
+        setError(errorBuffer, errorBufferLength, "Geronimo microphone lazy import slot could not be verified.");
+        return false;
+    }
+    void *hook = reinterpret_cast<void *>(&openNOWSendMicAudioFrame);
+    void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+    if (gMicrophoneHookLeaseCount == 0) {
+        if (current == nullptr) {
+            setError(errorBuffer, errorBufferLength, "Geronimo microphone import slot is unresolved.");
+            return false;
+        }
+        gMicrophoneImportSlot = slot;
+        gOriginalSendMicAudioFrame.store(reinterpret_cast<NVbSendMicAudioFrame>(resolved), std::memory_order_release);
+        if (current != hook && !__atomic_compare_exchange_n(slot, &current, hook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+            gMicrophoneImportSlot = nullptr;
+            gOriginalSendMicAudioFrame.store(nullptr, std::memory_order_release);
+            setError(errorBuffer, errorBufferLength, "Geronimo microphone import hook installation raced with another writer.");
+            return false;
+        }
+    } else if (slot != gMicrophoneImportSlot || current != hook) {
+        setError(errorBuffer, errorBufferLength, "Geronimo microphone import hook lease is inconsistent.");
+        return false;
+    }
+    ++gMicrophoneHookLeaseCount;
+    return true;
+}
+
+void releaseMicrophoneHook() {
+    std::lock_guard<std::mutex> hookLock(gMicrophoneHookMutex);
+    if (gMicrophoneHookLeaseCount == 0 || --gMicrophoneHookLeaseCount != 0) { return; }
+    void *hook = reinterpret_cast<void *>(&openNOWSendMicAudioFrame);
+    void *expected = hook;
+    NVbSendMicAudioFrame original = gOriginalSendMicAudioFrame.load(std::memory_order_acquire);
+    if (gMicrophoneImportSlot != nullptr && original != nullptr) {
+        __atomic_compare_exchange_n(gMicrophoneImportSlot, &expected, reinterpret_cast<void *>(original), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    }
+    gMicrophoneImportSlot = nullptr;
+    gOriginalSendMicAudioFrame.store(nullptr, std::memory_order_release);
+}
+
+NVbResult_t openNOWSendMicAudioFrame(void *client, const char *sessionIdentifier, NvstAudioFrame_t frame) {
+    NVbSendMicAudioFrame original = gOriginalSendMicAudioFrame.load(std::memory_order_acquire);
+    if (original == nullptr) { return NVbResult_t{-1}; }
+    MicrophoneRouteSlot *route = acquireMicrophoneRoute(client);
+    if (route == nullptr || !isSupportedMicrophoneFrame(frame)) {
+        releaseMicrophoneRoute(route);
+        return original(client, sessionIdentifier, frame);
+    }
+    thread_local NvstAudioFrame_t frameCopy{};
+    thread_local std::array<int16_t, MicrophoneSampleCount> pcmCopy{};
+    memcpy(&frameCopy, &frame, sizeof(frameCopy));
+    const auto *source = static_cast<const int16_t *>(loadUnaligned<const void *>(frameCopy.bytes, 0x28));
+    {
+        std::lock_guard<std::mutex> stateLock(route->stateMutex);
+        processMicrophonePCM(source,
+                             pcmCopy.data(),
+                             pcmCopy.size(),
+                             route->volume.load(std::memory_order_acquire),
+                             route->vadEnabled.load(std::memory_order_acquire),
+                             route->vad);
+    }
+    storeUnaligned<const void *>(frameCopy.bytes, 0x28, pcmCopy.data());
+    NVbResult_t result = original(client, sessionIdentifier, frameCopy);
+    releaseMicrophoneRoute(route);
+    return result;
+}
+
 const char *nvbResultName(OpenNOWNativeNVSTGeronimoSession *session, int32_t resultCode) {
     if (session == nullptr || session->enumToString == nullptr) { return nullptr; }
     const char *name = session->enumToString(0, resultCode);
     return name != nullptr && strncmp(name, "NVB_R_", 6) == 0 ? name : nullptr;
 }
 
-void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_t callbackType, uint32_t clientEvent, uint32_t notification, int32_t resultCode, const char *resultName = nullptr) {
+void emitEvent(OpenNOWNativeNVSTGeronimoSession *session,
+               int32_t phase,
+               uint32_t callbackType,
+               uint32_t clientEvent,
+               uint32_t notification,
+               int32_t resultCode,
+               const char *resultName = nullptr,
+               uint32_t resumable = 0,
+               uint32_t sessionAlive = 0,
+               const char *reasonName = nullptr) {
     if (session == nullptr) { return; }
     OpenNOWGeronimoEventHandler handler = nullptr;
     void *context = nullptr;
@@ -519,7 +875,7 @@ void emitEvent(OpenNOWNativeNVSTGeronimoSession *session, int32_t phase, uint32_
         handler = session->eventHandler;
         context = session->eventContext;
     }
-    if (handler != nullptr) { handler(context, phase, callbackType, clientEvent, notification, resultCode, resultName); }
+    if (handler != nullptr) { handler(context, phase, callbackType, clientEvent, notification, resultCode, resultName, resumable, sessionAlive, reasonName); }
 }
 
 OpenNOWNativeNVSTGeronimoSession *beginGridAppCallback(void *gridApp) {
@@ -547,6 +903,61 @@ struct GridAppCallbackLease {
         endGridAppCallback(session);
     }
 };
+
+void emitHapticRecords(OpenNOWNativeNVSTGeronimoSession *session, const void *callbackData) {
+    if (session == nullptr || callbackData == nullptr || loadUnaligned<uint32_t>(callbackData, 0) != NVbClientEventHaptic) { return; }
+    const uint32_t subtype = loadUnaligned<uint32_t>(callbackData, 0x10);
+    if (subtype != 1 && subtype != 2) { return; }
+    const uint16_t byteCount = std::min<uint16_t>(loadUnaligned<uint16_t>(callbackData, 0x14), 32);
+    const size_t recordSize = subtype == 1 ? 6 : 8;
+    const size_t recordCount = byteCount / recordSize;
+    const auto *records = static_cast<const uint8_t *>(callbackData) + 0x16;
+    for (size_t index = 0; index < recordCount; ++index) {
+        const uint8_t *record = records + index * recordSize;
+        const uint16_t player = loadUnaligned<uint16_t>(record, 0);
+        const uint16_t lowFrequency = loadUnaligned<uint16_t>(record, 2);
+        const uint16_t highFrequency = loadUnaligned<uint16_t>(record, 4);
+        const uint16_t suppliedDuration = subtype == 2 ? loadUnaligned<uint16_t>(record, 6) : 0;
+        const uint16_t duration = suppliedDuration == 0 ? DefaultHapticDurationMilliseconds : suppliedDuration;
+        OpenNOWGeronimoHapticHandler handler = nullptr;
+        void *context = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
+            handler = session->hapticHandler;
+            context = session->hapticContext;
+        }
+        if (handler != nullptr) { handler(context, player, lowFrequency, highFrequency, duration); }
+    }
+}
+
+bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr || session->originalBifrostCallback == nullptr) { return false; }
+    GridAppCallbackLease callbackLease{session};
+    const bool handled = session->originalBifrostCallback(gridApp, callbackType, callbackData);
+    if (callbackType == NVbCallbackTypeEvent) { emitHapticRecords(session, callbackData); }
+    return handled;
+}
+
+void openNOWGridAppUpdateAuthToken(void *gridApp, void *updateAuthToken) {
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    if (session == nullptr || updateAuthToken == nullptr) { return; }
+    GridAppCallbackLease callbackLease{session};
+    char *response = loadUnaligned<char *>(updateAuthToken, 0x08);
+    if (response == nullptr) { return; }
+    response[0] = '\0';
+    OpenNOWGeronimoAuthRefreshHandler handler = nullptr;
+    void *context = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
+        handler = session->authRefreshHandler;
+        context = session->authRefreshContext;
+    }
+    if (handler != nullptr) {
+        handler(context, loadUnaligned<uint32_t>(updateAuthToken, 0), response, NVbAuthRefreshResponseCapacity);
+        response[NVbAuthRefreshResponseCapacity - 1] = '\0';
+    }
+}
 
 template <typename Function>
 Function virtualFunction(void *object, size_t byteOffset) {
@@ -719,13 +1130,28 @@ void openNOWGridAppStreamingTerminated(void *gridApp, const void *terminationInf
     GridAppCallbackLease callbackLease{session};
     uint32_t terminationReason = terminationInfo == nullptr ? 0 : loadUnaligned<uint32_t>(terminationInfo, 0);
     int32_t extendedCode = terminationInfo == nullptr ? -1 : loadUnaligned<int32_t>(terminationInfo, 4);
+    uint32_t resumable = terminationInfo == nullptr ? 0 : loadUnaligned<uint8_t>(terminationInfo, 0x40);
+    uint32_t sessionAlive = terminationInfo == nullptr ? 0 : loadUnaligned<uint8_t>(terminationInfo, 0x41);
     bool locallyRequested = false;
+    bool shouldEmit = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         locallyRequested = session->stopIssued;
-        if (!locallyRequested) { session->state = NativeSessionState::stopped; }
+        shouldEmit = !locallyRequested && session->state != NativeSessionState::stopped;
+        if (shouldEmit) { session->state = NativeSessionState::stopped; }
     }
-    if (!locallyRequested) { emitEvent(session, 62, 0, 0, terminationReason, extendedCode); }
+    if (shouldEmit) {
+        emitEvent(session,
+                  62,
+                  0,
+                  0,
+                  terminationReason,
+                  extendedCode,
+                  nvbResultName(session, extendedCode),
+                  resumable,
+                  sessionAlive,
+                  nvbResultName(session, static_cast<int32_t>(terminationReason)));
+    }
 }
 
 void openNOWGridAppCursorInfoUpdate(void *gridApp, const void *cursorInfo) {
@@ -852,6 +1278,15 @@ bool jsonBoolAtPath(NSDictionary *dictionary, const char *path) {
     return false;
 }
 
+bool jsonUInt64AtPath(NSDictionary *dictionary, const char *path, uint64_t &result) {
+    id value = jsonValueAtPath(dictionary, path);
+    if (![value isKindOfClass:[NSNumber class]]) { return false; }
+    NSNumber *number = static_cast<NSNumber *>(value);
+    if ([number compare:@0] == NSOrderedAscending || [number compare:[NSNumber numberWithUnsignedLongLong:UINT32_MAX]] == NSOrderedDescending) { return false; }
+    result = [number unsignedLongLongValue];
+    return true;
+}
+
 std::vector<std::string> jsonStringArrayAtPath(NSDictionary *dictionary, const char *path) {
     std::vector<std::string> values;
     id value = jsonValueAtPath(dictionary, path);
@@ -862,6 +1297,67 @@ std::vector<std::string> jsonStringArrayAtPath(NSDictionary *dictionary, const c
         if (utf8 != nullptr && utf8[0] != '\0') { values.emplace_back(utf8); }
     }
     return values;
+}
+
+enum class MetadataParseResult {
+    success,
+    malformed,
+    overflow,
+};
+
+MetadataParseResult parseMetadata(NSDictionary *geronimo,
+                                  std::vector<std::pair<std::string, std::string>> &metadata,
+                                  std::string &error) {
+    metadata.clear();
+    id value = geronimo == nil ? nil : [geronimo objectForKey:@"metaData"];
+    if (value == nil) { return MetadataParseResult::success; }
+    if (![value isKindOfClass:[NSArray class]]) {
+        error = "Native Geronimo metadata must be a metaData array.";
+        return MetadataParseResult::malformed;
+    }
+    NSArray *entries = static_cast<NSArray *>(value);
+    if (entries.count > MaximumMetadataCount) {
+        error = "Native Geronimo metadata exceeds the maximum of 64 entries.";
+        return MetadataParseResult::overflow;
+    }
+    metadata.reserve(entries.count);
+    for (NSUInteger index = 0; index < entries.count; ++index) {
+        id entry = [entries objectAtIndex:index];
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            error = "Native Geronimo metadata entries must be objects with string key and value fields.";
+            return MetadataParseResult::malformed;
+        }
+        id key = [static_cast<NSDictionary *>(entry) objectForKey:@"key"];
+        id entryValue = [static_cast<NSDictionary *>(entry) objectForKey:@"value"];
+        if (![key isKindOfClass:[NSString class]] || ![entryValue isKindOfClass:[NSString class]]) {
+            error = "Native Geronimo metadata entries must contain string key and value fields.";
+            return MetadataParseResult::malformed;
+        }
+        const char *keyUTF8 = [static_cast<NSString *>(key) UTF8String];
+        const char *valueUTF8 = [static_cast<NSString *>(entryValue) UTF8String];
+        if (keyUTF8 == nullptr || valueUTF8 == nullptr) {
+            error = "Native Geronimo metadata contains a string that cannot be encoded as UTF-8.";
+            return MetadataParseResult::malformed;
+        }
+        const NSUInteger keyByteCount = [static_cast<NSString *>(key) lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+        const NSUInteger valueByteCount = [static_cast<NSString *>(entryValue) lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+        if (strlen(keyUTF8) != keyByteCount || strlen(valueUTF8) != valueByteCount) {
+            error = "Native Geronimo metadata strings cannot contain embedded null bytes.";
+            return MetadataParseResult::malformed;
+        }
+        metadata.emplace_back(keyUTF8, valueUTF8);
+    }
+    return MetadataParseResult::success;
+}
+
+void materializeMetadataPointers(PendingStart &pending) {
+    pending.metadataPointers.clear();
+    pending.metadataPointers.reserve(pending.metadataStrings.size());
+    for (const auto &entry : pending.metadataStrings) {
+        pending.metadataPointers.push_back(NVbKeyValuePair_t{entry.first.c_str(), entry.second.c_str()});
+    }
+    pending.parameters.metadata = pending.metadataPointers.empty() ? nullptr : pending.metadataPointers.data();
+    pending.parameters.metadataCount = static_cast<uint32_t>(pending.metadataPointers.size());
 }
 
 std::string firstNonEmptyString(NSDictionary *first, NSDictionary *second, const char *const *paths, size_t count) {
@@ -936,19 +1432,6 @@ int32_t convertedServerType(int32_t serverType) {
     }
 }
 
-uint8_t audioChannelCount(NSDictionary *cloud, NSDictionary *geronimo) {
-    int32_t numeric = jsonIntAtPath(geronimo, "audioModeFormat");
-    if (numeric == 0) { numeric = jsonIntAtPath(cloud, "audioModeFormat"); }
-    if (numeric == 6 || numeric == 8) { return static_cast<uint8_t>(numeric); }
-    if (numeric == 3) { return 8; }
-    std::string value = jsonStringAtPath(geronimo, "audioModeFormat");
-    if (value.empty()) { value = jsonStringAtPath(cloud, "audioModeFormat"); }
-    for (char &character : value) { character = static_cast<char>(std::tolower(static_cast<unsigned char>(character))); }
-    if (value.find("7.1") != std::string::npos || value.find("surround71") != std::string::npos) { return 8; }
-    if (value.find("5.1") != std::string::npos || value.find("surround51") != std::string::npos) { return 6; }
-    return 2;
-}
-
 void *resolve(void *handle, const char *symbol, char *errorBuffer, size_t errorBufferLength) {
     dlerror();
     void *address = dlsym(handle, symbol);
@@ -980,6 +1463,14 @@ uint32_t codecFromJSON(NSDictionary *cloud, NSDictionary *geronimo) {
     return DefaultNVbCodecH264;
 }
 
+uint32_t videoDecoderCreationCodec(uint32_t requestedCodec) {
+    return requestedCodec == 1 || requestedCodec == 2 || requestedCodec == 4 ? requestedCodec : 0;
+}
+
+bool audioFrameTriggersRendererReopen(uint32_t configuredChannelCount, uint32_t incomingChannelCount) {
+    return configuredChannelCount != incomingChannelCount;
+}
+
 bool acquirePlatform(NskPlatformStartup startup) {
     std::lock_guard<std::mutex> lock(gPlatformMutex);
     if (gPlatformReferenceCount == 0) {
@@ -1005,6 +1496,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
     functions.resume = reinterpret_cast<GridAppResume>(resolve(handle, "_ZN7GridApp6resumeEPKcRKN14SessionControl17SessionParametersERK19NVbTracingContext_t", errorBuffer, errorBufferLength));
     functions.sendInput = reinterpret_cast<GridAppSendInput>(resolve(handle, "_ZN7GridApp18sendNvstInputEventERK16NvstInputEvent_t", errorBuffer, errorBufferLength));
     functions.handleGamepadChanged = reinterpret_cast<GridAppHandleGamepadChanged>(resolve(handle, "_ZN7GridApp25handleGamepadChangedEventEhiib", errorBuffer, errorBufferLength));
+    functions.controlFeatures = reinterpret_cast<GridAppControlFeatures>(resolve(handle, "_ZN7GridApp15controlFeaturesE23NVbFeatureControlType_tj", errorBuffer, errorBufferLength));
     functions.setDecoderInfo = reinterpret_cast<GridAppSetDecoderInfo>(resolve(handle, "_ZN7GridApp14setDecoderInfoE25NvstVideoDecodeUnitType_tj17NvstH264Profile_tj26NvstDynamicStreamingMode_tjb", errorBuffer, errorBufferLength));
     functions.togglePerfIndicator = reinterpret_cast<GridAppTogglePerfIndicator>(resolve(handle, "_ZN7GridApp29togglePerfIndicatorVisibilityEv", errorBuffer, errorBufferLength));
     functions.cursorInfoUpdate = reinterpret_cast<GridAppCursorInfoUpdate>(resolve(handle, "_ZN7GridApp18onCursorInfoUpdateERK10CursorInfo", errorBuffer, errorBufferLength));
@@ -1039,6 +1531,7 @@ bool resolveGeronimoFunctions(void *handle, GeronimoFunctions &functions, char *
            functions.resume != nullptr &&
            functions.sendInput != nullptr &&
            functions.handleGamepadChanged != nullptr &&
+           functions.controlFeatures != nullptr &&
            functions.setDecoderInfo != nullptr &&
            functions.togglePerfIndicator != nullptr &&
            functions.cursorInfoUpdate != nullptr &&
@@ -1111,6 +1604,7 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
         {GridAppResumeFailureSlotOffset, "_ZN7GridApp15onResumeFailureERKN14SessionControl23SessionSetUpFailureInfoE"},
         {GridAppSetupSuccessSlotOffset, "_ZN7GridApp21onSessionSetupSuccessERK11SessionInfo"},
         {GridAppStreamingTerminatedSlotOffset, "_ZN7GridApp21onStreamingTerminatedERKNS_22SessionTerminationInfoE"},
+        {GridAppUpdateAuthTokenSlotOffset, "_ZN7GridApp15updateAuthTokenERN14NVbEventData_t16_UpdateAuthTokenE"},
         {GridAppCursorInfoSlotOffset, "_ZN7GridApp18onCursorInfoUpdateERK10CursorInfo"},
         {GridAppSetupProgressSlotOffset, "_ZN7GridApp22onSessionSetupProgressERKN14SessionControl23SessionUpdateParametersE"},
         {GridAppActiveSessionsSlotOffset, "_ZN7GridApp16onActiveSessionsERK20ActiveSessionsResult"},
@@ -1139,6 +1633,7 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
     addressPoint[GridAppResumeFailureSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppResumeFailure);
     addressPoint[GridAppSetupSuccessSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupSuccess);
     addressPoint[GridAppStreamingTerminatedSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppStreamingTerminated);
+    addressPoint[GridAppUpdateAuthTokenSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppUpdateAuthToken);
     addressPoint[GridAppCursorInfoSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppCursorInfoUpdate);
     addressPoint[GridAppSetupProgressSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppSetupProgress);
     addressPoint[GridAppActiveSessionsSlotOffset / sizeof(void *)] = reinterpret_cast<void *>(&openNOWGridAppActiveSessions);
@@ -1159,8 +1654,38 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
     return true;
 }
 
+bool installBifrostCallback(OpenNOWNativeNVSTGeronimoSession *session, char *errorBuffer, size_t errorBufferLength) {
+    if (session == nullptr || session->gridApp == nullptr || session->registerBifrostCallback == nullptr || session->originalBifrostCallback == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Bifrost callback functions are unavailable.");
+        return false;
+    }
+    void *client = loadUnaligned<void *>(session->gridApp, 0x18);
+    if (client == nullptr) {
+        setError(errorBuffer, errorBufferLength, "GridApp Bifrost client is unavailable after initialization.");
+        return false;
+    }
+    NVbResult_t result = session->registerBifrostCallback(client, session->gridApp, &openNOWBifrostCallback);
+    if (result.code != 0) {
+        setError(errorBuffer, errorBufferLength, "Bifrost rejected the OpenNOW callback wrapper.");
+        return false;
+    }
+    session->bifrostCallbackInstalled = true;
+    return true;
+}
+
+void restoreBifrostCallback(OpenNOWNativeNVSTGeronimoSession *session) {
+    if (session == nullptr || !session->bifrostCallbackInstalled || session->gridApp == nullptr ||
+        session->registerBifrostCallback == nullptr || session->originalBifrostCallback == nullptr) { return; }
+    void *client = loadUnaligned<void *>(session->gridApp, 0x18);
+    if (client != nullptr) {
+        session->registerBifrostCallback(client, session->gridApp, session->originalBifrostCallback);
+    }
+    session->bifrostCallbackInstalled = false;
+}
+
 void detachGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session) {
     if (session == nullptr) { return; }
+    restoreBifrostCallback(session);
     {
         std::lock_guard<std::mutex> lock(gGridAppSessionsMutex);
         session->acceptsCallbacks.store(false, std::memory_order_release);
@@ -1211,7 +1736,8 @@ bool videoSurfaceDimensions(void *nativeHandle, uint32_t &width, uint32_t &heigh
 }
 
 bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec) {
-    if (codec != 1 && codec != 2 && codec != 4) { return false; }
+    const uint32_t creationCodec = videoDecoderCreationCodec(codec);
+    if (creationCodec == 0) { return false; }
     if (session->videoDecoder != nullptr && session->activeCodec == codec) { return true; }
     callVoidVirtual(session->videoDecoder, 0x60);
     destroyPolymorphicObject(session->videoDecoder);
@@ -1223,7 +1749,7 @@ bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x10, 2);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x18, GraphicsContextMetal);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x1c, 1);
-    void *candidate = session->functions.createVideoDecoder(creationSettings, 0);
+    void *candidate = session->functions.createVideoDecoder(creationSettings, creationCodec);
     if (candidate == nullptr) { return false; }
     const std::shared_ptr<AsyncVideoFrameRenderer> &renderer = session->functions.windowAsyncRenderer(session->window);
     if (!renderer) {
@@ -1392,6 +1918,7 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
     Nsk::NVbTracingContext_t tracingContext;
     tracingContext.traceParent = pending->traceParent.c_str();
     emitEvent(session, 30, 0, 0, 0, 0);
+    materializeMetadataPointers(*pending);
     bool accepted = pending->shouldResume
         ? pending->resume(session->gridApp, pending->resumeSessionId.c_str(), pending->parameters, tracingContext)
         : pending->start(session->gridApp, pending->parameters, tracingContext);
@@ -1445,8 +1972,11 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         auto platformStartup = reinterpret_cast<NskPlatformStartup>(resolve(handle, "_ZN3Nsk15platformStartupERKNS_21PlatformStartupParamsE", errorBuffer, errorBufferLength));
         platformShutdown = reinterpret_cast<PlatformShutdown>(resolve(handle, "_ZN3Nsk16platformShutdownEv", errorBuffer, errorBufferLength));
         auto initialize = reinterpret_cast<GridAppInitialize>(resolve(handle, "_ZN7GridApp10initializeEb", errorBuffer, errorBufferLength));
+        auto originalBifrostCallback = reinterpret_cast<NVbCallback>(resolve(handle, "_ZN7GridApp13onNVbCallbackEPv17NVbCallbackType_tP17NVbCallbackData_t", errorBuffer, errorBufferLength));
         auto enumToString = reinterpret_cast<NVbEnumToString>(resolve(bifrostHandle, "nvbEnumToString", errorBuffer, errorBufferLength));
-        if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || enumToString == nullptr ||
+        auto registerBifrostCallback = reinterpret_cast<NVbRegisterCallback>(resolve(bifrostHandle, "nvbRegisterCallback", errorBuffer, errorBufferLength));
+        if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || originalBifrostCallback == nullptr ||
+            enumToString == nullptr || registerBifrostCallback == nullptr ||
             !resolveGeronimoFunctions(handle, functions, errorBuffer, errorBufferLength)) {
             dlclose(bifrostHandle);
             dlclose(handle);
@@ -1499,12 +2029,51 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         session->ioInterface = ioInterface;
         session->platformShutdown = platformShutdown;
         session->enumToString = enumToString;
+        session->registerBifrostCallback = registerBifrostCallback;
+        session->originalBifrostCallback = originalBifrostCallback;
         session->functions = functions;
         session->platformStarted = true;
         session->initialized = true;
-        if (!installGridAppCallbacks(session, errorBuffer, errorBufferLength)) {
+        if (!acquireMicrophoneHook(handle, bifrostHandle, errorBuffer, errorBufferLength)) {
             functions.gridAppDtor(gridApp);
             free(gridApp);
+            releasePlatform(platformShutdown);
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            delete session;
+            return nullptr;
+        }
+        session->microphoneHookLeaseAcquired = true;
+        session->microphoneRoute = registerMicrophoneRoute(loadUnaligned<void *>(gridApp, 0x18));
+        if (session->microphoneRoute == nullptr) {
+            setError(errorBuffer, errorBufferLength, "No native microphone route slot is available.");
+            releaseMicrophoneHook();
+            functions.gridAppDtor(gridApp);
+            free(gridApp);
+            releasePlatform(platformShutdown);
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            delete session;
+            return nullptr;
+        }
+        if (!installGridAppCallbacks(session, errorBuffer, errorBufferLength)) {
+            unregisterMicrophoneRoute(session->microphoneRoute);
+            releaseMicrophoneHook();
+            functions.gridAppDtor(gridApp);
+            free(gridApp);
+            releasePlatform(platformShutdown);
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            delete session;
+            return nullptr;
+        }
+        if (!installBifrostCallback(session, errorBuffer, errorBufferLength)) {
+            detachGridAppCallbacks(session);
+            unregisterMicrophoneRoute(session->microphoneRoute);
+            releaseMicrophoneHook();
+            functions.gridAppDtor(gridApp);
+            free(gridApp);
+            free(session->gridAppVTable);
             releasePlatform(platformShutdown);
             dlclose(bifrostHandle);
             dlclose(handle);
@@ -1515,6 +2084,8 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session creation raised an unexpected C++ exception.");
         if (session != nullptr && session->gridAppVTable != nullptr) { detachGridAppCallbacks(session); }
+        if (session != nullptr && session->microphoneRoute != nullptr) { unregisterMicrophoneRoute(session->microphoneRoute); }
+        if (session != nullptr && session->microphoneHookLeaseAcquired) { releaseMicrophoneHook(); }
         if (gridAppConstructed && functions.gridAppDtor != nullptr) { functions.gridAppDtor(gridApp); }
         if (gridApp != nullptr) { free(gridApp); }
         if (session != nullptr && session->gridAppVTable != nullptr) { free(session->gridAppVTable); }
@@ -1552,6 +2123,95 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetEventHandler(void *sessionPointer
     }
     emitEvent(session, 20, 0, 0, 0, 0);
     return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetHapticHandler(void *sessionPointer,
+                                                                OpenNOWGeronimoHapticHandler handler,
+                                                                void *context) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr) { return -1; }
+    std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
+    session->hapticHandler = handler;
+    session->hapticContext = context;
+    return 0;
+}
+
+extern "C" uint32_t OpenNOWNativeNVSTGeronimoVideoDecoderCreationCodec(uint32_t requestedCodec) {
+    return videoDecoderCreationCodec(requestedCodec);
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoAudioFrameTriggersRendererReopen(uint32_t configuredChannelCount,
+                                                                                uint32_t incomingChannelCount) {
+    return audioFrameTriggersRendererReopen(configuredChannelCount, incomingChannelCount) ? 1 : 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(void *sessionPointer,
+                                                                    OpenNOWGeronimoAuthRefreshHandler handler,
+                                                                    void *context) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr) { return -1; }
+    std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
+    session->authRefreshHandler = handler;
+    session->authRefreshContext = context;
+    return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoDecodeHapticCallbackData(const uint8_t *callbackData,
+                                                                        size_t callbackDataLength,
+                                                                        OpenNOWGeronimoHapticHandler handler,
+                                                                        void *context) {
+    if (callbackData == nullptr || callbackDataLength < 0x16 || handler == nullptr) { return -1; }
+    const uint16_t byteCount = std::min<uint16_t>(loadUnaligned<uint16_t>(callbackData, 0x14), 32);
+    if (callbackDataLength < 0x16 + byteCount) { return -2; }
+    OpenNOWNativeNVSTGeronimoSession session;
+    session.hapticHandler = handler;
+    session.hapticContext = context;
+    emitHapticRecords(&session, callbackData);
+    const uint32_t subtype = loadUnaligned<uint32_t>(callbackData, 0x10);
+    return subtype == 1 ? byteCount / 6 : (subtype == 2 ? byteCount / 8 : 0);
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(void *sessionPointer,
+                                                                     uint8_t connectedPlayerBitmap,
+                                                                     uint8_t hapticPlayerBitmap,
+                                                                     char *errorBuffer,
+                                                                     size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->gridApp == nullptr || session->functions.handleGamepadChanged == nullptr || session->functions.controlFeatures == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for gamepad topology.");
+        return -1;
+    }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    try {
+        const bool shouldEnableHaptics = (connectedPlayerBitmap & hapticPlayerBitmap & 0x0f) != 0;
+        if (session->hapticFeatureEnabled && !shouldEnableHaptics) {
+            if (!session->functions.controlFeatures(session->gridApp, NVbFeatureGamepadHaptics, 0)) {
+                setError(errorBuffer, errorBufferLength, "Geronimo rejected gamepad haptics feature state.");
+                return -3;
+            }
+            session->hapticFeatureEnabled = false;
+        }
+        for (uint8_t sourceIndex = 0; sourceIndex < 4; ++sourceIndex) {
+            const bool shouldRegister = (connectedPlayerBitmap & (1u << sourceIndex)) != 0;
+            if (session->registeredGamepads[sourceIndex] == shouldRegister) { continue; }
+            if (!session->functions.handleGamepadChanged(session->gridApp, sourceIndex, 0xffff, 0xffff, shouldRegister)) {
+                setError(errorBuffer, errorBufferLength, shouldRegister ? "Geronimo rejected native gamepad connection." : "Geronimo rejected native gamepad disconnection.");
+                return -2;
+            }
+            session->registeredGamepads[sourceIndex] = shouldRegister;
+        }
+        if (!session->hapticFeatureEnabled && shouldEnableHaptics) {
+            if (!session->functions.controlFeatures(session->gridApp, NVbFeatureGamepadHaptics, 1)) {
+                setError(errorBuffer, errorBufferLength, "Geronimo rejected gamepad haptics feature state.");
+                return -3;
+            }
+            session->hapticFeatureEnabled = true;
+        }
+        return 0;
+    } catch (...) {
+        setError(errorBuffer, errorBufferLength, "GridApp gamepad topology update raised an unexpected C++ exception.");
+        return -4;
+    }
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer,
@@ -1619,8 +2279,104 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(void *sessionPo
         return -5;
     }
     session->microphoneEnabled = enabled != 0;
+    if (!session->microphoneEnabled && session->microphoneRoute != nullptr) {
+        std::lock_guard<std::mutex> stateLock(session->microphoneRoute->stateMutex);
+        resetVoiceActivity(session->microphoneRoute->vad);
+    }
     callVoidVirtual(session->audioCapturer, session->microphoneEnabled ? 0x48 : 0x40);
     return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(void *sessionPointer, double volume) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->microphoneRoute == nullptr || !std::isfinite(volume)) { return -1; }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    const float boundedVolume = static_cast<float>(std::clamp(volume, 0.0, 1.0));
+    session->microphoneVolume = boundedVolume;
+    session->microphoneRoute->volume.store(boundedVolume, std::memory_order_release);
+    return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(void *sessionPointer, int32_t enabled) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (session == nullptr || session->microphoneRoute == nullptr) { return -1; }
+    std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    session->voiceActivityEnabled = enabled != 0;
+    std::lock_guard<std::mutex> stateLock(session->microphoneRoute->stateMutex);
+    resetVoiceActivity(session->microphoneRoute->vad);
+    session->microphoneRoute->vadEnabled.store(session->voiceActivityEnabled, std::memory_order_release);
+    return 0;
+}
+
+extern "C" size_t OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize() {
+    return sizeof(AdaptiveVoiceActivityState);
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestResetVoiceActivityState(void *stateBytes, size_t stateByteCount) {
+    if (stateBytes == nullptr || stateByteCount != sizeof(AdaptiveVoiceActivityState) || reinterpret_cast<uintptr_t>(stateBytes) % alignof(AdaptiveVoiceActivityState) != 0) { return -1; }
+    new (stateBytes) AdaptiveVoiceActivityState();
+    return 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestProcessMicrophonePCM(int16_t *samples,
+                                                                        size_t sampleCount,
+                                                                        double volume,
+                                                                        int32_t vadEnabled,
+                                                                        void *stateBytes,
+                                                                        size_t stateByteCount) {
+    if (samples == nullptr || stateBytes == nullptr || stateByteCount != sizeof(AdaptiveVoiceActivityState) ||
+        reinterpret_cast<uintptr_t>(stateBytes) % alignof(AdaptiveVoiceActivityState) != 0 || !std::isfinite(volume)) { return -1; }
+    auto &state = *static_cast<AdaptiveVoiceActivityState *>(stateBytes);
+    return processMicrophonePCM(samples, samples, sampleCount, static_cast<float>(volume), vadEnabled != 0, state) ? 0 : -2;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(uint32_t sampleRate,
+                                                                            uint32_t bitsPerSample,
+                                                                            uint32_t channels,
+                                                                            uint32_t format,
+                                                                            uint32_t byteCount) {
+    NvstAudioFrame_t frame{};
+    int16_t sample = 0;
+    storeUnaligned<uint32_t>(frame.bytes, 0x08, bitsPerSample);
+    storeUnaligned<uint32_t>(frame.bytes, 0x0c, sampleRate);
+    storeUnaligned<uint32_t>(frame.bytes, 0x10, channels);
+    storeUnaligned<uint32_t>(frame.bytes, 0x14, format);
+    storeUnaligned<const void *>(frame.bytes, 0x28, &sample);
+    storeUnaligned<uint32_t>(frame.bytes, 0x30, byteCount);
+    return isSupportedMicrophoneFrame(frame) ? 1 : 0;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestProcessMicrophoneFrame(void *frameBytes,
+                                                                          size_t frameByteCount,
+                                                                          double volume,
+                                                                          int32_t vadEnabled,
+                                                                          void *stateBytes,
+                                                                          size_t stateByteCount) {
+    if (frameBytes == nullptr || frameByteCount != sizeof(NvstAudioFrame_t) || stateBytes == nullptr ||
+        stateByteCount != sizeof(AdaptiveVoiceActivityState) || reinterpret_cast<uintptr_t>(stateBytes) % alignof(AdaptiveVoiceActivityState) != 0 ||
+        !std::isfinite(volume)) { return -1; }
+    NvstAudioFrame_t frame{};
+    memcpy(&frame, frameBytes, sizeof(frame));
+    if (!isSupportedMicrophoneFrame(frame)) { return 0; }
+    auto *samples = static_cast<int16_t *>(loadUnaligned<void *>(frame.bytes, 0x28));
+    auto &state = *static_cast<AdaptiveVoiceActivityState *>(stateBytes);
+    return processMicrophonePCM(samples, samples, MicrophoneSampleCount, static_cast<float>(volume), vadEnabled != 0, state) ? 1 : -2;
+}
+
+extern "C" void *OpenNOWNativeNVSTGeronimoTestRegisterMicrophoneRoute(void *client) {
+    return registerMicrophoneRoute(client);
+}
+
+extern "C" void OpenNOWNativeNVSTGeronimoTestUnregisterMicrophoneRoute(void *route) {
+    unregisterMicrophoneRoute(static_cast<MicrophoneRouteSlot *>(route));
+}
+
+extern "C" size_t OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount() {
+    size_t count = 0;
+    for (MicrophoneRouteSlot &slot : gMicrophoneRoutes) {
+        if (slot.client.load(std::memory_order_acquire) != nullptr) { ++count; }
+    }
+    return count;
 }
 
 int32_t startOrResumeGeronimo(void *sessionPointer,
@@ -1675,6 +2431,14 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         setError(errorBuffer, errorBufferLength, "Native Geronimo start requires normalized session JSON, streaming profile JSON, and Cloud session JSON.");
         return -3;
     }
+    NSDictionary *geronimo = jsonDictionary(rawSession);
+    std::vector<std::pair<std::string, std::string>> metadataStrings;
+    std::string metadataError;
+    MetadataParseResult metadataResult = parseMetadata(geronimo, metadataStrings, metadataError);
+    if (metadataResult != MetadataParseResult::success) {
+        setError(errorBuffer, errorBufferLength, metadataError.c_str());
+        return metadataResult == MetadataParseResult::overflow ? -12 : -4;
+    }
 
     Nsk::ApplicationStreamStartParameters application;
     memset(application.reserved0, 0, sizeof(application.reserved0));
@@ -1697,7 +2461,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
 
     NSDictionary *cloud = jsonDictionary(cloudSession);
-    NSDictionary *geronimo = jsonDictionary(rawSession);
     NSDictionary *profile = jsonDictionary(streamingProfile);
     int32_t maxPacketSize = jsonIntAtPath(profile, "maxPacketSize");
     if (maxPacketSize != 0 && (maxPacketSize < MinimumNVbPacketSize || maxPacketSize > UINT16_MAX)) {
@@ -1822,6 +2585,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     pending->authType = resolvedAuthType;
     pending->shouldResume = shouldResume;
     pending->resumeSessionId = session->sessionId;
+    pending->metadataStrings = std::move(metadataStrings);
     pending->parameters.appId = appId;
     pending->parameters.serverAddress = session->startServerAddress;
     pending->parameters.serverPort = endpoint.port;
@@ -1843,6 +2607,10 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         pending->parameters.defaultStreamSettings = pending->streamSettings.front();
     }
     pending->parameters.supportedHidTypes = static_cast<uint64_t>(jsonIntAtPath(geronimo, "finalizedStreamingFeatures.supportedHidDevices"));
+    uint64_t gamepadBitmap = 0;
+    if (jsonUInt64AtPath(geronimo, "remoteControllersBitmap", gamepadBitmap)) {
+        pending->parameters.gamepadBitmap = gamepadBitmap;
+    }
     pending->parameters.appLaunchMode = static_cast<uint32_t>(std::max(0, jsonIntAtPath(geronimo, "appLaunchMode")));
     pending->parameters.networkPacketCaptureEnabled = jsonBoolAtPath(geronimo, "networkPacketCaptureEnabled");
     pending->parameters.partnerCustomData = jsonStringAtPath(geronimo, "partnerCustomData");
@@ -1850,7 +2618,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     pending->parameters.keyboardLayout = session->keyboardLayout;
     pending->parameters.allowKeyboardLayoutChange = jsonBoolAtPath(geronimo, "allowKeyboardLayoutChange");
     pending->parameters.accountLinked = jsonBoolAtPath(geronimo, "accountLinked");
-    pending->parameters.audioChannelCount = audioChannelCount(cloud, geronimo);
     pending->parameters.persistingInGameSettings = jsonBoolAtPath(geronimo, "persistingInGameSettings");
     pending->parameters.networkSessionId = jsonStringAtPath(geronimo, "networkSessionId");
     pending->parameters.bifrostSessionId = jsonStringAtPath(geronimo, "bifrostSessionId");
@@ -1944,6 +2711,47 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoConvertAuthTokenType(const char *tok
     if (tokenType == nullptr) { return -1; }
     uint32_t authType = 0;
     return authTypeForTokenType(tokenType, authType) ? static_cast<int32_t>(authType) : -1;
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoInspectMetadata(const char *geronimoJSON,
+                                                               uint32_t index,
+                                                               char *keyBuffer,
+                                                               size_t keyBufferLength,
+                                                               char *valueBuffer,
+                                                               size_t valueBufferLength,
+                                                               uint32_t *count,
+                                                               int32_t *pointersStable,
+                                                               char *errorBuffer,
+                                                               size_t errorBufferLength) {
+    @autoreleasepool {
+        auto pending = std::make_unique<PendingStart>();
+        std::string error;
+        MetadataParseResult result = parseMetadata(jsonDictionary(stringOrEmpty(geronimoJSON)), pending->metadataStrings, error);
+        if (result != MetadataParseResult::success) {
+            setError(errorBuffer, errorBufferLength, error.c_str());
+            return result == MetadataParseResult::overflow ? -2 : -1;
+        }
+        std::unique_ptr<PendingStart> deferred = std::move(pending);
+        std::vector<std::string> unrelatedAllocations(256, std::string(256, 'x'));
+        static_cast<void>(unrelatedAllocations);
+        materializeMetadataPointers(*deferred);
+        bool stable = deferred->parameters.metadataCount == deferred->metadataStrings.size();
+        for (size_t pairIndex = 0; stable && pairIndex < deferred->metadataStrings.size(); ++pairIndex) {
+            const NVbKeyValuePair_t &pair = deferred->metadataPointers[pairIndex];
+            stable = pair.key == deferred->metadataStrings[pairIndex].first.c_str() &&
+                     pair.value == deferred->metadataStrings[pairIndex].second.c_str();
+        }
+        if (count != nullptr) { *count = deferred->parameters.metadataCount; }
+        if (pointersStable != nullptr) { *pointersStable = stable ? 1 : 0; }
+        if (index >= deferred->metadataPointers.size()) {
+            if (index == UINT32_MAX) { return 0; }
+            setError(errorBuffer, errorBufferLength, "Native Geronimo metadata inspection index is out of range.");
+            return -3;
+        }
+        setError(keyBuffer, keyBufferLength, deferred->metadataPointers[index].key);
+        setError(valueBuffer, valueBufferLength, deferred->metadataPointers[index].value);
+        return 0;
+    }
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoResume(void *sessionPointer,
@@ -2059,6 +2867,10 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoPause(void *sessionPointer, char *er
         return -1;
     }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    if (session->microphoneRoute != nullptr) {
+        std::lock_guard<std::mutex> routeLock(session->microphoneRoute->stateMutex);
+        resetVoiceActivity(session->microphoneRoute->vad);
+    }
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state != NativeSessionState::streaming) {
@@ -2395,6 +3207,10 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoStopWithResult(void *sessionPointer,
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return 0; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
+    if (session->microphoneRoute != nullptr) {
+        std::lock_guard<std::mutex> routeLock(session->microphoneRoute->stateMutex);
+        resetVoiceActivity(session->microphoneRoute->vad);
+    }
     bool completesImmediately = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
@@ -2435,6 +3251,18 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
     auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return; }
     std::unique_lock<std::recursive_mutex> operationLock(session->operationMutex);
+    if (session->hapticFeatureEnabled && session->functions.controlFeatures != nullptr) {
+        try { session->functions.controlFeatures(session->gridApp, NVbFeatureGamepadHaptics, 0); }
+        catch (...) { fprintf(stderr, "OpenNOW failed to disable native haptics during teardown.\n"); }
+    }
+    session->hapticFeatureEnabled = false;
+    for (uint8_t sourceIndex = 0; sourceIndex < 4; ++sourceIndex) {
+        if (session->registeredGamepads[sourceIndex] && session->functions.handleGamepadChanged != nullptr) {
+            try { session->functions.handleGamepadChanged(session->gridApp, sourceIndex, 0xffff, 0xffff, false); }
+            catch (...) { fprintf(stderr, "OpenNOW failed to disconnect a native gamepad during teardown.\n"); }
+        }
+        session->registeredGamepads[sourceIndex] = false;
+    }
     NativeSessionState state;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
@@ -2454,8 +3282,23 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
         session->eventHandler = nullptr;
         session->eventContext = nullptr;
     }
+    {
+        std::lock_guard<std::mutex> handlerLock(session->runtimeHandlerMutex);
+        session->hapticHandler = nullptr;
+        session->hapticContext = nullptr;
+        session->authRefreshHandler = nullptr;
+        session->authRefreshContext = nullptr;
+    }
     try { teardownPlatformMedia(session); }
     catch (...) { fprintf(stderr, "OpenNOW native media destruction raised an unexpected C++ exception.\n"); }
+    if (session->microphoneRoute != nullptr) {
+        unregisterMicrophoneRoute(session->microphoneRoute);
+        session->microphoneRoute = nullptr;
+    }
+    if (session->microphoneHookLeaseAcquired) {
+        releaseMicrophoneHook();
+        session->microphoneHookLeaseAcquired = false;
+    }
     if (session->gridApp != nullptr) {
         if (session->initialized && session->functions.gridAppDtor != nullptr) {
             try {

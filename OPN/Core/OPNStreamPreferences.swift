@@ -219,6 +219,16 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public init() {}
 }
 
+public struct OPNStreamPresentationCapability: Equatable, Sendable {
+    public let supportsTenBit: Bool
+    public let supportsHDR: Bool
+
+    public init(supportsTenBit: Bool, supportsHDR: Bool) {
+        self.supportsTenBit = supportsTenBit
+        self.supportsHDR = supportsHDR
+    }
+}
+
 public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var aspectIndex = 1
     public var resolutionIndex = 3
@@ -469,7 +479,7 @@ public enum OPNStreamPreferences {
         return devices
     }
 
-    public static func loadDeviceCapabilities() -> OPNStreamDeviceCapabilities {
+    public static func loadDeviceCapabilities(screen: NSScreen? = NSScreen.main) -> OPNStreamDeviceCapabilities {
         var capabilities = OPNStreamDeviceCapabilities()
         capabilities.h264HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
         capabilities.h265HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
@@ -477,7 +487,7 @@ public enum OPNStreamPreferences {
             capabilities.av1HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
         }
 
-        guard let screen = NSScreen.main else { return capabilities }
+        guard let screen else { return capabilities }
         let scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0
         capabilities.displayDpi = max(100, Int((100.0 * scale).rounded()))
         if let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
@@ -528,6 +538,28 @@ public enum OPNStreamPreferences {
         }
     }
 
+    public static func presentationCapability(codec: String, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPresentationCapability {
+        switch codec.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "H265", "HEVC":
+            return OPNStreamPresentationCapability(
+                supportsTenBit: capabilities.h265HardwareDecodeSupported,
+                supportsHDR: capabilities.h265HardwareDecodeSupported && capabilities.hdrDisplaySupported
+            )
+        case "AV1":
+            return OPNStreamPresentationCapability(
+                supportsTenBit: capabilities.av1HardwareDecodeSupported,
+                supportsHDR: false
+            )
+        case "AUTO":
+            return OPNStreamPresentationCapability(
+                supportsTenBit: capabilities.h265HardwareDecodeSupported || capabilities.av1HardwareDecodeSupported,
+                supportsHDR: capabilities.h265HardwareDecodeSupported && capabilities.hdrDisplaySupported
+            )
+        default:
+            return OPNStreamPresentationCapability(supportsTenBit: false, supportsHDR: false)
+        }
+    }
+
     public static func effectiveProfile(_ profile: OPNStreamPreferenceProfile, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPreferenceProfile {
         var result = profile
         if result.codecIndex < 0 || result.codecIndex >= codecOptions.count || !codecSupported(result.codec, capabilities: capabilities) {
@@ -542,6 +574,9 @@ public enum OPNStreamPreferences {
             result.colorQualityIndex = 0
             result.colorQuality = colorQualityOptions[0]
         }
+        if !presentationCapability(codec: result.codec.value, capabilities: capabilities).supportsHDR {
+            result.enableHdr = false
+        }
         return result
     }
 
@@ -554,6 +589,7 @@ public enum OPNStreamPreferences {
         let prefersHighResolution = pixels >= 2560 * 1440
         let prefersVeryHighResolution = pixels >= 3840 * 2160
         let highFps = profile.fps >= 144
+        if profile.enableHdr, !highFps, capabilities.hdrDisplaySupported, capabilities.h265HardwareDecodeSupported { return "H265" }
         if !highFps, prefersVeryHighResolution, capabilities.av1HardwareDecodeSupported { return "AV1" }
         if !highFps, (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75), capabilities.h265HardwareDecodeSupported { return "H265" }
         return "H264"
@@ -695,12 +731,15 @@ public enum OPNStreamPreferences {
         }
         var result = seed
         if let sessionId = networkTestSessionId(from: json), !sessionId.isEmpty { result.networkTestSessionId = sessionId }
-        if let latency = firstRecursiveNumber(json, keys: ["latencyMs", "clientMeasuredLatencyMs", "rttMs", "roundTripTimeMs", "pingMs"]), latency.intValue >= 0 { result.latencyMs = latency.intValue }
-        let bandwidthMbps = bitrateMbps(from: json, mbpsKeys: ["bandwidthMbps", "availableBandwidthMbps", "downloadBandwidthMbps", "measuredBandwidthMbps"], kbpsKeys: ["bandwidthKbps", "availableBandwidthKbps", "downloadBandwidthKbps", "measuredBandwidthKbps"])
-        if bandwidthMbps > 0 { result.measuredBandwidthMbps = Double(bandwidthMbps) }
-        let packetLoss = percent(from: json, keys: ["packetLossPercent", "packetLossPercentage", "packetLoss"])
-        if packetLoss >= 0 { result.packetLossPercent = packetLoss }
-        if let jitter = firstRecursiveNumber(json, keys: ["jitterMs", "jitter", "networkJitterMs"]), jitter.intValue >= 0 { result.jitterMs = jitter.intValue }
+        if let testResult = successfulNetworkTestResult(from: json) {
+            if let latency = firstRecursiveNumber(testResult, keys: ["latencyMs", "clientMeasuredLatencyMs", "rttMs", "roundTripTimeMs", "pingMs"]), latency.intValue >= 0 { result.latencyMs = latency.intValue }
+            let bandwidthMbps = bitrateMbps(from: testResult, mbpsKeys: ["bandwidthMbps", "availableBandwidthMbps", "downloadBandwidthMbps", "measuredBandwidthMbps"], kbpsKeys: ["bandwidthKbps", "availableBandwidthKbps", "downloadBandwidthKbps", "measuredBandwidthKbps"])
+            if bandwidthMbps > 0 { result.measuredBandwidthMbps = Double(bandwidthMbps) }
+            let packetLoss = percent(from: testResult, keys: ["packetLossPercent", "packetLossPercentage", "packetLoss"])
+            if packetLoss >= 0 { result.packetLossPercent = packetLoss }
+            if let jitter = firstRecursiveNumber(testResult, keys: ["jitterMs", "jitter", "networkJitterMs"]), jitter.intValue >= 0 { result.jitterMs = jitter.intValue }
+            if let maxPacketSize = firstRecursiveNumber(testResult, keys: ["maxPacketSize", "max_packet_size"]), maxPacketSize.intValue >= 512, maxPacketSize.intValue <= Int(UInt16.max) { result.maxPacketSize = maxPacketSize.intValue }
+        }
         result.serverReportedWarning = firstRecursiveBool(json, keys: ["warning", "hasWarning", "shouldWarn", "networkWarning"], fallback: result.serverReportedWarning)
         result.continueRecommended = firstRecursiveBool(json, keys: ["continueRecommended", "shouldContinue", "continueAllowed"], fallback: result.continueRecommended)
         if firstRecursiveBool(json, keys: ["blockLaunch", "stopLaunch", "failLaunch"], fallback: false) { result.continueRecommended = false }
@@ -1327,16 +1366,20 @@ public enum OPNStreamPreferences {
     private static func mergeNetworkTest(_ networkTest: NetworkTestResult, into seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
         var result = seed
         if !networkTest.sessionId.isEmpty { result.networkTestSessionId = networkTest.sessionId }
-        if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
-        if networkTest.latencyMilliseconds >= 0 { result.latencyMs = networkTest.latencyMilliseconds }
-        if networkTest.jitterMilliseconds >= 0 { result.jitterMs = networkTest.jitterMilliseconds }
-        if networkTest.maxPacketSize >= 512, networkTest.maxPacketSize <= Int(UInt16.max) { result.maxPacketSize = networkTest.maxPacketSize }
-        if networkTest.packetLossPercent >= 0, networkTest.packetLossPercent.isFinite { result.packetLossPercent = networkTest.packetLossPercent }
-        if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
+        if networkTest.isCompleted {
+            if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
+            if networkTest.latencyMilliseconds >= 0 { result.latencyMs = networkTest.latencyMilliseconds }
+            if networkTest.jitterMilliseconds >= 0 { result.jitterMs = networkTest.jitterMilliseconds }
+            if networkTest.maxPacketSize >= 512, networkTest.maxPacketSize <= Int(UInt16.max) { result.maxPacketSize = networkTest.maxPacketSize }
+            if networkTest.packetLossPercent >= 0, networkTest.packetLossPercent.isFinite { result.packetLossPercent = networkTest.packetLossPercent }
+        } else {
             result.serverReportedWarning = true
-            result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."
+            result.warningMessage = networkTest.hasTestResult
+                ? "Network test returned status \(networkTest.rawStatus). Launch will continue."
+                : "Network test was provisioned; no completed measurement was returned. Launch will continue."
         }
-        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs, vendorRecommendedMbps: networkTest.threshold.bandwidthRecommended)
+        let vendorRecommendedMbps = networkTest.isCompleted ? networkTest.threshold.bandwidthRecommended : 0
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs, vendorRecommendedMbps: vendorRecommendedMbps)
         return result
     }
 
@@ -1496,6 +1539,19 @@ public enum OPNStreamPreferences {
         case "false", "no", "0", "disabled": return false
         default: return fallback
         }
+    }
+
+    private static func successfulNetworkTestResult(from json: Any?) -> [String: Any]? {
+        guard let dictionary = json as? [String: Any] else { return nil }
+        if let testResult = (dictionary["testResult"] ?? dictionary["test_result"]) as? [String: Any],
+           let status = jsonString(testResult["status"]),
+           ["COMPLETED", "SUCCESS"].contains(status.uppercased()) {
+            return testResult
+        }
+        for key in ["data", "response", "networkTest"] {
+            if let result = successfulNetworkTestResult(from: dictionary[key]) { return result }
+        }
+        return nil
     }
 
     private static func cloudVariableValue(_ json: Any?, names: [String]) -> Any? {

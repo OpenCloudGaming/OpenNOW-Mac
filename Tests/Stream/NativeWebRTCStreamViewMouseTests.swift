@@ -3,13 +3,13 @@ import Testing
 @testable import OpenNOW
 
 private actor MouseInputRecorder {
-    private var events: [NativeNVSTMouseInput] = []
+    private var events: [NativeNVSTInput] = []
 
-    func append(_ event: NativeNVSTMouseInput) {
+    func append(_ event: NativeNVSTInput) {
         events.append(event)
     }
 
-    func snapshot() -> [NativeNVSTMouseInput] {
+    func snapshot() -> [NativeNVSTInput] {
         events
     }
 }
@@ -181,7 +181,7 @@ private struct MouseButtonTransition: Equatable {
 
 @Test func nativeNVSTMouseDispatcherPreservesEventOrder() async {
     let recorder = MouseInputRecorder()
-    let dispatcher = NativeNVSTMouseInputDispatcher { event in
+    let dispatcher = NativeNVSTInputDispatcher { event in
         if case .event(.mouse(.button(_, .left, true, _))) = event {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }

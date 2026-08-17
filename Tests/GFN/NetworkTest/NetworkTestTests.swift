@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import Testing
 @testable import OpenNOW
 
@@ -8,8 +9,57 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let json = try handler(request)
         let data = try JSONSerialization.data(withJSONObject: json)
-        let response = HTTPURLResponse(url: request.url ?? URL(string: "https://prod.cloudmatchbeta.nvidiagrid.net")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        guard let response = HTTPURLResponse(url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200, httpVersion: nil, headerFields: nil) else {
+            throw NetworkTestServiceError.invalidHTTPResponse
+        }
         return (data, response)
+    }
+}
+
+private actor SequencedNetworkTestTransport: NetworkTestHTTPTransport {
+    private var statuses: [Int]
+    private(set) var requestCount = 0
+
+    init(statuses: [Int]) {
+        self.statuses = statuses
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        let status = statuses.isEmpty ? 200 : statuses.removeFirst()
+        let json: [String: Any] = [
+            "netTestSession": [
+                "sessionId": "session",
+                "connectionInfo": [["ip": "zone.example", "port": 443, "appLevelProtocol": 5]],
+            ],
+            "testResult": ["status": "COMPLETED"],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        guard let response = HTTPURLResponse(url: request.url ?? URL(fileURLWithPath: "/"), statusCode: status, httpVersion: nil, headerFields: status == 503 ? ["Retry-After": "0"] : nil) else {
+            throw NetworkTestServiceError.invalidHTTPResponse
+        }
+        return (data, response)
+    }
+}
+
+private actor FailingNetworkTestTransport: NetworkTestHTTPTransport {
+    private let code: URLError.Code
+    private(set) var requestCount = 0
+
+    init(code: URLError.Code) {
+        self.code = code
+    }
+
+    func send(_: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        throw URLError(code)
+    }
+}
+
+private struct DelayedNetworkTestTransport: NetworkTestHTTPTransport {
+    func send(_: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        try await Task.sleep(for: .seconds(30))
+        throw NetworkTestServiceError.invalidHTTPResponse
     }
 }
 
@@ -61,7 +111,40 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     #expect(result.jitterMilliseconds == 7)
     #expect(result.packetLossPercent == 0.4)
     #expect(result.rawStatus == "COMPLETED")
+    #expect(result.hasTestResult)
     #expect(result.isCompleted)
+}
+
+@Test func networkTestProvisioningPayloadDoesNotExposeUnprovenMeasurements() {
+    let result = NetworkTestResultParser.parse([
+        "requestStatus": ["statusDescription": "SUCCESS_STATUS"],
+        "netTestSession": [
+            "sessionId": "session",
+            "connectionInfo": [["ip": "zone.example", "port": 443, "appLevelProtocol": 5]],
+        ],
+        "downlinkBandwidth": 90_000_000,
+        "latencyMs": 12,
+    ])
+
+    #expect(result.rawStatus == "SUCCESS_STATUS")
+    #expect(!result.hasTestResult)
+    #expect(!result.isCompleted)
+    #expect(result.downlinkBandwidth == 0)
+    #expect(result.latencyMilliseconds == -1)
+}
+
+@Test func networkTestNonterminalResultDoesNotExposeMeasurements() {
+    let result = NetworkTestResultParser.parse([
+        "networkSessionId": "session",
+        "zone": ["address": "zone.example"],
+        "testResult": ["status": "RUNNING", "latencyMs": 12, "jitterMs": 2, "packetLossPercent": 0.1],
+    ])
+
+    #expect(result.hasTestResult)
+    #expect(!result.isCompleted)
+    #expect(result.latencyMilliseconds == -1)
+    #expect(result.jitterMilliseconds == -1)
+    #expect(result.packetLossPercent == -1)
 }
 
 @Test func networkTestParsesVendorNetTestSessionPayload() {
@@ -90,7 +173,7 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
 }
 
 @Test func networkTestModelsVendorLifecycleAndFingerprintKeys() {
-    let result = NetworkTestResult(sessionId: "session", zoneAddress: "zone.example", rawStatus: "SUCCESS")
+    let result = NetworkTestResult(sessionId: "session", zoneAddress: "zone.example", rawStatus: "SUCCESS", hasTestResult: true)
     let lifecycle = NetworkTestLifecycle().starting().finishing(result: result)
     #expect(lifecycle.state == .finished)
     #expect(lifecycle.result == result)
@@ -120,4 +203,63 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     #expect(result.sessionId == "session")
     #expect(result.isCompleted)
     #expect(await service.lifecycle.state == .finished)
+}
+
+@Test func networkTestServiceModelsProvisioningAsProvisioned() async throws {
+    let service = NetworkTestService(transport: MockNetworkTestTransport { _ in
+        [
+            "requestStatus": ["statusDescription": "SUCCESS_STATUS"],
+            "netTestSession": [
+                "sessionId": "session",
+                "connectionInfo": [["ip": "zone.example", "port": 443, "appLevelProtocol": 5]],
+            ],
+        ]
+    })
+
+    let result = try await service.startSession()
+    #expect(!result.isCompleted)
+    #expect(await service.lifecycle.state == .provisioned)
+}
+
+@Test func networkTestServiceRetriesTransientStatusWithRetryAfter() async throws {
+    let transport = SequencedNetworkTestTransport(statuses: [503, 200])
+    let service = NetworkTestService(transport: transport)
+
+    let result = try await service.startSession()
+
+    #expect(result.isCompleted)
+    #expect(await transport.requestCount == 2)
+}
+
+@Test func networkTestServiceDoesNotRetryBadURL() async {
+    let transport = FailingNetworkTestTransport(code: .badURL)
+    let service = NetworkTestService(transport: transport)
+
+    await #expect(throws: URLError.self) {
+        try await service.startSession()
+    }
+    #expect(await transport.requestCount == 1)
+}
+
+@Test func networkTestServiceDoesNotRetryCertificateFailure() async {
+    let transport = FailingNetworkTestTransport(code: .serverCertificateUntrusted)
+    let service = NetworkTestService(transport: transport)
+
+    await #expect(throws: URLError.self) {
+        try await service.startSession()
+    }
+    #expect(await transport.requestCount == 1)
+}
+
+@Test func networkTestServiceCancelStopsActiveTransportWork() async {
+    let service = NetworkTestService(transport: DelayedNetworkTestTransport())
+    let task = Task { try await service.startSession() }
+    try? await Task.sleep(for: .milliseconds(20))
+
+    await service.cancel()
+
+    await #expect(throws: CancellationError.self) {
+        try await task.value
+    }
+    #expect(await service.lifecycle.state == .cancelled)
 }

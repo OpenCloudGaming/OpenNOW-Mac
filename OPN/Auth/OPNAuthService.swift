@@ -203,6 +203,22 @@ public final class OPNAuthService: @unchecked Sendable {
         }
     }
 
+    func refreshSession(forceRefresh: Bool) async throws -> OPNAuthSession {
+        try await withCheckedThrowingContinuation { continuation in
+            refreshSession(completion: { success, session, message in
+                if success {
+                    continuation.resume(returning: session)
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "OpenNOW.OPNAuthService",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: message.isEmpty ? "Session refresh failed." : message]
+                    ))
+                }
+            }, forceRefresh: forceRefresh)
+        }
+    }
+
     func monitorLoginStatus(replayCurrent: Bool = true) async -> AsyncStream<JarvisAuthStatus> {
         await jarvisAuthService.monitorLoginStatus(replayCurrent: replayCurrent)
     }

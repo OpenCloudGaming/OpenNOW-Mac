@@ -97,9 +97,12 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var nativeStatsVisible = false
     @State private var latestNativeStats: NativeNVSTPerformanceSnapshot?
     @State private var nativeStatsTask: Task<Void, Never>?
-    @State private var mouseInputDispatcher: NativeNVSTMouseInputDispatcher?
+    @State private var inputDispatcher: NativeNVSTInputDispatcher?
     @State private var microphoneAvailable = false
     @State private var microphoneEnabled = false
+    @State private var microphoneDesiredEnabled = false
+    @State private var microphoneMode = "disabled"
+    @State private var microphonePendingStates: [Bool] = []
     @State private var microphoneUpdateTask: Task<Void, Never>?
     @State private var antiAFKMouseMovementEnabled = false
     @State private var antiAFKMouseMovementTask: Task<Void, Never>?
@@ -161,8 +164,13 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        microphoneAvailable = profile.microphoneMode.caseInsensitiveCompare("disabled") != .orderedSame
-        microphoneEnabled = microphoneAvailable && profile.microphoneMode.caseInsensitiveCompare("voice-activity") == .orderedSame
+        microphoneMode = profile.microphoneMode.lowercased()
+        let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume, mode: microphoneMode)
+        microphoneAvailable = microphoneConfiguration.captureRequested
+        microphoneEnabled = microphoneConfiguration.initiallyEnabled
+        microphoneDesiredEnabled = microphoneEnabled
+        microphonePendingStates.removeAll()
+        let initialMicrophoneEnabled = microphoneEnabled
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000), l4sEnabled: profile.enableL4S)
         lastAcceptedStreamInputAt = Date()
@@ -176,10 +184,16 @@ private struct NativeNVSTMediaStreamSurface: View {
             },
             prepareVideoSurfaceForShutdown: {
                 nativeView.prepareNativeNVSTRendererForShutdown()
+            },
+            hapticHandler: { [weak nativeView] command in
+                nativeView?.playHaptic(command)
+            },
+            hapticResetHandler: { [weak nativeView] in
+                nativeView?.stopHaptics()
             }
         )
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
-        let mouseInputDispatcher = NativeNVSTMouseInputDispatcher { input in
+        let inputDispatcher = NativeNVSTInputDispatcher { input in
             switch input {
             case .event(let event):
                 try? await path.send(event)
@@ -188,7 +202,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             }
         }
         self.path = path
-        self.mouseInputDispatcher = mouseInputDispatcher
+        self.inputDispatcher = inputDispatcher
         endEventTask = Task {
             let events = await path.endEvents()
             for await report in events {
@@ -208,10 +222,24 @@ private struct NativeNVSTMediaStreamSurface: View {
         )
         startTask = Task {
             do {
+                try await path.setMicrophoneConfiguration(microphoneConfiguration)
                 let session = try await path.start(configuration: configuration) { progress in
                     await MainActor.run {
                         statusMessage = progress.message
                         onProgress?(progress)
+                    }
+                }
+                try await path.applyInitialNetworkPolicy(
+                    maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000),
+                    l4sEnabled: profile.enableL4S
+                )
+                do {
+                    try await path.setMicrophoneEnabled(initialMicrophoneEnabled)
+                } catch {
+                    await MainActor.run {
+                        microphoneEnabled = false
+                        microphoneDesiredEnabled = false
+                        WebRTCMediaTelemetry.capture("nvst.microphone.initialization.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": configuration.applicationID])
                     }
                 }
                 let shouldPresentStream = await MainActor.run {
@@ -221,6 +249,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
                     nativeView.setNativeNVSTVideoVisible(true)
                     nativeView.restoreInputFocus()
+                    Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
                     statusMessage = "Connected over native NVST."
                     startNativeStatsPolling(path: path)
                     refreshAntiAFKMouseMovementTask()
@@ -247,10 +276,11 @@ private struct NativeNVSTMediaStreamSurface: View {
         statusMessage = message
         isConnected = false
         nativeView?.remoteInputEnabled = false
+        nativeView?.stopHaptics()
         nativeView?.setPointerLocked(false)
         nativeView?.setNativeNVSTVideoVisible(false)
-        mouseInputDispatcher?.cancel()
-        mouseInputDispatcher = nil
+        inputDispatcher?.cancel()
+        inputDispatcher = nil
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
         if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
@@ -278,47 +308,53 @@ private struct NativeNVSTMediaStreamSurface: View {
         cancelNativeShortcutTasks()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
-        let mouseInputDispatcher = self.mouseInputDispatcher
-        self.mouseInputDispatcher = nil
+        let inputDispatcher = self.inputDispatcher
+        self.inputDispatcher = nil
         isConnected = false
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false
         microphoneAvailable = false
         microphoneEnabled = false
+        microphoneDesiredEnabled = false
+        microphoneMode = "disabled"
+        microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = false
+        nativeView?.stopHaptics()
         nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else {
-            mouseInputDispatcher?.cancel()
+            inputDispatcher?.cancel()
             return
         }
         didEnd = true
         nativeView?.onInputEvent = nil
         nativeView?.onAbsoluteMouseMove = nil
+        nativeView?.onGamepadTopologyChanged = nil
         nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
         if let path {
             Task {
-                await mouseInputDispatcher?.finish()
+                await inputDispatcher?.finish()
+                try? await path.setMicrophoneEnabled(false)
                 _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
             }
         } else {
-            mouseInputDispatcher?.cancel()
+            inputDispatcher?.cancel()
         }
     }
 
     private func finish(reason: StreamEndReason, message: String) async -> Bool {
         guard !isEnding else { return false }
-        let mouseInputDispatcher = await MainActor.run {
+        let inputDispatcher = await MainActor.run {
             nativeView?.remoteInputEnabled = false
             nativeView?.setNativeNVSTVideoVisible(false)
-            let dispatcher = self.mouseInputDispatcher
-            self.mouseInputDispatcher = nil
+            let dispatcher = self.inputDispatcher
+            self.inputDispatcher = nil
             isEnding = true
             return dispatcher
         }
-        await mouseInputDispatcher?.finish()
+        await inputDispatcher?.finish()
         guard let path else {
             await MainActor.run {
                 isEnding = false
@@ -327,6 +363,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             return false
         }
         do {
+            try await path.setMicrophoneEnabled(false)
             let report = try await path.stop(reason: reason, message: message)
             await MainActor.run { finishOnce(report: report) }
             return true
@@ -336,7 +373,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 await MainActor.run {
                     isEnding = false
                     statusMessage = failureMessage
-                    self.mouseInputDispatcher = NativeNVSTMouseInputDispatcher { input in
+                    self.inputDispatcher = NativeNVSTInputDispatcher { input in
                         switch input {
                         case .event(let event):
                             try? await path.send(event)
@@ -358,8 +395,8 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
         nativeView?.remoteInputEnabled = false
-        mouseInputDispatcher?.cancel()
-        mouseInputDispatcher = nil
+        inputDispatcher?.cancel()
+        inputDispatcher = nil
         didEnd = true
         isConnected = false
         unifiedHUDVisible = false
@@ -367,6 +404,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsVisible = false
         microphoneAvailable = false
         microphoneEnabled = false
+        microphoneDesiredEnabled = false
+        microphoneMode = "disabled"
+        microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = false
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
@@ -405,23 +445,29 @@ private struct NativeNVSTMediaStreamSurface: View {
         if path == nil { view.mouseInputMode = .absolute }
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
+        let pushToTalkEnabled = profile.microphoneMode.caseInsensitiveCompare("push-to-talk") == .orderedSame
+        view.configurePushToTalk(
+            keyCode: pushToTalkEnabled ? profile.microphonePushToTalkKeyCode : nil,
+            modifierMask: profile.microphonePushToTalkModifierMask
+        ) { enabled in
+            requestNativeMicrophoneEnabled(enabled, source: "push-to-talk")
+        }
         configureInput(for: view)
     }
 
     private func configureInput(for view: NativeWebRTCStreamView) {
-        view.onInputEvent = { [path, weak view] event in
-            guard let path, let view, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
-            let isLockedMouseRelease = view.isPointerLocked && Self.isMouseButtonRelease(event)
-            if view.remoteInputEnabled && !isLockedMouseRelease {
+        view.onInputEvent = { [weak view] event in
+            guard path != nil, let view, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
+            if view.remoteInputEnabled && !NativeNVSTInputDispatcher.isNeutralizing(event) {
                 guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
             }
             lastAcceptedStreamInputAt = Date()
             if case .mouse = event {
                 if view.mouseInputMode == .relative, !view.isPointerLocked { return }
-                mouseInputDispatcher?.enqueue(event)
+                inputDispatcher?.enqueue(event)
                 return
             }
-            Task { try? await path.send(event) }
+            inputDispatcher?.enqueue(event)
         }
         view.shouldHandleCommand = { _ in
             isConnected
@@ -434,13 +480,12 @@ private struct NativeNVSTMediaStreamSurface: View {
                   view.remoteInputEnabled, view.mouseInputMode == .absolute,
                   NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
             lastAcceptedStreamInputAt = Date()
-            mouseInputDispatcher?.enqueueAbsoluteMove(event)
+            inputDispatcher?.enqueueAbsoluteMove(event)
         }
-    }
-
-    private static func isMouseButtonRelease(_ event: UserInputEvent) -> Bool {
-        guard case .mouse(.button(_, _, let isPressed, _)) = event else { return false }
-        return !isPressed
+        view.onGamepadTopologyChanged = { topology in
+            guard let path, isConnected, !isEnding, !didEnd else { return }
+            Task { try? await path.updateGamepadTopology(topology) }
+        }
     }
 
     private func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
@@ -466,24 +511,42 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard isConnected, !isEnding, !didEnd else { return }
         guard microphoneAvailable else {
             microphoneEnabled = false
+            microphoneDesiredEnabled = false
             showNativeTransientStreamMessage("Microphone is disabled in Settings.")
             return
         }
-        guard microphoneUpdateTask == nil, let path else { return }
-        let nextEnabled = !microphoneEnabled
+        guard microphoneMode != "push-to-talk" else {
+            showNativeTransientStreamMessage("Hold the configured Push-to-Talk key to speak.")
+            return
+        }
+        requestNativeMicrophoneEnabled(!microphoneDesiredEnabled, source: "toggle")
+    }
+
+    private func requestNativeMicrophoneEnabled(_ enabled: Bool, source: String) {
+        guard microphoneAvailable, isConnected, !isEnding, !didEnd, let path else { return }
+        microphoneDesiredEnabled = enabled
+        let lastScheduledState = microphonePendingStates.last ?? microphoneEnabled
+        if lastScheduledState != enabled { microphonePendingStates.append(enabled) }
+        guard microphoneUpdateTask == nil else { return }
         microphoneUpdateTask = Task { @MainActor in
             defer { microphoneUpdateTask = nil }
-            do {
-                try await path.setMicrophoneEnabled(nextEnabled)
-                guard !Task.isCancelled, !didEnd else { return }
-                microphoneEnabled = nextEnabled
-                showNativeTransientStreamMessage(nextEnabled ? "Microphone On" : "Microphone Muted")
-                WebRTCMediaTelemetry.capture("nvst.ui.microphone.toggle", level: .info, message: nextEnabled ? "Native NVST microphone enabled." : "Native NVST microphone muted.", attributes: ["applicationID": configuration.applicationID, "enabled": String(nextEnabled)])
-            } catch {
-                guard !Task.isCancelled, !didEnd else { return }
-                let message = Self.message(for: error)
-                showNativeTransientStreamMessage(message)
-                WebRTCMediaTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
+            while !Task.isCancelled, !didEnd, !microphonePendingStates.isEmpty {
+                let target = microphonePendingStates.removeFirst()
+                do {
+                    try await path.setMicrophoneEnabled(target)
+                    guard !Task.isCancelled, !didEnd else { return }
+                    microphoneEnabled = target
+                    let enabledMessage = microphoneMode == "voice-activity" ? "Voice Activity On" : "Microphone On"
+                    showNativeTransientStreamMessage(target ? enabledMessage : "Microphone Muted")
+                    WebRTCMediaTelemetry.capture("nvst.ui.microphone.update", level: .info, message: target ? "Native NVST microphone enabled." : "Native NVST microphone muted.", attributes: ["applicationID": configuration.applicationID, "enabled": String(target), "source": source])
+                } catch {
+                    guard !Task.isCancelled, !didEnd else { return }
+                    microphoneDesiredEnabled = microphoneEnabled
+                    microphonePendingStates.removeAll()
+                    let message = Self.message(for: error)
+                    showNativeTransientStreamMessage(message)
+                    WebRTCMediaTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID, "source": source])
+                }
             }
         }
     }
@@ -514,15 +577,15 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private func sendNativeAntiAFKMouseMovement() {
-        guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible, mouseInputDispatcher != nil else { return }
+        guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible, inputDispatcher != nil else { return }
         guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
         let delta = StreamAntiAFKInputPolicy.randomMouseDelta()
-        mouseInputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
+        inputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
             guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible else { return }
             guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
-            mouseInputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
+            inputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
         }
     }
 
@@ -875,6 +938,8 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private var nativeMicrophoneStatusText: String {
         guard microphoneAvailable else { return "Disabled" }
+        if microphoneMode == "push-to-talk" { return microphoneEnabled ? "PTT Active" : "PTT Ready" }
+        if microphoneMode == "voice-activity", microphoneEnabled { return "Voice Activity" }
         return microphoneEnabled ? "On" : "Muted"
     }
 
