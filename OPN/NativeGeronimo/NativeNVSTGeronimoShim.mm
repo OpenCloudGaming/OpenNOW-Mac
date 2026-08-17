@@ -316,6 +316,7 @@ struct NVbResult_t {
     unsigned char bytes[0x10] = {};
 };
 
+using NVbCreateClient = void *(*)();
 using NVbRegisterCallback = NVbResult_t (*)(void *, void *, NVbCallback);
 
 struct NvstAudioFrame_t {
@@ -474,12 +475,18 @@ std::atomic<NVbSendMicAudioFrame> gOriginalSendMicAudioFrame{nullptr};
 size_t gMicrophoneHookLeaseCount = 0;
 std::mutex gGridAppInitializationMutex;
 std::mutex gBifrostRegistrationHookMutex;
+void **gBifrostCreateClientImportSlot = nullptr;
 void **gBifrostRegistrationImportSlot = nullptr;
+std::atomic<NVbCreateClient> gOriginalCreateBifrostClient{nullptr};
 std::atomic<NVbRegisterCallback> gOriginalRegisterBifrostCallback{nullptr};
 std::atomic<NVbCallback> gOriginalBifrostCallback{nullptr};
+std::atomic<void *> gBifrostRegistrationContext{nullptr};
+std::atomic<void *> gPreRegisteredBifrostClient{nullptr};
+std::atomic<uint32_t> gBifrostClientCreationCount{0};
 std::atomic<bool> gBifrostRegistrationIntercepted{false};
 
 NVbResult_t openNOWSendMicAudioFrame(void *client, const char *sessionIdentifier, NvstAudioFrame_t frame);
+void *openNOWCreateBifrostClient();
 NVbResult_t openNOWRegisterBifrostCallback(void *client, void *context, NVbCallback callback);
 bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData);
 
@@ -783,54 +790,103 @@ void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
 
 bool acquireBifrostRegistrationHook(void *geronimoHandle,
                                     void *bifrostHandle,
+                                    void *gridApp,
                                     NVbCallback originalCallback,
                                     char *errorBuffer,
                                     size_t errorBufferLength) {
     std::lock_guard<std::mutex> hookLock(gBifrostRegistrationHookMutex);
-    void *resolved = dlsym(bifrostHandle, "nvbRegisterCallback");
+    void *resolvedCreate = dlsym(bifrostHandle, "nvbCreateClient");
+    void *resolvedRegister = dlsym(bifrostHandle, "nvbRegisterCallback");
     void *anchor = dlsym(geronimoHandle, "_ZN7GridApp10initializeEb");
-    if (resolved == nullptr || anchor == nullptr || originalCallback == nullptr) {
+    if (resolvedCreate == nullptr || resolvedRegister == nullptr || anchor == nullptr || gridApp == nullptr || originalCallback == nullptr) {
         setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration symbols are unavailable.");
         return false;
     }
-    void **slot = findLazySymbolPointer(anchor, "_nvbRegisterCallback");
-    if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) {
-        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration import could not be verified.");
+    void **createSlot = findLazySymbolPointer(anchor, "_nvbCreateClient");
+    void **registerSlot = findLazySymbolPointer(anchor, "_nvbRegisterCallback");
+    if (createSlot == nullptr || registerSlot == nullptr || reinterpret_cast<uintptr_t>(createSlot) % alignof(void *) != 0 ||
+        reinterpret_cast<uintptr_t>(registerSlot) % alignof(void *) != 0) {
+        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration imports could not be verified.");
         return false;
     }
-    void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
-    void *hook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
-    gOriginalRegisterBifrostCallback.store(reinterpret_cast<NVbRegisterCallback>(resolved), std::memory_order_release);
+    void *currentCreate = __atomic_load_n(createSlot, __ATOMIC_ACQUIRE);
+    void *createHook = reinterpret_cast<void *>(&openNOWCreateBifrostClient);
+    gOriginalCreateBifrostClient.store(reinterpret_cast<NVbCreateClient>(resolvedCreate), std::memory_order_release);
+    gOriginalRegisterBifrostCallback.store(reinterpret_cast<NVbRegisterCallback>(resolvedRegister), std::memory_order_release);
     gOriginalBifrostCallback.store(originalCallback, std::memory_order_release);
+    gBifrostRegistrationContext.store(gridApp, std::memory_order_release);
+    gPreRegisteredBifrostClient.store(nullptr, std::memory_order_release);
+    gBifrostClientCreationCount.store(0, std::memory_order_release);
     gBifrostRegistrationIntercepted.store(false, std::memory_order_release);
-    if (current == nullptr || (current != hook && !__atomic_compare_exchange_n(slot, &current, hook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))) {
+    if (currentCreate == nullptr ||
+        (currentCreate != createHook && !__atomic_compare_exchange_n(createSlot, &currentCreate, createHook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))) {
+        gOriginalCreateBifrostClient.store(nullptr, std::memory_order_release);
         gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
         setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration hook could not be installed.");
         return false;
     }
-    gBifrostRegistrationImportSlot = slot;
+    gBifrostCreateClientImportSlot = createSlot;
+    gBifrostRegistrationImportSlot = registerSlot;
     return true;
 }
 
 void releaseBifrostRegistrationHook() {
     std::lock_guard<std::mutex> hookLock(gBifrostRegistrationHookMutex);
-    void *hook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
-    void *expected = hook;
-    NVbRegisterCallback original = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
-    if (gBifrostRegistrationImportSlot != nullptr && original != nullptr) {
-        __atomic_compare_exchange_n(gBifrostRegistrationImportSlot, &expected, reinterpret_cast<void *>(original), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    void *registrationHook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
+    void *expectedRegistration = registrationHook;
+    NVbRegisterCallback originalRegistration = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
+    if (gBifrostRegistrationImportSlot != nullptr && originalRegistration != nullptr) {
+        __atomic_compare_exchange_n(gBifrostRegistrationImportSlot, &expectedRegistration, reinterpret_cast<void *>(originalRegistration), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
     }
+    void *createHook = reinterpret_cast<void *>(&openNOWCreateBifrostClient);
+    void *expectedCreate = createHook;
+    NVbCreateClient originalCreate = gOriginalCreateBifrostClient.load(std::memory_order_acquire);
+    if (gBifrostCreateClientImportSlot != nullptr && originalCreate != nullptr) {
+        __atomic_compare_exchange_n(gBifrostCreateClientImportSlot, &expectedCreate, reinterpret_cast<void *>(originalCreate), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    }
+    gBifrostCreateClientImportSlot = nullptr;
     gBifrostRegistrationImportSlot = nullptr;
+    gOriginalCreateBifrostClient.store(nullptr, std::memory_order_release);
     gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
+    gBifrostRegistrationContext.store(nullptr, std::memory_order_release);
+    gPreRegisteredBifrostClient.store(nullptr, std::memory_order_release);
+}
+
+void *openNOWCreateBifrostClient() {
+    NVbCreateClient originalCreate = gOriginalCreateBifrostClient.load(std::memory_order_acquire);
+    if (originalCreate == nullptr) { return nullptr; }
+    void *client = originalCreate();
+    if (client == nullptr || gBifrostClientCreationCount.fetch_add(1, std::memory_order_acq_rel) + 1 != 2) { return client; }
+    NVbRegisterCallback originalRegistration = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
+    NVbCallback originalCallback = gOriginalBifrostCallback.load(std::memory_order_acquire);
+    void *context = gBifrostRegistrationContext.load(std::memory_order_acquire);
+    if (originalRegistration == nullptr || originalCallback == nullptr || context == nullptr || gBifrostRegistrationImportSlot == nullptr) { return client; }
+    void *currentRegistration = __atomic_load_n(gBifrostRegistrationImportSlot, __ATOMIC_ACQUIRE);
+    void *registrationHook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
+    if (currentRegistration != registrationHook &&
+        !__atomic_compare_exchange_n(gBifrostRegistrationImportSlot, &currentRegistration, registrationHook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        return client;
+    }
+    NVbResult_t result = originalRegistration(client, context, &openNOWBifrostCallback);
+    if (result.code != 0) {
+        void *expectedRegistration = registrationHook;
+        __atomic_compare_exchange_n(gBifrostRegistrationImportSlot, &expectedRegistration, reinterpret_cast<void *>(originalRegistration), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+        return client;
+    }
+    gPreRegisteredBifrostClient.store(client, std::memory_order_release);
+    return client;
 }
 
 NVbResult_t openNOWRegisterBifrostCallback(void *client, void *context, NVbCallback callback) {
     NVbRegisterCallback originalRegistration = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
     NVbCallback originalCallback = gOriginalBifrostCallback.load(std::memory_order_acquire);
     if (originalRegistration == nullptr) { return NVbResult_t{-1}; }
-    if (callback != originalCallback || context == nullptr) { return originalRegistration(client, context, callback); }
+    if (client != gPreRegisteredBifrostClient.load(std::memory_order_acquire) ||
+        context != gBifrostRegistrationContext.load(std::memory_order_acquire) || callback != originalCallback) {
+        return originalRegistration(client, context, callback);
+    }
     gBifrostRegistrationIntercepted.store(true, std::memory_order_release);
-    return originalRegistration(client, context, &openNOWBifrostCallback);
+    return NVbResult_t{};
 }
 
 bool acquireMicrophoneHook(void *geronimoHandle, void *bifrostHandle, char *errorBuffer, size_t errorBufferLength) {
@@ -2035,7 +2091,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         ctor(gridApp);
         gridAppConstructed = true;
         std::unique_lock<std::mutex> initializationLock(gGridAppInitializationMutex);
-        if (!acquireBifrostRegistrationHook(handle, bifrostHandle, originalBifrostCallback, errorBuffer, errorBufferLength)) {
+        if (!acquireBifrostRegistrationHook(handle, bifrostHandle, gridApp, originalBifrostCallback, errorBuffer, errorBufferLength)) {
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
