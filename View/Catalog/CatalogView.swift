@@ -799,12 +799,22 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                         .accessibilityLabel("Cancel stream launch")
 
                     if !steps.isEmpty {
-                        VStack(alignment: .center, spacing: 9) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                                 VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
+                                    .padding(.vertical, 5)
                             }
                         }
-                        .frame(width: 320, alignment: .center)
+                        .frame(width: 320, alignment: .leading)
+                        .background(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.10))
+                                .frame(width: 1)
+                                .frame(maxHeight: .infinity)
+                                .padding(.top, 12)
+                                .padding(.bottom, 12)
+                                .padding(.leading, 6.5)
+                        }
                     }
                 }
                 .padding(.horizontal, 28)
@@ -991,32 +1001,55 @@ private struct VendorStreamLaunchStepRow: View {
     let index: Int
     let currentIndex: Int
 
+    private enum StepState { case completed, active, pending }
+
+    private var state: StepState {
+        if currentIndex < 0 { return .pending }
+        if index < currentIndex { return .completed }
+        if index == currentIndex { return .active }
+        return .pending
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Text(marker)
-                .nvidiaFont(size: 11, weight: .bold)
-                .foregroundStyle(markerColor)
-                .lineLimit(1)
-                .frame(minWidth: 28, alignment: .center)
+            marker
             Text(step)
-                .nvidiaFont(size: 12, weight: index == currentIndex ? .bold : .medium)
+                .nvidiaFont(size: 12, weight: state == .active ? .bold : .medium)
                 .foregroundStyle(textColor)
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .opacity(index > currentIndex && currentIndex >= 0 ? 0.58 : 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var marker: String {
-        if index < currentIndex { return "OK" }
-        return String(index + 1)
-    }
-
-    private var markerColor: Color {
-        index <= currentIndex ? .openNowGreen : .white.opacity(0.46)
+    @ViewBuilder
+    private var marker: some View {
+        ZStack {
+            switch state {
+            case .completed:
+                Circle()
+                    .fill(Color.openNowGreen)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.black)
+            case .active:
+                Circle()
+                    .fill(Color.openNowGreen)
+            case .pending:
+                Circle()
+                    .stroke(Color.white.opacity(0.30), lineWidth: 1.5)
+            }
+        }
+        .frame(width: 10, height: 10)
+        .frame(width: 14, height: 14)
     }
 
     private var textColor: Color {
-        index <= currentIndex || currentIndex < 0 ? .white.opacity(0.84) : .white.opacity(0.52)
+        switch state {
+        case .completed: .white.opacity(0.72)
+        case .active: .white.opacity(0.96)
+        case .pending: .white.opacity(0.42)
+        }
     }
 }
 
@@ -4060,7 +4093,6 @@ struct GameDetailPanel: View {
         // Text area grows with the panel so tall (ultrawide) panels do not leave a dead gap.
         let collapsedHeight = MacForceNowDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
         let expandedHeight = MacForceNowDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
-        return
         ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
             VStack(alignment: .leading, spacing: 14) {
                 shortDescription(game: game)
