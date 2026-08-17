@@ -628,12 +628,13 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
-    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int) -> Int {
+    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int, vendorRecommendedMbps: Int = 0) -> Int {
         let requested = max(1, requestedMaxBitrateMbps)
         var recommended = requested
         if measuredBandwidthMbps > 1.0, measuredBandwidthMbps.isFinite {
-            recommended = min(recommended, max(5, Int((measuredBandwidthMbps * 0.85).rounded(.down))))
+            recommended = min(recommended, max(1, Int((measuredBandwidthMbps * 0.75).rounded(.down))))
         }
+        if vendorRecommendedMbps > 0 { recommended = min(recommended, vendorRecommendedMbps) }
         if packetLossPercent >= 5.0 { recommended = min(recommended, 15) }
         else if packetLossPercent >= 2.0 { recommended = min(recommended, 25) }
         else if packetLossPercent >= 1.0 { recommended = min(recommended, 50) }
@@ -868,6 +869,18 @@ public enum OPNStreamPreferences {
         }.resume()
     }
 
+    public static func fetchServerType(token: String, streamingBaseUrl: String) async throws -> Int? {
+        let baseUrl = streamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : streamingBaseUrl
+        var request = serverInfoRequest(baseUrl: baseUrl, token: token, headers: .streamSession(transportMode: "nvst"))
+        request.timeoutInterval = 4
+        let (data, response) = try await OPNURLSessionHTTPTransport.send(request, operation: "stream.fetchServerType", invalidHTTPResponseError: URLError(.badServerResponse))
+        guard response.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let parsed = Int(CloudMatchServerInfoParser.parse(json).serverType.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parsed > 0 else { return nil }
+        return parsed
+    }
+
     public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         var initial = OPNStreamNetworkPreflightResult()
         initial.streamingBaseUrl = loadSelectedStreamingBaseUrl()
@@ -884,8 +897,8 @@ public enum OPNStreamPreferences {
             cached.latencyMs = cachedChoice.latencyMs
             cached.usedAutomaticRegion = selectedRegionUrl.isEmpty
             cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, measuredBandwidthMbps: cached.measuredBandwidthMbps, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
-            DispatchQueue.main.async { completion(cached) }
             fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { _ in }
+            finishNetworkPreflight(cached, token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
             return
         }
         fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { regions in
@@ -1317,9 +1330,9 @@ public enum OPNStreamPreferences {
         GFNClientMetadata.browserMacUserAgent
     }
 
-    private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
-        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, userAgent: browserUserAgent())
-        var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: headers, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+    private static func serverInfoRequest(baseUrl: String, token: String, headers: CloudMatchClientHeaders? = nil) -> URLRequest {
+        let requestHeaders = headers ?? CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, userAgent: browserUserAgent())
+        var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: requestHeaders, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         return request
     }
@@ -1329,7 +1342,7 @@ public enum OPNStreamPreferences {
             var result = seed
             do {
                 let baseURLString = networkTestBaseURL(seed: seed, providerStreamingBaseUrl: providerStreamingBaseUrl)
-                let service = NetworkTestService(configuration: NetworkTestConfiguration(baseURLString: baseURLString, timeoutInterval: 4), transport: NetworkTestURLSessionTransport())
+                let service = NetworkTestService(configuration: NetworkTestConfiguration(baseURLString: baseURLString, timeoutInterval: 8), transport: NetworkTestURLSessionTransport())
                 let networkTest = try await service.startSession(accessToken: token)
                 result = mergeNetworkTest(networkTest, into: result, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
                 OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTest, parameters: ["status": networkTest.rawStatus.isEmpty ? "completed" : networkTest.rawStatus, "continued": "true"]))
@@ -1350,11 +1363,14 @@ public enum OPNStreamPreferences {
         var result = seed
         if !networkTest.sessionId.isEmpty { result.networkTestSessionId = networkTest.sessionId }
         if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
+        if networkTest.latencyMilliseconds >= 0 { result.latencyMs = networkTest.latencyMilliseconds }
+        if networkTest.jitterMilliseconds >= 0 { result.jitterMs = networkTest.jitterMilliseconds }
+        if networkTest.packetLossPercent >= 0, networkTest.packetLossPercent.isFinite { result.packetLossPercent = networkTest.packetLossPercent }
         if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
             result.serverReportedWarning = true
             result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."
         }
-        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs, vendorRecommendedMbps: networkTest.threshold.bandwidthRecommended)
         return result
     }
 

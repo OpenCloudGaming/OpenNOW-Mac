@@ -20,7 +20,8 @@ let package = Package(
         .target(
             name: "MacForceNow",
             dependencies: [
-                .product(name: "Sentry", package: "sentry-cocoa")
+                .product(name: "Sentry", package: "sentry-cocoa"),
+                "MacForceNowNativeGeronimoShim"
             ],
             path: ".",
             exclude: [
@@ -30,6 +31,7 @@ let package = Package(
                 "MacForceNowApp.swift",
                 "OPN/Stream/WebRTCMediaStreamSurface.swift",
                 "MacForceNow.xcodeproj",
+                "OPN/NativeGeronimo",
                 "Resources",
                 "Tests",
                 "View",
@@ -51,6 +53,12 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags(["-F", packageRoot, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", packageRoot])
             ]
+        ),
+        .target(
+            name: "MacForceNowNativeGeronimoShim",
+            path: "OPN/NativeGeronimo",
+            sources: ["NativeNVSTGeronimoShim.mm"],
+            publicHeadersPath: "."
         ),
         .testTarget(
             name: "MacForceNowTests",

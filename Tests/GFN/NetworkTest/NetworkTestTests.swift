@@ -29,7 +29,7 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let request = try #require(NetworkTestRequestFactory.sessionRequest(accessToken: "access", payload: NetworkTestSessionRequestPayload(appId: 123, videoProfile: NetworkTestVideoProfile(width: 1280, height: 720, frameRate: 60))))
     #expect(request.url?.absoluteString == "https://prod.cloudmatchbeta.nvidiagrid.net/v2/nettestsession")
     #expect(request.httpMethod == "POST")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
     #expect(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix(NetworkTest.defaultUserAgent) == true)
     #expect(request.value(forHTTPHeaderField: "User-Agent")?.contains("Chrome/") == true)
@@ -51,12 +51,15 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     let result = NetworkTestResultParser.parse([
         "networkSessionId": "session",
         "zone": ["address": "zone.example", "name": "np-sjc-01"],
-        "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "status": "COMPLETED"],
+        "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "latencyMs": 42, "jitterMs": 7, "packetLossPercent": 0.4, "status": "COMPLETED"],
     ])
     #expect(result.sessionId == "session")
     #expect(result.zoneAddress == "zone.example")
     #expect(result.downlinkBandwidth == 55_000)
     #expect(result.maxPacketSize == 1_200)
+    #expect(result.latencyMilliseconds == 42)
+    #expect(result.jitterMilliseconds == 7)
+    #expect(result.packetLossPercent == 0.4)
     #expect(result.rawStatus == "COMPLETED")
     #expect(result.isCompleted)
 }

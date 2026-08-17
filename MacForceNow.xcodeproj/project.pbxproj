@@ -10,6 +10,10 @@
 		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
+		7729CE932FE2000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libBifrost2.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE942FE2000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libBifrost2.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		7729CE952FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGeronimo.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE962FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGeronimo.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		7729CE972FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE982FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		7729CE992FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE9A2FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000003 /* MacForceNowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* MacForceNowApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
@@ -23,6 +27,10 @@
 			dstSubfolderSpec = 10;
 			files = (
 				7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */,
+				7729CE932FE2000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libBifrost2.dylib in Embed Frameworks */,
+				7729CE952FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGeronimo.dylib in Embed Frameworks */,
+				7729CE972FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib in Embed Frameworks */,
+				7729CE992FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -30,9 +38,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		7729CE762FDEDAB300D5C9D5 /* MacForceNow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = MacForceNow.app; path = "MacForce Now Dev.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7729CE762FDEDAB300D5C9D5 /* MacForceNow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacForceNow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
+		7729CE942FE2000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libBifrost2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "vendor/gfn-runtime/Frameworks/libBifrost2.dylib"; sourceTree = "<group>"; };
+		7729CE962FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGeronimo.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "vendor/gfn-runtime/Frameworks/libGeronimo.dylib"; sourceTree = "<group>"; };
+		7729CE982FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib"; sourceTree = "<group>"; };
+		7729CE9A2FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "vendor/gfn-runtime/Frameworks/SDL2.framework"; sourceTree = "<group>"; };
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000004 /* MacForceNowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacForceNowApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -91,6 +103,10 @@
 				A00000000000000000000004 /* MacForceNowApp.swift */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
+				7729CE942FE2000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libBifrost2.dylib */,
+				7729CE962FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGeronimo.dylib */,
+				7729CE982FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib */,
+				7729CE9A2FE3000000D5C9D5 /* vendor/gfn-runtime/Frameworks/SDL2.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,7 +122,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		7729CE752FDEDAB300D5C9D5 /* MacForceNow */ = {
+		7729CE752FDEDAB300D5C9D5 /* MacForce Now */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7729CE832FDEDAB500D5C9D5 /* Build configuration list for PBXNativeTarget "MacForceNow" */;
 			buildPhases = (
@@ -166,7 +182,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				7729CE752FDEDAB300D5C9D5 /* MacForceNow */,
+				7729CE752FDEDAB300D5C9D5 /* MacForce Now */,
 			);
 		};
 /* End PBXProject section */
@@ -257,7 +273,6 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				WARNING_CFLAGS = "-Wno-umbrella-headers";
 			};
 			name = Debug;
 		};
@@ -316,7 +331,6 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				WARNING_CFLAGS = "-Wno-umbrella-headers";
 			};
 			name = Release;
 		};
@@ -328,50 +342,9 @@
 				CODE_SIGN_ENTITLEMENTS = MacForceNow.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 53;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 9AFR69495X;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)",
-				);
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "MacForceNow-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now Dev";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.5.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev";
-				PRODUCT_NAME = "MacForce Now Dev";
-				REGISTER_APP_GROUPS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Debug;
-		};
-		7729CE852FDEDAB500D5C9D5 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = MacForceNow.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 9AFR69495X;
+				DEVELOPMENT_TEAM = MPZW7ERR2D;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -390,8 +363,49 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.5.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now";
+				MARKETING_VERSION = 1.51;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.macforce-now;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7729CE852FDEDAB500D5C9D5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MacForceNow.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 53;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = MPZW7ERR2D;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "MacForceNow-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.51;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.macforce-now;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

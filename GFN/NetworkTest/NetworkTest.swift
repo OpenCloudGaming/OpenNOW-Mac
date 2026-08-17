@@ -186,7 +186,7 @@ public enum NetworkTestRequestFactory {
         request.setValue(configuration.userAgent, forHTTPHeaderField: "x-nv-client-identity")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "nv-client-identity")
         request.setValue("1.0", forHTTPHeaderField: "x-nv-client-version")
-        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
         request.httpBody = body
         return request
     }
@@ -235,13 +235,16 @@ public struct NetworkTestResult: Equatable, Sendable {
     public let threshold: NetworkTestThreshold
     public let downlinkBandwidth: Int
     public let maxPacketSize: Int
+    public let latencyMilliseconds: Int
+    public let jitterMilliseconds: Int
+    public let packetLossPercent: Double
     public let rawStatus: String
 
     public var isCompleted: Bool {
         rawStatus.caseInsensitiveCompare("COMPLETED") == .orderedSame || rawStatus.caseInsensitiveCompare("SUCCESS") == .orderedSame
     }
 
-    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, rawStatus: String = "") {
+    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, latencyMilliseconds: Int = -1, jitterMilliseconds: Int = -1, packetLossPercent: Double = -1, rawStatus: String = "") {
         self.sessionId = sessionId
         self.zoneAddress = zoneAddress
         self.zoneName = zoneName
@@ -250,6 +253,9 @@ public struct NetworkTestResult: Equatable, Sendable {
         self.threshold = threshold
         self.downlinkBandwidth = downlinkBandwidth
         self.maxPacketSize = maxPacketSize
+        self.latencyMilliseconds = latencyMilliseconds
+        self.jitterMilliseconds = jitterMilliseconds
+        self.packetLossPercent = packetLossPercent
         self.rawStatus = rawStatus
     }
 }
@@ -283,6 +289,9 @@ public enum NetworkTestResultParser {
             ),
             downlinkBandwidth: intValue(testResult["downlinkBandwidth"]) ?? intValue(testResult["downlink_bandwidth"]) ?? 0,
             maxPacketSize: intValue(testResult["maxPacketSize"]) ?? intValue(testResult["max_packet_size"]) ?? 0,
+            latencyMilliseconds: intValue(testResult["latencyMs"]) ?? intValue(testResult["latencyMS"]) ?? intValue(testResult["rttMs"]) ?? intValue(testResult["roundTripTimeMs"]) ?? -1,
+            jitterMilliseconds: intValue(testResult["jitterMs"]) ?? intValue(testResult["jitterMS"]) ?? intValue(testResult["networkJitterMs"]) ?? -1,
+            packetLossPercent: doubleValue(testResult["packetLossPercent"]) ?? doubleValue(testResult["packetLossPct"]) ?? doubleValue(testResult["packetLoss"]) ?? -1,
             rawStatus: stringValue(json["status"]) ?? stringValue(testResult["status"]) ?? stringValue(requestStatus["statusDescription"]) ?? ""
         )
     }
@@ -363,14 +372,30 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
             throw NetworkTestServiceError.invalidSessionURL
         }
         do {
-            let json = try await performJSONRequest(request)
-            let result = NetworkTestResultParser.parse(json)
-            lifecycle = lifecycle.finishing(result: result)
-            return result
+            for attempt in 0..<4 {
+                do {
+                    let json = try await performJSONRequest(request)
+                    let result = NetworkTestResultParser.parse(json)
+                    guard !result.sessionId.isEmpty, !result.connectionEndpoint.address.isEmpty else { throw NetworkTestServiceError.invalidJSONResponse }
+                    lifecycle = lifecycle.finishing(result: result)
+                    return result
+                } catch {
+                    guard attempt < 3, Self.isRetryable(error) else { throw error }
+                    try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                }
+            }
+            throw NetworkTestServiceError.invalidHTTPResponse
         } catch {
             lifecycle = lifecycle.failing(errorName: .failed)
             throw error
         }
+    }
+
+    private static func isRetryable(_ error: Error) -> Bool {
+        if let serviceError = error as? NetworkTestServiceError, case .httpStatus(let status) = serviceError {
+            return status == 408 || status == 502 || status == 504
+        }
+        return error is URLError
     }
 
     public func cancel() {

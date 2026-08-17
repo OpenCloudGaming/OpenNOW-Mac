@@ -1,35 +1,13 @@
 import AppKit
-import Combine
-import GameController
 import Foundation
 import SwiftUI
 
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
 public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
-public typealias WebRTCMediaBroadcastConfigurationProvider = @MainActor @Sendable (_ title: String, _ applicationID: String, _ width: Int, _ height: Int, _ fps: Int) -> WebRTCLiveBroadcastConfiguration?
-public typealias WebRTCMediaBroadcastStartCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String?
-public typealias WebRTCMediaBroadcastLiveVerificationCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> WebRTCMediaBroadcastLiveVerificationResult
-public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title: String, _ applicationID: String, _ description: String) async -> String
-public typealias WebRTCMediaTwitchChatSendCallback = @MainActor @Sendable (_ message: String) -> Void
-public typealias WebRTCMediaTwitchHealthRefreshCallback = @MainActor @Sendable () async -> Void
 public typealias WebRTCMediaAntiAFKStateChangeCallback = @MainActor @Sendable (_ enabled: Bool) -> Void
 public typealias WebRTCMediaVideoEnhancementChangeCallback = @MainActor @Sendable (_ mode: Int, _ sharpness: Int, _ denoise: Int) -> Void
 
-public struct WebRTCMediaTwitchChatMessage: Identifiable, Equatable, Sendable {
-    public let id: String
-    public let author: String
-    public let text: String
-    public let timestamp: Date
-
-    public init(id: String, author: String, text: String, timestamp: Date) {
-        self.id = id
-        self.author = author
-        self.text = text
-        self.timestamp = timestamp
-    }
-}
-
-private enum WebRTCMediaStreamTheme {
+enum WebRTCMediaStreamTheme {
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
     static let accentSoft = Color(red: 0.67, green: 1.0, blue: 0.36)
     static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
@@ -48,19 +26,18 @@ private enum WebRTCMediaStreamTheme {
     }
 }
 
-private extension Font {
+extension Font {
     static func streamNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
         MacForceNowNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
-private struct StreamHUDActionRow: View {
+struct StreamHUDActionRow: View {
     let title: String
     let subtitle: String
     let systemName: String
     let isActive: Bool
     let isDisabled: Bool
-    var isFocused = false
     let action: () -> Void
     @State private var isHovering = false
 
@@ -73,7 +50,7 @@ private struct StreamHUDActionRow: View {
                 .background(rowBackground)
                 .overlay {
                     Rectangle()
-                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+                        .stroke(isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider, lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -86,11 +63,6 @@ private struct StreamHUDActionRow: View {
         .help(subtitle.isEmpty ? title : "\(title): \(subtitle)")
     }
 
-    private var strokeColor: Color {
-        if isFocused { return WebRTCMediaStreamTheme.accent }
-        return isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider
-    }
-
     private var rowBackground: Color {
         if isActive { return WebRTCMediaStreamTheme.accent }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
@@ -101,142 +73,123 @@ private struct StreamHUDActionRow: View {
     }
 }
 
-private struct StreamHUDFocusEntry {
-    let id: String
-    let isDisabled: Bool
-    let action: () -> Void
-}
-
-private struct StreamQuitMenuButton: View {
+struct StreamUnifiedSidebar<Content: View>: View {
     let title: String
-    let isPrimary: Bool
-    let isFocused: Bool
-    let isDisabled: Bool
-    let action: () -> Void
-    @State private var isHovering = false
+    let closeAction: () -> Void
+    let content: Content
+
+    init(title: String, closeAction: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.closeAction = closeAction
+        self.content = content()
+    }
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .tracking(0.4)
-                .foregroundStyle(foregroundColor)
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(backgroundColor)
-                .overlay {
-                    Rectangle()
-                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Text(title)
+                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    Button(action: closeAction) {
+                        Image(systemName: "xmark")
+                            .font(.streamNvidia(size: 11, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.08))
+                            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Close stream HUD")
                 }
-                .contentShape(Rectangle())
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(WebRTCMediaStreamTheme.appBar)
+                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    content
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 14)
+                }
+                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+                Text(WebRTCMediaStreamCommand.shortcutGuide)
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+            }
+            .frame(width: WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) { Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(width: 1) }
+            .overlay(alignment: .top) { Rectangle().fill(WebRTCMediaStreamTheme.accent).frame(height: 2) }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.46 : 1)
-        .onHover { isHovering = $0 }
-    }
-
-    private var strokeColor: Color {
-        if isFocused { return WebRTCMediaStreamTheme.accent }
-        return isPrimary ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider
-    }
-
-    private var backgroundColor: Color {
-        if isPrimary { return WebRTCMediaStreamTheme.accent.opacity(isHovering ? 0.82 : 1) }
-        return Color.white.opacity(isHovering ? 0.14 : 0.075)
-    }
-
-    private var foregroundColor: Color {
-        if isPrimary { return .black.opacity(0.86) }
-        return .white.opacity(isHovering ? 0.94 : 0.82)
+        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
     }
 }
 
-/// Per-device gamepad edge tracking for HUD navigation. A plain class on
-/// purpose: mutating it from input callbacks must not invalidate the view.
-@MainActor
-private final class StreamHUDGamepadTracker {
-    var lastButtons: [InputDeviceID: GamepadButtons] = [:]
-    var lastStickStep: [InputDeviceID: Int] = [:]
+struct StreamHUDSection<Content: View>: View {
+    let label: String
+    let spacing: CGFloat
+    let content: Content
 
-    func reset() {
-        lastButtons.removeAll()
-        lastStickStep.removeAll()
+    init(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.spacing = spacing
+        self.content = content()
     }
-}
 
-public struct WebRTCMediaTwitchEventAlert: Identifiable, Equatable, Sendable {
-    public let id: String
-    public let title: String
-    public let message: String
-    public let timestamp: Date
-
-    public init(id: String, title: String, message: String, timestamp: Date) {
-        self.id = id
-        self.title = title
-        self.message = message
-        self.timestamp = timestamp
-    }
-}
-
-public struct WebRTCMediaTwitchOverlayState: Equatable, Sendable {
-    public var accountSummary: String
-    public var streamKeyAvailable: Bool
-    public var chatState: String
-    public var eventSubState: String
-    public var supportedAlertTypes: [String]
-    public var chatMessages: [WebRTCMediaTwitchChatMessage]
-    public var eventAlerts: [WebRTCMediaTwitchEventAlert]
-
-    public init(accountSummary: String = "Not connected", streamKeyAvailable: Bool = false, chatState: String = "Disconnected", eventSubState: String = "Disconnected", supportedAlertTypes: [String] = [], chatMessages: [WebRTCMediaTwitchChatMessage] = [], eventAlerts: [WebRTCMediaTwitchEventAlert] = []) {
-        self.accountSummary = accountSummary
-        self.streamKeyAvailable = streamKeyAvailable
-        self.chatState = chatState
-        self.eventSubState = eventSubState
-        self.supportedAlertTypes = supportedAlertTypes
-        self.chatMessages = chatMessages
-        self.eventAlerts = eventAlerts
-    }
-}
-
-public enum WebRTCMediaBroadcastLiveVerificationResult: Equatable, Sendable {
-    case verified(String)
-    case unavailable(String)
-    case notLive(String)
-
-    var message: String {
-        switch self {
-        case .verified(let message), .unavailable(let message), .notLive(let message): return message
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            content
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
     }
 }
 
-private enum WebRTCMediaBroadcastPreparationResult: Equatable, Sendable {
-    case completed(String?)
-    case unavailable
-    case timedOut
-}
+struct StreamHUDMetricCard: View {
+    let title: String
+    let value: String
+    let positive: Bool
 
-private actor WebRTCMediaBroadcastPreparationGate {
-    private var result: WebRTCMediaBroadcastPreparationResult?
-    private var continuation: CheckedContinuation<WebRTCMediaBroadcastPreparationResult, Never>?
-
-    func wait() async -> WebRTCMediaBroadcastPreparationResult {
-        if let result { return result }
-        return await withCheckedContinuation { continuation in
-            self.continuation = continuation
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
+                Text(title.uppercased())
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(value)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-    }
-
-    func resolve(_ result: WebRTCMediaBroadcastPreparationResult) {
-        guard self.result == nil else { return }
-        self.result = result
-        continuation?.resume(returning: result)
-        continuation = nil
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
     }
 }
 
-private struct WebRTCMediaSessionLimit: Equatable {
+struct StreamSessionSidebarLimit: Equatable {
     let startedAt: Date
     let durationSeconds: Int
 
@@ -264,18 +217,12 @@ public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
     private let sessionProvider: any StreamSessionProvider
     private let signaling: (any StreamSignalingChannel)?
-    private let broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider?
-    private let onBroadcastStart: WebRTCMediaBroadcastStartCallback?
-    private let onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback?
-    private let onStreamMarker: WebRTCMediaStreamMarkerCallback?
-    private let twitchOverlayState: WebRTCMediaTwitchOverlayState
-    private let onTwitchChatSend: WebRTCMediaTwitchChatSendCallback?
-    private let onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback?
     private let onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback?
     private let onVideoEnhancementChange: WebRTCMediaVideoEnhancementChangeCallback?
     private let preventDisplaySleep: Bool
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
+    private let sidebarCapabilities = StreamSidebarCapabilities.webRTC
 
     @State private var path: WebRTCStreamingPath?
     @State private var transport: NativeWebRTCTransport?
@@ -285,12 +232,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var unifiedHUDVisible = false
-    @State private var restorePointerLockOnHUDHide = false
-    @State private var twitchMarkerMessage = ""
-    @State private var twitchMarkerDraft = ""
-    @State private var twitchChatDraft = ""
     @State private var quitMenuVisible = false
-    @State private var showingControllerMapping = false
     @State private var isEndingStream = false
     @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
@@ -302,15 +244,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
-    @State private var broadcastStatus = WebRTCLiveBroadcastStatus.idle
-    @State private var isPreparingBroadcast = false
-    @State private var broadcastLiveVerified = false
-    @State private var broadcastVerificationMessage = ""
-    @State private var broadcastForcedFailureMessage = ""
-    @State private var broadcastVerificationUnavailable = false
     @State private var recordingNotificationTask: Task<Void, Never>?
-    @State private var broadcastNotificationTask: Task<Void, Never>?
-    @State private var broadcastVerificationTask: Task<Void, Never>?
     @State private var antiAFKMouseMovementTask: Task<Void, Never>?
     @State private var lastAcceptedStreamInputAt = Date()
     @State private var transientStreamMessage = ""
@@ -326,25 +260,11 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
-    @State private var controllerBatteries: [ControllerBatteryInfo] = []
-    @State private var batteryAlertThresholds: [String: Set<Int>] = [:]
-    @State private var hudFocusID: String?
-    @State private var quitMenuFocusIndex = 0
-    @State private var hudGamepadTracker = StreamHUDGamepadTracker()
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
-    private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
-    @State private var sessionLimit: WebRTCMediaSessionLimit?
+    @State private var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
                 signaling: (any StreamSignalingChannel)? = nil,
-                broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider? = nil,
-                onBroadcastStart: WebRTCMediaBroadcastStartCallback? = nil,
-                onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback? = nil,
-                onStreamMarker: WebRTCMediaStreamMarkerCallback? = nil,
-                twitchOverlayState: WebRTCMediaTwitchOverlayState = WebRTCMediaTwitchOverlayState(),
-                onTwitchChatSend: WebRTCMediaTwitchChatSendCallback? = nil,
-                onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback? = nil,
                 onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback? = nil,
                 onVideoEnhancementChange: WebRTCMediaVideoEnhancementChangeCallback? = nil,
                 preventDisplaySleep: Bool = true,
@@ -353,13 +273,6 @@ public struct WebRTCMediaStreamSurface: View {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.signaling = signaling
-        self.broadcastConfigurationProvider = broadcastConfigurationProvider
-        self.onBroadcastStart = onBroadcastStart
-        self.onBroadcastLiveVerification = onBroadcastLiveVerification
-        self.onStreamMarker = onStreamMarker
-        self.twitchOverlayState = twitchOverlayState
-        self.onTwitchChatSend = onTwitchChatSend
-        self.onTwitchHealthRefresh = onTwitchHealthRefresh
         self.onAntiAFKStateChange = onAntiAFKStateChange
         self.onVideoEnhancementChange = onVideoEnhancementChange
         self.preventDisplaySleep = preventDisplaySleep
@@ -372,6 +285,7 @@ public struct WebRTCMediaStreamSurface: View {
             NativeWebRTCStreamSurface { view in
                 nativeView = view
                 view.onPointerLockChanged = { locked in handlePointerLockChanged(locked) }
+                view.shouldHandleCommand = { _ in true }
                 view.onCommand = { command in
                     handle(command)
                 }
@@ -379,155 +293,124 @@ public struct WebRTCMediaStreamSurface: View {
                     startTask = Task { await startIfNeeded(nativeView: view) }
                 }
             }
-            hudChrome
-                .macForceNowInterfaceScale(uiScale)
+            if !isStreamReady { launchOverlay }
+            if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
+            if statsVisible { statsHUD }
+            if unifiedHUDVisible { unifiedHUD }
+            if isStreamReady { sessionLimitCountdownOverlay }
+            if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
+            if quitMenuVisible { quitMenu }
         }
         .background(Color.black)
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
         .onAppear {
             registerStreamLifecycle()
             refreshRemoteCoOpState()
-            refreshControllerBatteries()
         }
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
-        .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
-        .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
-        }
-    }
-
-    private func openControllerMapping() {
-        setUnifiedHUDVisible(false)
-        showingControllerMapping = true
-    }
-
-    @ViewBuilder
-    private var hudChrome: some View {
-        if !isStreamReady { launchOverlay }
-        if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
-        if statsVisible { statsHUD }
-        if unifiedHUDVisible { unifiedHUD }
-        if isStreamReady { sessionLimitCountdownOverlay }
-        if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
-        if quitMenuVisible { quitMenu }
     }
 
     private var statsHUD: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("STREAM STATS")
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.accent)
-            statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
-            statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
-            statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
-            statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
-            statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
-            statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
-            statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
-            statsRow("Drops", String(latestStats?.framesDropped ?? 0))
-            statsRow("Frame Δ", formatted(latestStats?.videoFrameIntervalMs, suffix: " ms"))
-            statsRow("Max Δ", formatted(latestStats?.videoMaxFrameIntervalMs, suffix: " ms"))
-            statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
-            statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+            HStack(spacing: 0) {
+                statsCompactBox(value: "--", label: "FPS", color: WebRTCMediaStreamTheme.textPrimary)
+                statsVerticalDivider
+                statsCompactBox(value: wholeNumber(latestStats?.renderFps), label: "FPS", color: fpsColor)
+                statsVerticalDivider
+                statsCompactBox(value: wholeNumber(latestStats?.latencyMs), label: "MS", color: latencyColor)
+            }
+            .frame(height: 48)
+
+            statsHorizontalDivider
+
+            VStack(alignment: .leading, spacing: 5) {
+                statsStandardRow(label: "Frame Loss", value: String(latestStats?.framesDropped ?? 0), detail: "(0 Total)", color: frameLossColor)
+                statsStandardRow(label: "Packet Loss", value: percentage(latestStats?.packetLossPercent), detail: packetLossTotalText, color: packetLossColor)
+                statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Server Location", value: "--", detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+            }
         }
-        .font(.streamNvidia(size: 11, weight: .medium))
-        .padding(14)
-        .frame(width: 252, alignment: .leading)
-        .background(WebRTCMediaStreamTheme.panel.opacity(0.92))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 12)
-        .padding(.top, 22)
-        .padding(.trailing, 22)
+        .padding(10)
+        .frame(width: 244, alignment: .topLeading)
+        .background(Color.black.opacity(0.90))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(WebRTCMediaStreamTheme.accent)
+                .frame(height: 2)
+        }
+        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+        .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
+        .padding(.top, 5)
+        .padding(.trailing, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(false)
+    }
+
+    private func statsCompactBox(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.streamNvidia(size: 22, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+            Text(label)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.055))
+    }
+
+    private var statsVerticalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(width: 1)
+            .padding(.vertical, 4)
+    }
+
+    private var statsHorizontalDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.18))
+            .frame(height: 1)
+    }
+
+    private func statsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            if let detail {
+                Text(detail)
+                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
     }
 
     private var unifiedHUD: some View {
-        GeometryReader { proxy in
-            let dockWidth = WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width)
-            VStack(alignment: .leading, spacing: 0) {
-                hudDockHeader
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        hudStatusPanel
-                        hudControlsPanel
-                        hudInputPanel
-                        hudNetworkPanel
-                        hudStatsPanel
-                        if broadcastConfigurationProvider != nil || twitchOverlayState.streamKeyAvailable || broadcastStatus.isBroadcasting {
-                            hudBroadcastPanel
-                        }
-                        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-                            hudRemoteCoOpPanel
-                        }
-                        hudVideoPanel
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
+        StreamUnifiedSidebar(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, closeAction: { setUnifiedHUDVisible(false) }) {
+            VStack(alignment: .leading, spacing: 14) {
+                hudStatusPanel
+                hudControlsPanel
+                hudNetworkPanel
+                if sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+                    hudRemoteCoOpPanel
                 }
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                hudShortcutFooter
+                hudVideoPanel
             }
-            .frame(width: dockWidth, height: proxy.size.height, alignment: .topLeading)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(width: 1)
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
-                    .frame(height: 2)
-            }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-    }
-
-    private var hudDockHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("GFN")
-                        .font(.streamNvidia(size: 11, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                    Text("HUD")
-                        .font(.streamNvidia(size: 20, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Button(action: { setUnifiedHUDVisible(false) }) {
-                    Image(systemName: "xmark")
-                        .font(.streamNvidia(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.08))
-                        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close stream HUD")
-            }
-
-            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                .font(.streamNvidia(size: 13, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
-        .background(WebRTCMediaStreamTheme.appBar)
     }
 
     private var hudStatusPanel: some View {
@@ -543,46 +426,6 @@ public struct WebRTCMediaStreamSurface: View {
             if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
                 hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
             }
-            ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
-                hudBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
-            }
-        }
-    }
-
-    private func hudBatteryCard(label: String, level: Int, charging: Bool) -> some View {
-        let displayValue = level >= 0 ? "\(level)%" : "—"
-        let isLow = level >= 0 && level <= 20
-        let iconName = charging ? "bolt.fill" : batteryIconName(for: level)
-        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
-        return VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: iconName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(iconColor)
-                Text(label.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.46))
-            }
-            Text(displayValue)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
-    }
-
-    private func batteryIconName(for level: Int) -> String {
-        switch level {
-        case 90...: return "battery.100percent"
-        case 60..<90: return "battery.75percent"
-        case 30..<60: return "battery.50percent"
-        case 15..<30: return "battery.25percent"
-        default: return "battery.0percent"
         }
     }
 
@@ -617,30 +460,6 @@ public struct WebRTCMediaStreamSurface: View {
         .accessibilityHidden(true)
     }
 
-    private var hudShortcutFooter: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "clock")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                Text(Date(), style: .time)
-                    .font(.streamNvidia(size: 11, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                    .lineLimit(1)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(Date(), style: .time))
-            Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 9)
-    }
-
     private var hudControlsPanel: some View {
         hudSection(label: "CONTROLS", spacing: 8) {
             HStack(spacing: 8) {
@@ -649,8 +468,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: microphoneStatusText,
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
-                    isDisabled: runtimeSettings.microphoneMode == "disabled",
-                    isFocused: hudFocusID == "microphone",
+                    isDisabled: !sidebarCapabilities.supports(.microphone) || runtimeSettings.microphoneMode == "disabled",
                     action: toggleMicrophone
                 )
                 StreamHUDActionRow(
@@ -658,8 +476,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: recordingStatusText,
                     systemName: "record.circle",
                     isActive: recordingStatus.isRecording,
-                    isDisabled: !isStreamReady || recordingIsBusy,
-                    isFocused: hudFocusID == "recording",
+                    isDisabled: !sidebarCapabilities.supports(.recording) || !isStreamReady || recordingIsBusy,
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
@@ -667,8 +484,7 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Active" : "Idle",
                     systemName: "cursorarrow.motionlines",
                     isActive: runtimeSettings.antiAFKMouseMovementEnabled,
-                    isDisabled: !isStreamReady,
-                    isFocused: hudFocusID == "anti-afk",
+                    isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isStreamReady,
                     action: toggleAntiAFKMouseMovement
                 )
                 StreamHUDActionRow(
@@ -676,61 +492,10 @@ public struct WebRTCMediaStreamSurface: View {
                     subtitle: "Detailed overlay",
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: statsVisible,
-                    isDisabled: false,
+                    isDisabled: !sidebarCapabilities.supports(.floatingStats),
                     action: toggleStatsHUD
                 )
             }
-        }
-    }
-
-    private var hudInputPanel: some View {
-        hudSection(label: "INPUT", spacing: 8) {
-            HStack(spacing: 8) {
-                StreamHUDActionRow(
-                    title: "Paste Clipboard",
-                    subtitle: "Send text to stream",
-                    systemName: "doc.on.clipboard",
-                    isActive: false,
-                    isDisabled: !clipboardTextAvailable || !isStreamReady,
-                    action: pasteClipboardIntoStream
-                )
-                StreamHUDActionRow(
-                    title: pointerLocked ? "Release Mouse" : "Capture Mouse",
-                    subtitle: pointerLocked ? "Pointer locked" : "Click stream also captures",
-                    systemName: pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
-                    isActive: pointerLocked,
-                    isDisabled: !isStreamReady || !runtimeSettings.directMouseInput,
-                    action: togglePointerLockFromHUD
-                )
-                StreamHUDActionRow(
-                    title: "Toggle Full Screen",
-                    subtitle: "Window full screen",
-                    systemName: "arrow.up.left.and.arrow.down.right",
-                    isActive: nativeView?.window?.styleMask.contains(.fullScreen) == true,
-                    isDisabled: nativeView?.window == nil,
-                    action: toggleFullScreenFromHUD
-                )
-                StreamHUDActionRow(
-                    title: "Controller Mapping",
-                    subtitle: "Steam Controller grip binds",
-                    systemName: "gamecontroller",
-                    isActive: false,
-                    isDisabled: false,
-                    isFocused: hudFocusID == "controller-mapping",
-                    action: openControllerMapping
-                )
-                StreamHUDActionRow(
-                    title: "Quit Menu",
-                    subtitle: "End session",
-                    systemName: "power",
-                    isActive: false,
-                    isDisabled: false,
-                    isFocused: hudFocusID == "quit",
-                    action: { showQuitMenu() }
-                )
-            }
-            settingsRow("Mouse", pointerLocked ? "Captured" : (runtimeSettings.directMouseInput ? "Available" : "Relative input off"))
-            settingsRow("Clipboard", clipboardTextAvailable ? "Ready" : "Empty")
         }
     }
 
@@ -746,54 +511,6 @@ public struct WebRTCMediaStreamSurface: View {
                     .font(.streamNvidia(size: 11, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.warning)
                     .lineLimit(2)
-            }
-        }
-    }
-
-    private var hudBroadcastPanel: some View {
-        hudSection(label: "BROADCAST", spacing: 8) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    hudMetricCard(title: "Twitch", value: broadcastSummaryText, positive: broadcastStatus.isLive)
-                    hudMetricCard(title: "Chat", value: twitchOverlayState.chatState, positive: twitchOverlayState.chatState.localizedCaseInsensitiveContains("connected"))
-                }
-                HStack(spacing: 8) {
-                    StreamHUDActionRow(
-                        title: broadcastStatus.isBroadcasting ? "Stop Broadcast" : "Start Broadcast",
-                        subtitle: twitchStatusText,
-                        systemName: broadcastStatus.isBroadcasting ? "stop.circle" : "dot.radiowaves.left.and.right",
-                        isActive: broadcastStatus.isBroadcasting,
-                        isDisabled: isPreparingBroadcast || broadcastConfigurationProvider == nil || !isStreamReady,
-                        action: toggleBroadcast
-                    )
-                    StreamHUDActionRow(
-                        title: "Refresh Twitch",
-                        subtitle: twitchOverlayState.accountSummary,
-                        systemName: "arrow.clockwise",
-                        isActive: false,
-                        isDisabled: onTwitchHealthRefresh == nil,
-                        action: { Task { @MainActor in await onTwitchHealthRefresh?() } }
-                    )
-                    StreamHUDActionRow(
-                        title: "Create Marker",
-                        subtitle: broadcastStatus.isLive ? "Bookmark current moment" : "Go live first",
-                        systemName: "bookmark.fill",
-                        isActive: false,
-                        isDisabled: !broadcastStatus.isLive || onStreamMarker == nil,
-                        action: createTwitchMarker
-                    )
-                    Spacer(minLength: 0)
-                }
-                Text(twitchStatusText)
-                    .font(.streamNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                    .lineLimit(3)
-                if !twitchMarkerMessage.isEmpty {
-                    Text(twitchMarkerMessage)
-                        .font(.streamNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                        .lineLimit(2)
-                }
             }
         }
     }
@@ -828,7 +545,6 @@ public struct WebRTCMediaStreamSurface: View {
                         systemName: remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
                         isActive: remoteCoOpSnapshot.invite != nil,
                         isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
-                        isFocused: hudFocusID == "coop-invite",
                         action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
                     )
                     if remoteCoOpSnapshot.invite != nil {
@@ -838,7 +554,6 @@ public struct WebRTCMediaStreamSurface: View {
                             systemName: "doc.on.doc",
                             isActive: false,
                             isDisabled: false,
-                            isFocused: hudFocusID == "coop-copy",
                             action: copyRemoteCoOpInvite
                         )
                     }
@@ -885,17 +600,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func hudSection<Content: View>(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            Text(label)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            content()
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        StreamHUDSection(label: label, spacing: spacing, content: content)
     }
 
     private func participantIconButton(systemName: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -953,24 +658,6 @@ public struct WebRTCMediaStreamSurface: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 
-    private var hudStatsPanel: some View {
-        hudSection(label: "STATS") {
-            VStack(alignment: .leading, spacing: 8) {
-                statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
-                statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
-                statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
-                statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
-                statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
-                statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
-                statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
-                statsRow("Drops", String(latestStats?.framesDropped ?? 0))
-                statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
-                statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
-                statsRow("Decoded", latestStats?.videoEnhancementSourceResolution.isEmpty == false ? latestStats?.videoEnhancementSourceResolution ?? "-" : "-")
-            }
-        }
-    }
-
     private var hudVideoPanel: some View {
         hudSection(label: "VIDEO") {
             VStack(alignment: .leading, spacing: 10) {
@@ -982,24 +669,10 @@ public struct WebRTCMediaStreamSurface: View {
                 .font(.streamNvidia(size: 12, weight: .medium))
                 .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!isStreamReady)
+                .disabled(!sidebarCapabilities.supports(.videoEnhancement) || !isStreamReady)
                 if runtimeSettings.upscalingMode != 0 {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
-                }
-                Picker("Pillarbox Fill", selection: Binding(get: { runtimeSettings.pillarboxFillMode }, set: { updateVideoEnhancement(pillarboxFillMode: $0) })) {
-                    ForEach(OPNPillarboxFillMode.allCases, id: \.rawValue) { fill in
-                        Text(fill.label).tag(fill.rawValue)
-                    }
-                }
-                .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.menu)
-                .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!isStreamReady)
-                if OPNPillarboxFillMode.from(runtimeSettings.pillarboxFillMode).usesDim {
-                    videoStepperRow("Fill Dim", value: runtimeSettings.pillarboxFillDim, range: 0...100, step: 5) { value in
-                        updateVideoEnhancement(pillarboxFillDim: value)
-                    }
                 }
                 settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
                 settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "Display")
@@ -1009,78 +682,8 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private var hudTwitchPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                twitchMetricCard(title: "Account", value: twitchOverlayState.accountSummary, positive: twitchOverlayState.streamKeyAvailable)
-                twitchMetricCard(title: "Chat", value: twitchOverlayState.chatState, positive: twitchOverlayState.chatState.localizedCaseInsensitiveContains("connected"))
-                twitchMetricCard(title: "Events", value: twitchOverlayState.eventSubState, positive: twitchOverlayState.eventSubState.localizedCaseInsensitiveContains("connected"))
-            }
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("BROADCAST")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.52))
-                    Text(twitchStatusText)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(4)
-                    HStack(spacing: 10) {
-                        twitchSecondaryActionButton(title: "Refresh", systemName: "arrow.clockwise") {
-                            Task { @MainActor in await onTwitchHealthRefresh?() }
-                        }
-                    }
-                    Text("Chat and event alerts are shown here inside the unified HUD.")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.54))
-                }
-                .frame(width: 210, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("MARKERS")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.52))
-                    TextField("Describe this moment", text: $twitchMarkerDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .frame(height: 34)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    HStack(spacing: 6) {
-                        ForEach(["Highlight", "Clutch", "Boss", "Bug"], id: \.self) { preset in
-                            Button(preset) { createTwitchMarker(description: preset) }
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.86))
-                                .padding(.horizontal, 8)
-                                .frame(height: 26)
-                                .background(.white.opacity(0.08), in: Capsule())
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    HStack(spacing: 10) {
-                        twitchSecondaryActionButton(title: "Create Marker", systemName: "bookmark.fill", action: createTwitchMarker)
-                        if !twitchMarkerMessage.isEmpty {
-                            Text(twitchMarkerMessage)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.62))
-                                .lineLimit(2)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            HStack(alignment: .top, spacing: 14) {
-                twitchChatPanel
-                twitchEventsPanel
-            }
-        }
-        .padding(12)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
     private func hudMetricCard(title: String, value: String, positive: Bool) -> some View {
-        twitchMetricCard(title: title, value: value, positive: positive)
+        StreamHUDMetricCard(title: title, value: value, positive: positive)
     }
 
     private var launchOverlay: some View {
@@ -1112,245 +715,58 @@ public struct WebRTCMediaStreamSurface: View {
             Rectangle()
                 .fill(.black.opacity(0.54))
                 .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("STREAM PAUSED")
-                        .font(.streamNvidia(size: 10, weight: .bold))
-                        .tracking(1.1)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                        .font(.streamNvidia(size: 20, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .padding(.horizontal, 22)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(WebRTCMediaStreamTheme.appBar)
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
-                    .frame(height: 1)
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                        .font(.streamNvidia(size: 12, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        StreamQuitMenuButton(
-                            title: "Resume",
-                            isPrimary: true,
-                            isFocused: quitMenuFocusIndex == 0,
-                            isDisabled: isEndingStream,
-                            action: dismissQuitMenu
-                        )
-                        .keyboardShortcut(.cancelAction)
-                        StreamQuitMenuButton(
-                            title: "Pause Stream",
-                            isPrimary: false,
-                            isFocused: quitMenuFocusIndex == 1,
-                            isDisabled: isEndingStream,
-                            action: pauseFromQuitMenu
-                        )
-                        StreamQuitMenuButton(
-                            title: isEndingStream ? "Quitting..." : "Quit",
-                            isPrimary: false,
-                            isFocused: quitMenuFocusIndex == 2,
-                            isDisabled: isEndingStream,
-                            action: quitStreamFromMenu
-                        )
-                    }
-                }
-                .padding(18)
-            }
-            .frame(width: 440)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-            .overlay {
-                Rectangle()
-                    .stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1)
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
-                    .frame(height: 2)
-            }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
-        }
-    }
-
-    private var twitchPanelBackground: some ShapeStyle {
-        LinearGradient(colors: [.black.opacity(0.86), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.86)], startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-
-    private var twitchLiveBadge: some View {
-        let live = broadcastStatus.isLive
-        return HStack(spacing: 7) {
-            Circle().fill(live ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent).frame(width: 8, height: 8)
-            Text(live ? "LIVE" : (broadcastStatus.isBroadcasting ? "PUBLISHING" : "READY"))
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(.white.opacity(0.10), in: Capsule())
-    }
-
-    private var twitchChatPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("CHAT")
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.52))
-                Spacer()
-                Text(twitchOverlayState.chatState)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .lineLimit(1)
-            }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        if twitchOverlayState.chatMessages.isEmpty {
-                            Text("Waiting for Twitch chat messages.")
-                                .foregroundStyle(.white.opacity(0.48))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        }
-                        ForEach(twitchOverlayState.chatMessages.suffix(18)) { message in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(message.author)
-                                    .font(.system(size: 10, weight: .black, design: .rounded))
-                                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                                Text(message.text)
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.82))
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .id(message.id)
-                        }
-                    }
-                }
-                .onChange(of: twitchOverlayState.chatMessages.last?.id) { _, id in
-                    if let id { proxy.scrollTo(id, anchor: .bottom) }
-                }
-            }
-            .frame(height: 168)
-            HStack(spacing: 8) {
-                TextField("Send a message", text: $twitchChatDraft)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+            VStack(spacing: 18) {
+                Text("STREAM PAUSED")
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .tracking(2.4)
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Button("Send") {
-                    let message = twitchChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !message.isEmpty else { return }
-                    onTwitchChatSend?(message)
-                    twitchChatDraft = ""
-                }
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(.black)
-                .frame(width: 54, height: 34)
-                .background(WebRTCMediaStreamTheme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-        .frame(width: 286, alignment: .leading)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var twitchEventsPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("EVENTS")
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.52))
-                Spacer()
-                Text("\(twitchOverlayState.supportedAlertTypes.count) active")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.58))
-            }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    if twitchOverlayState.eventAlerts.isEmpty {
-                        Text(twitchOverlayState.supportedAlertTypes.isEmpty ? "No supported alert subscriptions yet." : "Waiting for Twitch events.")
-                            .foregroundStyle(.white.opacity(0.48))
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                HStack(spacing: 12) {
+                    Button(action: dismissQuitMenu) {
+                        Text("Resume")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.black)
+                            .frame(width: 112, height: 44)
+                            .background(WebRTCMediaStreamTheme.accent, in: Capsule())
                     }
-                    ForEach(twitchOverlayState.eventAlerts.suffix(12)) { alert in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(alert.title)
-                                .font(.system(size: 11, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-                            Text(alert.message)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.68))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(9)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(WebRTCMediaStreamTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isEndingStream)
+                    Button(action: pauseFromQuitMenu) {
+                        Text("Pause Stream")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(width: 112, height: 44)
+                            .background(.white.opacity(0.11), in: Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isEndingStream)
+                    Button(action: quitStreamFromMenu) {
+                        Text(isEndingStream ? "Quitting..." : "Quit")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(width: 112, height: 44)
+                            .background(.white.opacity(0.11), in: Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isEndingStream)
                 }
             }
-            .frame(height: 214)
+            .padding(32)
+            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
+            .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func twitchMetricCard(title: String, value: String, positive: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
-                Text(title.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.46))
-            }
-            Text(value)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
-    }
-
-    private func twitchPrimaryActionButton(title: String, color: Color, foregroundColor: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title.uppercased())
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(foregroundColor)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(color.opacity(isPreparingBroadcast ? 0.58 : 0.96))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func twitchSecondaryActionButton(title: String, systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: systemName)
-                    .font(.streamNvidia(size: 11, weight: .bold))
-                Text(title)
-                    .font(.streamNvidia(size: 11, weight: .bold))
-            }
-            .foregroundStyle(.white.opacity(0.88))
-            .padding(.horizontal, 10)
-            .frame(height: 40)
-            .background(Color.white.opacity(0.09))
-            .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
-        }
-        .buttonStyle(.plain)
     }
 
     private var recordingIsBusy: Bool {
@@ -1379,6 +795,54 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private var fpsColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestStats.renderFps >= 55 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private var latencyColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        if latestStats.latencyMs >= 120 { return WebRTCMediaStreamTheme.danger }
+        if latestStats.latencyMs >= 90 { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
+    private var frameLossColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        return latestStats.framesDropped == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+    }
+
+    private var packetLossColor: Color {
+        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
+        if latestStats.packetLossPercent >= 2 { return WebRTCMediaStreamTheme.danger }
+        if latestStats.packetLossPercent >= 1 { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
+    private var packetLossTotalText: String {
+        "(\(latestStats?.packetsLost ?? 0) Total)"
+    }
+
+    private func wholeNumber(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.0f", value)
+    }
+
+    private func percentage(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.1f%%", value)
+    }
+
+    private func megabits(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "--" }
+        return String(format: "%.1f", value)
+    }
+
+    private func nonEmpty(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "--" }
+        return value
+    }
+
     private func sessionLimitHUDText(at date: Date) -> String {
         guard let sessionLimit else { return "Unlimited" }
         return sessionLimitDurationText(sessionLimit.remainingSeconds(at: date))
@@ -1399,18 +863,6 @@ public struct WebRTCMediaStreamSurface: View {
         let minutes = clamped / 60
         let remainingSeconds = clamped % 60
         return "\(minutes):\(String(format: "%02d", remainingSeconds))"
-    }
-
-    private var broadcastSummaryText: String {
-        if isPreparingBroadcast { return "Preparing" }
-        switch broadcastStatus {
-        case .idle: return "Idle"
-        case .connecting: return "Connecting"
-        case .publishing: return "Publishing"
-        case .live: return "Live"
-        case .stopping: return "Stopping"
-        case .failed: return "Failed"
-        }
     }
 
     private var remoteCoOpSummaryText: String {
@@ -1447,20 +899,6 @@ public struct WebRTCMediaStreamSurface: View {
             return invite.isExpired ? "Refresh" : invite.code
         }
         return "Create + copy"
-    }
-
-    private var twitchStatusText: String {
-        if isPreparingBroadcast { return "Updating Twitch title and category before publishing." }
-        switch broadcastStatus {
-        case .idle: return "Ready"
-        case .connecting: return "Connecting"
-        case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-            let detail = broadcastVerificationMessage.isEmpty ? "Twitch API confirmation pending; RTMP is publishing." : broadcastVerificationMessage
-            return "Publishing \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops · \(detail)"
-        case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps): return "Live \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops"
-        case .stopping: return "Stopping"
-        case .failed(let message): return message
-        }
     }
 
     private func refreshRemoteCoOpState() {
@@ -1667,199 +1105,18 @@ public struct WebRTCMediaStreamSurface: View {
         return neutralEvents
     }
 
-    private func twitchPanelRow(_ label: String, _ value: String) -> some View {
-        HStack(spacing: 12) {
-            Text(label).foregroundStyle(.white.opacity(0.54))
-            Spacer(minLength: 8)
-            Text(value)
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-
     private func toggleUnifiedHUD() {
         setUnifiedHUDVisible(!unifiedHUDVisible)
         WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
     }
 
-    private var hudFocusEntries: [StreamHUDFocusEntry] {
-        var entries: [StreamHUDFocusEntry] = [
-            StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
-            StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
-            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
-            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
-            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
-        ]
-        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-            entries.append(StreamHUDFocusEntry(
-                id: "coop-invite",
-                isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
-                action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
-            ))
-            if remoteCoOpSnapshot.invite != nil {
-                entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
-            }
-        }
-        return entries
-    }
-
-    private func handleHUDGamepad(_ state: GamepadState) {
-        guard let step = gamepadNavigationStep(state) else { return }
-        switch step {
-        case .move(let delta):
-            moveHUDFocus(by: delta)
-        case .activate:
-            let entries = hudFocusEntries
-            if let entry = entries.first(where: { $0.id == hudFocusID }) ?? entries.first(where: { !$0.isDisabled }) {
-                entry.action()
-            }
-        case .back:
-            setUnifiedHUDVisible(false)
-        }
-    }
-
-    private func moveHUDFocus(by step: Int) {
-        let entries = hudFocusEntries.filter { !$0.isDisabled }
-        guard !entries.isEmpty else { return }
-        guard let currentIndex = entries.firstIndex(where: { $0.id == hudFocusID }) else {
-            hudFocusID = entries.first?.id
-            return
-        }
-        let nextIndex = (currentIndex + step + entries.count) % entries.count
-        hudFocusID = entries[nextIndex].id
-    }
-
-    private func handleQuitMenuGamepad(_ state: GamepadState) {
-        guard let step = gamepadNavigationStep(state) else { return }
-        switch step {
-        case .move(let delta):
-            quitMenuFocusIndex = (quitMenuFocusIndex + delta + 3) % 3
-        case .activate:
-            switch quitMenuFocusIndex {
-            case 0: dismissQuitMenu()
-            case 1: pauseFromQuitMenu()
-            default: quitStreamFromMenu()
-            }
-        case .back:
-            dismissQuitMenu()
-        }
-    }
-
-    private enum GamepadNavigationStep {
-        case move(Int)
-        case activate
-        case back
-    }
-
-    private func gamepadNavigationStep(_ state: GamepadState) -> GamepadNavigationStep? {
-        let previousButtons = hudGamepadTracker.lastButtons[state.deviceID] ?? state.buttons
-        let pressed = state.buttons.subtracting(previousButtons)
-        hudGamepadTracker.lastButtons[state.deviceID] = state.buttons
-
-        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
-        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
-        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
-        let previousStickStep = hudGamepadTracker.lastStickStep[state.deviceID] ?? 0
-        hudGamepadTracker.lastStickStep[state.deviceID] = stickStep
-
-        if pressed.contains(.south) { return .activate }
-        if pressed.contains(.east) { return .back }
-        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
-        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
-        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
-        return nil
-    }
-
     private func setUnifiedHUDVisible(_ visible: Bool) {
-        unifiedHUDVisible = visible
-        hudGamepadTracker.reset()
-        guard visible else {
-            hudFocusID = nil
-            if restorePointerLockOnHUDHide {
-                restorePointerLockOnHUDHide = false
-                if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
-                    nativeView?.setPointerLocked(true)
-                }
-            }
-            return
+        if visible {
+            nativeView?.setPointerLocked(false)
+            unifiedHUDVisible = true
+        } else {
+            unifiedHUDVisible = false
         }
-        restorePointerLockOnHUDHide = pointerLocked
-        hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
-        nativeView?.setPointerLocked(false)
-    }
-
-    private func toggleBroadcast() {
-        guard !isPreparingBroadcast else {
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start.ignored", level: .info, message: "Twitch broadcast start ignored while metadata preparation is active.", attributes: ["applicationID": configuration.applicationID])
-            return
-        }
-        if broadcastStatus.isBroadcasting {
-            transport?.stopBroadcast()
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
-            return
-        }
-        guard let broadcastConfigurationProvider,
-              let broadcastConfiguration = broadcastConfigurationProvider(configuration.title, configuration.applicationID, runtimeSettings.resolutionWidth, runtimeSettings.resolutionHeight, runtimeSettings.fps) else {
-            broadcastStatus = .failed("Twitch is not ready. Connect Twitch in Settings.")
-            return
-        }
-        broadcastLiveVerified = false
-        broadcastVerificationMessage = ""
-        broadcastForcedFailureMessage = ""
-        broadcastVerificationUnavailable = false
-        broadcastVerificationTask?.cancel()
-        broadcastVerificationTask = nil
-        isPreparingBroadcast = true
-        twitchMarkerMessage = "Updating Twitch channel..."
-        Task { @MainActor in
-            switch await prepareBroadcastMetadata(title: configuration.title, applicationID: configuration.applicationID) {
-            case .completed(let message):
-                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.completed", level: .info, message: "Twitch broadcast metadata preparation completed.", attributes: ["applicationID": configuration.applicationID])
-                if let message, !message.isEmpty { twitchMarkerMessage = message }
-            case .unavailable:
-                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.unavailable", level: .info, message: "Twitch broadcast metadata preparation unavailable; publishing with existing Twitch settings.", attributes: ["applicationID": configuration.applicationID])
-            case .timedOut:
-                twitchMarkerMessage = "Twitch metadata update timed out; publishing with existing settings."
-                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.timeout", level: .warning, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
-            }
-            guard isPreparingBroadcast else { return }
-            isPreparingBroadcast = false
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.publish.start", level: .info, message: "Starting Twitch RTMP publisher after metadata preparation.", attributes: ["applicationID": configuration.applicationID])
-            transport?.startBroadcast(configuration: broadcastConfiguration)
-        }
-        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast metadata preparation started.", attributes: ["applicationID": configuration.applicationID])
-    }
-
-    private func prepareBroadcastMetadata(title: String, applicationID: String) async -> WebRTCMediaBroadcastPreparationResult {
-        guard let onBroadcastStart else { return .unavailable }
-        let gate = WebRTCMediaBroadcastPreparationGate()
-        let metadataTask = Task { await gate.resolve(.completed(onBroadcastStart(title, applicationID))) }
-        Task {
-            try? await Task.sleep(for: .seconds(6))
-            metadataTask.cancel()
-            await gate.resolve(.timedOut)
-        }
-        return await gate.wait()
-    }
-
-    private func createTwitchMarker() {
-        createTwitchMarker(description: twitchMarkerDraft.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    private func createTwitchMarker(description: String) {
-        guard broadcastStatus.isLive else {
-            twitchMarkerMessage = "Go live before creating a marker."
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
-            return
-        }
-        twitchMarkerMessage = "Creating marker..."
-        let markerDescription = description.nilIfEmpty ?? configuration.title.nilIfEmpty ?? "MacForce Now stream marker"
-        Task { @MainActor in
-            twitchMarkerMessage = await onStreamMarker?(configuration.title, configuration.applicationID, markerDescription) ?? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))"
-            twitchMarkerDraft = ""
-        }
-        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
     }
 
     private func toggleRecording() {
@@ -1893,18 +1150,6 @@ public struct WebRTCMediaStreamSurface: View {
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
     }
 
-    private func statsRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            Spacer()
-            Text(value)
-                .font(.streamNvidia(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-        }
-    }
-
     private func settingsRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
@@ -1919,13 +1164,13 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, step: Int = 1, action: @escaping (Int) -> Void) -> some View {
+    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, action: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamNvidia(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
-            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range, step: step) {
+            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range) {
                 Text(String(value))
                     .font(.streamNvidia(size: 11, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
@@ -1935,9 +1180,8 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-
-    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
-        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
+    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
+        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
         onVideoEnhancementChange?(runtimeSettings.upscalingMode, runtimeSettings.upscalingSharpness, runtimeSettings.upscalingDenoise)
         transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight, pillarboxFillMode: runtimeSettings.pillarboxFillMode, pillarboxFillDim: runtimeSettings.pillarboxFillDim, pillarboxFillColor: runtimeSettings.pillarboxFillColor)
         WebRTCMediaTelemetry.capture(
@@ -1952,11 +1196,6 @@ public struct WebRTCMediaStreamSurface: View {
                 "targetHeight": String(runtimeSettings.upscalingTargetHeight),
             ]
         )
-    }
-
-    private var clipboardTextAvailable: Bool {
-        guard let text = NSPasteboard.general.string(forType: .string) else { return false }
-        return !text.isEmpty
     }
 
     private var networkHealthText: String {
@@ -1983,29 +1222,6 @@ public struct WebRTCMediaStreamSurface: View {
     private func toggleStatsHUD() {
         statsVisible.toggle()
         WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
-    }
-
-    private func pasteClipboardIntoStream() {
-        guard isStreamReady, !isEndingStream, !didEndStream else { return }
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            showTransientStreamMessage("Clipboard is empty")
-            return
-        }
-        transport?.sendNow(.text(deviceID: "keyboard", value: text, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
-        lastAcceptedStreamInputAt = Date()
-        showTransientStreamMessage("Clipboard sent")
-        WebRTCMediaTelemetry.capture("webrtc.ui.clipboard.paste", level: .info, message: "Clipboard text sent to stream.", attributes: ["applicationID": configuration.applicationID, "characters": String(text.count)])
-    }
-
-    private func togglePointerLockFromHUD() {
-        guard isStreamReady, runtimeSettings.directMouseInput else { return }
-        nativeView?.setPointerLocked(!pointerLocked)
-    }
-
-    private func toggleFullScreenFromHUD() {
-        guard let window = nativeView?.window else { return }
-        window.toggleFullScreen(nil)
-        showTransientStreamMessage(window.styleMask.contains(.fullScreen) ? "Leaving full screen" : "Entering full screen")
     }
 
     private func formatted(_ value: Double?, suffix: String) -> String {
@@ -2038,21 +1254,7 @@ public struct WebRTCMediaStreamSurface: View {
         transport.onRecordingStatusChanged = { status in
             handleRecordingStatusChanged(status)
         }
-        transport.onBroadcastStatusChanged = { status in
-            handleBroadcastStatusChanged(status)
-        }
         nativeView.onInputEvent = { event in
-            if unifiedHUDVisible || quitMenuVisible, !isEndingStream, case .gamepad(let state) = event {
-                if quitMenuVisible {
-                    handleQuitMenuGamepad(state)
-                } else {
-                    handleHUDGamepad(state)
-                }
-                if isStreamReady {
-                    transport.sendNow(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
-                }
-                return
-            }
             switch inputAction(for: event) {
             case .send:
                 guard isStreamReady else { return }
@@ -2079,7 +1281,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             await MainActor.run {
-                sessionLimit = WebRTCMediaSessionLimit(session: session)
+                sessionLimit = StreamSessionSidebarLimit(session: session)
                 publishSessionLimitProgress()
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
                 microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
@@ -2098,7 +1300,11 @@ public struct WebRTCMediaStreamSurface: View {
             let message = Self.message(for: error)
             statusMessage = message
             endStreamingPerformanceMode()
-            onEnd(false, message, StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID]))
+            var metadata = ["applicationID": configuration.applicationID]
+            if let sessionError = error as? MacForceNowStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+                metadata.merge(conflict.reportMetadata) { current, _ in current }
+            }
+            onEnd(false, message, StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))
         }
     }
 
@@ -2121,7 +1327,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func applySessionLimitUpdate(_ update: StreamSessionLimitUpdate) {
-        guard let limit = WebRTCMediaSessionLimit(update: update) else { return }
+        guard let limit = StreamSessionSidebarLimit(update: update) else { return }
         sessionLimit = limit
         publishSessionLimitProgress()
         WebRTCMediaTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
@@ -2173,121 +1379,8 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func handleBroadcastStatusChanged(_ status: WebRTCLiveBroadcastStatus) {
-        broadcastNotificationTask?.cancel()
-        switch status {
-        case .connecting:
-            broadcastLiveVerified = false
-            broadcastVerificationMessage = ""
-            broadcastForcedFailureMessage = ""
-            broadcastVerificationUnavailable = false
-            broadcastVerificationTask?.cancel()
-            broadcastVerificationTask = nil
-            broadcastStatus = status
-        case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-            if broadcastLiveVerified {
-                broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
-            } else {
-                broadcastStatus = status
-                startBroadcastLiveVerification()
-            }
-        case .live:
-            broadcastLiveVerified = true
-            broadcastVerificationUnavailable = false
-            broadcastVerificationMessage = "Twitch confirmed this stream is live."
-            broadcastStatus = status
-        case .stopping:
-            guard broadcastForcedFailureMessage.isEmpty else { return }
-            broadcastStatus = status
-        case .idle:
-            broadcastVerificationTask?.cancel()
-            broadcastVerificationTask = nil
-            broadcastLiveVerified = false
-            broadcastVerificationMessage = ""
-            broadcastVerificationUnavailable = false
-            if !broadcastForcedFailureMessage.isEmpty {
-                let message = broadcastForcedFailureMessage
-                broadcastForcedFailureMessage = ""
-                broadcastStatus = .failed(message)
-                scheduleBroadcastTerminalReset(for: broadcastStatus)
-            } else {
-                broadcastStatus = status
-            }
-        case .failed:
-            broadcastVerificationTask?.cancel()
-            broadcastVerificationTask = nil
-            broadcastLiveVerified = false
-            broadcastVerificationUnavailable = false
-            broadcastStatus = status
-            scheduleBroadcastTerminalReset(for: status)
-        }
-    }
-
-    private func scheduleBroadcastTerminalReset(for status: WebRTCLiveBroadcastStatus) {
-        guard status.isTerminal else { return }
-        broadcastNotificationTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(4))
-            guard broadcastStatus == status else { return }
-            broadcastStatus = .idle
-            broadcastNotificationTask = nil
-        }
-    }
-
-    private func startBroadcastLiveVerification() {
-        guard !broadcastVerificationUnavailable else { return }
-        guard broadcastVerificationTask == nil else { return }
-        guard let onBroadcastLiveVerification else {
-            broadcastVerificationMessage = "Twitch API verification is unavailable."
-            broadcastVerificationUnavailable = true
-            return
-        }
-        broadcastVerificationMessage = "Checking Twitch live status."
-        broadcastVerificationTask = Task { @MainActor in
-            let title = configuration.title
-            let applicationID = configuration.applicationID
-            let result = await withTaskGroup(of: WebRTCMediaBroadcastLiveVerificationResult.self) { group in
-                group.addTask { await onBroadcastLiveVerification(title, applicationID) }
-                group.addTask {
-                    try? await Task.sleep(for: .seconds(8))
-                    return .unavailable("Twitch API verification timed out; RTMP is still publishing.")
-                }
-                let result = await group.next() ?? .unavailable("Twitch API verification is unavailable.")
-                group.cancelAll()
-                return result
-            }
-            guard !Task.isCancelled else { return }
-            broadcastVerificationTask = nil
-            broadcastVerificationMessage = result.message
-            switch result {
-            case .verified:
-                broadcastLiveVerified = true
-                if case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps) = broadcastStatus {
-                    broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
-                }
-            case .unavailable:
-                broadcastLiveVerified = false
-                broadcastVerificationUnavailable = false
-                if case .publishing = broadcastStatus {
-                    broadcastVerificationTask = Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(5))
-                        guard !Task.isCancelled else { return }
-                        broadcastVerificationTask = nil
-                        startBroadcastLiveVerification()
-                    }
-                } else {
-                    broadcastVerificationUnavailable = true
-                }
-            case .notLive(let message):
-                broadcastLiveVerified = false
-                broadcastVerificationUnavailable = false
-                broadcastForcedFailureMessage = message
-                transport?.stopBroadcast()
-                handleBroadcastStatusChanged(.failed(message))
-            }
-        }
-    }
-
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
+        if let mouse = mouseEvent(from: event), pointerLocked, isMouseButtonRelease(mouse) { return .send }
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
         if unifiedHUDVisible { return .drop }
@@ -2336,6 +1429,11 @@ public struct WebRTCMediaStreamSurface: View {
         return false
     }
 
+    private func isMouseButtonRelease(_ event: MouseEvent) -> Bool {
+        guard case .button(_, _, let isPressed, _) = event else { return false }
+        return !isPressed
+    }
+
     private func handle(_ command: WebRTCMediaStreamCommand) {
         switch command {
         case .toggleStatsHUD:
@@ -2370,7 +1468,7 @@ public struct WebRTCMediaStreamSurface: View {
         guard antiAFKMouseMovementTask == nil else { return }
         antiAFKMouseMovementTask = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: StreamAntiAFKInputPolicy.pollInterval)
                 guard !Task.isCancelled else { return }
                 sendAntiAFKMouseMovement()
             }
@@ -2379,14 +1477,14 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func sendAntiAFKMouseMovement() {
         guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let activeTransport = transport else { return }
-        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
-        let delta = Self.randomAntiAFKMouseDelta()
-        activeTransport.sendNow(Self.mouseMove(deltaX: delta.x, deltaY: delta.y))
+        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+        let delta = StreamAntiAFKInputPolicy.randomMouseDelta()
+        activeTransport.sendNow(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
             guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let transport else { return }
-            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
-            transport.sendNow(Self.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
+            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
+            transport.sendNow(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
         }
     }
 
@@ -2399,67 +1497,6 @@ public struct WebRTCMediaStreamSurface: View {
             transientStreamMessage = ""
             transientStreamMessageTask = nil
         }
-    }
-
-    private func refreshControllerBatteries() {
-        var batteries: [ControllerBatteryInfo] = []
-        let steamLevels = SteamControllerHIDMonitor.shared.batteryLevels
-        let steamCharging = SteamControllerHIDMonitor.shared.batteryCharging
-        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
-        for (index, deviceID) in activeIDs.enumerated() {
-            let level = steamLevels[deviceID].map { Int($0) } ?? -1
-            let charging = steamCharging[deviceID] ?? false
-            batteries.append(ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(index + 1)", level: level, charging: charging))
-        }
-        let nativeControllers = GCController.controllers().filter { $0.extendedGamepad != nil }
-        let steamCount = activeIDs.count
-        for (index, controller) in nativeControllers.enumerated() {
-            let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
-            let charging = controller.battery?.batteryState == .charging
-            batteries.append(ControllerBatteryInfo(id: "native-\(ObjectIdentifier(controller).hashValue)", label: "P\(steamCount + index + 1)", level: percent, charging: charging))
-        }
-        let sorted = batteries.sorted { $0.label < $1.label }
-        let relabeled = sorted.enumerated().map { index, info in
-            ControllerBatteryInfo(id: info.id, label: "P\(index + 1)", level: info.level, charging: info.charging)
-        }
-        checkBatteryAlerts(relabeled)
-        controllerBatteries = relabeled
-    }
-
-    private func checkBatteryAlerts(_ batteries: [ControllerBatteryInfo]) {
-        let thresholds = [20, 10, 5]
-        var currentIDs = Set<String>()
-        for battery in batteries {
-            currentIDs.insert(battery.id)
-            let level = battery.level
-            guard level >= 0 else { continue }
-            var fired = batteryAlertThresholds[battery.id] ?? []
-            for threshold in thresholds where level <= threshold && !fired.contains(threshold) {
-                fired.insert(threshold)
-                let severity = threshold <= 5 ? "critical" : "low"
-                showTransientStreamMessage("\(battery.label) \(severity) battery — \(level)%")
-            }
-            if level > 20 {
-                fired.removeAll()
-            }
-            batteryAlertThresholds[battery.id] = fired
-        }
-        for removedID in Set(batteryAlertThresholds.keys).subtracting(currentIDs) {
-            batteryAlertThresholds.removeValue(forKey: removedID)
-        }
-    }
-
-    private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
-        var x = Int16(Int.random(in: -5...5))
-        let y = Int16(Int.random(in: -5...5))
-        if x == 0 && y == 0 { x = 1 }
-        return (x, y)
-    }
-
-    private static let antiAFKIdleThresholdSeconds: TimeInterval = 210
-
-    private static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
-        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
     }
 
     private func toggleMicrophone() {
@@ -2497,8 +1534,6 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
-        quitMenuFocusIndex = 0
-        hudGamepadTracker.reset()
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }
@@ -2607,17 +1642,10 @@ public struct WebRTCMediaStreamSurface: View {
         antiAFKMouseMovementTask = nil
         recordingNotificationTask?.cancel()
         recordingNotificationTask = nil
-        broadcastNotificationTask?.cancel()
-        broadcastNotificationTask = nil
-        broadcastVerificationTask?.cancel()
-        broadcastVerificationTask = nil
         transientStreamMessageTask?.cancel()
         transientStreamMessageTask = nil
         transientStreamMessage = ""
-        controllerBatteries.removeAll()
-        batteryAlertThresholds.removeAll()
         sessionLimit = nil
-        isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
@@ -2693,12 +1721,12 @@ private struct StreamRuntimeSettings: Equatable {
     var upscalingSharpness = 10
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
-    var pillarboxFillMode = 0
-    var pillarboxFillDim = 55
-    var pillarboxFillColor = 0
     var recordingVideoBitrateMbps = 0
     var recordingAudioBitrateKbps = 160
     var recordingEnhancedVideoEnabled = true
+    var pillarboxFillMode = 0
+    var pillarboxFillDim = 55
+    var pillarboxFillColor = 0
 
     var upscalingModeLabel: String {
         switch upscalingMode {
@@ -2710,16 +1738,13 @@ private struct StreamRuntimeSettings: Equatable {
 
     init() {}
 
-    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil, pillarboxFillMode: Int? = nil, pillarboxFillDim: Int? = nil, pillarboxFillColor: Int? = nil) {
+    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
         if let mode {
             upscalingMode = Self.normalizedUpscalingMode(mode)
         }
         if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
         if let targetHeight { upscalingTargetHeight = targetHeight > 0 ? targetHeight : 2160 }
-        if let pillarboxFillMode { self.pillarboxFillMode = OPNPillarboxFillMode.from(pillarboxFillMode).rawValue }
-        if let pillarboxFillDim { self.pillarboxFillDim = min(max(pillarboxFillDim, 0), 100) }
-        if let pillarboxFillColor { self.pillarboxFillColor = pillarboxFillColor }
     }
 
     init(json: String?) {
@@ -2736,9 +1761,6 @@ private struct StreamRuntimeSettings: Equatable {
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
-        pillarboxFillMode = OPNPillarboxFillMode.from(Self.int(dictionary["pillarboxFillMode"], fallback: 0)).rawValue
-        pillarboxFillDim = Self.int(dictionary["pillarboxFillDim"], fallback: 55)
-        pillarboxFillColor = Self.packedColor(Self.string(dictionary["pillarboxFillColor"], fallback: "#000000"))
         upscalingMode = Self.normalizedUpscalingMode(Self.int(dictionary["upscalingMode"]))
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 10)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
@@ -2760,13 +1782,6 @@ private struct StreamRuntimeSettings: Equatable {
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) ?? fallback }
         return fallback
-    }
-
-    /// "#RRGGBB" to packed 0xRRGGBB, so the render path never parses a string.
-    private static func packedColor(_ hex: String) -> Int {
-        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        guard digits.count == 6, let value = Int(digits, radix: 16) else { return 0 }
-        return value
     }
 
     private static func bool(_ value: Any?, fallback: Bool = false) -> Bool {

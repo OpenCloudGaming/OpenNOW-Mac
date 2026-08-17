@@ -82,6 +82,10 @@ public final class NativeWebRTCGamepadMonitor {
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
 
+    public func refreshInputState() {
+        refreshControllerSlots()
+    }
+
     private func refreshControllerSlots() {
         let previousSteamSlots = pollState.steamControllerSlots
         let previousOccupiedSlots = Set(pollState.controllerSlots.values).union(pollState.steamControllerSlots.values)

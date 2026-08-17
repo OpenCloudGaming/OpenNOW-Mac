@@ -78,6 +78,86 @@ import Foundation
     }
 }
 
+@Test func streamCoordinatorNativeNVSTRejectsZeroApplicationIdBeforeNetworkWork() async {
+    let coordinator = MacForceNowStreamSessionCoordinator()
+    let configuration = StreamLaunchConfiguration(
+        title: "Invalid Native Launch",
+        applicationID: "0",
+        accessToken: "token",
+        accountLinked: true,
+        selectedStore: "Steam"
+    )
+
+    do {
+        _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
+        Issue.record("Expected native NVST coordinator to reject appId 0 before session allocation")
+    } catch let error as MacForceNowStreamSessionError {
+        #expect(error.errorDescription == "This game does not include a launchable GeForce NOW app id.")
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
+
+@Test func streamCoordinatorNativeNVSTRequiresNVSTTransportSelectionBeforeNetworkWork() async {
+    let originalTransportModeIndex = OPNStreamPreferences.loadProfile().transportModeIndex
+    OPNStreamPreferences.saveNVSTTransportEnabled(false)
+    defer { OPNStreamPreferences.saveTransportModeIndex(originalTransportModeIndex) }
+
+    let coordinator = MacForceNowStreamSessionCoordinator()
+    let configuration = StreamLaunchConfiguration(
+        title: "WebRTC Selected",
+        applicationID: "987654321",
+        accessToken: "",
+        accountLinked: true,
+        selectedStore: "Steam"
+    )
+
+    do {
+        _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
+        Issue.record("Expected native NVST coordinator to reject WebRTC transport selection")
+    } catch let error as MacForceNowStreamSessionError {
+        #expect(error.errorDescription == "Native NVST session requested while WebRTC transport is selected.")
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
+
+@Test func streamPreferencesFetchesNumericServerTypeFromServerInfo() async {
+    await networkTestIsolationLock.withLock {
+        let host = "native-server-type.example.test"
+        SessionManagerURLProtocol.install(host: host) { request in
+            #expect(request.url?.path == "/v2/serverInfo")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT token")
+            #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+            #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+            return SessionManagerURLProtocol.response(json: ["serverType": 5])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let serverType = try? await OPNStreamPreferences.fetchServerType(token: "token", streamingBaseUrl: "https://\(host)")
+
+        #expect(serverType == 5)
+        #expect(SessionManagerURLProtocol.recordedRequests(host: host).count == 1)
+    }
+}
+
+@Test func streamPreferencesRejectsNonnumericServerTypeFromServerInfo() async {
+    await networkTestIsolationLock.withLock {
+        let host = "invalid-native-server-type.example.test"
+        SessionManagerURLProtocol.install(host: host) { _ in
+            SessionManagerURLProtocol.response(json: ["serverType": "prod"])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        do {
+            let serverType = try await OPNStreamPreferences.fetchServerType(token: "token", streamingBaseUrl: "https://\(host)")
+            #expect(serverType == nil)
+        } catch {
+            Issue.record("Unexpected server-info request failure: \(error)")
+        }
+    }
+}
+
 @Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"
@@ -267,6 +347,52 @@ import Foundation
         #expect(resume.resumeSessionId == "active-session")
         #expect(resume.resumeServer == "control.example.test")
         #expect(replacement.resumeSessionId.isEmpty)
+        #expect(replacement.appId == "123")
+    } else {
+        Issue.record("Expected an active session plan")
+    }
+    }
+}
+
+@Test func gameLaunchBridgeDoesNotOfferResumeForInitializingSession() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "*"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 1,
+                "statusDescription": "SUCCESS",
+            ],
+            "sessions": [[
+                "sessionId": "initializing-session",
+                "status": 1,
+                "sessionRequestData": ["appId": 123],
+                "sessionControlInfo": ["ip": "control.example.test"],
+            ]],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
+        Task { @MainActor in
+            let game = OPNCatalogGameObject()
+            game.launchAppId = "123"
+            game.title = "Regression Game"
+            game.isInLibrary = true
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+                continuation.resume(returning: (success, message, plan))
+            }
+        }
+    }
+
+    let plan = try #require(result.2)
+    #expect(result.0 == true)
+    if case let .activeSession(active, resume, replacement) = plan {
+        #expect(active.id == "initializing-session")
+        #expect(resume.resumeSessionId.isEmpty)
+        #expect(resume.resumeServer.isEmpty)
         #expect(replacement.appId == "123")
     } else {
         Issue.record("Expected an active session plan")
@@ -986,6 +1112,47 @@ import Foundation
     }
 }
 
+@Test func sessionManagerPreservesRawSessionJSONForNativeNVST() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "raw-session-preserve.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host, extraSession: [
+            "tokenType": "JWT",
+            "token": "session-token",
+            "serverAddress": "rtsps://raw-session.example.test:443",
+            "streamingProfile": ["streamingProfileGuid": "profile-guid"],
+        ]))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["transportMode"] = "nvst"
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, info, error in
+            continuation.resume(returning: (success, info["rawSessionJSON"] as? String, error))
+        }
+    }
+
+    let rawSessionJSON = try #require(result.1)
+    let rawSessionData = try #require(rawSessionJSON.data(using: .utf8))
+    let rawSession = try #require(JSONSerialization.jsonObject(with: rawSessionData) as? [String: Any])
+    let streamingProfile = try #require(rawSession["streamingProfile"] as? [String: Any])
+
+    #expect(result.0 == true)
+    #expect(result.2.isEmpty)
+    #expect(rawSession["tokenType"] as? String == "JWT")
+    #expect(rawSession["token"] as? String == "session-token")
+    #expect(rawSession["serverAddress"] as? String == "rtsps://raw-session.example.test:443")
+    #expect(streamingProfile["streamingProfileGuid"] as? String == "profile-guid")
+    }
+}
+
 @Test func sessionManagerUsesBundleConnectionWhenVideoConnectionIsAbsent() async {
     await networkTestIsolationLock.withLock {
     let host = "bundle-media.example.test"
@@ -1126,7 +1293,7 @@ import Foundation
             getCount += 1
             let count = getCount
             lock.unlock()
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 6 : 2, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
         }
         if request.httpMethod == "PUT", path == "/v2/session/resume-session" {
             return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
@@ -1182,8 +1349,17 @@ import Foundation
 @Test func sessionManagerNVSTPausedResumeSendsNVSTClaimShape() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-nvst-success.example.test"
-    SessionManagerURLProtocol.install(host: host) { _ in
-        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    let lock = NSLock()
+    nonisolated(unsafe) var getCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "GET" {
+            lock.lock()
+            getCount += 1
+            let count = getCount
+            lock.unlock()
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
@@ -1214,13 +1390,44 @@ import Foundation
     }
 }
 
-@Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
+@Test func sessionManagerReadySessionSkipsRedundantResumeClaim() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-not-paused.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
-        let path = request.url?.path ?? ""
-        if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        #expect(request.httpMethod == "GET")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+            continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == true)
+    #expect(result.1 == true)
+    #expect(result.2.isEmpty)
+    #expect(requests.map(\.httpMethod) == ["GET"])
+    }
+}
+
+@Test func sessionManagerSessionNotPausedRacePollsConnectableSession() async {
+    await networkTestIsolationLock.withLock {
+    let host = "resume-not-paused-race.example.test"
+    let lock = NSLock()
+    nonisolated(unsafe) var getCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "GET" {
+            lock.lock()
+            getCount += 1
+            let count = getCount
+            lock.unlock()
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: [
             "requestStatus": [
@@ -1235,15 +1442,16 @@ import Foundation
     OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
-            continuation.resume(returning: (success, error))
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+            continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
         }
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    #expect(result.0 == false)
-    #expect(result.1 == "Session is not paused and cannot be resumed.")
-    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+    #expect(result.0 == true)
+    #expect(result.1 == true)
+    #expect(result.2.isEmpty)
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     }
 }
 
@@ -1326,6 +1534,96 @@ import Foundation
     }
 }
 
+@Test func sessionManagerSessionLimitReturnsActiveSessionForUserDecision() async {
+    await networkTestIsolationLock.withLock {
+    let host = "create-session-limit.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 11,
+                "statusDescription": "NVB_R_SESSION_LIMIT_REACHED",
+            ],
+            "otherUserSessions": [[
+                "sessionId": "active-session",
+                "status": 5,
+                "sessionRequestData": ["appId": 456],
+                "sessionControlInfo": ["ip": host],
+            ]],
+        ], status: 400)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
+            continuation.resume(returning: (
+                success,
+                info["isSessionLimitConflict"] as? Bool ?? false,
+                info["sessionId"] as? String ?? "",
+                info["appId"] as? Int ?? 0,
+                info["serverIp"] as? String ?? "",
+                info["isResumable"] as? Bool ?? false,
+                error
+            ))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1)
+    #expect(result.2 == "active-session")
+    #expect(result.3 == 456)
+    #expect(result.4 == host)
+    #expect(result.5)
+    #expect(result.6.contains("Resume it or end it"))
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["POST"])
+    }
+}
+
+@Test func sessionManagerSessionLimitDoesNotOfferResumeForInitializingSession() async {
+    await networkTestIsolationLock.withLock {
+    let host = "create-initializing-session-limit.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 11,
+                "statusDescription": "NVB_R_SESSION_LIMIT_REACHED",
+            ],
+            "otherUserSessions": [[
+                "sessionId": "initializing-session",
+                "status": 1,
+                "sessionRequestData": ["appId": 456],
+                "sessionControlInfo": ["ip": host],
+            ]],
+        ], status: 400)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
+            continuation.resume(returning: (
+                success,
+                info["isSessionLimitConflict"] as? Bool ?? false,
+                info["isResumable"] as? Bool ?? false,
+                error
+            ))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1)
+    #expect(!result.2)
+    #expect(!result.3.contains("Resume"))
+    #expect(result.3.contains("End it"))
+    }
+}
+
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
     let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
         "sessionId": "stale-session",
@@ -1335,6 +1633,15 @@ import Foundation
     ]], requestedAppId: 123)
 
     #expect(selected == nil)
+}
+
+@Test func sessionManagerPrefersMatchingResumableSessionLimitEntry() {
+    let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([
+        ["sessionId": "other-ready", "appId": 456, "status": 2, "serverIp": "other.example.test"],
+        ["sessionId": "matching-paused", "appId": 123, "status": 5, "serverIp": "matching.example.test"],
+    ], requestedAppId: 123)
+
+    #expect(selected?["sessionId"] as? String == "matching-paused")
 }
 
 @Test func sessionAdStateParsesNestedProgressAds() throws {

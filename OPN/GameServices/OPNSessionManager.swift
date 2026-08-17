@@ -112,7 +112,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
 
         nonisolated(unsafe) let createCompletion = completion
-        nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -141,11 +140,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     return
                 }
                 if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
-                    if self.isReadyActiveSessionStatus(int(selected["status"])) {
-                        self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
-                    } else {
-                        self.pollClaimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: createCompletion)
-                    }
+                    var conflict = selected
+                    let isResumable = self.isResumableActiveSessionStatus(int(selected["status"]))
+                    conflict["isSessionLimitConflict"] = true
+                    conflict["isResumable"] = isResumable
+                    let message = isResumable
+                        ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
+                        : "A GeForce NOW session is already active. End it before launching another game."
+                    createCompletion(false, conflict, message)
                     return
                 }
                 createCompletion(false, [:], errorMessage)
@@ -370,11 +372,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             var preClaimStatus = 0
+            var validatedSession: [String: Any]?
             if let error {
                 OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
                 let json = CloudMatchResponseParser.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
+                validatedSession = session
                 preClaimStatus = int(session?["status"])
                 let requestStatus = json?["requestStatus"] as? [String: Any]
                 let statusCode = int(requestStatus?["statusCode"])
@@ -394,6 +398,26 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     return
                 }
             } else {
+            }
+            if let validatedSession, let state = CloudMatchSessionState(rawValue: preClaimStatus) {
+                let initialProfile = self.negotiatedStreamProfile(from: validatedSession)
+                switch state {
+                case .readyForConnection, .streaming:
+                    var info = self.sessionInfo(from: validatedSession, requestedSessionId: sessionId, baseUrl: base, clientId: clientId, deviceId: deviceId, initialProfile: initialProfile)
+                    info["isResume"] = true
+                    self.mergeAndStoreAdState(&info)
+                    completion(true, info, "")
+                    return
+                case .initializing, .resuming:
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile, completion: completion)
+                    return
+                case .pausedUnintentional, .pausedIntentional:
+                    break
+                case .finished:
+                    self.clearPersistedActiveSessionId(sessionId)
+                    completion(false, [:], "This GeForce NOW session is no longer resumable. End it and launch again.")
+                    return
+                }
             }
             self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: launchAppId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
         }.resume()
@@ -491,7 +515,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
                 if CloudMatchResponseParser.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
@@ -511,7 +535,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
@@ -556,6 +580,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 return
             }
             var info = sessionInfo(from: session, requestedSessionId: context.sessionId, baseUrl: context.base, clientId: context.clientId, deviceId: context.deviceId, initialProfile: context.initialProfile)
+            info["isResume"] = true
             mergeAndStoreAdState(&info)
             context.complete(true, info, "")
         } else if canContinuePollingActiveSessionStatus(status) {
@@ -594,6 +619,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "remainingSessionLimitSeconds": 0,
             "clientId": clientId,
             "deviceId": deviceId,
+            "rawSessionJSON": rawSessionJSON(session),
         ]
         let progress = OPNSessionJSONParser.parseSessionProgress(from: session as NSDictionary)
         info["queuePosition"] = progress.queuePosition
@@ -609,6 +635,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
         }
         return info
+    }
+
+    private func rawSessionJSON(_ session: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(session),
+              let data = try? JSONSerialization.data(withJSONObject: session),
+              let string = String(data: data, encoding: .utf8) else { return "{}" }
+        return string
     }
 
     private func applyConnectionInfo(_ session: [String: Any], to info: inout [String: Any]) {
@@ -782,6 +815,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "sessionId": descriptor.sessionId,
                 "appId": descriptor.appId,
                 "status": descriptor.status,
+                "isResumable": descriptor.state.isVendorResumable,
                 "serverIp": descriptor.resumeServer,
                 "gpuType": descriptor.gpuType,
                 "streamingBaseUrl": descriptor.streamingBaseURL,
@@ -792,16 +826,20 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func selectSessionLimitReuseEntry(_ sessions: [[String: Any]], requestedAppId: Int) -> [String: Any]? {
         let validSessions = sessions.filter { int($0["appId"]) > 0 }
-        return validSessions.first { int($0["appId"]) == requestedAppId && isReadyActiveSessionStatus(int($0["status"])) }
-            ?? validSessions.first { isReadyActiveSessionStatus(int($0["status"])) }
-            ?? validSessions.first { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }
-            ?? validSessions.first { int($0["status"]) == 1 }
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId && isResumableActiveSessionStatus(int($0["status"])) }) { return session }
+        if let session = validSessions.first(where: { isResumableActiveSessionStatus(int($0["status"])) }) { return session }
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }) { return session }
+        if let session = validSessions.first(where: { int($0["status"]) == 1 }) { return session }
+        if let session = validSessions.first(where: { int($0["appId"]) == requestedAppId }) { return session }
+        return validSessions.first
     }
 
     private func currentAccessToken() -> String { lock.withLock { accessToken } }
     private func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
     private func isReadyActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
+
+    private func isResumableActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isVendorResumable == true }
 
     private func canContinuePollingActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.canContinuePolling == true }
 
