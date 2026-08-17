@@ -178,18 +178,13 @@ final class StreamWindowAspectCoordinator {
         let restoresFullSizeContentView = appliedTitlebarExclusiveContent == true
         let originalFullSizeContentView = self.originalFullSizeContentView
         guard clearsAspectRatio || restoresFullSizeContentView else { return }
-        DispatchQueue.main.async {
-            MainActor.assumeIsolated {
-                guard !window.styleMask.contains(.fullScreen) else { return }
-                guard Self.hasValidGeometry(window) else { return }
-                if clearsAspectRatio {
-                    window.contentAspectRatio = .zero
-                    window.aspectRatio = .zero
-                }
-                if restoresFullSizeContentView {
-                    Self.setFullSizeContentView(originalFullSizeContentView, on: window)
-                }
-            }
+        guard !window.styleMask.contains(.fullScreen), Self.hasValidGeometry(window) else { return }
+        if clearsAspectRatio {
+            window.contentAspectRatio = .zero
+            window.aspectRatio = .zero
+        }
+        if restoresFullSizeContentView {
+            Self.setFullSizeContentView(originalFullSizeContentView, on: window)
         }
     }
 

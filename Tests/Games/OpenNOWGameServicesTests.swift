@@ -169,6 +169,9 @@ import Foundation
                 #expect(request.value(forHTTPHeaderField: "NV-Device-ID")?.isEmpty == false)
                 return SessionManagerURLProtocol.response(json: ["reports": []])
             }
+            if request.httpMethod == "GET" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1], "sessions": []])
+            }
             #expect(request.url?.path == "/v2/session/session-report")
             #expect(request.httpMethod == "DELETE")
             return SessionManagerURLProtocol.response(json: [:])
@@ -202,6 +205,9 @@ import Foundation
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "uds.geforcenow.com" {
                 return SessionManagerURLProtocol.response(json: ["error": "auth"], status: 401)
+            }
+            if request.httpMethod == "GET" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1], "sessions": []])
             }
             return SessionManagerURLProtocol.response(json: [:])
         }
@@ -673,6 +679,9 @@ import Foundation
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let query = body["query"] as? String ?? ""
             let variables = body["variables"] as? [String: Any] ?? [:]
+            if query.contains("GetRatingDefinitions") {
+                return SessionManagerURLProtocol.response(json: ["data": ["ratingDefinitions": []]])
+            }
             #expect(query.contains("GetAppDataQueryForCmsId"))
             #expect(variables["cmsIds"] as? [Int] == [145491])
             return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "genshin-impact", title: "Genshin Impact", variantId: "145491", favorited: true)]]]])
@@ -993,7 +1002,7 @@ import Foundation
     #expect(requestData["clientVersion"] as? String == GFNClientMetadata.webRTCClientVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
-    #expect(request.value(forHTTPHeaderField: "Referer") == nil)
+    #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
     #expect(request.value(forHTTPHeaderField: "nv-device-make") == nil)
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
@@ -1460,7 +1469,7 @@ import Foundation
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 5, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
     }

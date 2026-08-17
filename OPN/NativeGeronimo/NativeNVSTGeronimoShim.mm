@@ -472,8 +472,16 @@ std::mutex gMicrophoneHookMutex;
 void **gMicrophoneImportSlot = nullptr;
 std::atomic<NVbSendMicAudioFrame> gOriginalSendMicAudioFrame{nullptr};
 size_t gMicrophoneHookLeaseCount = 0;
+std::mutex gGridAppInitializationMutex;
+std::mutex gBifrostRegistrationHookMutex;
+void **gBifrostRegistrationImportSlot = nullptr;
+std::atomic<NVbRegisterCallback> gOriginalRegisterBifrostCallback{nullptr};
+std::atomic<NVbCallback> gOriginalBifrostCallback{nullptr};
+std::atomic<bool> gBifrostRegistrationIntercepted{false};
 
 NVbResult_t openNOWSendMicAudioFrame(void *client, const char *sessionIdentifier, NvstAudioFrame_t frame);
+NVbResult_t openNOWRegisterBifrostCallback(void *client, void *context, NVbCallback callback);
+bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData);
 
 struct OpenNOWNativeNVSTGeronimoSession {
     void *libraryHandle = nullptr;
@@ -515,9 +523,7 @@ struct OpenNOWNativeNVSTGeronimoSession {
     bool microphoneHookLeaseAcquired = false;
     bool registeredGamepads[4] = {};
     bool hapticFeatureEnabled = false;
-    NVbRegisterCallback registerBifrostCallback = nullptr;
     NVbCallback originalBifrostCallback = nullptr;
-    bool bifrostCallbackInstalled = false;
     std::string lastError;
     bool platformStarted = false;
     bool initialized = false;
@@ -775,6 +781,58 @@ void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
     return nullptr;
 }
 
+bool acquireBifrostRegistrationHook(void *geronimoHandle,
+                                    void *bifrostHandle,
+                                    NVbCallback originalCallback,
+                                    char *errorBuffer,
+                                    size_t errorBufferLength) {
+    std::lock_guard<std::mutex> hookLock(gBifrostRegistrationHookMutex);
+    void *resolved = dlsym(bifrostHandle, "nvbRegisterCallback");
+    void *anchor = dlsym(geronimoHandle, "_ZN7GridApp10initializeEb");
+    if (resolved == nullptr || anchor == nullptr || originalCallback == nullptr) {
+        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration symbols are unavailable.");
+        return false;
+    }
+    void **slot = findLazySymbolPointer(anchor, "_nvbRegisterCallback");
+    if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) {
+        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration import could not be verified.");
+        return false;
+    }
+    void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+    void *hook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
+    gOriginalRegisterBifrostCallback.store(reinterpret_cast<NVbRegisterCallback>(resolved), std::memory_order_release);
+    gOriginalBifrostCallback.store(originalCallback, std::memory_order_release);
+    gBifrostRegistrationIntercepted.store(false, std::memory_order_release);
+    if (current == nullptr || (current != hook && !__atomic_compare_exchange_n(slot, &current, hook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))) {
+        gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
+        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration hook could not be installed.");
+        return false;
+    }
+    gBifrostRegistrationImportSlot = slot;
+    return true;
+}
+
+void releaseBifrostRegistrationHook() {
+    std::lock_guard<std::mutex> hookLock(gBifrostRegistrationHookMutex);
+    void *hook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
+    void *expected = hook;
+    NVbRegisterCallback original = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
+    if (gBifrostRegistrationImportSlot != nullptr && original != nullptr) {
+        __atomic_compare_exchange_n(gBifrostRegistrationImportSlot, &expected, reinterpret_cast<void *>(original), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    }
+    gBifrostRegistrationImportSlot = nullptr;
+    gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
+}
+
+NVbResult_t openNOWRegisterBifrostCallback(void *client, void *context, NVbCallback callback) {
+    NVbRegisterCallback originalRegistration = gOriginalRegisterBifrostCallback.load(std::memory_order_acquire);
+    NVbCallback originalCallback = gOriginalBifrostCallback.load(std::memory_order_acquire);
+    if (originalRegistration == nullptr) { return NVbResult_t{-1}; }
+    if (callback != originalCallback || context == nullptr) { return originalRegistration(client, context, callback); }
+    gBifrostRegistrationIntercepted.store(true, std::memory_order_release);
+    return originalRegistration(client, context, &openNOWBifrostCallback);
+}
+
 bool acquireMicrophoneHook(void *geronimoHandle, void *bifrostHandle, char *errorBuffer, size_t errorBufferLength) {
     std::lock_guard<std::mutex> hookLock(gMicrophoneHookMutex);
     void *resolved = dlsym(bifrostHandle, "nvbSendMicAudioFrame");
@@ -932,9 +990,13 @@ void emitHapticRecords(OpenNOWNativeNVSTGeronimoSession *session, const void *ca
 
 bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData) {
     OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
-    if (session == nullptr || session->originalBifrostCallback == nullptr) { return false; }
+    NVbCallback originalCallback = session == nullptr
+        ? gOriginalBifrostCallback.load(std::memory_order_acquire)
+        : session->originalBifrostCallback;
+    if (originalCallback == nullptr) { return false; }
+    if (session == nullptr) { return originalCallback(gridApp, callbackType, callbackData); }
     GridAppCallbackLease callbackLease{session};
-    const bool handled = session->originalBifrostCallback(gridApp, callbackType, callbackData);
+    const bool handled = originalCallback(gridApp, callbackType, callbackData);
     if (callbackType == NVbCallbackTypeEvent) { emitHapticRecords(session, callbackData); }
     return handled;
 }
@@ -1654,38 +1716,8 @@ bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *er
     return true;
 }
 
-bool installBifrostCallback(OpenNOWNativeNVSTGeronimoSession *session, char *errorBuffer, size_t errorBufferLength) {
-    if (session == nullptr || session->gridApp == nullptr || session->registerBifrostCallback == nullptr || session->originalBifrostCallback == nullptr) {
-        setError(errorBuffer, errorBufferLength, "Bifrost callback functions are unavailable.");
-        return false;
-    }
-    void *client = loadUnaligned<void *>(session->gridApp, 0x18);
-    if (client == nullptr) {
-        setError(errorBuffer, errorBufferLength, "GridApp Bifrost client is unavailable after initialization.");
-        return false;
-    }
-    NVbResult_t result = session->registerBifrostCallback(client, session->gridApp, &openNOWBifrostCallback);
-    if (result.code != 0) {
-        setError(errorBuffer, errorBufferLength, "Bifrost rejected the OpenNOW callback wrapper.");
-        return false;
-    }
-    session->bifrostCallbackInstalled = true;
-    return true;
-}
-
-void restoreBifrostCallback(OpenNOWNativeNVSTGeronimoSession *session) {
-    if (session == nullptr || !session->bifrostCallbackInstalled || session->gridApp == nullptr ||
-        session->registerBifrostCallback == nullptr || session->originalBifrostCallback == nullptr) { return; }
-    void *client = loadUnaligned<void *>(session->gridApp, 0x18);
-    if (client != nullptr) {
-        session->registerBifrostCallback(client, session->gridApp, session->originalBifrostCallback);
-    }
-    session->bifrostCallbackInstalled = false;
-}
-
 void detachGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session) {
     if (session == nullptr) { return; }
-    restoreBifrostCallback(session);
     {
         std::lock_guard<std::mutex> lock(gGridAppSessionsMutex);
         session->acceptsCallbacks.store(false, std::memory_order_release);
@@ -1945,6 +1977,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
     void *gridApp = nullptr;
     bool gridAppConstructed = false;
     bool platformStarted = false;
+    bool bifrostRegistrationHookAcquired = false;
     PlatformShutdown platformShutdown = nullptr;
     GeronimoFunctions functions;
     OpenNOWNativeNVSTGeronimoSession *session = nullptr;
@@ -1974,9 +2007,8 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         auto initialize = reinterpret_cast<GridAppInitialize>(resolve(handle, "_ZN7GridApp10initializeEb", errorBuffer, errorBufferLength));
         auto originalBifrostCallback = reinterpret_cast<NVbCallback>(resolve(handle, "_ZN7GridApp13onNVbCallbackEPv17NVbCallbackType_tP17NVbCallbackData_t", errorBuffer, errorBufferLength));
         auto enumToString = reinterpret_cast<NVbEnumToString>(resolve(bifrostHandle, "nvbEnumToString", errorBuffer, errorBufferLength));
-        auto registerBifrostCallback = reinterpret_cast<NVbRegisterCallback>(resolve(bifrostHandle, "nvbRegisterCallback", errorBuffer, errorBufferLength));
         if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || originalBifrostCallback == nullptr ||
-            enumToString == nullptr || registerBifrostCallback == nullptr ||
+            enumToString == nullptr ||
             !resolveGeronimoFunctions(handle, functions, errorBuffer, errorBufferLength)) {
             dlclose(bifrostHandle);
             dlclose(handle);
@@ -2002,9 +2034,32 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         memset(gridApp, 0, GridAppStorageSize);
         ctor(gridApp);
         gridAppConstructed = true;
+        std::unique_lock<std::mutex> initializationLock(gGridAppInitializationMutex);
+        if (!acquireBifrostRegistrationHook(handle, bifrostHandle, originalBifrostCallback, errorBuffer, errorBufferLength)) {
+            functions.gridAppDtor(gridApp);
+            free(gridApp);
+            releasePlatform(platformShutdown);
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            return nullptr;
+        }
+        bifrostRegistrationHookAcquired = true;
         void *ioInterface = initialize(gridApp, true);
+        const bool callbackIntercepted = gBifrostRegistrationIntercepted.load(std::memory_order_acquire);
+        releaseBifrostRegistrationHook();
+        bifrostRegistrationHookAcquired = false;
+        initializationLock.unlock();
         if (ioInterface == nullptr) {
             setError(errorBuffer, errorBufferLength, "GridApp initialization failed.");
+            functions.gridAppDtor(gridApp);
+            free(gridApp);
+            releasePlatform(platformShutdown);
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            return nullptr;
+        }
+        if (!callbackIntercepted) {
+            setError(errorBuffer, errorBufferLength, "GridApp did not register the verified Bifrost callback.");
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
@@ -2029,7 +2084,6 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         session->ioInterface = ioInterface;
         session->platformShutdown = platformShutdown;
         session->enumToString = enumToString;
-        session->registerBifrostCallback = registerBifrostCallback;
         session->originalBifrostCallback = originalBifrostCallback;
         session->functions = functions;
         session->platformStarted = true;
@@ -2067,22 +2121,10 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
             delete session;
             return nullptr;
         }
-        if (!installBifrostCallback(session, errorBuffer, errorBufferLength)) {
-            detachGridAppCallbacks(session);
-            unregisterMicrophoneRoute(session->microphoneRoute);
-            releaseMicrophoneHook();
-            functions.gridAppDtor(gridApp);
-            free(gridApp);
-            free(session->gridAppVTable);
-            releasePlatform(platformShutdown);
-            dlclose(bifrostHandle);
-            dlclose(handle);
-            delete session;
-            return nullptr;
-        }
         return session;
     } catch (...) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session creation raised an unexpected C++ exception.");
+        if (bifrostRegistrationHookAcquired) { releaseBifrostRegistrationHook(); }
         if (session != nullptr && session->gridAppVTable != nullptr) { detachGridAppCallbacks(session); }
         if (session != nullptr && session->microphoneRoute != nullptr) { unregisterMicrophoneRoute(session->microphoneRoute); }
         if (session != nullptr && session->microphoneHookLeaseAcquired) { releaseMicrophoneHook(); }
