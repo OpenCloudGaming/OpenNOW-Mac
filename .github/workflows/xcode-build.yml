@@ -41,12 +41,12 @@ jobs:
           xcodebuild -version
         shell: bash
 
-      - name: Build OpenNOW
+      - name: Build MacForceNow
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project OpenNOW.xcodeproj \
-            -scheme OpenNOW \
+            -project MacForceNow.xcodeproj \
+            -scheme MacForceNow \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO
@@ -71,12 +71,12 @@ jobs:
           xcodebuild -version
         shell: bash
 
-      - name: Build OpenNOW Release
+      - name: Build MacForceNow Release
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project OpenNOW.xcodeproj \
-            -scheme OpenNOW \
+            -project MacForceNow.xcodeproj \
+            -scheme MacForceNow \
             -configuration Release \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath "$RELEASE_ROOT/DerivedData" \
@@ -90,19 +90,19 @@ jobs:
           EXPECTED_BUILD: ${{ inputs.build }}
         run: |
           set -euo pipefail
-          APP_PATH="$RELEASE_ROOT/DerivedData/Build/Products/Release/OpenNOW.app"
+          APP_PATH="$RELEASE_ROOT/DerivedData/Build/Products/Release/MacForceNow.app"
           INFO_PLIST="$APP_PATH/Contents/Info.plist"
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")
           BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")
           [[ "$VERSION" == "$EXPECTED_VERSION" ]]
           [[ "$BUILD" == "$EXPECTED_BUILD" ]]
-          ADHOC_ENTITLEMENTS="$RELEASE_ROOT/OpenNOW-adhoc.entitlements"
-          cp OpenNOW.entitlements "$ADHOC_ENTITLEMENTS"
+          ADHOC_ENTITLEMENTS="$RELEASE_ROOT/MacForceNow-adhoc.entitlements"
+          cp MacForceNow.entitlements "$ADHOC_ENTITLEMENTS"
           /usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$ADHOC_ENTITLEMENTS"
           codesign --force --deep --sign - --timestamp=none --options runtime --entitlements "$ADHOC_ENTITLEMENTS" "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-          ZIP_PATH="$RELEASE_ROOT/OpenNOW-$VERSION-macOS.zip"
+          ZIP_PATH="$RELEASE_ROOT/MacForceNow-$VERSION-macOS.zip"
           COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
           unzip -t "$ZIP_PATH"
           if unzip -Z1 "$ZIP_PATH" | grep -Eq '(^|/)__MACOSX/|/\._'; then
@@ -113,8 +113,8 @@ jobs:
           VERIFY_PATH="$RELEASE_ROOT/verify"
           mkdir -p "$VERIFY_PATH"
           ditto -x -k "$ZIP_PATH" "$VERIFY_PATH"
-          codesign --verify --deep --strict --verbose=2 "$VERIFY_PATH/OpenNOW.app"
-          "$VERIFY_PATH/OpenNOW.app/Contents/MacOS/OpenNOW" --release-smoke-test > "$RELEASE_ROOT/launch-smoke.log" 2>&1 &
+          codesign --verify --deep --strict --verbose=2 "$VERIFY_PATH/MacForceNow.app"
+          "$VERIFY_PATH/MacForceNow.app/Contents/MacOS/MacForceNow" --release-smoke-test > "$RELEASE_ROOT/launch-smoke.log" 2>&1 &
           APP_PID=$!
           sleep 3
           if kill -0 "$APP_PID" 2>/dev/null; then
@@ -135,7 +135,7 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenNOW-${{ steps.package.outputs.version }}-macOS
+          name: MacForceNow-${{ steps.package.outputs.version }}-macOS
           path: |
             ${{ steps.package.outputs.zip_path }}
             ${{ steps.package.outputs.checksum_path }}
