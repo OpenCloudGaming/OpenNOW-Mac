@@ -102,6 +102,7 @@ public final class NativeWebRTCStreamView: NSView {
     private var pressedKeyboardEvents: [UInt16: KeyboardEvent] = [:]
     private var pressedMouseButtons: Set<MouseButton> = []
     private var activeGamepadStates: [Int: GamepadState] = [:]
+    private var quickAccessPressedDevices: Set<InputDeviceID> = []
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
@@ -130,12 +131,44 @@ public final class NativeWebRTCStreamView: NSView {
         nativeNVSTRendererWindow.isOpaque = false
         nativeNVSTRendererWindow.alphaValue = 0
         nativeNVSTRendererWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
-        gamepadMonitor.onInputEvent = { [weak self] event in
-            guard let self, self.remoteInputEnabled else { return }
-            if case .gamepad(let state) = event { self.activeGamepadStates[state.playerIndex] = state }
-            self.onInputEvent?(event)
-        }
+        gamepadMonitor.onInputEvent = { [weak self] event in self?.handleGamepadEvent(event) }
         gamepadMonitor.start()
+    }
+
+    /// The quick access button toggles the local unified HUD (same as Cmd-G)
+    /// instead of reaching the stream, where GFN ignores it.
+    private func handleGamepadEvent(_ event: UserInputEvent) {
+        guard remoteInputEnabled else { return }
+        guard case .gamepad(let state) = event else {
+            onInputEvent?(event)
+            return
+        }
+        guard state.buttons.contains(.quickAccess) || quickAccessPressedDevices.contains(state.deviceID) else {
+            activeGamepadStates[state.playerIndex] = state
+            onInputEvent?(event)
+            return
+        }
+        let isPressed = state.buttons.contains(.quickAccess)
+        if isPressed, !quickAccessPressedDevices.contains(state.deviceID) {
+            quickAccessPressedDevices.insert(state.deviceID)
+            onCommand?(.toggleUnifiedHUD)
+        } else if !isPressed {
+            quickAccessPressedDevices.remove(state.deviceID)
+        }
+        let stripped = GamepadState(
+            deviceID: state.deviceID,
+            playerIndex: state.playerIndex,
+            buttons: state.buttons.subtracting(.quickAccess),
+            leftTrigger: state.leftTrigger,
+            rightTrigger: state.rightTrigger,
+            leftStickX: state.leftStickX,
+            leftStickY: state.leftStickY,
+            rightStickX: state.rightStickX,
+            rightStickY: state.rightStickY,
+            timestamp: state.timestamp
+        )
+        activeGamepadStates[state.playerIndex] = stripped
+        onInputEvent?(.gamepad(stripped))
     }
 
     @available(*, unavailable)
