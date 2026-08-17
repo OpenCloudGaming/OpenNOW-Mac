@@ -4093,7 +4093,7 @@ struct GameDetailPanel: View {
         // Text area grows with the panel so tall (ultrawide) panels do not leave a dead gap.
         let collapsedHeight = MacForceNowDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
         let expandedHeight = MacForceNowDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
-        ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
+        return ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
             VStack(alignment: .leading, spacing: 14) {
                 shortDescription(game: game)
                 divider
