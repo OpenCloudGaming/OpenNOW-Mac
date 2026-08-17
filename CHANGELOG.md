@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.14.0](https://github.com/anderson-oki/macforce-now/compare/v0.13.0...v0.14.0) (2026-08-17)
+
+
+### Features
+
+* adjust new session layout ([3a18234](https://github.com/anderson-oki/macforce-now/commit/3a1823446b8cea767859c6f57f20861d94303de8))
+* close native NVST parity gaps ([d3b6d85](https://github.com/anderson-oki/macforce-now/commit/d3b6d85e49aa347cfed9473e6193c25c9dfaa1ed))
+
+
+### Bug Fixes
+
+* apply verified NVST packet controls ([a7ee856](https://github.com/anderson-oki/macforce-now/commit/a7ee856a047fade0073f5b0e0f0d5227936ed49c))
+* grant workflows permission to sync-fork job ([1b2c57e](https://github.com/anderson-oki/macforce-now/commit/1b2c57e54a871dbeae5a54bd14447b23c088dfa9))
+* keep HDR preference intact when display lacks HDR support ([caa3e9d](https://github.com/anderson-oki/macforce-now/commit/caa3e9d4549026484cf14f5a7fd3b2e59129f4da))
+* preserve Bifrost session initialization ([f539a04](https://github.com/anderson-oki/macforce-now/commit/f539a04ed75571525c0a54ee47fa97b084fa42b9))
+* preserve bound Bifrost imports ([6a99347](https://github.com/anderson-oki/macforce-now/commit/6a99347ce698ac79425613e724ba54f5e6125e95))
+* rename OpenNOW to MacForceNow in CI workflow ([0b8acdb](https://github.com/anderson-oki/macforce-now/commit/0b8acdb1e2aba67e2cf64894d0d3c956637c5eeb))
+* restore fork bundle identity and AGENTS.md after identifier sweep ([ca6d18b](https://github.com/anderson-oki/macforce-now/commit/ca6d18b1802a6f640aba977f14c282949b78c3e4))
+* restore fork stream HUD features lost in merge ([4757bf9](https://github.com/anderson-oki/macforce-now/commit/4757bf9d8b879f5c8a52b178d5527ec7a696019d))
+* restore quickAccess HUD interception lost in merge ([e3d9784](https://github.com/anderson-oki/macforce-now/commit/e3d978492649e0276a764164593d96fbcb3ccf82))
+* stabilize NVST callback and test lifecycle ([f28bdd5](https://github.com/anderson-oki/macforce-now/commit/f28bdd5ea4a0d1af654dad7703f1a79c5eeda879))
+* use fork bundle ID for MacForceNowTests target ([cced687](https://github.com/anderson-oki/macforce-now/commit/cced687d406dc9702601d21a075a7826e14fbca2))
+* weak-capture window in deferred aspect restoration ([75f8f6f](https://github.com/anderson-oki/macforce-now/commit/75f8f6fb8485f01e80f980b5c6ab240ff52b85df))
+
 ## [0.13.0](https://github.com/anderson-oki/macforce-now/compare/v0.12.0...v0.13.0) (2026-08-16)
 
 
