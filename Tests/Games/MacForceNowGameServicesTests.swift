@@ -1068,7 +1068,9 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
-        #expect(request.value(forHTTPHeaderField: "nv-device-make") == nil)
+        // Fork sends the native GFN-PC identity (device make UNKNOWN) on both transports:
+        // a browser identity makes GeForce NOW cap the server desktop at web-client resolution.
+        #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
     #expect(requestData["clientPlatformName"] as? String == "browser")
@@ -1556,7 +1558,7 @@ import Foundation
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     #expect(UserDefaults.standard.string(forKey: "MacForceNow.Stream.ActiveSessionId") == nil)
-    #expect(requests.map(\.httpMethod) == ["GET"])
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
     }
 }
 

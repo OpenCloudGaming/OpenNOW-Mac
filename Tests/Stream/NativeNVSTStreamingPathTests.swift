@@ -986,7 +986,6 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(features["bitDepth"] as? Int == 8)
 }
 
-@Test func nativeNVSTGeronimoSessionJSONGeneratesStableMacForceNowProfileGuidWhenCloudSessionOmitsOne() throws {
 @Test func nativeNVSTModeSelectionUsesFinalizedThenRequestedFeaturesBeforeSettings() throws {
     let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: """
@@ -1081,6 +1080,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 }
 
 @Test func nativeNVSTGeronimoSessionJSONGeneratesStableMacForceNowProfileGuidWhenCloudSessionOmitsOne() throws {
+    let streamingProfileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: "{}",
         sessionInfoJSON: "{}",
         settingsJSON: """

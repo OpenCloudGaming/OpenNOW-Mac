@@ -582,9 +582,9 @@ public enum OPNStreamPreferences {
             result.colorQualityIndex = 0
             result.colorQuality = colorQualityOptions[0]
         }
-        if !presentationCapability(codec: result.codec.value, capabilities: capabilities).supportsHDR {
-            result.enableHdr = false
-        }
+        // HDR is intentionally not clamped here: enableHdr is a stored preference, and the
+        // stream-time gates (resolveCodec, session settings) already no-op it on displays
+        // without HDR support. Clamping at load silently discards the user's setting.
         return result
     }
 
