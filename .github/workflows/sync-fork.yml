@@ -17,13 +17,17 @@ jobs:
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Mirror upstream
+      - name: Mirror upstream with fork workflows preserved
         run: |
-          git remote add upstream https://github.com/OpenCloudGaming/OpenNOW-Mac.git
-          git fetch upstream main
-          git push origin "refs/remotes/upstream/main:refs/heads/upstream/main" --force
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/OpenCloudGaming/OpenNOW-Mac.git
+          git fetch upstream main
+          git checkout -b upstream/main upstream/main
+          git checkout origin/main -- .github/workflows/
+          git add .github/workflows/
+          git commit -m "chore: keep fork workflows during upstream sync" --allow-empty || true
+          git push origin "upstream/main" --force
 
       - name: Check for changes
         run: |
