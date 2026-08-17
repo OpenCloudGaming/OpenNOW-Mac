@@ -485,6 +485,40 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .notDetermined) == nil)
 }
 
+@Test func nativeNVSTPreservesMeasuredPacketSizeInGeronimoProfile() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": { "resolution": "1920x1080", "fps": 60, "codec": "H264" }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: """
+        { "maxPacketSize": 1200 }
+        """
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+
+    #expect(profile["maxPacketSize"] as? Int == 1_200)
+}
+
+@Test func nativeNVSTRejectsUnverifiedPacketSizeBoundsFromSettings() throws {
+    for packetSize in [511, Int(UInt16.max) + 1] {
+        let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+            rawSessionJSON: """
+            {
+              "streamingProfile": { "resolution": "1920x1080", "fps": 60, "codec": "H264" }
+            }
+            """,
+            sessionInfoJSON: "{}",
+            settingsJSON: "{\"maxPacketSize\":\(packetSize)}"
+        )
+        let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+
+        #expect(profile["maxPacketSize"] == nil)
+    }
+}
+
 @Test func nativeNVSTLaunchPayloadModelsVerifiedGeForceNOWStartFields() throws {
     let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: """

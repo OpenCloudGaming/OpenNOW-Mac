@@ -266,9 +266,9 @@ using GridAppSendInput = void (*)(void *, const void *);
 using GridAppHandleGamepadChanged = bool (*)(void *, uint8_t, int, int, bool);
 using GridAppTogglePerfIndicator = void (*)(void *);
 using GridAppCursorInfoUpdate = void (*)(void *, const void *);
-using GridAppSetStreamingMaxBitrate = void (*)(void *, uint16_t, uint32_t);
-using GridAppSetDynamicStreamingMode = void (*)(void *, uint16_t, uint32_t);
-using GridAppSetL4sState = void (*)(void *, uint16_t, bool);
+using GridAppSetStreamingMaxBitrate = bool (*)(void *, uint16_t, uint32_t);
+using GridAppSetDynamicStreamingMode = bool (*)(void *, uint16_t, uint32_t);
+using GridAppSetL4sState = bool (*)(void *, uint16_t, bool);
 using IOInterfaceGetStatsInterface = void *(*)(void *);
 using IOInterfaceGetMaxBitrateKbps = uint32_t (*)(void *);
 using IOInterfaceGetDynamicStreamingMode = uint32_t (*)(void *);
@@ -316,6 +316,8 @@ constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 64;
+constexpr uint16_t MinimumNVbPacketSize = 512;
+constexpr size_t NVbStreamSettingsPacketSizeOffset = 0x48;
 constexpr uint8_t SDLWindowHighDPIEnabled = 1;
 
 static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
@@ -1697,6 +1699,11 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     NSDictionary *cloud = jsonDictionary(cloudSession);
     NSDictionary *geronimo = jsonDictionary(rawSession);
     NSDictionary *profile = jsonDictionary(streamingProfile);
+    int32_t maxPacketSize = jsonIntAtPath(profile, "maxPacketSize");
+    if (maxPacketSize != 0 && (maxPacketSize < MinimumNVbPacketSize || maxPacketSize > UINT16_MAX)) {
+        setError(errorBuffer, errorBufferLength, "Native Geronimo start received an invalid measured maximum packet size.");
+        return -4;
+    }
     session->microphoneAvailable = microphoneAvailable != 0;
     session->microphoneEnabled = session->microphoneAvailable && microphoneEnabled != 0;
     session->requestedCodec = codecFromJSON(cloud, geronimo);
@@ -1828,6 +1835,11 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
     if (streamSettingsCount > 0) {
         pending->streamSettings.assign(streamSettings, streamSettings + streamSettingsCount);
+        if (maxPacketSize >= MinimumNVbPacketSize) {
+            for (auto &setting : pending->streamSettings) {
+                storeUnaligned<uint16_t>(setting.bytes, NVbStreamSettingsPacketSizeOffset, static_cast<uint16_t>(maxPacketSize));
+            }
+        }
         pending->parameters.defaultStreamSettings = pending->streamSettings.front();
     }
     pending->parameters.supportedHidTypes = static_cast<uint64_t>(jsonIntAtPath(geronimo, "finalizedStreamingFeatures.supportedHidDevices"));
@@ -2214,8 +2226,11 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(void *session
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state != NativeSessionState::streaming) { return -2; }
     }
-    session->functions.setStreamingMaxBitrate(session->gridApp, 0, bitrateKbps);
-    return session->functions.ioInterfaceGetMaxBitrateKbps(session->ioInterface) == bitrateKbps ? 0 : -3;
+    if (!session->functions.setStreamingMaxBitrate(session->gridApp, 0, bitrateKbps)) {
+        setError(errorBuffer, errorBufferLength, "GridApp rejected the native NVST bitrate update.");
+        return -3;
+    }
+    return session->functions.ioInterfaceGetMaxBitrateKbps(session->ioInterface) == bitrateKbps ? 0 : -4;
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(void *sessionPointer,
@@ -2233,8 +2248,11 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(void *sessio
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state != NativeSessionState::streaming) { return -3; }
     }
-    session->functions.setDynamicStreamingMode(session->gridApp, 0, mode);
-    return session->functions.ioInterfaceGetDynamicStreamingMode(session->ioInterface) == mode ? 0 : -4;
+    if (!session->functions.setDynamicStreamingMode(session->gridApp, 0, mode)) {
+        setError(errorBuffer, errorBufferLength, "GridApp rejected the native NVST dynamic streaming update.");
+        return -4;
+    }
+    return session->functions.ioInterfaceGetDynamicStreamingMode(session->ioInterface) == mode ? 0 : -5;
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoSetL4SState(void *sessionPointer,
@@ -2248,9 +2266,12 @@ extern "C" int32_t OpenNOWNativeNVSTGeronimoSetL4SState(void *sessionPointer,
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         if (session->state != NativeSessionState::streaming) { return -2; }
     }
-    session->functions.setL4sState(session->gridApp, 0, enabled != 0);
+    if (!session->functions.setL4sState(session->gridApp, 0, enabled != 0)) {
+        setError(errorBuffer, errorBufferLength, "GridApp rejected the native NVST L4S update.");
+        return -3;
+    }
     const uint32_t state = session->functions.ioInterfaceGetL4sState(session->ioInterface);
-    return (enabled != 0 ? (state == 1 || state == 2) : state != 2) ? 0 : -3;
+    return state == static_cast<uint32_t>(enabled != 0) ? 0 : -4;
 }
 
 extern "C" int32_t OpenNOWNativeNVSTGeronimoCopyPerformanceStats(void *sessionPointer,

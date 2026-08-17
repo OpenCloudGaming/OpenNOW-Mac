@@ -179,6 +179,7 @@ public struct OPNStreamNetworkPreflightResult: Equatable, Sendable {
     public var measuredBandwidthMbps = 0.0
     public var packetLossPercent = -1.0
     public var jitterMs = -1
+    public var maxPacketSize = 0
     public var recommendedMaxBitrateMbps = 0
     public var serverReportedWarning = false
     public var continueRecommended = true
@@ -1329,6 +1330,7 @@ public enum OPNStreamPreferences {
         if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
         if networkTest.latencyMilliseconds >= 0 { result.latencyMs = networkTest.latencyMilliseconds }
         if networkTest.jitterMilliseconds >= 0 { result.jitterMs = networkTest.jitterMilliseconds }
+        if networkTest.maxPacketSize >= 512, networkTest.maxPacketSize <= Int(UInt16.max) { result.maxPacketSize = networkTest.maxPacketSize }
         if networkTest.packetLossPercent >= 0, networkTest.packetLossPercent.isFinite { result.packetLossPercent = networkTest.packetLossPercent }
         if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
             result.serverReportedWarning = true

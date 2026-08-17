@@ -425,6 +425,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         settings["networkTestSessionId"] = preflight.networkTestSessionId
         settings["networkType"] = preflight.networkType
         settings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"
+        if preflight.maxPacketSize >= 512 { settings["maxPacketSize"] = preflight.maxPacketSize }
         if preflight.recommendedMaxBitrateMbps > 0 {
             settings["maxBitrateMbps"] = min(int(settings["maxBitrateMbps"]), preflight.recommendedMaxBitrateMbps)
         }

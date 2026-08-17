@@ -603,6 +603,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             let negotiatedMaxBitrateKbps = int(firstValue(in: profile, keys: ["maxBitrateKbps", "bitrateKbps"]))
             profile["maxBitrateKbps"] = negotiatedMaxBitrateKbps > 0 ? min(negotiatedMaxBitrateKbps, requestedMaxBitrateKbps) : requestedMaxBitrateKbps
         }
+        let measuredMaxPacketSize = int(settings["maxPacketSize"])
+        if measuredMaxPacketSize >= 512, measuredMaxPacketSize <= Int(UInt16.max) {
+            profile["maxPacketSize"] = measuredMaxPacketSize
+        }
         guard !profile.isEmpty,
               let dimensions = videoDimensions(from: profile),
               int(profile["fps"]) > 0,
@@ -714,11 +718,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let selectedFeatures = selectedFeatures(from: profile, colorQuality: colorQuality)
         let selectedVideoMode = ["width": dimensions.width, "height": dimensions.height, "fps": fps, "scaleFactor": scaleFactor]
         let selectedEncodeMode = ["width": dimensions.width, "height": dimensions.height, "fps": fps]
-        return [
+        var selection: [String: Any] = [
             "selectedVideoMode": selectedVideoMode,
             "selectedFeatures": selectedFeatures,
             "selectedEncodeMode": selectedEncodeMode,
         ]
+        let maxPacketSize = int(profile["maxPacketSize"])
+        if maxPacketSize >= 512, maxPacketSize <= Int(UInt16.max) { selection["maxPacketSize"] = maxPacketSize }
+        return selection
     }
 
     private static func selectedFeatures(from profile: [String: Any], colorQuality: String) -> [String: Any] {
@@ -1159,6 +1166,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "profileScaleFactor": String(int(selectedVideoMode["scaleFactor"])),
             "profileHdr": bool(selectedFeatures["hdr"]) ? "true" : "false",
             "profileBitDepth": String(int(selectedFeatures["bitDepth"])),
+            "profileMaxPacketSize": String(int(profile["maxPacketSize"])),
             "geronimoSessionBytes": String(geronimoSessionJSON.utf8.count),
             "geronimoMonitorSettings": String(jsonArray(from: geronimoSession["monitorSettings"]).count),
             "geronimoConnectionInfo": String(jsonArray(from: geronimoSession["connectionInfo"]).count),
