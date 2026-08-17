@@ -789,16 +789,13 @@ void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
 }
 
 bool acquireBifrostRegistrationHook(void *geronimoHandle,
-                                    void *bifrostHandle,
                                     void *gridApp,
                                     NVbCallback originalCallback,
                                     char *errorBuffer,
                                     size_t errorBufferLength) {
     std::lock_guard<std::mutex> hookLock(gBifrostRegistrationHookMutex);
-    void *resolvedCreate = dlsym(bifrostHandle, "nvbCreateClient");
-    void *resolvedRegister = dlsym(bifrostHandle, "nvbRegisterCallback");
     void *anchor = dlsym(geronimoHandle, "_ZN7GridApp10initializeEb");
-    if (resolvedCreate == nullptr || resolvedRegister == nullptr || anchor == nullptr || gridApp == nullptr || originalCallback == nullptr) {
+    if (anchor == nullptr || gridApp == nullptr || originalCallback == nullptr) {
         setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration symbols are unavailable.");
         return false;
     }
@@ -810,16 +807,21 @@ bool acquireBifrostRegistrationHook(void *geronimoHandle,
         return false;
     }
     void *currentCreate = __atomic_load_n(createSlot, __ATOMIC_ACQUIRE);
+    void *currentRegistration = __atomic_load_n(registerSlot, __ATOMIC_ACQUIRE);
     void *createHook = reinterpret_cast<void *>(&openNOWCreateBifrostClient);
-    gOriginalCreateBifrostClient.store(reinterpret_cast<NVbCreateClient>(resolvedCreate), std::memory_order_release);
-    gOriginalRegisterBifrostCallback.store(reinterpret_cast<NVbRegisterCallback>(resolvedRegister), std::memory_order_release);
+    void *registrationHook = reinterpret_cast<void *>(&openNOWRegisterBifrostCallback);
+    if (currentCreate == nullptr || currentRegistration == nullptr || currentCreate == createHook || currentRegistration == registrationHook) {
+        setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration imports are unresolved or already intercepted.");
+        return false;
+    }
+    gOriginalCreateBifrostClient.store(reinterpret_cast<NVbCreateClient>(currentCreate), std::memory_order_release);
+    gOriginalRegisterBifrostCallback.store(reinterpret_cast<NVbRegisterCallback>(currentRegistration), std::memory_order_release);
     gOriginalBifrostCallback.store(originalCallback, std::memory_order_release);
     gBifrostRegistrationContext.store(gridApp, std::memory_order_release);
     gPreRegisteredBifrostClient.store(nullptr, std::memory_order_release);
     gBifrostClientCreationCount.store(0, std::memory_order_release);
     gBifrostRegistrationIntercepted.store(false, std::memory_order_release);
-    if (currentCreate == nullptr ||
-        (currentCreate != createHook && !__atomic_compare_exchange_n(createSlot, &currentCreate, createHook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))) {
+    if (!__atomic_compare_exchange_n(createSlot, &currentCreate, createHook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         gOriginalCreateBifrostClient.store(nullptr, std::memory_order_release);
         gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
         setError(errorBuffer, errorBufferLength, "Geronimo Bifrost callback registration hook could not be installed.");
@@ -2091,7 +2093,7 @@ extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, cha
         ctor(gridApp);
         gridAppConstructed = true;
         std::unique_lock<std::mutex> initializationLock(gGridAppInitializationMutex);
-        if (!acquireBifrostRegistrationHook(handle, bifrostHandle, gridApp, originalBifrostCallback, errorBuffer, errorBufferLength)) {
+        if (!acquireBifrostRegistrationHook(handle, gridApp, originalBifrostCallback, errorBuffer, errorBufferLength)) {
             functions.gridAppDtor(gridApp);
             free(gridApp);
             releasePlatform(platformShutdown);
