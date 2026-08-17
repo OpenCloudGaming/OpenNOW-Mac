@@ -11,9 +11,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      workflows: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           fetch-depth: 0

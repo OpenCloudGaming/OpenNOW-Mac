@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up environment
         run: |
@@ -33,7 +33,7 @@ jobs:
         shell: bash
 
       - name: Cache SwiftPM build graph
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .build
@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload crash reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: crash-reports
           path: ~/Library/Logs/DiagnosticReports/
@@ -79,7 +79,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up environment
         run: |
