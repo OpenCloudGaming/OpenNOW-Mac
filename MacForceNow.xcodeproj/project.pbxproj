@@ -236,7 +236,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				7729CE752FDEDAB300D5C9D5 /* MacForce Now */,
+				7729CE752FDEDAB300D5C9D5 /* MacForceNow */,
 				C00000000000000000000005 /* MacForceNowTests */,
 			);
 		};
@@ -281,7 +281,7 @@
 /* Begin PBXTargetDependency section */
 		C00000000000000000000006 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 7729CE752FDEDAB300D5C9D5 /* MacForce Now */;
+			target = 7729CE752FDEDAB300D5C9D5 /* MacForceNow */;
 			targetProxy = C00000000000000000000007 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -501,7 +501,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MPZW7ERR2D;
+				DEVELOPMENT_TEAM = 9AFR69495X;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
@@ -514,7 +514,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.MacForceNowTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
@@ -528,7 +528,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MPZW7ERR2D;
+				DEVELOPMENT_TEAM = 9AFR69495X;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
@@ -541,7 +541,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.MacForceNowTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
