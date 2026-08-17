@@ -71,5 +71,6 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(packageRoot)/vendor/gfn-runtime/Frameworks"])
             ]
         )
-    ]
+    ],
+    cxxLanguageStandard: .cxx20
 )

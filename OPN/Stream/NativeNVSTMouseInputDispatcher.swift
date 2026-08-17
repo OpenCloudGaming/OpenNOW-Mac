@@ -1,14 +1,14 @@
-enum NativeNVSTMouseInput: Equatable, Sendable {
+enum NativeNVSTInput: Equatable, Sendable {
     case event(UserInputEvent)
     case absoluteMove(NativeNVSTAbsoluteMouseEvent)
 }
 
-final class NativeNVSTMouseInputDispatcher: Sendable {
-    private let continuation: AsyncStream<NativeNVSTMouseInput>.Continuation
+final class NativeNVSTInputDispatcher: Sendable {
+    private let continuation: AsyncStream<NativeNVSTInput>.Continuation
     private let drainTask: Task<Void, Never>
 
-    init(send: @escaping @Sendable (NativeNVSTMouseInput) async -> Void) {
-        let channel = AsyncStream<NativeNVSTMouseInput>.makeStream(bufferingPolicy: .unbounded)
+    init(send: @escaping @Sendable (NativeNVSTInput) async -> Void) {
+        let channel = AsyncStream<NativeNVSTInput>.makeStream(bufferingPolicy: .unbounded)
         continuation = channel.continuation
         drainTask = Task {
             for await event in channel.stream {
@@ -24,6 +24,20 @@ final class NativeNVSTMouseInputDispatcher: Sendable {
 
     func enqueueAbsoluteMove(_ event: NativeNVSTAbsoluteMouseEvent) {
         continuation.yield(.absoluteMove(event))
+    }
+
+    static func isNeutralizing(_ event: UserInputEvent) -> Bool {
+        switch event {
+        case .keyboard(let keyboard):
+            return !keyboard.isPressed
+        case .mouse(.button(_, _, let isPressed, _)):
+            return !isPressed
+        case .gamepad(let state):
+            return state.buttons.isEmpty && state.leftTrigger == 0 && state.rightTrigger == 0 &&
+                state.leftStickX == 0 && state.leftStickY == 0 && state.rightStickX == 0 && state.rightStickY == 0
+        case .mouse, .text:
+            return false
+        }
     }
 
     func finish() async {
