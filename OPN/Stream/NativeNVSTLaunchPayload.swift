@@ -1,5 +1,88 @@
 import Foundation
 
+struct NativeNVSTNormalizedSessionSource {
+    let rawSession: [String: Any]
+    let sessionInfo: [String: Any]
+    let settings: [String: Any]
+    let requestData: [String: Any]
+    let metadata: Any
+    let metadataCount: Int
+    let networkSessionId: String
+    let persistingInGameSettings: Bool
+
+    init(allocation: NativeNVSTSessionAllocation) {
+        let rawSession = Self.jsonObject(from: allocation.rawSessionJSON)
+        let sessionInfo = Self.jsonObject(from: allocation.sessionInfoJSON)
+        let settings = Self.jsonObject(from: allocation.settingsJSON)
+        let requestData = rawSession["sessionRequestData"] as? [String: Any] ?? [:]
+        self.rawSession = rawSession
+        self.sessionInfo = sessionInfo
+        self.settings = settings
+        self.requestData = requestData
+        metadata = requestData["metaData"] ?? rawSession["metaData"] ?? []
+        metadataCount = (metadata as? [Any])?.count ?? (metadata as? NSArray)?.count ?? 0
+        networkSessionId = Self.firstNonEmpty(Self.string(rawSession["networkSessionId"]), Self.string(requestData["networkSessionId"]))
+        persistingInGameSettings = Self.bool(
+            rawSession["persistingInGameSettings"],
+            rawSession["enablePersistingInGameSettings"],
+            requestData["persistingInGameSettings"],
+            requestData["enablePersistingInGameSettings"],
+            settings["persistingInGameSettings"],
+            settings["enablePersistingInGameSettings"]
+        )
+    }
+
+    func applicationHeaders(allocation: NativeNVSTSessionAllocation) -> [Any] {
+        var headers = Self.firstArray(rawSession["applicationHeaders"], requestData["applicationHeaders"])
+        for value in allocation.signalingHeaders + [allocation.signalingQueryParameters] {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !headers.contains(where: { ($0 as? String) == trimmed }) {
+                headers.append(trimmed)
+            }
+        }
+        return headers
+    }
+
+    private static func jsonObject(from json: String) -> [String: Any] {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    private static func firstArray(_ values: Any?...) -> [Any] {
+        for value in values {
+            if let value = value as? [Any], !value.isEmpty { return value }
+            if let value = value as? NSArray, value.count > 0 { return value.compactMap { $0 } }
+        }
+        return []
+    }
+
+    private static func string(_ value: Any?) -> String {
+        if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let value = value as? NSString { return (value as String).trimmingCharacters(in: .whitespacesAndNewlines) }
+        return ""
+    }
+
+    private static func firstNonEmpty(_ values: String...) -> String {
+        values.first { !$0.isEmpty } ?? ""
+    }
+
+    private static func bool(_ values: Any?...) -> Bool {
+        for value in values {
+            if let value = value as? Bool { return value }
+            if let value = value as? NSNumber { return value.boolValue }
+            if let value = value as? String {
+                switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                case "1", "true", "yes", "enabled": return true
+                case "0", "false", "no", "disabled": return false
+                default: continue
+                }
+            }
+        }
+        return false
+    }
+}
+
 struct NativeNVSTLaunchPayload: Equatable, Sendable {
     struct Prepare: Equatable, Sendable {
         let address: String
@@ -71,12 +154,12 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
     }
 
     init(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String, clientAppVersion: String) {
-        let rawSession = Self.jsonObject(from: allocation.rawSessionJSON)
-        let sessionInfo = Self.jsonObject(from: allocation.sessionInfoJSON)
-        let settings = Self.jsonObject(from: allocation.settingsJSON)
-        let requestData = rawSession["sessionRequestData"] as? [String: Any] ?? [:]
+        let source = NativeNVSTNormalizedSessionSource(allocation: allocation)
+        let rawSession = source.rawSession
+        let sessionInfo = source.sessionInfo
+        let settings = source.settings
+        let requestData = source.requestData
         let sessionControlInfo = rawSession["sessionControlInfo"] as? [String: Any] ?? [:]
-        let metadata = requestData["metaData"] as? [String: Any] ?? rawSession["metaData"] as? [String: Any] ?? [:]
         let streamingDisplayData = requestData["streamingDisplayDataInfo"] as? [String: Any] ?? rawSession["streamingDisplayDataInfo"] as? [String: Any] ?? [:]
 
         let address = Self.firstNonEmpty(Self.string(rawSession["serverAddress"]), Self.string(sessionControlInfo["ip"]), allocation.session.serverAddress)
@@ -86,7 +169,6 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         let appId = Self.positiveInt(requestData["appId"], rawSession["appId"], fallback: Int(allocation.session.applicationID) ?? 0)
         let tokenType = Self.firstNonEmpty(Self.string(rawSession["tokenType"]), Self.string(rawSession["authType"]), Self.string((rawSession["auth"] as? [String: Any])?["type"]), allocation.authTokenType)
         let token = Self.firstNonEmpty(Self.string(rawSession["token"]), Self.string(rawSession["authToken"]), Self.string(rawSession["jwt"]), Self.string((rawSession["auth"] as? [String: Any])?["token"]), Self.string(rawSession["sessionToken"]), allocation.authToken)
-        let networkSessionId = Self.firstNonEmpty(Self.string(rawSession["networkSessionId"]), Self.string(requestData["networkSessionId"]), allocation.session.id)
         let audioMode = Self.firstNonEmpty(Self.string(rawSession["audioModeFormat"]), Self.string(requestData["audioModeFormat"]), Self.string(settings["audioModeFormat"]), "stereo")
         let serverType = Self.positiveInt(allocation.serverType, rawSession["serverType"], requestData["serverType"], fallback: 0)
         let traceParent = Self.firstNonEmpty(Self.string((rawSession["spanData"] as? [String: Any])?["traceparent"]), Self.string((requestData["spanData"] as? [String: Any])?["traceparent"]))
@@ -117,14 +199,14 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
             advancedLatencyOptimization: Self.bool(requestData["advancedLatencyOptimization"]),
             streamingProfileJSON: streamingProfileJSON,
             networkPacketCaptureEnabled: Self.bool(rawSession["networkPacketCaptureEnabled"], requestData["networkPacketCaptureEnabled"]),
-            metadataCount: metadata.count,
+            metadataCount: source.metadataCount,
             frameLossWarningTimeout: Self.positiveInt(rawSession["frameLossWarningTimeout"], requestData["frameLossWarningTimeout"], fallback: 500),
             frameLossErrorTimeout: Self.positiveInt(rawSession["frameLossErrorTimeout"], requestData["frameLossErrorTimeout"], fallback: 30_000),
             locale: locale,
             digitalStore: Self.firstNonEmpty(Self.string(rawSession["digitalStore"]), Self.string(requestData["digitalStore"])),
             accountLinked: Self.bool(rawSession["accountLinked"], requestData["accountLinked"]),
-            persistingInGameSettings: Self.bool(rawSession["persistingInGameSettings"], requestData["persistingInGameSettings"]),
-            networkSessionId: networkSessionId,
+            persistingInGameSettings: source.persistingInGameSettings,
+            networkSessionId: source.networkSessionId,
             audioModeFormat: audioMode,
             supportedControlsCount: Self.array(rawSession["supportedControls"], requestData["supportedControls"]).count,
             contentRatingCount: Self.array(rawSession["contentRating"], requestData["contentRating"]).count,
@@ -150,7 +232,6 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         if !prepare.hasToken { missing.append("token") }
         if start.serverType <= 0 { missing.append("serverType") }
         if start.appId <= 0 { missing.append("appId") }
-        if start.networkSessionId.isEmpty { missing.append("networkSessionId") }
         if !Self.hasValidStreamingProfile(start.streamingProfileJSON) { missing.append("streamingProfile") }
         if start.audioModeFormat.isEmpty { missing.append("audioModeFormat") }
         missingFields = missing

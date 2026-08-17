@@ -1,6 +1,68 @@
 @preconcurrency import Foundation
 import Combine
 import GameController
+import CoreHaptics
+
+public struct NativeWebRTCGamepadTopology: Equatable, Sendable {
+    public let playerIndices: [Int]
+    public let hapticPlayerIndices: [Int]
+    public let registrationBitmap: UInt16
+    public let connectedPlayerBitmap: UInt8
+    public let hapticPlayerBitmap: UInt8
+    public var hapticsEnabled: Bool { hapticPlayerBitmap != 0 }
+
+    public init(playerIndices: [Int], hapticPlayerIndices: [Int] = []) {
+        let normalizedPlayerIndices = Array(Set(playerIndices.filter { (0..<4).contains($0) })).sorted()
+        let normalizedHapticPlayerIndices = Array(Set(hapticPlayerIndices.filter { normalizedPlayerIndices.contains($0) })).sorted()
+        self.playerIndices = normalizedPlayerIndices
+        self.hapticPlayerIndices = normalizedHapticPlayerIndices
+        registrationBitmap = normalizedPlayerIndices.reduce(0) { bitmap, index in
+            bitmap | UInt16(1 << index) | UInt16(1 << (index + 8))
+        }
+        connectedPlayerBitmap = normalizedPlayerIndices.reduce(0) { $0 | UInt8(1 << $1) }
+        hapticPlayerBitmap = normalizedHapticPlayerIndices.reduce(0) { $0 | UInt8(1 << $1) }
+    }
+}
+
+enum NativeNVSTHapticLocality: Equatable, Sendable {
+    case leftHandle
+    case rightHandle
+    case `default`
+}
+
+struct NativeNVSTHapticRoute: Equatable, Sendable {
+    let locality: NativeNVSTHapticLocality
+    let intensity: UInt16
+}
+
+enum NativeNVSTHapticRouter {
+    static func routes(for command: NativeNVSTHapticCommand, supportsHandles: Bool) -> [NativeNVSTHapticRoute] {
+        if supportsHandles {
+            return [
+                NativeNVSTHapticRoute(locality: .leftHandle, intensity: command.lowFrequency),
+                NativeNVSTHapticRoute(locality: .rightHandle, intensity: command.highFrequency),
+            ]
+        }
+        return [NativeNVSTHapticRoute(locality: .default, intensity: max(command.lowFrequency, command.highFrequency))]
+    }
+}
+
+struct NativeWebRTCGamepadSlotMap<Identifier: Hashable> {
+    private(set) var slots: [Identifier: Int] = [:]
+
+    mutating func update(identifiers: [Identifier], maximumSlots: Int = 4) -> [(identifier: Identifier, playerIndex: Int)] {
+        let activeIdentifiers = Set(identifiers)
+        let removed = slots.compactMap { identifier, playerIndex in
+            activeIdentifiers.contains(identifier) ? nil : (identifier, playerIndex)
+        }.sorted { $0.1 < $1.1 }
+        slots = slots.filter { activeIdentifiers.contains($0.key) }
+        var availableSlots = Array(0..<maximumSlots).filter { !slots.values.contains($0) }
+        for identifier in identifiers where slots[identifier] == nil && !availableSlots.isEmpty {
+            slots[identifier] = availableSlots.removeFirst()
+        }
+        return removed
+    }
+}
 
 public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
     public let id: String
@@ -13,6 +75,10 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
 public final class NativeWebRTCGamepadMonitor {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     @Published public private(set) var nativeBatteryLevels: [ControllerBatteryInfo] = []
+    public var onTopologyChanged: ((NativeWebRTCGamepadTopology) -> Void)? {
+        didSet { onTopologyChanged?(topology) }
+    }
+    public private(set) var topology = NativeWebRTCGamepadTopology(playerIndices: [])
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     nonisolated(unsafe) private var pollState = GamepadPollState()
     private let pollingQueue = DispatchQueue(label: "com.macforce-now.gamepad-poll", qos: .userInteractive)
@@ -21,6 +87,7 @@ public final class NativeWebRTCGamepadMonitor {
     private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]
     private var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
     private var localCursorModeHeld: Set<InputDeviceID> = []
+    private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     private var accessibilityPromptShown = false
 
     public init() {
@@ -79,7 +146,27 @@ public final class NativeWebRTCGamepadMonitor {
             SteamControllerLocalCursorInjector.shared.reset()
         }
         stopPollingTimer()
+        stopHaptics()
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
+    }
+
+    public func playHaptic(_ command: NativeNVSTHapticCommand) {
+        guard let controller = pollState.cachedControllers.first(where: { pollState.controllerSlots[ObjectIdentifier($0)] == command.playerIndex }),
+              controller.haptics != nil else { return }
+        let identifier = ObjectIdentifier(controller)
+        let state = hapticStates[identifier] ?? ControllerHapticState(controller: controller)
+        hapticStates[identifier] = state
+        do {
+            try state.play(command)
+        } catch {
+            state.stop()
+            hapticStates.removeValue(forKey: identifier)
+        }
+    }
+
+    public func stopHaptics() {
+        hapticStates.values.forEach { $0.stop() }
+        hapticStates.removeAll()
     }
 
     public func refreshInputState() {
@@ -121,6 +208,15 @@ public final class NativeWebRTCGamepadMonitor {
         }
         let validBatteryIDs = Set(pollState.cachedControllers.prefix(4).map { "native-\(ObjectIdentifier($0).hashValue)" }).union(Set(newSteamSlots.keys.map { $0.rawValue }))
         nativeBatteryLevels.removeAll { !validBatteryIDs.contains($0.id) }
+        let hapticPlayerIndices = pollState.cachedControllers.compactMap { controller in
+            controller.haptics == nil ? nil : newControllerSlots[ObjectIdentifier(controller)]
+        }
+        let allPlayerIndices = Array(newControllerSlots.values) + Array(newSteamSlots.values)
+        let newTopology = NativeWebRTCGamepadTopology(playerIndices: allPlayerIndices, hapticPlayerIndices: hapticPlayerIndices)
+        if topology != newTopology {
+            topology = newTopology
+            onTopologyChanged?(newTopology)
+        }
         let totalSlots = newControllerSlots.count + newSteamSlots.count
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
@@ -341,6 +437,66 @@ private final class GamepadPollState {
         if !batteryChanges.isEmpty {
             onBatteryChange(batteryChanges)
         }
+    }
+}
+
+@MainActor
+private final class ControllerHapticState {
+    private let controller: GCController
+    private var engines: [GCHapticsLocality: CHHapticEngine] = [:]
+    private var players: [GCHapticsLocality: any CHHapticPatternPlayer] = [:]
+
+    init(controller: GCController) {
+        self.controller = controller
+    }
+
+    func play(_ command: NativeNVSTHapticCommand) throws {
+        guard let haptics = controller.haptics else { return }
+        let supportsHandles = haptics.supportedLocalities.contains(.leftHandle) && haptics.supportedLocalities.contains(.rightHandle)
+        for route in NativeNVSTHapticRouter.routes(for: command, supportsHandles: supportsHandles) {
+            let locality: GCHapticsLocality = switch route.locality {
+            case .leftHandle: .leftHandle
+            case .rightHandle: .rightHandle
+            case .default: .default
+            }
+            try play(intensity: route.intensity, durationMilliseconds: command.durationMilliseconds, locality: locality, haptics: haptics)
+        }
+    }
+
+    func stop() {
+        for player in players.values { try? player.stop(atTime: 0) }
+        players.removeAll()
+        for engine in engines.values { engine.stop(completionHandler: nil) }
+        engines.removeAll()
+    }
+
+    private func play(intensity: UInt16, durationMilliseconds: UInt16, locality: GCHapticsLocality, haptics: GCDeviceHaptics) throws {
+        if let player = players.removeValue(forKey: locality) { try? player.stop(atTime: 0) }
+        guard intensity > 0 else { return }
+        let engine: CHHapticEngine
+        if let existing = engines[locality] {
+            engine = existing
+        } else {
+            guard let created = haptics.createEngine(withLocality: locality) else { return }
+            created.isAutoShutdownEnabled = false
+            try created.start()
+            engines[locality] = created
+            engine = created
+        }
+        let parameters = [
+            CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(intensity) / Float(UInt16.max)),
+            CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5),
+        ]
+        let event = CHHapticEvent(
+            eventType: .hapticContinuous,
+            parameters: parameters,
+            relativeTime: 0,
+            duration: TimeInterval(durationMilliseconds) / 1_000
+        )
+        let pattern = try CHHapticPattern(events: [event], parameters: [])
+        let player = try engine.makePlayer(with: pattern)
+        try player.start(atTime: 0)
+        players[locality] = player
     }
 }
 

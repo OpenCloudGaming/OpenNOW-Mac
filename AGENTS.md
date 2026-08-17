@@ -90,7 +90,7 @@ sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/rele
    ```
    Expect zero output.
 5. Verify fork identity survived (the sweep only fixes OpenNOW strings, not these):
-   - `MacForceNow.xcodeproj/project.pbxproj`: Debug `PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev"`, Release `= "com.necorico.macforce-now"`, Debug `PRODUCT_NAME = "MacForce Now Dev"`, `WARNING_CFLAGS = "-Wno-umbrella-headers"` present.
+   - `MacForceNow.xcodeproj/project.pbxproj`: Debug `PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev"`, Release `= "com.necorico.macforce-now"`, Debug `PRODUCT_NAME = "MacForce Now Dev"`, `WARNING_CFLAGS = "-Wno-umbrella-headers"` present. Any upstream-added targets (e.g. test targets) must also get fork IDs (`com.necorico.macforce-now.*`), not `io.github.opencloudgaming.*`.
    - `MacForceNowApp.swift`: updater is `MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")`.
    - `.github/workflows/`: fork keeps `unit-tests.yml`; do not adopt upstream CI replacements without user approval.
 6. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. **Zero failures required before committing.** Hardware-dependent NVST tests stay gated behind `ENABLE_NVST_HARDWARE_TESTS=1`.

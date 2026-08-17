@@ -860,7 +860,7 @@ final class CatalogViewModel {
             case .activeSession(let active, let resume, let replacement):
                 MacForceNowLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
-                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
+                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: self.account.membershipTier)
                 self.launchFlowState = .activeSessionPrompt
@@ -1074,6 +1074,46 @@ final class CatalogViewModel {
             return discordPresence(for: game)
         }
         return DiscordGamePresence(title: configuration.title, artworkURL: nil)
+    }
+
+    private func presentSessionConflict(_ conflict: StreamSessionConflict, replacementConfiguration: StreamLaunchConfiguration) {
+        let applicationID = conflict.applicationID.isEmpty ? replacementConfiguration.applicationID : conflict.applicationID
+        let appID = Int(applicationID) ?? 0
+        let unresolvedSession = OPNActiveStreamSessionDescriptor(
+            sessionId: conflict.sessionID,
+            appId: appID,
+            serverIp: conflict.serverAddress,
+            streamingBaseUrl: OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: applicationID),
+            title: "Current Stream"
+        )
+        let activeTitle = title(forActiveSession: unresolvedSession)
+        activeLaunchSession = OPNActiveStreamSessionDescriptor(
+            sessionId: conflict.sessionID,
+            appId: appID,
+            serverIp: conflict.serverAddress,
+            streamingBaseUrl: unresolvedSession.streamingBaseUrl,
+            title: activeTitle
+        )
+        activeSessionResumeConfiguration = conflict.isResumable
+            ? StreamLaunchConfiguration(
+                title: activeTitle,
+                applicationID: applicationID,
+                accessToken: replacementConfiguration.accessToken,
+                accountLinked: true,
+                selectedStore: "",
+                resumeSessionID: conflict.sessionID,
+                resumeServer: conflict.serverAddress,
+                metadata: replacementConfiguration.metadata
+            )
+            : nil
+        activeSessionReplacementConfiguration = replacementConfiguration
+        launchFlowTitle = replacementConfiguration.title.isEmpty ? "GeForce NOW" : replacementConfiguration.title
+        launchFlowMessage = conflict.isResumable
+            ? "GeForce NOW reports an active session. Resume it or end it before launching \(launchFlowTitle)."
+            : "GeForce NOW reports an active session that cannot be resumed. End it before launching \(launchFlowTitle)."
+        launchFlowError = ""
+        errorMessage = ""
+        launchFlowState = .activeSessionPrompt
     }
 
     private func clearLaunchFlow() {

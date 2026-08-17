@@ -39,12 +39,14 @@ public struct OPNActiveStreamSessionDescriptor: Identifiable, Equatable, Sendabl
     public let id: String
     public let appId: Int
     public let serverIp: String
+    public let streamingBaseUrl: String
     public let title: String
 
-    public init(sessionId: String, appId: Int, serverIp: String, title: String) {
+    public init(sessionId: String, appId: Int, serverIp: String, streamingBaseUrl: String, title: String) {
         self.id = sessionId
         self.appId = appId
         self.serverIp = serverIp
+        self.streamingBaseUrl = streamingBaseUrl
         self.title = title.isEmpty ? "Current Stream" : title
     }
 }
@@ -132,7 +134,7 @@ public final class OPNGameLaunchBridge {
     }
 
     private func activeSessionPlan(activeSession: OPNActiveSessionObject, activeTitle: String, fallbackAppId: String, token: String, launchMetadata: [String: String], replacement: OPNStreamLaunchConfiguration) -> OPNGameLaunchPlan {
-        let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, title: activeTitle)
+        let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, streamingBaseUrl: activeSession.streamingBaseUrl, title: activeTitle)
         let isResumable = activeSession.isResumable
         let resume = OPNStreamLaunchConfiguration(
             title: active.title,
@@ -152,7 +154,7 @@ public final class OPNGameLaunchBridge {
             completion(false, "Sign in again before ending the active session.")
             return
         }
-        OPNActiveSessionService.stopSession(accessToken: accessToken, sessionId: session.id, serverIp: session.serverIp) { success, error in
+        OPNActiveSessionService.stopSession(accessToken: accessToken, sessionId: session.id, serverIp: session.serverIp, streamingBaseUrl: session.streamingBaseUrl) { success, error in
             Task { @MainActor in
                 completion(success, success ? "Session ended." : (error.isEmpty ? "Unable to end the active session." : error))
             }

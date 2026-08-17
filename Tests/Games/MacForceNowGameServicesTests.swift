@@ -169,6 +169,9 @@ import Foundation
                 #expect(request.value(forHTTPHeaderField: "NV-Device-ID")?.isEmpty == false)
                 return SessionManagerURLProtocol.response(json: ["reports": []])
             }
+            if request.httpMethod == "GET" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1], "sessions": []])
+            }
             #expect(request.url?.path == "/v2/session/session-report")
             #expect(request.httpMethod == "DELETE")
             return SessionManagerURLProtocol.response(json: [:])
@@ -202,6 +205,9 @@ import Foundation
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "uds.geforcenow.com" {
                 return SessionManagerURLProtocol.response(json: ["error": "auth"], status: 401)
+            }
+            if request.httpMethod == "GET" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1], "sessions": []])
             }
             return SessionManagerURLProtocol.response(json: [:])
         }
@@ -397,6 +403,69 @@ import Foundation
     } else {
         Issue.record("Expected an active session plan")
     }
+    }
+}
+
+@Test func activeSessionServiceRejectsVendorStopFailure() async {
+    await networkTestIsolationLock.withLock {
+    let host = "stop-vendor-failure.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "DELETE")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 4,
+                "statusDescription": "INTERNAL_ERROR_STATUS",
+            ],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)") { success, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "API error 4: INTERNAL_ERROR_STATUS")
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).count == 1)
+    }
+}
+
+@Test func activeSessionServiceWaitsForSessionTermination() async {
+    await networkTestIsolationLock.withLock {
+    let host = "stop-confirmation.example.test"
+    let lock = NSLock()
+    nonisolated(unsafe) var activeSessionPollCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "DELETE" {
+            return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])
+        }
+        lock.withLock { activeSessionPollCount += 1 }
+        let sessions: [[String: Any]] = lock.withLock {
+            activeSessionPollCount == 1 ? [[
+                "sessionId": "active-session",
+                "status": 2,
+                "sessionRequestData": ["appId": 123],
+                "sessionControlInfo": ["ip": host],
+            ]] : []
+        }
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"],
+            "sessions": sessions,
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)") { success, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["DELETE", "GET", "GET"])
     }
 }
 
@@ -620,7 +689,11 @@ import Foundation
             guard query.contains("GetAppDataQueryForCmsId") else {
                 return SessionManagerURLProtocol.response(json: ["data": [:]])
             }
-            let variables = body["variables"] as? [String: Any] ?? [:]
+                let variables = body["variables"] as? [String: Any] ?? [:]
+                if query.contains("GetRatingDefinitions") {
+                    return SessionManagerURLProtocol.response(json: ["data": ["ratingDefinitions": []]])
+                }
+                #expect(query.contains("GetAppDataQueryForCmsId"))
             #expect(variables["cmsIds"] as? [Int] == [145491])
             return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "genshin-impact", title: "Genshin Impact", variantId: "145491", favorited: true)]]]])
         }
@@ -995,7 +1068,9 @@ import Foundation
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
-    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
+        // Fork sends the native GFN-PC identity (device make UNKNOWN) on both transports:
+        // a browser identity makes GeForce NOW cap the server desktop at web-client resolution.
+        #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
     #expect(requestData["clientPlatformName"] as? String == "browser")
@@ -1461,7 +1536,7 @@ import Foundation
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 7, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 5, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
     }
@@ -1483,7 +1558,7 @@ import Foundation
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     #expect(UserDefaults.standard.string(forKey: "MacForceNow.Stream.ActiveSessionId") == nil)
-    #expect(requests.map(\.httpMethod) == ["GET"])
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
     }
 }
 
