@@ -456,12 +456,6 @@ public actor NativeNVSTStreamingPath {
         try await transport.setL4SEnabled(enabled)
     }
 
-    public func applyInitialNetworkPolicy(maximumBitrateKbps: UInt32, l4sEnabled: Bool) async throws {
-        try await setMaximumBitrateKbps(maximumBitrateKbps)
-        try await setDynamicStreamingMode(.on)
-        try await setL4SEnabled(l4sEnabled)
-    }
-
     public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.updateGamepadTopology(topology)

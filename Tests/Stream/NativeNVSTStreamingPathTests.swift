@@ -178,18 +178,6 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
 }
 
-@Test func nativeNVSTInitialNetworkPolicySynchronizesVerifiedRuntimeControls() async throws {
-    let transport = RecordingNativeNVSTTransport(mode: .success)
-    let path = NativeNVSTStreamingPath(sessionProvider: RecordingNativeNVSTSessionProvider(), transport: transport)
-    _ = try await path.start(configuration: nativeConfiguration())
-
-    try await path.applyInitialNetworkPolicy(maximumBitrateKbps: 75_000, l4sEnabled: true)
-
-    #expect(await transport.maximumBitrateUpdates == [75_000])
-    #expect(await transport.dynamicStreamingModeUpdates == [.on])
-    #expect(await transport.l4sUpdates == [true])
-}
-
 @Test func nativeNVSTPathPrepareFailureDoesNotAllocateCloudSession() async throws {
     let provider = RecordingNativeNVSTSessionProvider()
     let transport = RecordingNativeNVSTTransport(mode: .prepareFailure)
@@ -1013,6 +1001,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
             "enabledL4S": false,
             "trueHdr": false,
             "bitDepth": 0,
+            "dynamicStreamingMode": 2,
             "prefilterSharpness": 3,
             "hudStreamingMode": 1
           }
@@ -1051,6 +1040,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(features["fallbackToLogicalResolution"] as? Bool == true)
     #expect(features["bitDepth"] as? Int == 8)
     #expect(features["chromaFormat"] as? Int == 2)
+    #expect(features["dynamicStreamingMode"] as? Int == 2)
     #expect(prefilter["mode"] as? Int == 2)
     #expect(prefilter["sharpnessLevel"] as? Int == 3)
     #expect(prefilter["denoiseLevel"] as? Double == 6)

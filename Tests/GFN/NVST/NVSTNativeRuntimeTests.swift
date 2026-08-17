@@ -136,6 +136,13 @@ struct NVSTNativeRuntimeTests {
     #expect(OpenNOWNativeNVSTGeronimoConvertAuthTokenType(nil) == -1)
 }
 
+@Test func nvstGeronimoEndpointParsingPreservesSessionPortAndIPv6() {
+    #expect(inspectedEndpoint("stream.example.test", fallbackPort: 47984) == ParsedNativeEndpoint(host: "stream.example.test", port: 47984))
+    #expect(inspectedEndpoint("stream.example.test:47989", fallbackPort: 47984) == ParsedNativeEndpoint(host: "stream.example.test", port: 47989))
+    #expect(inspectedEndpoint("[2001:db8::1]", fallbackPort: 47984) == ParsedNativeEndpoint(host: "2001:db8::1", port: 47984))
+    #expect(inspectedEndpoint("[2001:db8::1]:47989", fallbackPort: 47984) == ParsedNativeEndpoint(host: "2001:db8::1", port: 47989))
+}
+
 @Test func nvstGeronimoMicrophoneControlRejectsMissingSession() {
     var errorBuffer = [CChar](repeating: 0, count: 256)
     let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
@@ -164,11 +171,33 @@ private func convertedAuthTokenType(_ tokenType: String) -> Int32 {
     tokenType.withCString { OpenNOWNativeNVSTGeronimoConvertAuthTokenType($0) }
 }
 
+private struct ParsedNativeEndpoint: Equatable {
+    let host: String
+    let port: UInt16
+}
+
+private func inspectedEndpoint(_ address: String, fallbackPort: UInt16) -> ParsedNativeEndpoint? {
+    var host = [CChar](repeating: 0, count: 256)
+    var port: UInt16 = 0
+    let result = address.withCString { addressPointer in
+        host.withUnsafeMutableBufferPointer { hostBuffer in
+            OpenNOWNativeNVSTGeronimoInspectEndpoint(addressPointer, fallbackPort, hostBuffer.baseAddress, hostBuffer.count, &port)
+        }
+    }
+    guard result == 0 else { return nil }
+    return host.withUnsafeBufferPointer { buffer in
+        buffer.baseAddress.map { ParsedNativeEndpoint(host: String(cString: $0), port: port) }
+    }
+}
+
 @_silgen_name("OpenNOWNativeNVSTGeronimoConvertServerType")
 private func OpenNOWNativeNVSTGeronimoConvertServerType(_ serverType: Int32) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoConvertAuthTokenType")
 private func OpenNOWNativeNVSTGeronimoConvertAuthTokenType(_ tokenType: UnsafePointer<CChar>?) -> Int32
+
+@_silgen_name("OpenNOWNativeNVSTGeronimoInspectEndpoint")
+private func OpenNOWNativeNVSTGeronimoInspectEndpoint(_ address: UnsafePointer<CChar>?, _ fallbackPort: UInt16, _ hostBuffer: UnsafeMutablePointer<CChar>?, _ hostBufferLength: Int, _ port: UnsafeMutablePointer<UInt16>?) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
 private func OpenNOWTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?

@@ -1495,8 +1495,9 @@ struct HostAndPort {
     uint16_t port = 443;
 };
 
-HostAndPort hostAndPort(const std::string &address) {
+HostAndPort hostAndPort(const std::string &address, uint16_t fallbackPort = 443) {
     HostAndPort result;
+    result.port = fallbackPort == 0 ? 443 : fallbackPort;
     std::string value = address;
     size_t scheme = value.find("://");
     if (scheme != std::string::npos) { value = value.substr(scheme + 3); }
@@ -1504,9 +1505,24 @@ HostAndPort hostAndPort(const std::string &address) {
     if (path != std::string::npos) { value = value.substr(0, path); }
     size_t at = value.rfind('@');
     if (at != std::string::npos) { value = value.substr(at + 1); }
-    size_t colon = value.rfind(':');
-    if (colon != std::string::npos && colon + 1 < value.size()) {
-        std::string portString = value.substr(colon + 1);
+    std::string host = value;
+    std::string portString;
+    if (!value.empty() && value.front() == '[') {
+        size_t closingBracket = value.find(']');
+        if (closingBracket != std::string::npos) {
+            host = value.substr(1, closingBracket - 1);
+            if (closingBracket + 2 < value.size() && value[closingBracket + 1] == ':') {
+                portString = value.substr(closingBracket + 2);
+            }
+        }
+    } else {
+        size_t firstColon = value.find(':');
+        if (firstColon != std::string::npos && firstColon == value.rfind(':')) {
+            host = value.substr(0, firstColon);
+            portString = value.substr(firstColon + 1);
+        }
+    }
+    if (!portString.empty()) {
         bool numeric = true;
         for (char character : portString) {
             if (!std::isdigit(static_cast<unsigned char>(character))) { numeric = false; break; }
@@ -1514,11 +1530,9 @@ HostAndPort hostAndPort(const std::string &address) {
         if (numeric) {
             int parsed = atoi(portString.c_str());
             if (parsed > 0 && parsed <= 65535) { result.port = static_cast<uint16_t>(parsed); }
-            value = value.substr(0, colon);
         }
     }
-    if (value.size() > 1 && value.front() == '[' && value.back() == ']') { value = value.substr(1, value.size() - 2); }
-    result.host = value;
+    result.host = host;
     return result;
 }
 
@@ -2027,6 +2041,18 @@ int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
     emitConnectedIfReady(session);
     return 0;
 }
+}
+
+extern "C" int32_t OpenNOWNativeNVSTGeronimoInspectEndpoint(const char *address,
+                                                               uint16_t fallbackPort,
+                                                               char *hostBuffer,
+                                                               size_t hostBufferLength,
+                                                               uint16_t *port) {
+    HostAndPort endpoint = hostAndPort(stringOrEmpty(address), fallbackPort);
+    if (endpoint.host.empty() || port == nullptr) { return -1; }
+    setError(hostBuffer, hostBufferLength, endpoint.host.c_str());
+    *port = endpoint.port;
+    return 0;
 }
 
 extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, char *errorBuffer, size_t errorBufferLength) {
@@ -2589,7 +2615,11 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     if (width <= 0 && !startParameters.videoSettings.empty()) { width = 1; }
     if (height <= 0 && !startParameters.videoSettings.empty()) { height = 1; }
     if (fps <= 0 && !startParameters.videoSettings.empty()) { fps = 1; }
-    HostAndPort endpoint = hostAndPort(serverAddress);
+    int32_t configuredPort = jsonIntAtPath(geronimo, "port");
+    if (configuredPort <= 0) { configuredPort = jsonIntAtPath(cloud, "port"); }
+    if (configuredPort <= 0) { configuredPort = jsonIntAtPath(cloud, "sessionControlInfo.port"); }
+    uint16_t fallbackPort = configuredPort > 0 && configuredPort <= UINT16_MAX ? static_cast<uint16_t>(configuredPort) : 443;
+    HostAndPort endpoint = hostAndPort(serverAddress, fallbackPort);
     if (session->authToken.empty() || endpoint.host.empty() || appId == 0 || session->sessionId.empty() || width <= 0 || height <= 0 || fps <= 0) {
         if (errorBuffer != nullptr && errorBufferLength > 0) {
             snprintf(errorBuffer,
