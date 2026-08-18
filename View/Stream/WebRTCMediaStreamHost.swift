@@ -305,6 +305,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var networkGovernor: NativeNVSTNetworkGovernor?
     @State private var networkPathTask: Task<Void, Never>?
     @State private var networkPathAvailable = true
+    @State private var pointerLocked = false
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
 
     var body: some View {
@@ -360,7 +361,16 @@ private struct NativeNVSTMediaStreamSurface: View {
             nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
             cursorVisibilityHandler: { [weak nativeView] visible in
                 guard let nativeView else { return }
-                nativeView.mouseInputMode = visible || !nativeView.directMouseInputEnabled ? .absolute : .relative
+                let mode: NativeStreamMouseInputMode = visible || !nativeView.directMouseInputEnabled ? .absolute : .relative
+                nativeView.mouseInputMode = mode
+                // When the game hides its cursor (relative mode), auto-capture so mouse-look is
+                // disassociated and never hits a screen edge; release capture when the cursor
+                // returns (menus/Steam) so the user can point again.
+                if mode == .relative {
+                    if nativeView.remoteInputEnabled { nativeView.setPointerLocked(true) }
+                } else {
+                    nativeView.setPointerLocked(false)
+                }
             },
             prepareVideoSurfaceForShutdown: {
                 nativeView.prepareNativeNVSTRendererForShutdown()
@@ -488,6 +498,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let inputDispatcher = self.inputDispatcher
         self.inputDispatcher = nil
         isConnected = false
+        pointerLocked = false
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false
@@ -618,6 +629,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         view.directMouseInputEnabled = profile.directMouseInput
         view.locksPointerWhenRelativeModeSelected = true
         view.hidesCursorWhilePointerLocked = true
+        view.onPointerLockChanged = { locked in pointerLocked = locked }
         if path == nil { view.mouseInputMode = .absolute }
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
@@ -678,6 +690,8 @@ private struct NativeNVSTMediaStreamSurface: View {
             WebRTCMediaTelemetry.capture("nvst.ui.recording.unavailable", level: .warning, message: "Native NVST recording shortcut requested without a registered recorder pipeline.", attributes: ["applicationID": configuration.applicationID])
         case .toggleAntiAFK:
             toggleNativeAntiAFKMouseMovement()
+        case .togglePointerCapture:
+            toggleNativePointerLock()
         case .showQuitMenu:
             if !streamControlsVisible { showStreamControls() }
         }
@@ -832,6 +846,19 @@ private struct NativeNVSTMediaStreamSurface: View {
         WebRTCMediaTelemetry.capture("nvst.ui.hud.toggle", level: .info, message: visible ? "Native NVST HUD shown." : "Native NVST HUD hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(visible)])
     }
 
+    private func toggleNativePointerLock() {
+        guard isConnected, !isEnding, !didEnd, nativeView?.directMouseInputEnabled == true else { return }
+        if pointerLocked {
+            nativeView?.setPointerLocked(false)
+        } else {
+            // Close the HUD first so remote input is live, then force the capture regardless
+            // of the server-driven cursor mode (this is the manual override for games that
+            // never signal a cursor-hide).
+            setUnifiedHUDVisible(false)
+            nativeView?.setPointerLocked(true)
+        }
+    }
+
     private func toggleNativeStatsHUD() {
         guard isConnected, !isEnding, !didEnd else { return }
         nativeStatsVisible.toggle()
@@ -916,8 +943,12 @@ private struct NativeNVSTMediaStreamSurface: View {
         let shouldTerminateApplication = completion != nil
         pendingApplicationQuitCompletion = nil
         Task {
-            let didFinish = await finish(reason: .userRequested, message: "Native NVST stream ended by user.")
-            completion?(didFinish && shouldTerminateApplication)
+            // Stream teardown is best-effort. When this End Stream was raised by an
+            // application-quit request (Cmd+Q), the user's intent is to quit, so honor the
+            // termination regardless of whether stopping the native session reported success
+            // — a stop error must not leave the app stuck open.
+            _ = await finish(reason: .userRequested, message: "Native NVST stream ended by user.")
+            completion?(shouldTerminateApplication)
         }
     }
 
@@ -990,6 +1021,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(latestNativeStats?.frameLoss), detail: nativeStatsTotal(latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
                 nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsCount(latestNativeStats?.packetLoss), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
                 nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: Color.openNowGreen)
                 nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
@@ -1209,6 +1241,14 @@ private struct NativeNVSTMediaStreamSurface: View {
                     isActive: false,
                     isDisabled: !sidebarCapabilities.supports(.recording),
                     action: {}
+                )
+                StreamHUDActionRow(
+                    title: pointerLocked ? "Release Mouse" : "Capture Mouse",
+                    subtitle: pointerLocked ? "Pointer locked" : "Click stream also captures",
+                    systemName: pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
+                    isActive: pointerLocked,
+                    isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true,
+                    action: toggleNativePointerLock
                 )
                 StreamHUDActionRow(
                     title: antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
