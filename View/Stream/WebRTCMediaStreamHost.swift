@@ -286,6 +286,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var nativeStatsVisible = false
     @State private var latestNativeStats: NativeNVSTPerformanceSnapshot?
     @State private var nativeStatsTask: Task<Void, Never>?
+    @State private var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
     @State private var inputDispatcher: NativeNVSTInputDispatcher?
     @State private var microphoneAvailable = false
     @State private var microphoneEnabled = false
@@ -352,6 +353,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let initialMicrophoneEnabled = microphoneEnabled
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000), l4sEnabled: profile.enableL4S)
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
@@ -364,6 +366,9 @@ private struct NativeNVSTMediaStreamSurface: View {
             prepareVideoSurfaceForShutdown: {
                 nativeView.prepareNativeNVSTRendererForShutdown()
             },
+            restoreVideoSurfaceAfterRecovery: {
+                nativeView.setNativeNVSTVideoVisible(true)
+            },
             hapticHandler: { [weak nativeView] command in
                 nativeView?.playHaptic(command)
             },
@@ -371,7 +376,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeView?.stopHaptics()
             }
         )
-        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
+        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
         let inputDispatcher = NativeNVSTInputDispatcher { input in
             switch input {
             case .event(let event):
@@ -476,6 +481,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil
         networkGovernor = nil
         networkPathTask?.cancel()
@@ -595,6 +601,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil
         networkGovernor = nil
         networkPathTask?.cancel()
@@ -850,11 +857,21 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = Task {
             while !Task.isCancelled {
-                if let snapshot = await path.performanceSnapshot(), isConnected, !isEnding, !didEnd {
+                let snapshot = await path.performanceSnapshot()
+                if snapshot == nil {
+                    nativeStreamHealth = NativeNVSTStreamHealthMonitor()
+                }
+                if let snapshot, isConnected, !isEnding, !didEnd {
                     latestNativeStats = snapshot
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
+                }
+                if isConnected, !isEnding, !didEnd,
+                   let failure = nativeStreamHealth.observe(snapshot: snapshot, rendererReady: nativeView?.nativeNVSTRendererSurfaceReady == true) {
+                    WebRTCMediaTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
+                    _ = await finish(reason: .failed, message: failure.message)
+                    return
                 }
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)

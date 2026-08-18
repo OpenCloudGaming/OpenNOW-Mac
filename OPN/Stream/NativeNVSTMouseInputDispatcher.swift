@@ -106,6 +106,8 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
                     inputs.remove(at: staleIndex)
                 } else if Self.isNeutralizing(input), let pressIndex = inputs.firstIndex(where: Self.isNonNeutralButtonOrKeyPress) {
                     inputs.remove(at: pressIndex)
+                } else if Self.isNeutralizing(input) {
+                    inputs.removeFirst()
                 } else {
                     return false
                 }

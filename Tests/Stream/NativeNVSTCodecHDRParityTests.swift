@@ -74,6 +74,48 @@ private func nativeAudioFrameTriggersRendererReopen(_ configuredChannelCount: UI
     #expect(nativeAudioFrameTriggersRendererReopen(8, 8) == 0)
 }
 
+@Test func nativeStreamHealthRequiresFramesAndDetectsSustainedStalls() {
+    var health = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 2, stalledSampleLimit: 2, rendererSampleLimit: 2)
+    let stopped = nativePerformanceSnapshot(streamFramesPerSecond: 0)
+    let running = nativePerformanceSnapshot(streamFramesPerSecond: 60)
+
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(health.observe(snapshot: running, rendererReady: true) == nil)
+    #expect(health.receivedFrames)
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == .streamStalled)
+}
+
+@Test func nativeStreamHealthDetectsMissingInitialFramesAndRenderer() {
+    var missingFrames = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 2, stalledSampleLimit: 2, rendererSampleLimit: 3)
+    let stopped = nativePerformanceSnapshot(streamFramesPerSecond: 0)
+    #expect(missingFrames.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(missingFrames.observe(snapshot: stopped, rendererReady: true) == .firstFrameTimedOut)
+
+    var missingRenderer = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 3, stalledSampleLimit: 2, rendererSampleLimit: 2)
+    #expect(missingRenderer.observe(snapshot: stopped, rendererReady: false) == nil)
+    #expect(missingRenderer.observe(snapshot: stopped, rendererReady: false) == .rendererUnavailable)
+}
+
+private func nativePerformanceSnapshot(streamFramesPerSecond: Double) -> NativeNVSTPerformanceSnapshot {
+    NativeNVSTPerformanceSnapshot(
+        available: true,
+        gameFramesPerSecond: streamFramesPerSecond,
+        streamFramesPerSecond: streamFramesPerSecond,
+        latencyMilliseconds: 20,
+        jitterMilliseconds: 1,
+        frameLoss: 0,
+        totalFrameLoss: 0,
+        packetLoss: 0,
+        totalPacketLoss: 0,
+        bitrateMegabitsPerSecond: 20,
+        bandwidthUtilizationPercent: 50,
+        resolution: "1920x1080",
+        codec: "H265",
+        serverLocation: "test"
+    )
+}
+
 private func selectedFeatures(codec: String, capabilities: OPNStreamDeviceCapabilities) throws -> [String: Any] {
     let json = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: "{\"streamingProfile\":{\"resolution\":\"1920x1080\",\"fps\":60,\"codec\":\"\(codec)\",\"colorQuality\":\"10bit_420\"}}",

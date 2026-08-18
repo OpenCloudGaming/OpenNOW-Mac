@@ -310,7 +310,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(report.metadata["transport"] == "nvst")
 }
 
-@Test func nativeNVSTPathStopFinalizesLocallyBeforePropagatingCloudFinishFailure() async throws {
+@Test func nativeNVSTPathStopFinalizesLocallyAndReportsCloudFinishFailure() async throws {
     let finishError = NativeNVSTError.transportFailed("cloud stop failed")
     let provider = RecordingNativeNVSTSessionProvider(finishError: finishError)
     let transport = RecordingNativeNVSTTransport(mode: .success)
@@ -318,15 +318,12 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     var audioFrames = await path.audioFrames().makeAsyncIterator()
     _ = try await path.start(configuration: nativeConfiguration())
 
-    do {
-        _ = try await path.stop(reason: .userRequested, message: "Stopped locally")
-        Issue.record("Expected cloud finish failure")
-    } catch let error as NativeNVSTError {
-        #expect(error == finishError)
-    }
+    let report = try await path.stop(reason: .userRequested, message: "Stopped locally")
 
     #expect(await audioFrames.next() == nil)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
+    #expect(!report.success)
+    #expect(report.metadata["cloudFinishError"] == "cloud stop failed")
     if case .ended(let report) = await path.currentState() {
         #expect(report.reason == .userRequested)
         #expect(report.message == "Stopped locally")
@@ -334,6 +331,32 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     } else {
         Issue.record("Expected terminal local state after cloud finish failure")
     }
+}
+
+@Test func nativeNVSTMediaSessionIgnoresTerminationFromReplacedSubscriber() async {
+    let mediaSession = NativeNVSTMediaSession()
+    let oldStream = await mediaSession.videoFrames()
+    let oldConsumer = Task {
+        for await _ in oldStream {}
+    }
+    let newStream = await mediaSession.videoFrames()
+    oldConsumer.cancel()
+    await oldConsumer.value
+
+    let frame = NativeNVSTVideoFrame(
+        streamID: 1,
+        codec: .h265,
+        timestamp: MediaTimestamp(nanoseconds: 1),
+        durationNanoseconds: 16_666_667,
+        width: 1920,
+        height: 1080,
+        isKeyFrame: true,
+        payload: Data([1])
+    )
+    await mediaSession.receiveVideoFrame(frame)
+    var iterator = newStream.makeAsyncIterator()
+    #expect(await iterator.next() == frame)
+    await mediaSession.finish()
 }
 
 @Test func nativeNVSTPathRejectsPerformanceOverlayToggleWhenStopped() async throws {

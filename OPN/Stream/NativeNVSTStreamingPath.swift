@@ -73,6 +73,56 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     }
 }
 
+enum NativeNVSTStreamHealthFailure: Equatable, Sendable {
+    case rendererUnavailable
+    case firstFrameTimedOut
+    case streamStalled
+
+    var message: String {
+        switch self {
+        case .rendererUnavailable:
+            "Native NVST lost its video renderer surface."
+        case .firstFrameTimedOut:
+            "Native NVST connected but did not begin receiving video frames."
+        case .streamStalled:
+            "Native NVST stopped receiving video frames."
+        }
+    }
+}
+
+struct NativeNVSTStreamHealthMonitor: Equatable, Sendable {
+    let firstFrameSampleLimit: Int
+    let stalledSampleLimit: Int
+    let rendererSampleLimit: Int
+    private(set) var receivedFrames = false
+    private var zeroFrameSamples = 0
+    private var missingRendererSamples = 0
+
+    init(firstFrameSampleLimit: Int = 15, stalledSampleLimit: Int = 10, rendererSampleLimit: Int = 5) {
+        self.firstFrameSampleLimit = max(1, firstFrameSampleLimit)
+        self.stalledSampleLimit = max(1, stalledSampleLimit)
+        self.rendererSampleLimit = max(1, rendererSampleLimit)
+    }
+
+    mutating func observe(snapshot: NativeNVSTPerformanceSnapshot?, rendererReady: Bool) -> NativeNVSTStreamHealthFailure? {
+        guard let snapshot, snapshot.available else { return nil }
+        missingRendererSamples = rendererReady ? 0 : missingRendererSamples + 1
+        if missingRendererSamples >= rendererSampleLimit { return .rendererUnavailable }
+
+        guard snapshot.streamFramesPerSecond >= 0 else { return nil }
+        if snapshot.streamFramesPerSecond > 0 {
+            receivedFrames = true
+            zeroFrameSamples = 0
+            return nil
+        }
+        zeroFrameSamples += 1
+        if receivedFrames {
+            return zeroFrameSamples >= stalledSampleLimit ? .streamStalled : nil
+        }
+        return zeroFrameSamples >= firstFrameSampleLimit ? .firstFrameTimedOut : nil
+    }
+}
+
 public struct NativeNVSTTerminationValue: Equatable, Sendable {
     public let code: Int32
     public let name: String?
@@ -488,8 +538,8 @@ public actor NativeNVSTStreamingPath {
         startedAt = nil
         recoveryAttempted = false
         WebRTCMediaTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
-        let diagnostics = await transport.diagnosticMetadata()
         await transport.disconnect()
+        let diagnostics = await transport.diagnosticMetadata()
         let finishError: Error?
         do {
             try await sessionProvider.finishSession(activeSession, reason: reason)
@@ -503,10 +553,9 @@ public actor NativeNVSTStreamingPath {
         if let finishError {
             metadata["cloudFinishError"] = Self.message(for: finishError)
         }
-        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
+        let report = StreamReport(title: activeSession.title, success: reason != .failed && finishError == nil, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
         state = .ended(report)
         publish(report)
-        if let finishError { throw finishError }
         return report
     }
 

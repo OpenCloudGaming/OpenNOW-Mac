@@ -4,13 +4,24 @@ import Testing
 
 private actor NativeInputRecorder {
     private var inputs: [NativeNVSTInput] = []
+    private var countWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     func append(_ input: NativeNVSTInput) {
         inputs.append(input)
+        let readyWaiters = countWaiters.filter { inputs.count >= $0.0 }
+        countWaiters.removeAll { inputs.count >= $0.0 }
+        readyWaiters.forEach { $0.1.resume() }
     }
 
     func snapshot() -> [NativeNVSTInput] {
         inputs
+    }
+
+    func waitForCount(_ count: Int) async {
+        guard inputs.count < count else { return }
+        await withCheckedContinuation { continuation in
+            countWaiters.append((count, continuation))
+        }
     }
 }
 
@@ -69,6 +80,7 @@ private actor ControlledNativeInputRecorder {
     dispatcher.enqueue(gamepad)
     dispatcher.enqueueAbsoluteMove(absolute)
     dispatcher.enqueue(mouse)
+    await recorder.waitForCount(5)
     await dispatcher.finish()
 
     #expect(await recorder.snapshot() == [.event(keyboard), .event(text), .event(gamepad), .absoluteMove(absolute), .event(mouse)])
@@ -133,6 +145,29 @@ private actor ControlledNativeInputRecorder {
     await finishTask.value
 
     #expect(await recorder.snapshot() == [.event(keyPress), .event(keyRelease), .event(gamepadNeutral)])
+}
+
+@Test func nativeNVSTDispatcherPrioritizesReleaseOverNonLossyBacklog() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 2) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let release = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: false, timestamp: timestamp))
+    let firstText = UserInputEvent.text(deviceID: "keyboard", value: "a", timestamp: timestamp)
+    let secondText = UserInputEvent.text(deviceID: "keyboard", value: "b", timestamp: timestamp)
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(firstText)
+    dispatcher.enqueue(secondText)
+    dispatcher.enqueue(release)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(press), .event(secondText), .event(release)])
 }
 
 @Test @MainActor func focusLossNeutralizesEveryActiveDeviceBeforePointerUnlock() throws {

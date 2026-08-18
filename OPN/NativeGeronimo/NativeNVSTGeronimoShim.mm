@@ -1048,11 +1048,9 @@ void emitHapticRecords(OpenNOWNativeNVSTGeronimoSession *session, const void *ca
 
 bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData) {
     OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
-    NVbCallback originalCallback = session == nullptr
-        ? gOriginalBifrostCallback.load(std::memory_order_acquire)
-        : session->originalBifrostCallback;
+    if (session == nullptr) { return false; }
+    NVbCallback originalCallback = session->originalBifrostCallback;
     if (originalCallback == nullptr) { return false; }
-    if (session == nullptr) { return originalCallback(gridApp, callbackType, callbackData); }
     GridAppCallbackLease callbackLease{session};
     const bool handled = originalCallback(gridApp, callbackType, callbackData);
     if (callbackType == NVbCallbackTypeEvent) { emitHapticRecords(session, callbackData); }

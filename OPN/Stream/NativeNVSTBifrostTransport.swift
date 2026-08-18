@@ -38,7 +38,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private let inputEncoder: NativeNVSTInputEncoder
     private let nativeVideoSurfaceHandle: UInt?
     private let cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?
-    private var prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
+    private let prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
+    private let restoreVideoSurfaceAfterRecovery: (@MainActor @Sendable () -> Void)?
     private let hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?
     private let hapticResetHandler: (@MainActor @Sendable () -> Void)?
     private let authRefreshHandler: @Sendable (UInt32) async throws -> String
@@ -53,6 +54,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var geronimoPump: NativeNVSTGeronimoPumpDriver?
     private var runtimeHandlers: NativeNVSTRuntimeHandlers?
     private var nativeLifecycleOperationInProgress = false
+    private var nativeLifecycleWaiters: [CheckedContinuation<Void, Never>] = []
+    private var videoSurfaceNeedsRecovery = false
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
     private var lastDiagnosticMetadata: [String: String] = [:]
 
@@ -61,6 +64,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 nativeVideoSurfaceHandle: UInt? = nil,
                 cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)? = nil,
                 prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil,
+                restoreVideoSurfaceAfterRecovery: (@MainActor @Sendable () -> Void)? = nil,
                 hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)? = nil,
                 hapticResetHandler: (@MainActor @Sendable () -> Void)? = nil,
                 authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String = NativeNVSTAuthRefreshCoordinator.productionToken) {
@@ -69,6 +73,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
         self.cursorVisibilityHandler = cursorVisibilityHandler
         self.prepareVideoSurfaceForShutdown = prepareVideoSurfaceForShutdown
+        self.restoreVideoSurfaceAfterRecovery = restoreVideoSurfaceAfterRecovery
         self.hapticHandler = hapticHandler
         self.hapticResetHandler = hapticResetHandler
         self.authRefreshHandler = authRefreshHandler
@@ -177,6 +182,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoPump = started.pump
         runtimeHandlers = started.runtimeHandlers
         activeConnection = connection
+        if videoSurfaceNeedsRecovery {
+            await restoreVideoSurfaceAfterRecovery?()
+            videoSurfaceNeedsRecovery = false
+        }
         lastDiagnosticMetadata.merge(eventSink.readinessDiagnosticAttributes()) { _, new in new }
         return connection
     }
@@ -245,16 +254,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func disconnect() async {
-        guard !nativeLifecycleOperationInProgress else { return }
-        nativeLifecycleOperationInProgress = true
+        await beginNativeLifecycleOperation()
         defer {
             geronimoPump = nil
             geronimoSessionAddress = nil
             geronimoEventSink = nil
             runtimeHandlers = nil
             activeConnection = nil
-            prepareVideoSurfaceForShutdown = nil
-            nativeLifecycleOperationInProgress = false
+            endNativeLifecycleOperation()
         }
         connectingEventSink?.cancel()
         await waitForConnectingAttemptToFinish()
@@ -264,9 +271,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let runtimeHandlers = self.runtimeHandlers
         await runtimeHandlers?.cancel()
         if sessionAddress != nil {
+            videoSurfaceNeedsRecovery = true
             await prepareGeronimoVideoSurfaceForShutdown()
-        } else {
-            prepareVideoSurfaceForShutdown = nil
         }
         if let sessionAddress, let eventSink {
             if !eventSink.hasDeliveredTerminal {
@@ -294,16 +300,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func resetForRecovery() async {
-        guard !nativeLifecycleOperationInProgress else { return }
-        nativeLifecycleOperationInProgress = true
+        await beginNativeLifecycleOperation()
         defer {
             geronimoPump = nil
             geronimoSessionAddress = nil
             geronimoEventSink = nil
             runtimeHandlers = nil
             activeConnection = nil
-            prepareVideoSurfaceForShutdown = nil
-            nativeLifecycleOperationInProgress = false
+            endNativeLifecycleOperation()
         }
         connectingEventSink?.cancel()
         await waitForConnectingAttemptToFinish()
@@ -312,31 +316,31 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let runtimeHandlers = self.runtimeHandlers
         geronimoEventSink?.cancel()
         await runtimeHandlers?.cancel()
-        if sessionAddress != nil { await prepareGeronimoVideoSurfaceForShutdown() }
+        if sessionAddress != nil {
+            videoSurfaceNeedsRecovery = true
+            await prepareGeronimoVideoSurfaceForShutdown()
+        }
         if let pump { await pump.stop() }
         if let sessionAddress { await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress) }
     }
 
     public func pause() async throws {
-        guard !nativeLifecycleOperationInProgress else { throw NativeNVSTError.alreadyRunning }
+        await beginNativeLifecycleOperation()
+        defer { endNativeLifecycleOperation() }
         guard let sessionAddress = geronimoSessionAddress,
               let eventSink = geronimoEventSink else { throw NativeNVSTError.notRunning }
-        nativeLifecycleOperationInProgress = true
         eventSink.beginPause()
         do {
             try await Self.requestPauseGeronimoOnMainActor(sessionAddress: sessionAddress)
             try await eventSink.waitForPause(timeoutNanoseconds: 5_000_000_000)
         } catch {
             eventSink.cancelPause()
-            nativeLifecycleOperationInProgress = false
             throw error
         }
-        guard geronimoSessionAddress == sessionAddress else {
-            nativeLifecycleOperationInProgress = false
-            throw CancellationError()
-        }
+        guard geronimoSessionAddress == sessionAddress else { throw CancellationError() }
         let pump = geronimoPump
         let runtimeHandlers = self.runtimeHandlers
+        videoSurfaceNeedsRecovery = true
         await prepareGeronimoVideoSurfaceForShutdown()
         if let pump { await pump.stop() }
         await runtimeHandlers?.cancel()
@@ -346,8 +350,6 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoEventSink = nil
         self.runtimeHandlers = nil
         activeConnection = nil
-        prepareVideoSurfaceForShutdown = nil
-        nativeLifecycleOperationInProgress = false
     }
 
     public func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
@@ -367,6 +369,22 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private func prepareGeronimoVideoSurfaceForShutdown() async {
         guard let prepareVideoSurfaceForShutdown else { return }
         await prepareVideoSurfaceForShutdown()
+    }
+
+    private func beginNativeLifecycleOperation() async {
+        while nativeLifecycleOperationInProgress {
+            await withCheckedContinuation { continuation in
+                nativeLifecycleWaiters.append(continuation)
+            }
+        }
+        nativeLifecycleOperationInProgress = true
+    }
+
+    private func endNativeLifecycleOperation() {
+        nativeLifecycleOperationInProgress = false
+        let waiters = nativeLifecycleWaiters
+        nativeLifecycleWaiters.removeAll()
+        waiters.forEach { $0.resume() }
     }
 
     private func waitForConnectingAttemptToFinish() async {

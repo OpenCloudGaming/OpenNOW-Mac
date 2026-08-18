@@ -340,6 +340,13 @@ public final class NativeWebRTCStreamView: NSView, NSTextInputClient {
         nativeNVSTRendererWindow.alphaValue = 0
     }
 
+    public var nativeNVSTRendererSurfaceReady: Bool {
+        guard nativeNVSTRendererEnabled, nativeNVSTVideoVisible, !nativeNVSTRendererPreparedForShutdown,
+              let metalView = nativeNVSTMetalView, metalView.superview === videoSurface,
+              let metalLayer = metalView.layer as? CAMetalLayer else { return false }
+        return metalLayer.drawableSize.width >= 1 && metalLayer.drawableSize.height >= 1
+    }
+
     public func prepareNativeNVSTRendererForShutdown() {
         nativeNVSTVideoVisible = false
         nativeNVSTRendererPreparedForShutdown = true
