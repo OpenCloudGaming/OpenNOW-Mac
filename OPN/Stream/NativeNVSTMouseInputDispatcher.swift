@@ -81,12 +81,17 @@ final class NativeNVSTInputDispatcher: Sendable {
 
 private final class NativeNVSTInputBuffer: @unchecked Sendable {
     private let capacity: Int
+    private let protectedCapacity: Int
+    private let ordinaryCapacity: Int
     private let lock = NSLock()
     private var inputs: [NativeNVSTInput] = []
     private var finished = false
 
     init(capacity: Int) {
-        self.capacity = max(1, capacity)
+        let normalizedCapacity = max(1, capacity)
+        self.capacity = normalizedCapacity
+        protectedCapacity = normalizedCapacity > Int.max - 96 ? Int.max : normalizedCapacity + 96
+        ordinaryCapacity = max(normalizedCapacity, protectedCapacity - 32)
     }
 
     var isFinished: Bool {
@@ -101,13 +106,20 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
         lock.withLock {
             guard !finished else { return false }
             if coalesce(input) { return true }
+            makeReservedCapacityIfNeeded(for: input)
             if inputs.count >= capacity {
-                if let staleIndex = inputs.firstIndex(where: Self.isLossy) {
+                if let staleIndex = inputs.indices.first(where: {
+                    Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) && !isProspectiveAbsoluteButtonPair(at: $0, incoming: input)
+                }) {
                     inputs.remove(at: staleIndex)
                 } else if Self.isNeutralizing(input), let pressIndex = inputs.firstIndex(where: Self.isNonNeutralButtonOrKeyPress) {
                     inputs.remove(at: pressIndex)
                 } else if Self.isNeutralizing(input) {
                     inputs.removeFirst()
+                } else if (!Self.isLossy(input) || Self.isAbsoluteMove(input)),
+                          inputs.count < capacityLimit(for: input) {
+                    inputs.append(input)
+                    return true
                 } else {
                     return false
                 }
@@ -129,7 +141,8 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
             guard !finished else { return }
             finished = true
             if discardingStaleInput {
-                inputs.removeAll(where: Self.isLossy)
+                let staleIndices = inputs.indices.filter { Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) }
+                for index in staleIndices.reversed() { inputs.remove(at: index) }
             } else {
                 inputs.removeAll(keepingCapacity: false)
             }
@@ -151,6 +164,12 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
                 deltaY: deltaY,
                 timestamp: timestamp
             )))
+            return true
+        case (.event(.mouse(.wheel(let oldDeviceID, let oldDelta, _))),
+              .event(.mouse(.wheel(let newDeviceID, let newDelta, let timestamp))))
+            where oldDeviceID == newDeviceID && (oldDelta > 0) == (newDelta > 0):
+            guard let delta = Self.sum(oldDelta, newDelta) else { return false }
+            inputs[inputs.count - 1] = .event(.mouse(.wheel(deviceID: newDeviceID, delta: delta, timestamp: timestamp)))
             return true
         case (.event(.gamepad(let oldState)), .event(.gamepad(let newState)))
             where oldState.playerIndex == newState.playerIndex && oldState.deviceID == newState.deviceID &&
@@ -174,6 +193,39 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
         }
     }
 
+    private static func isAbsoluteMove(_ input: NativeNVSTInput) -> Bool {
+        if case .absoluteMove = input { return true }
+        return false
+    }
+
+    private func capacityLimit(for input: NativeNVSTInput) -> Int {
+        if Self.isAbsoluteMove(input) { return protectedCapacity }
+        if case .event(.mouse(.wheel)) = input { return max(ordinaryCapacity, protectedCapacity - 10) }
+        if case .event(.mouse(.button)) = input, inputs.last.map(Self.isAbsoluteMove) == true { return protectedCapacity }
+        return ordinaryCapacity
+    }
+
+    private func makeReservedCapacityIfNeeded(for input: NativeNVSTInput) {
+        guard inputs.count >= capacityLimit(for: input) else { return }
+        let needsAbsoluteSlot = Self.isAbsoluteMove(input)
+        let needsButtonSlot = inputs.last.map(Self.isAbsoluteMove) == true && {
+            if case .event(.mouse(.button)) = input { return true }
+            return false
+        }()
+        guard needsAbsoluteSlot || needsButtonSlot else { return }
+        guard let pairStart = inputs.indices.first(where: {
+            $0 + 1 < inputs.count - (needsButtonSlot ? 1 : 0) && isEvictableAbsolutePressPair(at: $0)
+        }) else { return }
+        inputs.remove(at: pairStart + 1)
+        inputs.remove(at: pairStart)
+    }
+
+    private func isEvictableAbsolutePressPair(at index: Int) -> Bool {
+        guard isProtectedAbsoluteMove(at: index) else { return false }
+        guard case .event(.mouse(.button(_, _, let isPressed, _))) = inputs[index + 1] else { return false }
+        return isPressed
+    }
+
     private static func isNeutralizing(_ input: NativeNVSTInput) -> Bool {
         guard case .event(let event) = input else { return false }
         return NativeNVSTInputDispatcher.isNeutralizing(event)
@@ -190,6 +242,18 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
         default:
             return false
         }
+    }
+
+    private func isProtectedAbsoluteMove(at index: Int) -> Bool {
+        guard case .absoluteMove = inputs[index], inputs.indices.contains(index + 1) else { return false }
+        guard case .event(.mouse(.button)) = inputs[index + 1] else { return false }
+        return true
+    }
+
+    private func isProspectiveAbsoluteButtonPair(at index: Int, incoming: NativeNVSTInput) -> Bool {
+        guard index == inputs.count - 1, case .absoluteMove = inputs[index] else { return false }
+        guard case .event(.mouse(.button)) = incoming else { return false }
+        return true
     }
 
     private static func sum(_ lhs: Int16, _ rhs: Int16) -> Int16? {

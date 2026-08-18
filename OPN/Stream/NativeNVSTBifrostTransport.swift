@@ -1588,6 +1588,7 @@ private final class NativeNVSTTerminationChannel: @unchecked Sendable {
 
 final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private let lock = NSLock()
+    private let cursorDeliveryLock = NSRecursiveLock()
     private let sessionId: String
     private let terminationHandler: @Sendable (NativeNVSTTransportTermination) -> Void
     private let cursorVisibilityHandler: (@MainActor @Sendable (Bool) -> Void)?
@@ -1610,6 +1611,8 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private var lastClientEvent: UInt32?
     private var lastNotification: UInt32?
     private var lastResultCode: Int32?
+    private var cursorUpdateGeneration: UInt = 0
+    private var acceptsCursorUpdates = true
 
     init(sessionId: String,
          telemetryAttributes: [String: String],
@@ -1645,6 +1648,13 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         lastClientEvent = clientEvent
         lastNotification = notification
         lastResultCode = resultCode
+        let cursorGeneration: UInt?
+        if acceptsCursorUpdates, phase == 80, notification == 1 || notification == 2 {
+            cursorUpdateGeneration &+= 1
+            cursorGeneration = cursorUpdateGeneration
+        } else {
+            cursorGeneration = nil
+        }
         var attributes = telemetryAttributes
         let pausePending = self.pausePending
         lock.unlock()
@@ -1662,9 +1672,21 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
         WebRTCMediaTelemetry.capture("nvst.geronimo.callback", level: .info, message: "Geronimo native callback observed.", attributes: attributes)
 
+        if phase == 60 || phase == 61 || phase == 62 { invalidateCursorUpdates() }
+
         if phase == 80, notification == 1 || notification == 2 {
             let visible = notification == 1
-            Task { @MainActor [cursorVisibilityHandler] in cursorVisibilityHandler?(visible) }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    guard let cursorGeneration else { return }
+                    deliverCursorUpdate(visible: visible, generation: cursorGeneration, handler: cursorVisibilityHandler)
+                }
+            } else {
+                Task { @MainActor [weak self, cursorVisibilityHandler] in
+                    guard let self, let cursorGeneration else { return }
+                    self.deliverCursorUpdate(visible: visible, generation: cursorGeneration, handler: cursorVisibilityHandler)
+                }
+            }
             return
         }
 
@@ -1758,6 +1780,29 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
     }
 
+    @MainActor private func deliverCursorUpdate(visible: Bool,
+                                                generation: UInt,
+                                                handler: (@MainActor @Sendable (Bool) -> Void)?) {
+        cursorDeliveryLock.lock()
+        defer { cursorDeliveryLock.unlock() }
+        lock.lock()
+        guard acceptsCursorUpdates, cursorUpdateGeneration == generation else {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+        handler?(visible)
+    }
+
+    private func invalidateCursorUpdates() {
+        cursorDeliveryLock.lock()
+        defer { cursorDeliveryLock.unlock() }
+        lock.lock()
+        acceptsCursorUpdates = false
+        cursorUpdateGeneration &+= 1
+        lock.unlock()
+    }
+
     func readinessDiagnosticAttributes() -> [String: String] {
         lock.lock()
         let phases = observedPhases.sorted()
@@ -1830,6 +1875,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func fail(_ error: Error, transportFailure: NativeNVSTTransportFailure? = nil) {
+        invalidateCursorUpdates()
         let wasReady = hasReachedReadiness
         resolveStart(.failure(error))
         resolveReadiness(.failure(error))
@@ -1844,6 +1890,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func cancel() {
+        invalidateCursorUpdates()
         resolveStart(.failure(CancellationError()))
         resolveReadiness(.failure(CancellationError()))
         resolvePause(.failure(CancellationError()))
@@ -1993,6 +2040,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     private func deliverTerminal(_ termination: NativeNVSTTransportTermination) {
+        invalidateCursorUpdates()
         lock.lock()
         guard !terminalDelivered else {
             lock.unlock()

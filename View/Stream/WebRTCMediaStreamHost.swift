@@ -629,6 +629,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         view.directMouseInputEnabled = profile.directMouseInput
         view.locksPointerWhenRelativeModeSelected = true
+        view.confinesCursorToWindowInAbsoluteMode = profile.directMouseInput
         view.hidesCursorWhilePointerLocked = true
         if path == nil { view.mouseInputMode = .absolute }
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
@@ -665,8 +666,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         view.onAbsoluteMouseMove = { event in
             guard isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd,
-                  view.remoteInputEnabled, view.mouseInputMode == .absolute,
-                  NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+                  view.remoteInputEnabled, view.mouseInputMode == .absolute else { return }
+            guard view.isEmittingNeutralizingAbsolutePosition ||
+                    (NSApplication.shared.isActive && view.window?.isKeyWindow == true) else { return }
             lastAcceptedStreamInputAt = Date()
             inputDispatcher?.enqueueAbsoluteMove(event)
         }

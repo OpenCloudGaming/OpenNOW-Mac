@@ -41,6 +41,7 @@ private struct MouseButtonTransition: Equatable {
 @Test @MainActor func pointerUnlockReleasesHeldMouseButtonsOnce() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.cursorAssociationHandler = { _ in .success }
     view.hidesCursorWhilePointerLocked = false
     window.contentView = view
     var events: [UserInputEvent] = []
@@ -70,6 +71,7 @@ private struct MouseButtonTransition: Equatable {
 @Test @MainActor func pointerCaptureSuppressesTheCompleteActivationClick() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.cursorAssociationHandler = { _ in .success }
     view.hidesCursorWhilePointerLocked = false
     window.contentView = view
     var events: [UserInputEvent] = []
@@ -177,6 +179,77 @@ private struct MouseButtonTransition: Equatable {
     view.mouseUp(with: mouseUp)
 
     #expect(sequence == ["position:800,0", "down", "position:800,0", "up"])
+}
+
+@Test @MainActor func absoluteMouseCaptureConfinesToWindowAndPreservesClick() throws {
+    let mouseLocation = NSEvent.mouseLocation
+    let window = NSWindow(
+        contentRect: NSRect(x: mouseLocation.x - 640, y: mouseLocation.y - 360, width: 1280, height: 720),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.mouseInputMode = .absolute
+    view.confinesCursorToWindowInAbsoluteMode = true
+    view.cursorAssociationHandler = { _ in .success }
+    window.contentView = view
+    defer { view.setPointerLocked(false) }
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown, location: NSPoint(x: 640, y: 360)))
+
+    view.mouseDown(with: mouseDown)
+
+    #expect(view.isAbsoluteCursorConfined)
+    #expect(view.isCursorCaptured)
+    #expect(mouseButtonTransitions(events) == [MouseButtonTransition(button: .left, isPressed: true)])
+    view.remoteInputEnabled = false
+    #expect(!view.isCursorCaptured)
+    #expect(mouseButtonTransitions(events).last == MouseButtonTransition(button: .left, isPressed: false))
+}
+
+@Test @MainActor func absoluteCursorConfinementUsesCompleteWindowFrame() {
+    let frame = CGRect(x: 100, y: 200, width: 800, height: 600)
+
+    #expect(NativeWebRTCStreamView.confinedCursorPoint(CGPoint(x: 130, y: 770), to: frame) == CGPoint(x: 130, y: 770))
+    #expect(NativeWebRTCStreamView.confinedCursorPoint(CGPoint(x: 20, y: 900), to: frame) == CGPoint(x: 101, y: 799))
+    #expect(NativeWebRTCStreamView.confinedCursorPoint(CGPoint(x: 950, y: 100), to: frame) == CGPoint(x: 899, y: 201))
+    #expect(NativeWebRTCStreamView.confinedCursorPoint(CGPoint(x: .nan, y: 300), to: frame) == nil)
+    #expect(NativeWebRTCStreamView.advancedAbsoluteCursorPoint(CGPoint(x: 400, y: 500), deltaX: 50, deltaY: 25, in: frame) == CGPoint(x: 450, y: 475))
+    #expect(NativeWebRTCStreamView.advancedAbsoluteCursorPoint(CGPoint(x: 890, y: 790), deltaX: 50, deltaY: -50, in: frame) == CGPoint(x: 899, y: 799))
+}
+
+@Test @MainActor func cursorModeTransitionReleasesButtonsUsingPreviousMode() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.directMouseInputEnabled = false
+    view.mouseInputMode = .relative
+    var releaseMode: NativeStreamMouseInputMode?
+    view.onInputEvent = { event in
+        if case .mouse(.button(_, .right, false, _)) = event { releaseMode = view.mouseInputMode }
+    }
+    let rightMouseDown = try #require(makeMouseEvent(type: .rightMouseDown))
+
+    view.rightMouseDown(with: rightMouseDown)
+    view.mouseInputMode = .absolute
+
+    #expect(releaseMode == .relative)
+}
+
+@Test @MainActor func preciseScrollingAccumulatesCompleteDetents() {
+    var remainder = 0.0
+
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: 0.4, hasPreciseScrollingDeltas: true, remainder: &remainder) == 0)
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: 0.4, hasPreciseScrollingDeltas: true, remainder: &remainder) == 0)
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: 0.3, hasPreciseScrollingDeltas: true, remainder: &remainder) == 120)
+    #expect(abs(remainder - 0.1) < 0.000_001)
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: -1.1, hasPreciseScrollingDeltas: true, remainder: &remainder) == -120)
+    #expect(abs(remainder) < 0.000_001)
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: 2, hasPreciseScrollingDeltas: false, remainder: &remainder) == 240)
+
+    remainder = 1_000
+    #expect(NativeWebRTCStreamView.accumulatedWheelDelta(scrollingDeltaY: 0, hasPreciseScrollingDeltas: true, remainder: &remainder) == 32_760)
+    #expect(remainder == 727)
 }
 
 @Test func nativeNVSTMouseDispatcherPreservesEventOrder() async {

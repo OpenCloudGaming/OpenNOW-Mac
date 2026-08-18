@@ -170,6 +170,69 @@ private actor ControlledNativeInputRecorder {
     #expect(await recorder.snapshot() == [.event(press), .event(secondText), .event(release)])
 }
 
+@Test func nativeNVSTDispatcherCoalescesAdjacentWheelDetents() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 3) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(.mouse(.wheel(deviceID: "mouse", delta: 40, timestamp: timestamp)))
+    dispatcher.enqueue(.mouse(.wheel(deviceID: "mouse", delta: 80, timestamp: MediaTimestamp(nanoseconds: 2_000))))
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [
+        .event(press),
+        .event(.mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: MediaTimestamp(nanoseconds: 2_000)))),
+    ])
+}
+
+@Test func nativeNVSTDispatcherPreservesOppositeWheelEdges() async {
+    let recorder = NativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let up = UserInputEvent.mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
+    let down = UserInputEvent.mouse(.wheel(deviceID: "mouse", delta: -120, timestamp: MediaTimestamp(nanoseconds: 2_000)))
+
+    dispatcher.enqueue(up)
+    dispatcher.enqueue(down)
+    await dispatcher.finish()
+
+    #expect(await recorder.snapshot() == [.event(up), .event(down)])
+}
+
+@Test func nativeNVSTDispatcherKeepsAbsolutePositionWithButtonUnderPressure() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 2) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let key = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let textEvents = (0..<66).map {
+        UserInputEvent.text(deviceID: "keyboard", value: String($0), timestamp: timestamp)
+    }
+    let position = NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp)
+    let button = UserInputEvent.mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: timestamp))
+
+    dispatcher.enqueue(key)
+    await recorder.waitForCount(1)
+    textEvents.forEach { dispatcher.enqueue($0) }
+    dispatcher.enqueueAbsoluteMove(position)
+    dispatcher.enqueue(button)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(key)] + textEvents.map { .event($0) } + [.absoluteMove(position), .event(button)])
+}
+
 @Test @MainActor func focusLossNeutralizesEveryActiveDeviceBeforePointerUnlock() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)

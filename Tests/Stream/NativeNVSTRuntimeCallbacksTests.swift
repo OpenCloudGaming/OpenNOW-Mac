@@ -206,6 +206,36 @@ private func decodeNativeHapticCallbackData(_ bytes: UnsafePointer<UInt8>?, _ co
     }
 }
 
+@Test @MainActor func nativeCursorCallbacksPreservePolarityAndLatestState() async {
+    var visibility: [Bool] = []
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "cursor-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: { visibility.append($0) },
+        terminationHandler: { _ in }
+    )
+
+    sink.handle(phase: 80, callbackType: 0, clientEvent: 0, notification: 1, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    #expect(visibility == [true])
+
+    sink.handle(phase: 80, callbackType: 0, clientEvent: 0, notification: 2, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    sink.handle(phase: 80, callbackType: 0, clientEvent: 0, notification: 1, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    #expect(visibility == [true, false, true])
+
+    sink.handle(phase: 80, callbackType: 0, clientEvent: 0, notification: 3, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    #expect(visibility == [true, false, true])
+
+    let cancelledSink = NativeNVSTGeronimoEventSink(
+        sessionId: "cancelled-cursor-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: { visibility.append($0) },
+        terminationHandler: { _ in }
+    )
+    cancelledSink.cancel()
+    cancelledSink.handle(phase: 80, callbackType: 0, clientEvent: 0, notification: 2, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    #expect(visibility == [true, false, true])
+}
+
 @Test func nativeStopCallbackTimeoutPropagates() async {
     let sink = NativeNVSTGeronimoEventSink(
         sessionId: "stop-timeout-test",

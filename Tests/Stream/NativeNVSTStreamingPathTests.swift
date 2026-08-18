@@ -715,6 +715,19 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect([keyboard, capsLock, mouseMove, mouseButton, mouseWheel, gamepad, text].allSatisfy { !$0.partiallyReliable })
 }
 
+@Test func nativeNVSTInputEncoderMapsEveryMouseButtonAndEdge() throws {
+    let encoder = NativeNVSTInputEncoder()
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let mappings: [(MouseButton, UInt8)] = [(.left, 1), (.middle, 2), (.right, 3), (.back, 4), (.forward, 5)]
+
+    for (button, identifier) in mappings {
+        let press = try #require(encoder.encode(.mouse(.button(deviceID: "mouse", button: button, isPressed: true, timestamp: timestamp))))
+        let release = try #require(encoder.encode(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp))))
+        #expect(Array(press.payload[24..<29]) == [identifier, 0, 0, 0, 2])
+        #expect(Array(release.payload[24..<29]) == [identifier, 0, 0, 0, 1])
+    }
+}
+
 @Test func nativeNVSTSessionPayloadExtractsVerifiedStartFieldsWithoutLoggingToken() throws {
     let allocation = nativeAllocation(rawSessionJSON: """
     {
