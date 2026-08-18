@@ -2828,6 +2828,23 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         }
         return -5;
     }
+    if (prepareParameters.synchronous) {
+        {
+            std::lock_guard<std::mutex> stateLock(session->stateMutex);
+            if (session->state == NativeSessionState::preparePending) {
+                session->state = NativeSessionState::prepared;
+            } else if (session->state == NativeSessionState::failed) {
+                setError(errorBuffer, errorBufferLength, session->lastError.c_str());
+                return -5;
+            }
+        }
+        int32_t startResult = completePreparedStart(session);
+        if (startResult != 0) {
+            std::lock_guard<std::mutex> stateLock(session->stateMutex);
+            setError(errorBuffer, errorBufferLength, session->lastError.c_str());
+            return startResult;
+        }
+    }
     return 0;
     } catch (...) {
         setSessionFailure(session, "Native Geronimo start raised an unexpected C++ exception.");
