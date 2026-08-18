@@ -972,7 +972,7 @@ public struct WebRTCMediaStreamSurface: View {
     private var hudStatsPanel: some View {
         hudSection(label: "STATS") {
             VStack(alignment: .leading, spacing: 8) {
-                statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
+                statsRow("Transport", latestStats?.transport.isEmpty == false ? "WebRTC · \(latestStats?.transport ?? "")" : "WebRTC")
                 statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
                 statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
                 statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
@@ -1951,6 +1951,8 @@ public struct WebRTCMediaStreamSurface: View {
             toggleRecording()
         case .toggleAntiAFK:
             toggleAntiAFKMouseMovement()
+        case .togglePointerCapture:
+            togglePointerLockFromHUD()
         case .showQuitMenu:
             showQuitMenu()
         }

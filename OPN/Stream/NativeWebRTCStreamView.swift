@@ -32,9 +32,10 @@ public enum WebRTCMediaStreamCommand: Equatable, Sendable {
     case toggleMicrophone
     case toggleRecording
     case toggleAntiAFK
+    case togglePointerCapture
     case showQuitMenu
 
-    static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit"
+    static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘P Capture   ⌘Q Quit"
 
     static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> WebRTCMediaStreamCommand? {
         let modifiers = modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
@@ -45,6 +46,7 @@ public enum WebRTCMediaStreamCommand: Equatable, Sendable {
         case 40: return .toggleAntiAFK
         case 45: return .toggleStatsHUD
         case 5: return .toggleUnifiedHUD
+        case 35: return .togglePointerCapture
         case 12: return .showQuitMenu
         default: return nil
         }
