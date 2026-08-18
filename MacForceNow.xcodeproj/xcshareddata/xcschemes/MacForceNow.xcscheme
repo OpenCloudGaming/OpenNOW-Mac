@@ -51,6 +51,18 @@
             ReferencedContainer = "container:MacForceNow.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "OPN_PROTOCOL_DEBUG"
+            value = "1"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "OPN_PROTOCOL_CAPTURE_DIR"
+            value = "/tmp/opn-protocol-capture"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

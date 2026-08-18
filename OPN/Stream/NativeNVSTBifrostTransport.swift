@@ -451,11 +451,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                     allocation.authTokenType.withCString { authTokenTypePointer in
                                         allocation.authToken.withCString { authTokenPointer in
                                             allocation.rawSessionJSON.withCString { cloudSessionPointer in
-                                                if allocation.isResume {
-                                                    MacForceNowNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
-                                                } else {
-                                                    MacForceNowNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
-                                                }
+                                                // allocateSession() always creates or claims the CloudMatch session over HTTP
+                                                // before native start, so a real sessionId already exists here in every case.
+                                                // GeronimoStart's native-creates-its-own-session semantics would issue a second,
+                                                // independent session creation that collides with the one we already hold —
+                                                // GeronimoResume attaches to the existing session instead.
+                                                MacForceNowNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
                                             }
                                         }
                                     }
@@ -2215,6 +2216,10 @@ private func MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler(_ session: Unsaf
 @_silgen_name("MacForceNowNativeNVSTGeronimoSetVideoSurface")
 private func MacForceNowNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
+// Currently unused: the transport always drives GeronimoResume because allocateSession
+// already creates the CloudMatch session before the native phase runs. Kept as the
+// reference binding for the GridApp::start entry point (and its shim implementation) in
+// case a future first-party allocation path needs to start rather than resume a session.
 @_silgen_name("MacForceNowNativeNVSTGeronimoStart")
 private func MacForceNowNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 

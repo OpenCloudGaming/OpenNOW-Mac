@@ -1840,8 +1840,10 @@ bool videoSurfaceDimensions(void *nativeHandle, uint32_t &width, uint32_t &heigh
 }
 
 bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uint32_t codec) {
-    const uint32_t creationCodec = videoDecoderCreationCodec(codec);
-    if (creationCodec == 0) { return false; }
+    // Only H264 (1), HEVC (2), and AV1 (4) are concrete decodable codecs; anything else
+    // (e.g. the "any" bitmask 7) has no decoder mapping. The codec is delivered to the
+    // decoder via decoderSettings offset 0x0c below, not through createVideoDecoder.
+    if (codec != 1 && codec != 2 && codec != 4) { return false; }
     if (session->videoDecoder != nullptr && session->activeCodec == codec) { return true; }
     callVoidVirtual(session->videoDecoder, 0x60);
     destroyPolymorphicObject(session->videoDecoder);
@@ -1853,7 +1855,14 @@ bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uin
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x10, 2);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x18, GraphicsContextMetal);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x1c, 1);
-    void *candidate = session->functions.createVideoDecoder(creationSettings, creationCodec);
+    // platformCreateVideoDecoder's second argument is NOT the codec: it is truncated to
+    // uint16 and becomes the decoder's stream/monitor index (VTDecoder ctor arg 2, stored
+    // at decoder+0xa8). VideoDecoder::resume() looks that index up in the IOInterface
+    // config-video-settings list populated from the StreamerConnected notification, which
+    // only holds one entry per video stream. Passing the codec here (1/2/4) made the
+    // lookup fail and resume() abort the session with GERONIMO_VIDEODECODER_REINIT
+    // (0xC0F11005). The codec is delivered separately via decoderSettings offset 0x0c.
+    void *candidate = session->functions.createVideoDecoder(creationSettings, 0);
     if (candidate == nullptr) { return false; }
     const std::shared_ptr<AsyncVideoFrameRenderer> &renderer = session->functions.windowAsyncRenderer(session->window);
     if (!renderer) {
@@ -2596,6 +2605,19 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     session->microphoneAvailable = microphoneAvailable != 0;
     session->microphoneEnabled = session->microphoneAvailable && microphoneEnabled != 0;
     session->requestedCodec = codecFromJSON(cloud, geronimo);
+    // The Geronimo session JSON schema has no codec field, so Nsk::getStreamStartParameters
+    // leaves DownstreamVideoSettings codec (offset 0x18) at its default of 7 — the
+    // "any codec" bitmask (H264|HEVC|AV1) — which convertToStreamingParams collapses to
+    // H264. That contradicts the codec the CloudMatch session was created with (e.g. HEVC
+    // for 10-bit/5K) and the resulting mid-connect codec change makes the Geronimo video
+    // decoder re-init fail fatally (0xC0F11005). Force the profile codec in when the entry
+    // does not already name a single concrete codec.
+    for (auto &videoSettingsEntry : startParameters.videoSettings) {
+        const uint32_t entryCodec = loadUnaligned<uint32_t>(videoSettingsEntry.bytes, 0x18);
+        if (entryCodec != 1 && entryCodec != 2 && entryCodec != 4) {
+            storeUnaligned<uint32_t>(videoSettingsEntry.bytes, 0x18, session->requestedCodec);
+        }
+    }
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
     const char *const serverPaths[] = { "serverAddress", "sessionControlInfo.ip", "zoneAddress" };
@@ -2661,7 +2683,15 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     SessionControl::PrepareParameters prepareParameters;
     prepareParameters.serverAddress = session->initServerAddress;
     prepareParameters.serverPort = endpoint.port;
-    prepareParameters.clientProfile = width >= 1920 && height >= 1080 ? 5 : 3;
+    // NVbConfigurationProfile drives Bifrost's SessionController::populateSessionParams,
+    // whose Streamer::updateVideoSettingsForNVbProfile pass overwrites every
+    // NVbStreamSettings entry UNCONDITIONALLY for profiles 2-7 (profile 5 forces
+    // 1920x1080@60), which is what the resume PUT's clientRequestMonitorSettings are
+    // built from — silently discarding the requested 5K/120 mode. Profile 8 maps to the
+    // same NVSC profile (1) and video content type (Gaming) as profile 5 in both
+    // libBifrost2 and libGeronimo, but hits the "profile is not handled" branch in
+    // updateVideoSettingsForNVbProfile, leaving the profile geometry untouched.
+    prepareParameters.clientProfile = 8;
     prepareParameters.deviceId = session->deviceId;
     const uint32_t communicationParameters[] = {3, 3, 13, 500, 1000, 10000, 1000, 50, 3000, 1000, 300};
     memcpy(prepareParameters.communicationParams, communicationParameters, sizeof(communicationParameters));
@@ -2732,6 +2762,18 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         if (maxPacketSize >= MinimumNVbPacketSize) {
             for (auto &setting : pending->streamSettings) {
                 storeUnaligned<uint16_t>(setting.bytes, NVbStreamSettingsPacketSizeOffset, static_cast<uint16_t>(maxPacketSize));
+            }
+        }
+        // convertToStreamingParams runs the library's chooseStreamingSettings pass, which
+        // clamps the requested mode to the current SDL window size and legacy decode caps
+        // (e.g. 5120x2160@120 collapsed to 2560x1080 or below). The server then finalizes
+        // the session at that degraded mode. The CloudMatch session was already created at
+        // the profile mode, so restore the profile geometry before the resume request.
+        if (width > 1 && height > 1 && fps > 1 && width <= UINT16_MAX && height <= UINT16_MAX && fps <= UINT16_MAX) {
+            for (auto &setting : pending->streamSettings) {
+                storeUnaligned<uint16_t>(setting.bytes, 0x10, static_cast<uint16_t>(width));
+                storeUnaligned<uint16_t>(setting.bytes, 0x12, static_cast<uint16_t>(height));
+                storeUnaligned<uint16_t>(setting.bytes, 0x18, static_cast<uint16_t>(fps));
             }
         }
         pending->parameters.defaultStreamSettings = pending->streamSettings.front();

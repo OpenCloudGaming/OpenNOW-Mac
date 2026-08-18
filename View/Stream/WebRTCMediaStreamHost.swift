@@ -116,6 +116,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var networkGovernor: NativeNVSTNetworkGovernor?
     @State private var networkPathTask: Task<Void, Never>?
     @State private var networkPathAvailable = true
+    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
 
     var body: some View {
         ZStack {
@@ -749,6 +750,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay }
         }
+        .macForceNowInterfaceScale(uiScale)
     }
 
     private var nativeNetworkRecoveryOverlay: some View {

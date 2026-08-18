@@ -376,9 +376,17 @@ public enum WebRTCMediaStreamSettingsResolver {
         if requested != "AUTO" { return codecSupported(requested, capabilities: capabilities) ? requested : "H264" }
         if !libWebRTCAvailable { return "H264" }
         let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
+        let prefersTenBit = profile.colorQuality.hasPrefix("10bit")
+        let prefersHighResolution = pixels >= 2560 * 1440
         let prefersVeryHighResolution = pixels >= 3840 * 2160
         let highFps = profile.fps >= 144
+        // HDR intentionally pins H265 ahead of the very-high-res AV1 branch below: on macOS
+        // VideoToolbox, HDR (HDR10/Dolby Vision) is HEVC-centric and hardware-proven, whereas
+        // AV1 HDR decode is newer and less reliable. For HDR we prefer H265's reliability over
+        // AV1's efficiency, so this ordering is deliberate — do not move it after the AV1 branch.
+        if profile.enableHdr, !highFps, capabilities.hdrDisplaySupported, capabilities.h265HardwareDecodeSupported { return "H265" }
         if !highFps, prefersVeryHighResolution, capabilities.av1HardwareDecodeSupported { return "AV1" }
+        if !highFps, (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75), capabilities.h265HardwareDecodeSupported { return "H265" }
         return "H264"
     }
 

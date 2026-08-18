@@ -181,6 +181,33 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         if let stopError { throw stopError }
     }
 
+    public func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
+        // The server response ([[String: Any]]) is not Sendable, so resolve the blocker and
+        // build the (Sendable) conflict inside the completion and only hand that back.
+        await withCheckedContinuation { continuation in
+            OPNSessionManager.shared.getActiveSessions { [self] _, sessions, _ in
+                let candidates = sessions.filter { string($0["sessionId"]) != sessionID }
+                guard !candidates.isEmpty,
+                      let blocker = OPNSessionManager.shared.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let blockerSessionID = string(blocker["sessionId"])
+                guard !blockerSessionID.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let blockerAppID = string(blocker["appId"])
+                continuation.resume(returning: StreamSessionConflict(
+                    sessionID: blockerSessionID,
+                    applicationID: blockerAppID.isEmpty ? applicationID : blockerAppID,
+                    serverAddress: string(blocker["serverIp"]),
+                    isResumable: bool(blocker["isResumable"])
+                ))
+            }
+        }
+    }
+
     public func cancelSessionStart() async {
         let cancelled = lock.withLock { () -> (CheckedContinuation<StreamOffer, Error>?, StreamSessionDescriptor?) in
             signaling?.disconnect()

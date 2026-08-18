@@ -24,12 +24,20 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
     let allocation: NativeNVSTSessionAllocation
     let recoveryError: NativeNVSTError?
     let suspendsRecovery: Bool
+    let blockingConflict: StreamSessionConflict?
+    private(set) var lookupExclusions: [String] = []
     private var recoveryContinuation: CheckedContinuation<NativeNVSTSessionAllocation, Error>?
 
-    init(allocation: NativeNVSTSessionAllocation = nativeAllocation(), recoveryError: NativeNVSTError? = nil, suspendsRecovery: Bool = false) {
+    init(allocation: NativeNVSTSessionAllocation = nativeAllocation(), recoveryError: NativeNVSTError? = nil, suspendsRecovery: Bool = false, blockingConflict: StreamSessionConflict? = nil) {
         self.allocation = allocation
         self.recoveryError = recoveryError
         self.suspendsRecovery = suspendsRecovery
+        self.blockingConflict = blockingConflict
+    }
+
+    func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
+        lookupExclusions.append(sessionID)
+        return blockingConflict
     }
 
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
@@ -211,9 +219,31 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.disconnectCount == 1)
 }
 
-@Test func nativeNVSTPathSessionLimitDoesNotMakeFreshAllocationResumable() async throws {
+@Test func nativeNVSTPathSessionLimitWithoutBlockerSurfacesPlainLimitError() async throws {
     let allocation = nativeAllocation()
     let provider = RecordingNativeNVSTSessionProvider(allocation: allocation)
+    let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    do {
+        _ = try await path.start(configuration: nativeConfiguration())
+        Issue.record("Expected session-limit failure")
+    } catch let error as NativeNVSTError {
+        #expect(error == .sessionLimitReached)
+    } catch {
+        Issue.record("Expected NativeNVSTError.sessionLimitReached, received \(error)")
+    }
+
+    // Fresh allocation cleans up its own session; the lookup was asked to exclude it.
+    #expect(await provider.finished == [nativeFinish(.failed)])
+    #expect(await provider.lookupExclusions == [allocation.session.id])
+    #expect(await transport.disconnectCount == 1)
+}
+
+@Test func nativeNVSTPathSessionLimitSurfacesRealBlockingSessionConflict() async throws {
+    let allocation = nativeAllocation()
+    let blocker = StreamSessionConflict(sessionID: "blocking-session", applicationID: "999", serverAddress: "other.example.test", isResumable: true)
+    let provider = RecordingNativeNVSTSessionProvider(allocation: allocation, blockingConflict: blocker)
     let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
     let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
 
@@ -225,14 +255,32 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
             Issue.record("Expected active-session conflict, received \(error)")
             return
         }
-        #expect(conflict.sessionID == allocation.session.id)
-        #expect(conflict.applicationID == allocation.session.applicationID)
-        #expect(conflict.serverAddress == allocation.session.serverAddress)
-        #expect(conflict.isResumable == false)
-        #expect(error.errorDescription?.contains("Resume") == false)
-        #expect(StreamSessionConflict(reportMetadata: conflict.reportMetadata) == conflict)
+        #expect(conflict.sessionID == "blocking-session")
+        #expect(conflict.sessionID != allocation.session.id)
+        #expect(conflict.isResumable)
     }
 
+    #expect(await provider.finished == [nativeFinish(.failed)])
+    #expect(await provider.lookupExclusions == [allocation.session.id])
+    #expect(await transport.disconnectCount == 1)
+}
+
+@Test func nativeNVSTPathSessionLimitOnResumeDoesNotDestroyResumeTarget() async throws {
+    let allocation = nativeAllocation(isResume: true)
+    let provider = RecordingNativeNVSTSessionProvider(allocation: allocation)
+    let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    do {
+        _ = try await path.start(configuration: nativeConfiguration())
+        Issue.record("Expected session-limit failure")
+    } catch let error as NativeNVSTError {
+        #expect(error == .sessionLimitReached)
+    } catch {
+        Issue.record("Expected NativeNVSTError.sessionLimitReached, received \(error)")
+    }
+
+    // The resume target must survive a transient seat-limit; it is not finished here.
     #expect(await provider.finished.isEmpty)
     #expect(await transport.disconnectCount == 1)
 }
@@ -1335,10 +1383,11 @@ private func nativePerformanceSnapshot() -> NativeNVSTPerformanceSnapshot {
     )
 }
 
-private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", serverType: Int = 5, authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}") -> NativeNVSTSessionAllocation {
+private func nativeAllocation(rawSessionJSON: String = "{\"sessionId\":\"native-session\"}", serverType: Int = 5, authTokenType: String = "", authToken: String = "", settingsJSON: String = "{\"transportMode\":\"nvst\"}", isResume: Bool = false) -> NativeNVSTSessionAllocation {
     let session = StreamSessionDescriptor(id: "native-session", applicationID: "123", serverAddress: "server.example.test", title: "Native Test", metadata: ["transport": "nvst"])
     return NativeNVSTSessionAllocation(
         session: session,
+        isResume: isResume,
         signalingServer: "server.example.test:443",
         signalingURL: "wss://server.example.test/nvst/",
         signalingQueryParameters: "token=abc",

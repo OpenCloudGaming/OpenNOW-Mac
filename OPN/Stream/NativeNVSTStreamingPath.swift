@@ -4,6 +4,11 @@ public protocol NativeNVSTSessionProvider: Sendable {
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws
+    /// Looks up the session actually holding the seat when a session-limit is hit at
+    /// connect time. The limit error carries no blocker identity, so this queries the
+    /// server for active sessions and returns a conflict describing the real blocker
+    /// (never the excluded session). Returns nil when no blocker can be resolved.
+    func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict?
 }
 
 extension MacForceNowStreamSessionCoordinator: NativeNVSTSessionProvider {}
@@ -11,6 +16,10 @@ extension MacForceNowStreamSessionCoordinator: NativeNVSTSessionProvider {}
 public extension NativeNVSTSessionProvider {
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
         throw NativeNVSTError.transportFailed("Native NVST session recovery is unavailable.")
+    }
+
+    func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
+        nil
     }
 }
 
@@ -388,12 +397,19 @@ public actor NativeNVSTStreamingPath {
             await transport.disconnect()
             await mediaSession.finish()
             if error as? NativeNVSTError == .sessionLimitReached {
-                throw MacForceNowStreamSessionError.activeSessionConflict(StreamSessionConflict(
-                    sessionID: allocation.session.id,
-                    applicationID: allocation.session.applicationID,
-                    serverAddress: allocation.session.serverAddress,
-                    isResumable: allocation.isResume
-                ))
+                // The blocking session is a different one whose identity this error does
+                // not carry. On a resume attempt allocation.session IS the session the user
+                // is trying to reclaim, so only clean up sessions this attempt created.
+                if !allocation.isResume {
+                    try? await sessionProvider.finishSession(allocation.session, reason: .failed)
+                }
+                if let conflict = await sessionProvider.lookupActiveSessionConflict(
+                    excludingSessionID: allocation.session.id,
+                    applicationID: configuration.applicationID
+                ) {
+                    throw MacForceNowStreamSessionError.activeSessionConflict(conflict)
+                }
+                throw error
             }
             try? await sessionProvider.finishSession(allocation.session, reason: Task.isCancelled ? .userRequested : .failed)
             if error is CancellationError || Task.isCancelled { throw error }
