@@ -539,7 +539,16 @@ private struct NativeNVSTMediaStreamSurface: View {
             return false
         }
         do {
-            try await path.setMicrophoneEnabled(false)
+            do {
+                try await path.setMicrophoneEnabled(false)
+            } catch {
+                WebRTCMediaTelemetry.capture(
+                    "nvst.microphone.shutdown.failed",
+                    level: .warning,
+                    message: Self.message(for: error),
+                    attributes: ["applicationID": configuration.applicationID, "reason": reason.rawValue]
+                )
+            }
             let report = try await path.stop(reason: reason, message: message)
             await MainActor.run { finishOnce(report: report) }
             return true

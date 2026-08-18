@@ -213,6 +213,7 @@ public final class NativeWebRTCStreamView: NSView, NSTextInputClient {
     )
     private weak var nativeNVSTRendererParentWindow: NSWindow?
     private weak var nativeNVSTMetalView: NSView?
+    private var nativeNVSTDisplayNotificationTokens: [NSObjectProtocol] = []
     private var nativeNVSTRendererEnabled = false
     private var nativeNVSTRendererPreparedForShutdown = false
     private var nativeNVSTVideoVisible = false
@@ -267,6 +268,7 @@ public final class NativeWebRTCStreamView: NSView, NSTextInputClient {
             updateNativeNVSTRendererWindowParent()
             updateNativeNVSTPresentation()
         }
+        installNativeNVSTDisplayNotifications()
         restoreInputFocus()
         window?.acceptsMouseMovedEvents = true
         if window == nil {
@@ -390,6 +392,34 @@ public final class NativeWebRTCStreamView: NSView, NSTextInputClient {
         nativeNVSTRendererWindow.setFrame(window.convertToScreen(rendererFrameInWindow), display: true)
     }
 
+    private func installNativeNVSTDisplayNotifications() {
+        removeNativeNVSTDisplayNotifications()
+        guard let window else { return }
+        let center = NotificationCenter.default
+        let refresh: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshNativeNVSTDisplayState() }
+        }
+        for observedWindow in [window, nativeNVSTRendererWindow] {
+            nativeNVSTDisplayNotificationTokens.append(center.addObserver(forName: NSWindow.didChangeScreenNotification, object: observedWindow, queue: .main, using: refresh))
+            nativeNVSTDisplayNotificationTokens.append(center.addObserver(forName: NSWindow.didChangeBackingPropertiesNotification, object: observedWindow, queue: .main, using: refresh))
+            nativeNVSTDisplayNotificationTokens.append(center.addObserver(forName: NSWindow.didChangeScreenProfileNotification, object: observedWindow, queue: .main, using: refresh))
+        }
+        nativeNVSTDisplayNotificationTokens.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: NSApplication.shared, queue: .main, using: refresh))
+    }
+
+    private func removeNativeNVSTDisplayNotifications() {
+        let center = NotificationCenter.default
+        nativeNVSTDisplayNotificationTokens.forEach { center.removeObserver($0) }
+        nativeNVSTDisplayNotificationTokens.removeAll()
+    }
+
+    private func refreshNativeNVSTDisplayState() {
+        guard nativeNVSTRendererEnabled else { return }
+        updateNativeNVSTRendererWindowFrame()
+        if let nativeNVSTMetalView { updateNativeNVSTMetalDrawableSize(nativeNVSTMetalView) }
+        updateNativeNVSTPresentation()
+    }
+
     private func updateNativeNVSTPresentation() {
         let screenSupportsEDR = window?.screen?.maximumPotentialExtendedDynamicRangeColorComponentValue ?? 1
         let usesEDR = Self.nativeNVSTPresentationUsesEDR(
@@ -427,11 +457,16 @@ public final class NativeWebRTCStreamView: NSView, NSTextInputClient {
 
     private func updateNativeNVSTMetalDrawableSize(_ metalView: NSView) {
         guard let metalLayer = metalView.layer as? CAMetalLayer else { return }
-        let boundsSize = metalView.bounds.size
-        guard boundsSize.width >= 1, boundsSize.height >= 1 else { return }
         let scale = max(1, metalView.window?.backingScaleFactor ?? window?.backingScaleFactor ?? 1)
+        guard let drawableSize = Self.nativeNVSTDrawableSize(boundsSize: metalView.bounds.size, backingScaleFactor: scale) else { return }
         metalLayer.contentsScale = scale
-        metalLayer.drawableSize = CGSize(width: floor(boundsSize.width * scale), height: floor(boundsSize.height * scale))
+        metalLayer.drawableSize = drawableSize
+    }
+
+    static func nativeNVSTDrawableSize(boundsSize: CGSize, backingScaleFactor: CGFloat) -> CGSize? {
+        guard boundsSize.width.isFinite, boundsSize.height.isFinite, backingScaleFactor.isFinite,
+              boundsSize.width >= 1, boundsSize.height >= 1, backingScaleFactor > 0 else { return nil }
+        return CGSize(width: floor(boundsSize.width * backingScaleFactor), height: floor(boundsSize.height * backingScaleFactor))
     }
 
     public func setPointerLocked(_ locked: Bool) {
