@@ -88,6 +88,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     private let terminalStream: AsyncStream<NativeNVSTTransportTermination>
     private let terminalContinuation: AsyncStream<NativeNVSTTransportTermination>.Continuation
     private var connectContinuation: CheckedContinuation<NativeNVSTTransportConnection, Error>?
+    private var connectStartedContinuations: [CheckedContinuation<Void, Never>] = []
 
     init(mode: Mode) {
         self.mode = mode
@@ -107,6 +108,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {
         connectCount += 1
+        connectStartedContinuations.forEach { $0.resume() }
+        connectStartedContinuations.removeAll()
         if case .connectFailure = mode {
             throw NativeNVSTError.privateABIUnavailable("abi unavailable")
         }
@@ -120,6 +123,13 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         }
         await mediaReceiver.receiveVideoFrame(NativeNVSTVideoFrame(streamID: 1, codec: .h264, timestamp: MediaTimestamp(nanoseconds: 1), durationNanoseconds: 16_666_667, width: 1920, height: 1080, isKeyFrame: true, payload: Data([1, 2, 3])))
         return NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: try await prepare())
+    }
+
+    func waitForConnect() async {
+        if connectCount > 0 { return }
+        await withCheckedContinuation { continuation in
+            connectStartedContinuations.append(continuation)
+        }
     }
 
     func send(_ event: UserInputEvent) async throws {
@@ -530,10 +540,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let transport = RecordingNativeNVSTTransport(mode: .suspendedConnect)
     let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
     let task = Task { try await path.start(configuration: nativeConfiguration()) }
-    for _ in 0..<100 {
-        if await transport.connectCount > 0 { break }
-        await Task.yield()
-    }
+    await transport.waitForConnect()
 
     task.cancel()
     do {
