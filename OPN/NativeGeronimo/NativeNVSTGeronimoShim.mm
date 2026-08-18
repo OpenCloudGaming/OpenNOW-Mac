@@ -344,7 +344,12 @@ constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
 constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
-constexpr bool GeronimoPrepareSynchronous = true;
+// Fork divergence from upstream: MacForce Now drives an ASYNCHRONOUS prepare. The native
+// start flow advances its state machine from the async onPrepareResult event delivered by
+// GridApp::processEvents(); synchronous prepare (upstream's reference-client value) returns
+// without firing that event, so completePreparedStart never runs and the launch stalls with
+// "Native NVST local setup did not deliver Geronimo start within 30 seconds." Keep this false.
+constexpr bool GeronimoPrepareSynchronous = false;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
@@ -363,7 +368,7 @@ constexpr uint32_t MicrophoneFormat = 4;
 constexpr uint32_t VoiceAttackFrames = 2;
 constexpr uint32_t VoiceHangoverFrames = 20;
 
-static_assert(GeronimoPrepareSynchronous, "Geronimo prepare must match the reference client initialization mode");
+static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
 
 struct NVbAuthInfo_t {
     const char *token = nullptr;
