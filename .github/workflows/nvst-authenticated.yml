@@ -40,7 +40,7 @@ jobs:
             -scheme OpenNOW \
             -configuration Debug \
             -destination 'platform=macOS,arch=arm64' \
-            -only-testing:OpenNOWTests/NVSTNativeRuntimeTests/nvstAuthenticatedFreshLaunchPumpsAndStops \
+            -only-testing:OpenNOWTests/NVSTNativeRuntimeTests \
             -resultBundlePath build/nvst-authenticated/OpenNOW-NVST.xcresult \
             CODE_SIGNING_ALLOWED=NO
         shell: bash

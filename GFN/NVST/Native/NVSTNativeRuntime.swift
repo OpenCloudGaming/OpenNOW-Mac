@@ -63,19 +63,25 @@ public final class NVSTNativeRuntime: @unchecked Sendable {
         "libGsAudioWebRTC.dylib",
         "SDL2.framework/Versions/A/SDL2",
     ]
-    private static let verifiedArtifactUUIDs: [String: String] = [
+    private static let verifiedArtifactUUIDs: [String: String] = {
 #if arch(arm64)
-        "libBifrost2.dylib": "A80FA3C0-2522-3E14-B20B-D871F886B1AC",
-        "libGeronimo.dylib": "0F367B2B-77D9-319B-A183-E9F27469CFE5",
-        "libGsAudioWebRTC.dylib": "36BB135F-70E7-336C-A8B3-B070055E6595",
-        "SDL2.framework/Versions/A/SDL2": "4902919F-6CCE-3FE0-BCC3-0EFB63BDBB8E",
+        return [
+            "libBifrost2.dylib": "A80FA3C0-2522-3E14-B20B-D871F886B1AC",
+            "libGeronimo.dylib": "0F367B2B-77D9-319B-A183-E9F27469CFE5",
+            "libGsAudioWebRTC.dylib": "36BB135F-70E7-336C-A8B3-B070055E6595",
+            "SDL2.framework/Versions/A/SDL2": "4902919F-6CCE-3FE0-BCC3-0EFB63BDBB8E",
+        ]
 #elseif arch(x86_64)
-        "libBifrost2.dylib": "F8A3AD93-1D5D-3072-99ED-B17493CF1819",
-        "libGeronimo.dylib": "37D47DFE-6018-32C2-85E9-989E6AA509E2",
-        "libGsAudioWebRTC.dylib": "148B2860-6540-31AF-BF87-5E28FD9282A7",
-        "SDL2.framework/Versions/A/SDL2": "8347A2BA-9EEF-3D72-B031-CEF271260D71",
+        return [
+            "libBifrost2.dylib": "F8A3AD93-1D5D-3072-99ED-B17493CF1819",
+            "libGeronimo.dylib": "37D47DFE-6018-32C2-85E9-989E6AA509E2",
+            "libGsAudioWebRTC.dylib": "148B2860-6540-31AF-BF87-5E28FD9282A7",
+            "SDL2.framework/Versions/A/SDL2": "8347A2BA-9EEF-3D72-B031-CEF271260D71",
+        ]
+#else
+        return [:]
 #endif
-    ]
+    }()
 
     private let handle: UnsafeMutableRawPointer
     private let symbols: [NVSTNativeSymbol: UnsafeMutableRawPointer]
