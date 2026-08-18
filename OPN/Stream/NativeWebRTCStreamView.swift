@@ -921,6 +921,9 @@ public final class NativeWebRTCStreamView: NSView {
         if hasMarkedText || modifiers.contains(.option) { return true }
         if inputSourceID?.localizedCaseInsensitiveContains("inputmethod") == true { return true }
         guard let characters = event.characters, !characters.isEmpty else { return true }
+        // Special keys (arrows, Home, Page Up/Down, Delete, F1-F12, etc.) use Unicode
+        // private-use-area characters. They must be forwarded as key events, not text.
+        if characters.unicodeScalars.contains(where: { $0.value >= 0xF700 && $0.value <= 0xF8FF }) { return false }
         return !characters.unicodeScalars.allSatisfy(\.isASCII)
     }
 
