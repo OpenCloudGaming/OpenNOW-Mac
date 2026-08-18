@@ -8,6 +8,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoPumpRunLoopMode = RunLoop.Mode.common
 
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
+    static let geronimoStopTimeoutMessage = "Native NVST stop callback timed out."
 
     static func geronimoCallbackFailureMessage(resultCode: Int32, resultName: String?) -> String {
         if resultName == "NVB_R_SESSION_LIMIT_REACHED" {
@@ -46,10 +47,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var activeConnection: NativeNVSTTransportConnection?
     private var connectingAttemptID: UUID?
     private var connectingEventSink: NativeNVSTGeronimoEventSink?
+    private var connectingAttemptWaiters: [CheckedContinuation<Void, Never>] = []
     private var geronimoSessionAddress: UInt?
     private var geronimoEventSink: NativeNVSTGeronimoEventSink?
     private var geronimoPump: NativeNVSTGeronimoPumpDriver?
     private var runtimeHandlers: NativeNVSTRuntimeHandlers?
+    private var nativeLifecycleOperationInProgress = false
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
     private var lastDiagnosticMetadata: [String: String] = [:]
 
@@ -86,7 +89,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {
-        guard activeConnection == nil, connectingAttemptID == nil else { throw NativeNVSTError.alreadyRunning }
+        guard activeConnection == nil, connectingAttemptID == nil, !nativeLifecycleOperationInProgress else { throw NativeNVSTError.alreadyRunning }
         let attemptID = UUID()
         connectingAttemptID = attemptID
         lastDiagnosticMetadata = [
@@ -100,17 +103,18 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 connectingAttemptID = nil
                 connectingEventSink = nil
             }
+            let waiters = connectingAttemptWaiters
+            connectingAttemptWaiters.removeAll()
+            waiters.forEach { $0.resume() }
         }
         terminationChannel.reset()
         let status: NVSTNativeBridgeStatus
         do {
             status = try await prepare()
         } catch {
-            if connectingAttemptID == attemptID { connectingAttemptID = nil }
             throw error
         }
-        guard connectingAttemptID == attemptID, !Task.isCancelled else {
-            if connectingAttemptID == attemptID { connectingAttemptID = nil }
+        guard connectingAttemptID == attemptID, !nativeLifecycleOperationInProgress, !Task.isCancelled else {
             throw CancellationError()
         }
         guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
@@ -159,25 +163,15 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         } catch {
             lastDiagnosticMetadata.merge(eventSink.readinessDiagnosticAttributes()) { _, new in new }
             lastDiagnosticMetadata["nvstFailure"] = Self.message(for: error)
-            if connectingAttemptID == attemptID {
-                connectingAttemptID = nil
-                connectingEventSink = nil
-            }
             throw error
         }
-        guard connectingAttemptID == attemptID, !Task.isCancelled else {
+        guard connectingAttemptID == attemptID, !nativeLifecycleOperationInProgress, !Task.isCancelled else {
             await started.runtimeHandlers.cancel()
             await started.pump.stop()
             await Self.destroyGeronimoOnMainActor(sessionAddress: started.sessionAddress)
-            if connectingAttemptID == attemptID {
-                connectingAttemptID = nil
-                connectingEventSink = nil
-            }
             throw CancellationError()
         }
         let connection = started.connection
-        connectingAttemptID = nil
-        connectingEventSink = nil
         geronimoSessionAddress = started.sessionAddress
         geronimoEventSink = eventSink
         geronimoPump = started.pump
@@ -188,28 +182,29 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func send(_ event: UserInputEvent) async throws {
-        guard activeConnection != nil else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress else { throw NativeNVSTError.notRunning }
         guard let encoded = inputEncoder.encode(event) else { return }
         guard let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: encoded)
     }
 
     public func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try Self.sendGeronimoAbsoluteMouse(sessionAddress: sessionAddress, event: event)
     }
 
     public func togglePerformanceOverlay() async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.toggleGeronimoPerformanceOverlayOnMainActor(sessionAddress: sessionAddress)
     }
 
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.setGeronimoMicrophoneEnabledOnMainActor(enabled, sessionAddress: sessionAddress)
     }
 
     public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
+        guard !nativeLifecycleOperationInProgress else { throw NativeNVSTError.notRunning }
         if let sessionAddress = geronimoSessionAddress {
             try await Self.setGeronimoMicrophoneConfigurationOnMainActor(configuration, sessionAddress: sessionAddress)
         }
@@ -217,51 +212,56 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { return nil }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { return nil }
         return Self.copyGeronimoPerformanceSnapshot(sessionAddress: sessionAddress)
     }
 
     public func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST bitrate update failed.") { session, errorBuffer, length in
             OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(session, bitrateKbps, errorBuffer, length)
         }
     }
 
     public func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST dynamic streaming update failed.") { session, errorBuffer, length in
             OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(session, mode.rawValue, errorBuffer, length)
         }
     }
 
     public func setL4SEnabled(_ enabled: Bool) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST L4S update failed.") { session, errorBuffer, length in
             OpenNOWNativeNVSTGeronimoSetL4SState(session, enabled ? 1 : 0, errorBuffer, length)
         }
     }
 
     public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
-        guard activeConnection != nil, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
+        guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST gamepad topology update failed.") { session, errorBuffer, length in
             OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(session, topology.connectedPlayerBitmap, topology.hapticPlayerBitmap, errorBuffer, length)
         }
     }
 
     public func disconnect() async {
-        connectingAttemptID = nil
+        guard !nativeLifecycleOperationInProgress else { return }
+        nativeLifecycleOperationInProgress = true
+        defer {
+            geronimoPump = nil
+            geronimoSessionAddress = nil
+            geronimoEventSink = nil
+            runtimeHandlers = nil
+            activeConnection = nil
+            prepareVideoSurfaceForShutdown = nil
+            nativeLifecycleOperationInProgress = false
+        }
         connectingEventSink?.cancel()
-        connectingEventSink = nil
+        await waitForConnectingAttemptToFinish()
         let pump = geronimoPump
         let sessionAddress = geronimoSessionAddress
         let eventSink = geronimoEventSink
         let runtimeHandlers = self.runtimeHandlers
-        geronimoPump = nil
-        geronimoSessionAddress = nil
-        geronimoEventSink = nil
-        self.runtimeHandlers = nil
-        activeConnection = nil
         await runtimeHandlers?.cancel()
         if sessionAddress != nil {
             await prepareGeronimoVideoSurfaceForShutdown()
@@ -271,11 +271,19 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         if let sessionAddress, let eventSink {
             if !eventSink.hasDeliveredTerminal {
                 eventSink.beginStop()
-                let stopResult = await Self.stopGeronimoOnMainActor(sessionAddress: sessionAddress)
-                if stopResult == 0 {
-                    try? await eventSink.waitForStop(timeoutNanoseconds: 3_000_000_000)
+                let stopRequest = await Self.stopGeronimoOnMainActor(sessionAddress: sessionAddress)
+                if stopRequest.result == 0 {
+                    do {
+                        try await eventSink.waitForStop(timeoutNanoseconds: 3_000_000_000)
+                        recordStopOutcome("callback-succeeded", message: nil)
+                    } catch {
+                        let message = Self.message(for: error)
+                        recordStopOutcome(message == Self.geronimoStopTimeoutMessage ? "callback-timed-out" : "callback-failed", message: message)
+                    }
                 } else {
-                    eventSink.cancelStop()
+                    let message = stopRequest.message ?? "Native NVST stop request failed with result \(stopRequest.result)."
+                    eventSink.failStop(NativeNVSTError.transportFailed(message))
+                    recordStopOutcome("request-failed", message: message)
                 }
             }
         }
@@ -286,18 +294,23 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func resetForRecovery() async {
-        connectingAttemptID = nil
+        guard !nativeLifecycleOperationInProgress else { return }
+        nativeLifecycleOperationInProgress = true
+        defer {
+            geronimoPump = nil
+            geronimoSessionAddress = nil
+            geronimoEventSink = nil
+            runtimeHandlers = nil
+            activeConnection = nil
+            prepareVideoSurfaceForShutdown = nil
+            nativeLifecycleOperationInProgress = false
+        }
         connectingEventSink?.cancel()
-        connectingEventSink = nil
+        await waitForConnectingAttemptToFinish()
         let pump = geronimoPump
         let sessionAddress = geronimoSessionAddress
         let runtimeHandlers = self.runtimeHandlers
-        geronimoPump = nil
-        geronimoSessionAddress = nil
         geronimoEventSink?.cancel()
-        geronimoEventSink = nil
-        self.runtimeHandlers = nil
-        activeConnection = nil
         await runtimeHandlers?.cancel()
         if sessionAddress != nil { await prepareGeronimoVideoSurfaceForShutdown() }
         if let pump { await pump.stop() }
@@ -305,28 +318,36 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func pause() async throws {
+        guard !nativeLifecycleOperationInProgress else { throw NativeNVSTError.alreadyRunning }
         guard let sessionAddress = geronimoSessionAddress,
               let eventSink = geronimoEventSink else { throw NativeNVSTError.notRunning }
+        nativeLifecycleOperationInProgress = true
         eventSink.beginPause()
         do {
             try await Self.requestPauseGeronimoOnMainActor(sessionAddress: sessionAddress)
             try await eventSink.waitForPause(timeoutNanoseconds: 5_000_000_000)
         } catch {
             eventSink.cancelPause()
+            nativeLifecycleOperationInProgress = false
             throw error
         }
-        guard geronimoSessionAddress == sessionAddress else { throw CancellationError() }
+        guard geronimoSessionAddress == sessionAddress else {
+            nativeLifecycleOperationInProgress = false
+            throw CancellationError()
+        }
         let pump = geronimoPump
         let runtimeHandlers = self.runtimeHandlers
+        await prepareGeronimoVideoSurfaceForShutdown()
+        if let pump { await pump.stop() }
+        await runtimeHandlers?.cancel()
+        await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
         geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
         self.runtimeHandlers = nil
         activeConnection = nil
-        await prepareGeronimoVideoSurfaceForShutdown()
-        if let pump { await pump.stop() }
-        await runtimeHandlers?.cancel()
-        await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
+        prepareVideoSurfaceForShutdown = nil
+        nativeLifecycleOperationInProgress = false
     }
 
     public func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
@@ -346,6 +367,30 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private func prepareGeronimoVideoSurfaceForShutdown() async {
         guard let prepareVideoSurfaceForShutdown else { return }
         await prepareVideoSurfaceForShutdown()
+    }
+
+    private func waitForConnectingAttemptToFinish() async {
+        guard connectingAttemptID != nil else { return }
+        await withCheckedContinuation { continuation in
+            if connectingAttemptID == nil {
+                continuation.resume()
+            } else {
+                connectingAttemptWaiters.append(continuation)
+            }
+        }
+    }
+
+    private func recordStopOutcome(_ outcome: String, message: String?) {
+        lastDiagnosticMetadata["nvstStopOutcome"] = outcome
+        if let message { lastDiagnosticMetadata["nvstStopFailure"] = message }
+        var attributes = lastDiagnosticMetadata
+        attributes["outcome"] = outcome
+        WebRTCMediaTelemetry.capture(
+            "nvst.geronimo.stop.completed",
+            level: message == nil ? .info : .error,
+            message: message ?? "Native NVST stop callback completed.",
+            attributes: attributes
+        )
     }
 
     @MainActor private static func startGeronimoOnMainActor(allocation: NativeNVSTSessionAllocation,
@@ -652,13 +697,14 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
-    @MainActor private static func stopGeronimoOnMainActor(sessionAddress: UInt) -> Int32 {
+    @MainActor private static func stopGeronimoOnMainActor(sessionAddress: UInt) -> (result: Int32, message: String?) {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        return "OpenNOW native NVST disconnect".withCString { reason in
+        let result = "OpenNOW native NVST disconnect".withCString { reason in
             OpenNOWNativeNVSTGeronimoStopWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress), reason, 0, errorBuffer, 1024)
         }
+        return (result, result == 0 ? nil : errorMessage(errorBuffer, fallback: "Native NVST stop request failed with result \(result)."))
     }
 
     private static func sendGeronimoInput(sessionAddress: UInt, encoded: NativeNVSTEncodedInputEvent) throws {
@@ -1522,7 +1568,7 @@ private final class NativeNVSTTerminationChannel: @unchecked Sendable {
     }
 }
 
-private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
+final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private let lock = NSLock()
     private let sessionId: String
     private let terminationHandler: @Sendable (NativeNVSTTransportTermination) -> Void
@@ -1840,7 +1886,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
                 lock.unlock()
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                    self?.resolveStop(.failure(NativeNVSTError.transportFailed("Native NVST stop callback timed out.")))
+                    self?.resolveStop(.failure(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoStopTimeoutMessage)))
                 }
             }
         } onCancel: { [weak self] in
@@ -1850,6 +1896,10 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
 
     func cancelStop() {
         resolveStop(.failure(CancellationError()))
+    }
+
+    func failStop(_ error: Error) {
+        resolveStop(.failure(error))
     }
 
     private var hasReachedReadiness: Bool {
@@ -1951,7 +2001,7 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
     private var requests: [UUID: NativeNVSTAuthRefreshRequest] = [:]
     private var cancelled = false
 
-    public init(expectedAuthType: UInt32?, timeout: DispatchTimeInterval = .seconds(29), handler: @escaping Handler) {
+    public init(expectedAuthType: UInt32?, timeout: DispatchTimeInterval = .milliseconds(250), handler: @escaping Handler) {
         self.expectedAuthType = expectedAuthType
         self.timeout = timeout
         self.handler = handler
@@ -1982,6 +2032,7 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
     public func copyRefreshedToken(authType: UInt32, response: UnsafeMutablePointer<CChar>, capacity: Int) {
         guard capacity > 0 else { return }
         response[0] = 0
+        guard capacity > 1 else { return }
         guard expectedAuthType == nil || expectedAuthType == authType else { return }
         let id = UUID()
         let request = NativeNVSTAuthRefreshRequest()

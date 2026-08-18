@@ -342,13 +342,12 @@ constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
 constexpr uint32_t NVbClientEventHaptic = 0x14;
 constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
-constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
 constexpr bool GeronimoPrepareSynchronous = true;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
-constexpr uint32_t MaximumConnectionInfoCount = 64;
+constexpr uint32_t MaximumConnectionInfoCount = 20;
 constexpr uint32_t MaximumMetadataCount = 64;
 constexpr uint16_t MinimumNVbPacketSize = 512;
 constexpr size_t NVbStreamSettingsPacketSizeOffset = 0x48;
@@ -1067,17 +1066,6 @@ void openNOWGridAppUpdateAuthToken(void *gridApp, void *updateAuthToken) {
     char *response = loadUnaligned<char *>(updateAuthToken, 0x08);
     if (response == nullptr) { return; }
     response[0] = '\0';
-    OpenNOWGeronimoAuthRefreshHandler handler = nullptr;
-    void *context = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
-        handler = session->authRefreshHandler;
-        context = session->authRefreshContext;
-    }
-    if (handler != nullptr) {
-        handler(context, loadUnaligned<uint32_t>(updateAuthToken, 0), response, NVbAuthRefreshResponseCapacity);
-        response[NVbAuthRefreshResponseCapacity - 1] = '\0';
-    }
 }
 
 template <typename Function>
@@ -1322,7 +1310,8 @@ void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         locallyRequested = session->stopIssued;
-        session->state = NativeSessionState::stopped;
+        session->state = resultCode == 0 ? NativeSessionState::stopped : NativeSessionState::failed;
+        if (resultCode != 0) { session->lastError = "GridApp stop callback reported failure."; }
     }
     emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode, failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode));
 }
@@ -3444,16 +3433,33 @@ extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
         }
         session->registeredGamepads[sourceIndex] = false;
     }
-    NativeSessionState state;
+    bool shouldForceStop = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
-        state = session->state;
+        shouldForceStop = session->state != NativeSessionState::created &&
+                          session->state != NativeSessionState::configured &&
+                          session->state != NativeSessionState::paused &&
+                          session->state != NativeSessionState::stopping &&
+                          session->state != NativeSessionState::stopped &&
+                          session->state != NativeSessionState::failed &&
+                          session->functions.stop != nullptr;
+        if (shouldForceStop) {
+            session->stopIssued = true;
+            session->state = NativeSessionState::stopping;
+            session->pendingStart.reset();
+        }
     }
-    if (state != NativeSessionState::created && state != NativeSessionState::configured && state != NativeSessionState::paused &&
-        state != NativeSessionState::stopped && state != NativeSessionState::failed && session->functions.stop != nullptr) {
+    if (shouldForceStop) {
         try {
-            session->functions.stop(session->gridApp, "OpenNOW native NVST forced destroy", 0);
+            if (!session->functions.stop(session->gridApp, "OpenNOW native NVST forced destroy", 0)) {
+                std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                session->state = NativeSessionState::failed;
+                session->lastError = "GridApp::stop rejected the forced native stop request.";
+            }
         } catch (...) {
+            std::lock_guard<std::mutex> stateLock(session->stateMutex);
+            session->state = NativeSessionState::failed;
+            session->lastError = "GridApp::stop raised during forced native destruction.";
             fprintf(stderr, "OpenNOW forced native stop raised an unexpected C++ exception.\n");
         }
     }

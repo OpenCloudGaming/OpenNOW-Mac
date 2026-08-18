@@ -41,6 +41,23 @@ private final class AuthResponseBuffer: @unchecked Sendable {
     var string: String { String(cString: pointer) }
 }
 
+private final class CallbackInvocationTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var called = false
+
+    func record() {
+        lock.lock()
+        called = true
+        lock.unlock()
+    }
+
+    var wasCalled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return called
+    }
+}
+
 private func collectNativeHapticRecord(_ context: UnsafeMutableRawPointer?, _ player: UInt16, _ low: UInt16, _ high: UInt16, _ duration: UInt16) {
     guard let context else { return }
     Unmanaged<HapticRecordCollector>.fromOpaque(context).takeUnretainedValue().append(player: player, low: low, high: high, duration: duration)
@@ -145,6 +162,65 @@ private func decodeNativeHapticCallbackData(_ bytes: UnsafePointer<UInt8>?, _ co
     session.idToken = "identity"
     #expect(NativeNVSTAuthRefreshCoordinator.token(from: session, authType: 8) == "identity")
     #expect(NativeNVSTAuthRefreshCoordinator.token(from: session, authType: 9) == "access")
+}
+
+@Test func nativeAuthRefreshDoesNotStartWithoutVerifiedWritableCapacity() {
+    let tracker = CallbackInvocationTracker()
+    let coordinator = NativeNVSTAuthRefreshCoordinator(expectedAuthType: 9) { _ in
+        tracker.record()
+        return "must-not-be-written"
+    }
+    let response = AuthResponseBuffer(capacity: 1)
+
+    coordinator.copyRefreshedToken(authType: 9, response: response.pointer, capacity: response.capacity)
+
+    #expect(!tracker.wasCalled)
+    #expect(response.pointer[0] == 0)
+}
+
+@Test func nativeStopCallbackFailurePropagates() async {
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "stop-failure-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: nil,
+        terminationHandler: { _ in }
+    )
+    sink.beginStop()
+    sink.handle(
+        phase: 60,
+        callbackType: 0,
+        clientEvent: 0,
+        notification: 0,
+        resultCode: 101,
+        resultName: "NVB_R_INVALID_PARAM",
+        resumable: false,
+        sessionAlive: false,
+        reasonName: nil
+    )
+
+    do {
+        try await sink.waitForStop(timeoutNanoseconds: 1_000_000_000)
+        Issue.record("Expected the failed native stop callback to throw")
+    } catch {
+        #expect(error.localizedDescription.contains("101"))
+    }
+}
+
+@Test func nativeStopCallbackTimeoutPropagates() async {
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "stop-timeout-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: nil,
+        terminationHandler: { _ in }
+    )
+    sink.beginStop()
+
+    do {
+        try await sink.waitForStop(timeoutNanoseconds: 1_000_000)
+        Issue.record("Expected the native stop callback wait to time out")
+    } catch {
+        #expect(error.localizedDescription == NativeNVSTBifrostTransport.geronimoStopTimeoutMessage)
+    }
 }
 
 @Test func nativeAuthRefreshTimesOutAndCancelsWithoutBlockingMainActor() async {
