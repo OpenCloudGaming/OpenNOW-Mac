@@ -1,4 +1,5 @@
 import AppKit
+import AppKit
 import Foundation
 import Testing
 @testable import MacForceNow
@@ -16,6 +17,8 @@ struct NVSTNativeRuntimeTests {
     #expect(runtime.status.bundledArtifactURLs.map(\.lastPathComponent).contains("libGsAudioWebRTC.dylib"))
     #expect(runtime.status.bundledArtifactURLs.contains { $0.path.hasSuffix("SDL2.framework/Versions/A/SDL2") })
     #expect(runtime.status.resolvedSymbols == NVSTNativeSymbol.allCases.map(\.rawValue))
+    #expect(runtime.status.artifactUUIDs.count == 4)
+    #expect(runtime.status.artifactUUIDs["libGeronimo.dylib"] == "0F367B2B-77D9-319B-A183-E9F27469CFE5")
     for symbol in NVSTNativeSymbol.allCases {
         #expect(runtime.symbolAddress(symbol) != 0)
     }
@@ -156,11 +159,108 @@ struct NVSTNativeRuntimeTests {
     #expect(result == -1)
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["OPN_NVST_E2E_ENABLED"] == "1"))
+@MainActor func nvstAuthenticatedFreshLaunchPumpsAndStops() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let token = try #require(environment["OPN_NVST_TEST_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    let applicationID = try #require(environment["OPN_NVST_TEST_APP_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    #expect(!token.isEmpty)
+    #expect(!applicationID.isEmpty)
+
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.orderFront(nil)
+    defer { window.close() }
+
+    let configuration = StreamLaunchConfiguration(
+        title: "NVST Authenticated Test",
+        applicationID: applicationID,
+        accessToken: token,
+        accountLinked: true,
+        selectedStore: ""
+    )
+    let provider = MacForceNowStreamSessionCoordinator()
+    let surfaceHandle = UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
+    let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: surfaceHandle)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    let session = try await path.start(configuration: configuration)
+    #expect(session.applicationID == applicationID)
+    try await Task.sleep(for: .seconds(5))
+    let report = try await path.stop(reason: .userRequested, message: "Authenticated NVST validation completed.")
+    #expect(report.success)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["OPN_NVST_E2E_ENABLED"] == "1"))
+@MainActor func nvstAuthenticatedPauseAndPublicResume() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let token = try #require(environment["OPN_NVST_TEST_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    let applicationID = try #require(environment["OPN_NVST_TEST_APP_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    #expect(!token.isEmpty)
+    #expect(!applicationID.isEmpty)
+
+    let provider = MacForceNowStreamSessionCoordinator()
+    let initialWindow = nativeNVSTTestWindow()
+    initialWindow.orderFront(nil)
+    defer { initialWindow.close() }
+    let initialConfiguration = StreamLaunchConfiguration(
+        title: "NVST Authenticated Resume Test",
+        applicationID: applicationID,
+        accessToken: token,
+        accountLinked: true,
+        selectedStore: ""
+    )
+    let initialTransport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: UInt(bitPattern: Unmanaged.passUnretained(initialWindow).toOpaque()))
+    let initialPath = NativeNVSTStreamingPath(sessionProvider: provider, transport: initialTransport)
+    let initialSession = try await initialPath.start(configuration: initialConfiguration)
+    try await Task.sleep(for: .seconds(3))
+    let pauseReport = try await initialPath.pause(message: "Authenticated NVST pause validation.")
+    #expect(pauseReport.success)
+    #expect(pauseReport.reason == .paused)
+    initialWindow.close()
+
+    let resumeWindow = nativeNVSTTestWindow()
+    resumeWindow.orderFront(nil)
+    defer { resumeWindow.close() }
+    let resumeConfiguration = StreamLaunchConfiguration(
+        title: initialConfiguration.title,
+        applicationID: applicationID,
+        accessToken: token,
+        accountLinked: true,
+        selectedStore: "",
+        resumeSessionID: initialSession.id,
+        resumeServer: initialSession.serverAddress
+    )
+    let resumeTransport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: UInt(bitPattern: Unmanaged.passUnretained(resumeWindow).toOpaque()))
+    let resumePath = NativeNVSTStreamingPath(sessionProvider: provider, transport: resumeTransport)
+    let resumedSession = try await resumePath.start(configuration: resumeConfiguration)
+    #expect(resumedSession.id == initialSession.id)
+    try await Task.sleep(for: .seconds(3))
+    let stopReport = try await resumePath.stop(reason: .userRequested, message: "Authenticated NVST resume validation completed.")
+    #expect(stopReport.success)
+}
+
 }
 
 private func vendoredBridge() throws -> NVSTNativeBridge {
     let frameworksDirectory = repoRoot().appendingPathComponent("vendor/gfn-runtime/Frameworks", isDirectory: true)
     return try NVSTNativeBridge(configuration: NVSTNativeBridgeConfiguration(frameworksDirectory: frameworksDirectory))
+}
+
+@MainActor private func nativeNVSTTestWindow() -> NSWindow {
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    return window
 }
 
 private func repoRoot() -> URL {

@@ -344,6 +344,11 @@ constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
 constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
+// Fork divergence from upstream: MacForce Now drives an ASYNCHRONOUS prepare. The native
+// start flow advances its state machine from the async onPrepareResult event delivered by
+// GridApp::processEvents(); synchronous prepare (upstream's reference-client value) returns
+// without firing that event, so completePreparedStart never runs and the launch stalls with
+// "Native NVST local setup did not deliver Geronimo start within 30 seconds." Keep this false.
 constexpr bool GeronimoPrepareSynchronous = false;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
@@ -541,6 +546,7 @@ struct MacForceNowNativeNVSTGeronimoSession {
     void *audioRenderer = nullptr;
     void *audioCapturer = nullptr;
     uint32_t requestedCodec = DefaultNVbCodecH264;
+    uint32_t requestedDynamicStreamingMode = 0;
     uint32_t activeCodec = 0;
     bool videoDecoderStarted = false;
     std::string initServerAddress;
@@ -1573,6 +1579,32 @@ void *resolve(void *handle, const char *symbol, char *errorBuffer, size_t errorB
     return address;
 }
 
+#if defined(__arm64__)
+constexpr std::array<uint8_t, 16> ExpectedGeronimoUUID = {0x0f, 0x36, 0x7b, 0x2b, 0x77, 0xd9, 0x31, 0x9b, 0xa1, 0x83, 0xe9, 0xf2, 0x74, 0x69, 0xcf, 0xe5};
+constexpr std::array<uint8_t, 16> ExpectedBifrostUUID = {0xa8, 0x0f, 0xa3, 0xc0, 0x25, 0x22, 0x3e, 0x14, 0xb2, 0x0b, 0xd8, 0x71, 0xf8, 0x86, 0xb1, 0xac};
+#elif defined(__x86_64__)
+constexpr std::array<uint8_t, 16> ExpectedGeronimoUUID = {0x37, 0xd4, 0x7d, 0xfe, 0x60, 0x18, 0x32, 0xc2, 0x85, 0xe9, 0x98, 0x9e, 0x6a, 0xa5, 0x09, 0xe2};
+constexpr std::array<uint8_t, 16> ExpectedBifrostUUID = {0xf8, 0xa3, 0xad, 0x93, 0x1d, 0x5d, 0x30, 0x72, 0x99, 0xed, 0xb1, 0x74, 0x93, 0xcf, 0x18, 0x19};
+#endif
+
+bool imageMatchesUUID(void *symbol, const std::array<uint8_t, 16> &expected) {
+    Dl_info imageInfo{};
+    if (symbol == nullptr || dladdr(symbol, &imageInfo) == 0 || imageInfo.dli_fbase == nullptr) { return false; }
+    const auto *header = static_cast<const mach_header_64 *>(imageInfo.dli_fbase);
+    if (header->magic != MH_MAGIC_64) { return false; }
+    const uint8_t *commandBytes = reinterpret_cast<const uint8_t *>(header + 1);
+    for (uint32_t index = 0; index < header->ncmds; ++index) {
+        const auto *command = reinterpret_cast<const load_command *>(commandBytes);
+        if (command->cmdsize < sizeof(load_command)) { return false; }
+        if (command->cmd == LC_UUID && command->cmdsize >= sizeof(uuid_command)) {
+            const auto *uuid = reinterpret_cast<const uuid_command *>(command);
+            return std::equal(expected.begin(), expected.end(), uuid->uuid);
+        }
+        commandBytes += command->cmdsize;
+    }
+    return false;
+}
+
 void *resolvePrivateFromImage(void *anchorSymbol, uintptr_t anchorOffset, uintptr_t targetOffset) {
     if (anchorSymbol == nullptr || anchorOffset == 0 || targetOffset == 0) { return nullptr; }
     uintptr_t imageBase = reinterpret_cast<uintptr_t>(anchorSymbol) - anchorOffset;
@@ -1886,7 +1918,7 @@ bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uin
     session->videoDecoder = candidate;
     session->activeCodec = codec;
     session->videoDecoderStarted = false;
-    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, 0, 0, false);
+    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, session->requestedDynamicStreamingMode, 0, false);
     return true;
 }
 
@@ -2103,6 +2135,13 @@ extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath,
         if (ctor == nullptr || platformStartup == nullptr || platformShutdown == nullptr || initialize == nullptr || originalBifrostCallback == nullptr ||
             enumToString == nullptr ||
             !resolveGeronimoFunctions(handle, functions, errorBuffer, errorBufferLength)) {
+            dlclose(bifrostHandle);
+            dlclose(handle);
+            return nullptr;
+        }
+        if (!imageMatchesUUID(reinterpret_cast<void *>(ctor), ExpectedGeronimoUUID) ||
+            !imageMatchesUUID(reinterpret_cast<void *>(enumToString), ExpectedBifrostUUID)) {
+            setError(errorBuffer, errorBufferLength, "Bundled native NVST runtime does not match the verified Geronimo/Bifrost ABI manifest.");
             dlclose(bifrostHandle);
             dlclose(handle);
             return nullptr;
@@ -2618,6 +2657,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
             storeUnaligned<uint32_t>(videoSettingsEntry.bytes, 0x18, session->requestedCodec);
         }
     }
+    session->requestedDynamicStreamingMode = static_cast<uint32_t>(std::clamp(jsonIntAtPath(profile, "selectedFeatures.dynamicStreamingMode"), 0, 3));
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
     const char *const serverPaths[] = { "serverAddress", "sessionControlInfo.ip", "zoneAddress" };
@@ -2700,7 +2740,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     prepareParameters.locale = session->clientLocale;
     prepareParameters.applicationIdentifier = "GFN-PC";
     prepareParameters.applicationVersion = "30.0";
-    prepareParameters.clientName = "MacForceNow";
     prepareParameters.clientAppVersion = session->clientAppVersion;
     prepareParameters.applicationHeaders = jsonStringArrayAtPath(geronimo, "applicationHeaders");
 
