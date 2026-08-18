@@ -262,7 +262,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
 
         let created = try await createSession(configuration: configuration, settings: launch.settings)
-        return try await waitForReadySession(created, configuration: configuration)
+        do {
+            return try await waitForReadySession(created, configuration: configuration)
+        } catch {
+            let descriptor = streamDescriptor(sessionInfo: created, configuration: configuration)
+            try? await finishSession(descriptor, reason: Task.isCancelled ? .userRequested : .failed)
+            throw error
+        }
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
@@ -618,7 +624,12 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
         await withCheckedContinuation { continuation in
-            OPNActiveSessionService.stopSession(accessToken: session.metadata["accessToken"] ?? "", sessionId: session.id, serverIp: session.serverAddress) { success, error in
+            OPNActiveSessionService.stopSession(
+                accessToken: session.metadata["accessToken"] ?? "",
+                sessionId: session.id,
+                serverIp: session.serverAddress,
+                streamingBaseUrl: session.metadata["streamingBaseUrl"] ?? OPNStreamPreferences.loadSelectedStreamingBaseUrl()
+            ) { success, error in
                 if success || (session.metadata["accessToken"] ?? "").isEmpty {
                     continuation.resume(returning: nil)
                 } else {
