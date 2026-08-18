@@ -357,7 +357,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 @Test func nativeNVSTPathRecoversSameSessionWhenNativeFlagsAndResultsPermit() async throws {
     let provider = RecordingNativeNVSTSessionProvider()
     let transport = RecordingNativeNVSTTransport(mode: .success)
-    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport, automaticRecovery: .singleAttempt)
 
     _ = try await path.start(configuration: nativeConfiguration())
     await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
@@ -370,6 +370,24 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await provider.finished.isEmpty)
     #expect(await transport.connectCount == 2)
     #expect(await path.currentState() == .running(nativeAllocation().session))
+}
+
+@Test func nativeNVSTPathDoesNotAutomaticallyRecoverByDefault() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    _ = try await path.start(configuration: nativeConfiguration())
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
+    await waitForNativeNVSTFinish(provider)
+
+    #expect(await provider.recoveryCount == 0)
+    #expect(await provider.finished == [nativeFinish(.remoteEnded)])
+    #expect(await transport.connectCount == 1)
+}
+
+@Test func nativeNVSTGeronimoPumpRunsInCommonRunLoopModes() {
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
 }
 
 @Test func nativeNVSTSessionRecoveryRequiresBothFlags() {
@@ -412,6 +430,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1, name: name)))
     }
     #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1)))
+    #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: 0)))
+    #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationReason(rawValue: 0)))
     #expect(NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
         message: "network interrupted",
         recoveryClassification: .transientNetwork
@@ -468,7 +488,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 @Test func nativeNVSTPathLocalStopDuringRecoveryOwnsCleanupExactlyOnce() async throws {
     let provider = RecordingNativeNVSTSessionProvider(suspendsRecovery: true)
     let transport = RecordingNativeNVSTTransport(mode: .success)
-    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport, automaticRecovery: .singleAttempt)
     _ = try await path.start(configuration: nativeConfiguration())
 
     await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
@@ -491,7 +511,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 @Test func nativeNVSTPathFailedResumeCleansUpExactlyOnceWithoutBlanketRetry() async throws {
     let provider = RecordingNativeNVSTSessionProvider(recoveryError: .invalidSession("resume rejected"))
     let transport = RecordingNativeNVSTTransport(mode: .success)
-    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport, automaticRecovery: .singleAttempt)
     _ = try await path.start(configuration: nativeConfiguration())
 
     await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))

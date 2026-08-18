@@ -5,7 +5,7 @@ import Foundation
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoPumpFramesPerSecond = 60.0
     static let geronimoPumpInterval = 1.0 / geronimoPumpFramesPerSecond
-    static let geronimoPumpRunLoopMode = RunLoop.Mode.default
+    static let geronimoPumpRunLoopMode = RunLoop.Mode.common
 
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
 
@@ -51,6 +51,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var geronimoPump: NativeNVSTGeronimoPumpDriver?
     private var runtimeHandlers: NativeNVSTRuntimeHandlers?
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
+    private var lastDiagnosticMetadata: [String: String] = [:]
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
@@ -88,6 +89,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard activeConnection == nil, connectingAttemptID == nil else { throw NativeNVSTError.alreadyRunning }
         let attemptID = UUID()
         connectingAttemptID = attemptID
+        lastDiagnosticMetadata = [
+            "nvstAttemptID": attemptID.uuidString,
+            "nvstOperation": allocation.isResume ? "resume" : "start",
+            "nvstSessionIDPresent": String(!allocation.session.id.isEmpty),
+        ]
         defer {
             if connectingAttemptID == attemptID {
                 connectingAttemptID = nil
@@ -150,6 +156,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 eventSink.cancel()
             }
         } catch {
+            lastDiagnosticMetadata.merge(eventSink.readinessDiagnosticAttributes()) { _, new in new }
+            lastDiagnosticMetadata["nvstFailure"] = Self.message(for: error)
             if connectingAttemptID == attemptID {
                 connectingAttemptID = nil
                 connectingEventSink = nil
@@ -174,6 +182,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoPump = started.pump
         runtimeHandlers = started.runtimeHandlers
         activeConnection = connection
+        lastDiagnosticMetadata.merge(eventSink.readinessDiagnosticAttributes()) { _, new in new }
         return connection
     }
 
@@ -321,6 +330,16 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
         terminationChannel.stream()
+    }
+
+    public func diagnosticMetadata() async -> [String: String] {
+        var metadata = lastDiagnosticMetadata
+        if let geronimoEventSink {
+            metadata.merge(geronimoEventSink.readinessDiagnosticAttributes()) { _, new in new }
+        } else if let connectingEventSink {
+            metadata.merge(connectingEventSink.readinessDiagnosticAttributes()) { _, new in new }
+        }
+        return metadata
     }
 
     private func prepareGeronimoVideoSurfaceForShutdown() async {
@@ -1518,6 +1537,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     private var stopCompletion: CheckedContinuation<Void, Error>?
     private var terminalDelivered = false
     private var observedPhases: Set<Int32> = []
+    private var observedPhaseSequence: [Int32] = []
     private var lastPhase: Int32?
     private var lastCallbackType: UInt32?
     private var lastClientEvent: UInt32?
@@ -1551,6 +1571,8 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
                 reasonName: String?) {
         lock.lock()
         observedPhases.insert(phase)
+        if observedPhaseSequence.count == 128 { observedPhaseSequence.removeFirst() }
+        observedPhaseSequence.append(phase)
         lastPhase = phase
         lastCallbackType = callbackType
         lastClientEvent = clientEvent
@@ -1672,6 +1694,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     func readinessDiagnosticAttributes() -> [String: String] {
         lock.lock()
         let phases = observedPhases.sorted()
+        let phaseSequence = observedPhaseSequence
         let lastPhase = self.lastPhase
         let lastCallbackType = self.lastCallbackType
         let lastClientEvent = self.lastClientEvent
@@ -1681,6 +1704,7 @@ private final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
 
         var attributes = [
             "observedPhases": phases.map(String.init).joined(separator: ","),
+            "observedPhaseSequence": phaseSequence.map(String.init).joined(separator: ","),
             "startEventDelivered": String(phases.contains(40)),
             "streamingBegan": String(phases.contains(44)),
             "setupSucceeded": String(phases.contains(46)),

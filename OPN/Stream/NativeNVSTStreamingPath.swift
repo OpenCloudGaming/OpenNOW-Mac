@@ -158,13 +158,11 @@ public enum NativeNVSTRecoveryPolicy {
     ]
 
     public static func isTransient(_ value: NativeNVSTTerminationValue) -> Bool {
-        if value.code == 0 { return true }
         guard let name = value.name else { return false }
         return transientResults.contains(name)
     }
 
     public static func isTransient(_ reason: NativeNVSTTerminationReason) -> Bool {
-        if reason.rawValue == 0 { return true }
         guard let name = reason.resultName else { return false }
         return transientResults.contains(name)
     }
@@ -178,12 +176,11 @@ public enum NativeNVSTRecoveryPolicy {
         }
     }
 
-    static func permitsRetry(after error: Error) -> Bool {
-        guard let nativeError = error as? NativeNVSTError,
-              case .transportFailed(let message) = nativeError else { return false }
-        let normalized = message.uppercased()
-        return transientResults.contains { normalized.contains($0) }
-    }
+}
+
+public enum NativeNVSTAutomaticRecovery: Equatable, Sendable {
+    case disabled
+    case singleAttempt
 }
 
 public enum NativeNVSTDynamicStreamingMode: UInt32, Equatable, Sendable {
@@ -249,6 +246,7 @@ public protocol NativeNVSTTransport: Sendable {
     func disconnect() async
     func resetForRecovery() async
     func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination>
+    func diagnosticMetadata() async -> [String: String]
 }
 
 public extension NativeNVSTTransport {
@@ -275,6 +273,7 @@ public extension NativeNVSTTransport {
     }
 
     func resetForRecovery() async { await disconnect() }
+    func diagnosticMetadata() async -> [String: String] { [:] }
 }
 
 public enum NativeNVSTError: LocalizedError, Equatable, Sendable {
@@ -304,6 +303,7 @@ public actor NativeNVSTStreamingPath {
     private let sessionProvider: any NativeNVSTSessionProvider
     private let transport: any NativeNVSTTransport
     private let mediaSession: NativeNVSTMediaSession
+    private let automaticRecovery: NativeNVSTAutomaticRecovery
     private var state: StreamingPathState = .idle
     private var activeSession: StreamSessionDescriptor?
     private var activeAllocation: NativeNVSTSessionAllocation?
@@ -315,10 +315,12 @@ public actor NativeNVSTStreamingPath {
 
     public init(sessionProvider: any NativeNVSTSessionProvider,
                 transport: any NativeNVSTTransport,
-                mediaSession: NativeNVSTMediaSession = NativeNVSTMediaSession()) {
+                mediaSession: NativeNVSTMediaSession = NativeNVSTMediaSession(),
+                automaticRecovery: NativeNVSTAutomaticRecovery = .disabled) {
         self.sessionProvider = sessionProvider
         self.transport = transport
         self.mediaSession = mediaSession
+        self.automaticRecovery = automaticRecovery
     }
 
     public func currentState() -> StreamingPathState {
@@ -441,6 +443,10 @@ public actor NativeNVSTStreamingPath {
         return await transport.performanceSnapshot()
     }
 
+    public func diagnosticMetadata() async -> [String: String] {
+        await transport.diagnosticMetadata()
+    }
+
     public func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setMaximumBitrateKbps(bitrateKbps)
@@ -472,10 +478,13 @@ public actor NativeNVSTStreamingPath {
         launchConfiguration = nil
         startedAt = nil
         WebRTCMediaTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
+        let diagnostics = await transport.diagnosticMetadata()
         await transport.disconnect()
         try await sessionProvider.finishSession(activeSession, reason: reason)
         await mediaSession.finish()
-        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+        var metadata = ["transport": "nvst"]
+        metadata.merge(diagnostics) { current, _ in current }
+        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
         state = .ended(report)
         publish(report)
         return report
@@ -498,7 +507,9 @@ public actor NativeNVSTStreamingPath {
             try await transport.pause()
             try? await sessionProvider.finishSession(activeSession, reason: .paused)
             await mediaSession.finish()
-            let report = StreamReport(title: activeSession.title, success: true, reason: .paused, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+            var metadata = ["transport": "nvst"]
+            metadata.merge(await transport.diagnosticMetadata()) { current, _ in current }
+            let report = StreamReport(title: activeSession.title, success: true, reason: .paused, message: message, durationSeconds: durationSeconds, metadata: metadata)
             state = .ended(report)
             publish(report)
             return report
@@ -551,7 +562,8 @@ public actor NativeNVSTStreamingPath {
     private func handleTransportTermination(_ termination: NativeNVSTTransportTermination) async {
         guard let activeSession else { return }
         terminalTask = nil
-        if NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration,
+        if automaticRecovery == .singleAttempt,
+           NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration,
            await recover(session: activeSession, configuration: launchConfiguration) {
             return
         }
@@ -571,40 +583,38 @@ public actor NativeNVSTStreamingPath {
             reason = .failed
             message = failure.message.isEmpty ? "Native NVST transport failed." : failure.message
         }
+        let diagnostics = await transport.diagnosticMetadata()
         await transport.disconnect()
         try? await sessionProvider.finishSession(activeSession, reason: reason)
         await mediaSession.finish()
-        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: ["transport": "nvst"])
+        var metadata = ["transport": "nvst"]
+        metadata.merge(diagnostics) { current, _ in current }
+        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
         state = .ended(report)
         publish(report)
     }
 
     private func recover(session: StreamSessionDescriptor, configuration: StreamLaunchConfiguration) async -> Bool {
         await transport.resetForRecovery()
-        for attempt in 1...6 {
-            guard activeSession?.id == session.id, !Task.isCancelled else { return false }
-            do {
-                let refreshed = try await sessionProvider.recoverNativeNVSTSession(configuration: configuration, session: session)
-                guard refreshed.session.id == session.id, refreshed.session.applicationID == session.applicationID else {
-                    throw NativeNVSTError.invalidSession("Native NVST recovery returned a different cloud session.")
-                }
-                guard activeSession?.id == session.id, !Task.isCancelled else { return false }
-                _ = try await transport.connect(allocation: refreshed, mediaReceiver: mediaSession)
-                guard activeSession?.id == session.id, !Task.isCancelled else {
-                    await transport.resetForRecovery()
-                    return false
-                }
-                activeAllocation = refreshed
-                monitorTransportTermination()
-                WebRTCMediaTelemetry.capture("nvst.path.recovered", level: .info, message: "Native NVST session recovered.", attributes: ["sessionId": session.id, "attempt": String(attempt)])
-                return true
-            } catch {
-                WebRTCMediaTelemetry.capture("nvst.path.recovery.retry", level: .warning, message: Self.message(for: error), attributes: ["sessionId": session.id, "attempt": String(attempt)])
-                await transport.resetForRecovery()
-                guard attempt < 6, NativeNVSTRecoveryPolicy.permitsRetry(after: error) else { break }
-                let delaySeconds = min(30, 1 << (attempt - 1))
-                try? await Task.sleep(for: .seconds(delaySeconds))
+        guard activeSession?.id == session.id, !Task.isCancelled else { return false }
+        do {
+            let refreshed = try await sessionProvider.recoverNativeNVSTSession(configuration: configuration, session: session)
+            guard refreshed.session.id == session.id, refreshed.session.applicationID == session.applicationID else {
+                throw NativeNVSTError.invalidSession("Native NVST recovery returned a different cloud session.")
             }
+            guard activeSession?.id == session.id, !Task.isCancelled else { return false }
+            _ = try await transport.connect(allocation: refreshed, mediaReceiver: mediaSession)
+            guard activeSession?.id == session.id, !Task.isCancelled else {
+                await transport.resetForRecovery()
+                return false
+            }
+            activeAllocation = refreshed
+            monitorTransportTermination()
+            WebRTCMediaTelemetry.capture("nvst.path.recovered", level: .info, message: "Native NVST session recovered.", attributes: ["sessionId": session.id, "attempt": "1"])
+            return true
+        } catch {
+            WebRTCMediaTelemetry.capture("nvst.path.recovery.failed", level: .warning, message: Self.message(for: error), attributes: ["sessionId": session.id, "attempt": "1"])
+            await transport.resetForRecovery()
         }
         return false
     }

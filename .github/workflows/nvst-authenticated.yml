@@ -1,0 +1,55 @@
+name: NVST Authenticated Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nvst-authenticated-validation
+  cancel-in-progress: false
+
+jobs:
+  authenticated-nvst:
+    name: Authenticated NVST Start and Stop
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      OPN_NVST_E2E_ENABLED: "1"
+      OPN_NVST_TEST_TOKEN: ${{ secrets.OPN_NVST_TEST_TOKEN }}
+      OPN_NVST_TEST_APP_ID: ${{ secrets.OPN_NVST_TEST_APP_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate credentials
+        run: |
+          set -euo pipefail
+          [[ -n "$OPN_NVST_TEST_TOKEN" ]]
+          [[ -n "$OPN_NVST_TEST_APP_ID" ]]
+        shell: bash
+
+      - name: Run authenticated NVST lifecycle
+        run: |
+          set -euo pipefail
+          mkdir -p build/nvst-authenticated
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH=1 xcodebuild test \
+            -project OpenNOW.xcodeproj \
+            -scheme OpenNOW \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -only-testing:OpenNOWTests/NVSTNativeRuntimeTests/nvstAuthenticatedFreshLaunchPumpsAndStops \
+            -resultBundlePath build/nvst-authenticated/OpenNOW-NVST.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+        shell: bash
+
+      - name: Upload authenticated test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenNOW-NVST-authenticated-xcresult
+          path: build/nvst-authenticated/OpenNOW-NVST.xcresult
+          if-no-files-found: error
+          retention-days: 7

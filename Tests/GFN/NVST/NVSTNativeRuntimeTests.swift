@@ -1,4 +1,5 @@
 import AppKit
+import AppKit
 import Foundation
 import Testing
 @testable import OpenNOW
@@ -16,6 +17,8 @@ struct NVSTNativeRuntimeTests {
     #expect(runtime.status.bundledArtifactURLs.map(\.lastPathComponent).contains("libGsAudioWebRTC.dylib"))
     #expect(runtime.status.bundledArtifactURLs.contains { $0.path.hasSuffix("SDL2.framework/Versions/A/SDL2") })
     #expect(runtime.status.resolvedSymbols == NVSTNativeSymbol.allCases.map(\.rawValue))
+    #expect(runtime.status.artifactUUIDs.count == 4)
+    #expect(runtime.status.artifactUUIDs["libGeronimo.dylib"] == "0F367B2B-77D9-319B-A183-E9F27469CFE5")
     for symbol in NVSTNativeSymbol.allCases {
         #expect(runtime.symbolAddress(symbol) != 0)
     }
@@ -150,6 +153,42 @@ struct NVSTNativeRuntimeTests {
     }
 
     #expect(result == -1)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["OPN_NVST_E2E_ENABLED"] == "1"))
+@MainActor func nvstAuthenticatedFreshLaunchPumpsAndStops() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let token = try #require(environment["OPN_NVST_TEST_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    let applicationID = try #require(environment["OPN_NVST_TEST_APP_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines))
+    #expect(!token.isEmpty)
+    #expect(!applicationID.isEmpty)
+
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.orderFront(nil)
+    defer { window.close() }
+
+    let configuration = StreamLaunchConfiguration(
+        title: "NVST Authenticated Test",
+        applicationID: applicationID,
+        accessToken: token,
+        accountLinked: true
+    )
+    let provider = OpenNOWStreamSessionCoordinator()
+    let surfaceHandle = UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
+    let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: surfaceHandle)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+    let session = try await path.start(configuration: configuration)
+    #expect(session.applicationID == applicationID)
+    try await Task.sleep(for: .seconds(5))
+    let report = try await path.stop(reason: .userRequested, message: "Authenticated NVST validation completed.")
+    #expect(report.success)
 }
 
 }

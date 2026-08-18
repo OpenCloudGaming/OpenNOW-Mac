@@ -257,12 +257,13 @@ private struct NativeNVSTMediaStreamSurface: View {
                     _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed during startup.")
                 }
             } catch {
-                await MainActor.run { handleStartFailure(error) }
+                let diagnostics = await path.diagnosticMetadata()
+                await MainActor.run { handleStartFailure(error, diagnostics: diagnostics) }
             }
         }
     }
 
-    private func handleStartFailure(_ error: Error) {
+    private func handleStartFailure(_ error: Error, diagnostics: [String: String]) {
         guard !(error is CancellationError), !Task.isCancelled else {
             statusMessage = "Native NVST launch cancelled."
             endStreamingPerformanceMode()
@@ -279,6 +280,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         inputDispatcher = nil
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
+        metadata.merge(diagnostics) { current, _ in current }
         if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
             metadata.merge(conflict.reportMetadata) { current, _ in current }
         }
