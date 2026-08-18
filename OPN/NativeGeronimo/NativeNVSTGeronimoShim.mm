@@ -344,7 +344,7 @@ constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
 constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
-constexpr bool GeronimoPrepareSynchronous = false;
+constexpr bool GeronimoPrepareSynchronous = true;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
@@ -363,7 +363,7 @@ constexpr uint32_t MicrophoneFormat = 4;
 constexpr uint32_t VoiceAttackFrames = 2;
 constexpr uint32_t VoiceHangoverFrames = 20;
 
-static_assert(!GeronimoPrepareSynchronous, "Geronimo prepare must deliver its result through the event pump");
+static_assert(GeronimoPrepareSynchronous, "Geronimo prepare must match the reference client initialization mode");
 
 struct NVbAuthInfo_t {
     const char *token = nullptr;
@@ -541,6 +541,7 @@ struct OpenNOWNativeNVSTGeronimoSession {
     void *audioRenderer = nullptr;
     void *audioCapturer = nullptr;
     uint32_t requestedCodec = DefaultNVbCodecH264;
+    uint32_t requestedDynamicStreamingMode = 0;
     uint32_t activeCodec = 0;
     bool videoDecoderStarted = false;
     std::string initServerAddress;
@@ -1879,7 +1880,7 @@ bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x10, 2);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x18, GraphicsContextMetal);
     storeUnaligned<uint32_t>(creationSettings.bytes, 0x1c, 1);
-    void *candidate = session->functions.createVideoDecoder(creationSettings, creationCodec);
+    void *candidate = session->functions.createVideoDecoder(creationSettings, 0);
     if (candidate == nullptr) { return false; }
     const std::shared_ptr<AsyncVideoFrameRenderer> &renderer = session->functions.windowAsyncRenderer(session->window);
     if (!renderer) {
@@ -1903,7 +1904,7 @@ bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_
     session->videoDecoder = candidate;
     session->activeCodec = codec;
     session->videoDecoderStarted = false;
-    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, 0, 0, false);
+    session->functions.setDecoderInfo(session->gridApp, 2, 1, 3, 42, session->requestedDynamicStreamingMode, 0, false);
     return true;
 }
 
@@ -2629,6 +2630,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     session->microphoneAvailable = microphoneAvailable != 0;
     session->microphoneEnabled = session->microphoneAvailable && microphoneEnabled != 0;
     session->requestedCodec = codecFromJSON(cloud, geronimo);
+    session->requestedDynamicStreamingMode = static_cast<uint32_t>(std::clamp(jsonIntAtPath(profile, "selectedFeatures.dynamicStreamingMode"), 0, 3));
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
     const char *const serverPaths[] = { "serverAddress", "sessionControlInfo.ip", "zoneAddress" };
@@ -2694,7 +2696,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     SessionControl::PrepareParameters prepareParameters;
     prepareParameters.serverAddress = session->initServerAddress;
     prepareParameters.serverPort = endpoint.port;
-    prepareParameters.clientProfile = width >= 1920 && height >= 1080 ? 5 : 3;
+    prepareParameters.clientProfile = 8;
     prepareParameters.deviceId = session->deviceId;
     const uint32_t communicationParameters[] = {3, 3, 13, 500, 1000, 10000, 1000, 50, 3000, 1000, 300};
     memcpy(prepareParameters.communicationParams, communicationParameters, sizeof(communicationParameters));
@@ -2703,7 +2705,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     prepareParameters.locale = session->clientLocale;
     prepareParameters.applicationIdentifier = "GFN-PC";
     prepareParameters.applicationVersion = "30.0";
-    prepareParameters.clientName = "OpenNOW";
     prepareParameters.clientAppVersion = session->clientAppVersion;
     prepareParameters.applicationHeaders = jsonStringArrayAtPath(geronimo, "applicationHeaders");
 

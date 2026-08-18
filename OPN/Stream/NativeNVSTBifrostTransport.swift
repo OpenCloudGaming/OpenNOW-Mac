@@ -1367,6 +1367,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return message.isEmpty ? fallback : message
     }
 
+    private static func message(for error: Error) -> String {
+        if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
+        return error.localizedDescription.isEmpty ? "Native NVST transport failed." : error.localizedDescription
+    }
+
     private static func geronimoStartAttributes(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String, geronimoSessionJSON: String) -> [String: String] {
         let payload = NativeNVSTSessionPayload(allocation: allocation)
         let profile = jsonObject(from: streamingProfileJSON)
