@@ -228,7 +228,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var transport: NativeWebRTCTransport?
     @State private var hasStarted = false
     @State private var isStreamReady = false
-    @State private var statusMessage = "Starting WebRTC media path..."
+    @State private var loadingStepIndex = -1
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var unifiedHUDVisible = false
@@ -687,27 +687,11 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var launchOverlay: some View {
-        LinearGradient(
-            colors: [WebRTCMediaStreamTheme.surface.opacity(0.98), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.98)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            VStack(spacing: 18) {
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(statusMessage)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft.opacity(0.84))
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(WebRTCMediaStreamTheme.accent)
-            }
-            .padding(36)
-            .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
-        }
+        StreamLaunchLoadingScreen(
+            title: configuration.title,
+            stage: StreamLaunchLoadingStage.label(stepIndex: loadingStepIndex),
+            artworkURL: configuration.loadingArtworkURL
+        ) { EmptyView() }
     }
 
     private var quitMenu: some View {
@@ -1275,7 +1259,7 @@ public struct WebRTCMediaStreamSurface: View {
         do {
             let session = try await path.start(configuration: configuration) { progress in
                 await MainActor.run {
-                    statusMessage = progress.message
+                    loadingStepIndex = progress.currentStepIndex
                     isStreamReady = progress.isReady
                     onProgress?(progress)
                 }
@@ -1293,12 +1277,11 @@ public struct WebRTCMediaStreamSurface: View {
             }
         } catch {
             guard !(error is CancellationError), !Task.isCancelled else {
-                statusMessage = "Stream launch cancelled."
+                loadingStepIndex = -1
                 endStreamingPerformanceMode()
                 return
             }
             let message = Self.message(for: error)
-            statusMessage = message
             endStreamingPerformanceMode()
             var metadata = ["applicationID": configuration.applicationID]
             if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {

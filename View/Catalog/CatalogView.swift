@@ -493,23 +493,16 @@ private struct VendorLaunchProgressCard: View {
 
     var body: some View {
         VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
-            VStack(alignment: .leading, spacing: 18) {
-                VendorLaunchStepHeader(index: progressIndex, title: progressTitle, message: viewModel.launchFlowMessage)
+            VStack(alignment: .leading, spacing: 14) {
+                Text(progressTitle)
+                    .font(.nvidia(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
                 VendorIndeterminateProgressBar()
                     .frame(height: 4)
                 if !viewModel.launchFlowError.isEmpty {
                     VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
                 }
             }
-        }
-    }
-
-    private var progressIndex: String {
-        switch viewModel.launchFlowState {
-        case .checkingSession: return "2"
-        case .stoppingSession: return "3"
-        case .startingStream: return "4"
-        default: return ""
         }
     }
 
@@ -527,134 +520,24 @@ private struct VendorStreamLaunchLoadingOverlay: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
-        GeometryReader { proxy in
-            let progress = viewModel.activeStreamProgress
-            let steps = progress?.steps ?? []
-            let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
-            let message = progress?.message ?? "Starting GeForce NOW stream..."
-            let queuePosition = progress?.queuePosition
-            ZStack {
-                Color.black
-
-                if let screenshotURL = loadingScreenshotURL {
-                    AsyncImage(url: screenshotURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            EmptyView()
-                        }
-                    }
-                    .transition(.opacity)
-                }
-
-                Rectangle()
-                    .fill(.black.opacity(0.42))
-
-                RadialGradient(
-                    stops: [
-                        .init(color: .white.opacity(0.18), location: 0.00),
-                        .init(color: .white.opacity(0.05), location: 0.46),
-                        .init(color: .clear, location: 1.00)
-                    ],
-                    center: .top,
-                    startRadius: 0,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
+        let progress = viewModel.activeStreamProgress
+        let configuration = viewModel.activeStreamConfiguration
+        StreamLaunchLoadingScreen(
+            title: progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW",
+            stage: viewModel.activeStreamAdPlayback == nil ? StreamLaunchLoadingStage.label(stepIndex: progress?.currentStepIndex ?? -1, queuePosition: progress?.queuePosition) : "Sponsored break",
+            artworkURL: configuration?.loadingArtworkURL,
+            queuePosition: progress?.queuePosition,
+            accessoryPresented: viewModel.activeStreamAdPlayback != nil,
+            cancelAction: viewModel.cancelActiveStreamLaunch
+        ) {
+            if let ad = viewModel.activeStreamAdPlayback {
+                VendorEmbeddedSessionAdPlayer(
+                    ad: ad,
+                    onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
+                    onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
                 )
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.80), location: 0.00),
-                        .init(color: .black.opacity(0.34), location: 0.24),
-                        .init(color: .black.opacity(0.18), location: 0.50),
-                        .init(color: .black.opacity(0.34), location: 0.76),
-                        .init(color: .black.opacity(0.80), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-
-                VStack(spacing: 22) {
-                    if let ad = viewModel.activeStreamAdPlayback {
-                        VendorEmbeddedSessionAdPlayer(
-                            ad: ad,
-                            onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
-                            onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
-                        )
-                        .frame(width: min(max(proxy.size.width * 0.62, 520), 920), height: min(max(proxy.size.height * 0.48, 300), 540))
-                    } else {
-                        VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                            .scaledToFit()
-                            .frame(width: 174, height: 131)
-                    }
-
-                    VStack(spacing: 10) {
-                        Text(title)
-                            .font(.nvidia(size: 22, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Text(message)
-                            .font(.nvidia(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    if let queuePosition, queuePosition > 0 {
-                        HStack(spacing: 10) {
-                            Text("QUEUE POSITION")
-                                .font(.nvidia(size: 11, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.58))
-                            Text("#\(queuePosition)")
-                                .font(.nvidia(size: 18, weight: .bold))
-                                .foregroundStyle(Color.openNowGreen)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.black.opacity(0.46), in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 1))
-                    }
-
-                    if viewModel.activeStreamAdPlayback == nil {
-                        VendorIndeterminateProgressBar()
-                            .frame(width: 320, height: 4)
-                    }
-
-                    Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                        .accessibilityLabel("Cancel stream launch")
-
-                    if !steps.isEmpty {
-                        VStack(alignment: .leading, spacing: 9) {
-                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                                VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
-                            }
-                        }
-                        .frame(width: 320, alignment: .leading)
-                    }
-                }
-                .padding(.horizontal, 28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
         }
-        .background(.black)
-    }
-
-    private var loadingScreenshotURL: URL? {
-        guard let configuration = viewModel.activeStreamConfiguration else { return nil }
-        let urls = (configuration.metadata["loadingScreenshotUrls"] ?? "")
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !urls.isEmpty else { return nil }
-        let index = abs(configuration.id.uuidString.hashValue) % urls.count
-        return URL(string: urls[index])
     }
 }
 
@@ -701,7 +584,7 @@ private struct VendorEmbeddedSessionAdPlayer: View {
                         .font(.nvidia(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text("Sponsored message required before your free-tier session continues")
+                    Text("Sponsored")
                         .font(.nvidia(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
@@ -813,39 +696,6 @@ private struct VendorSessionAdPlayerView: NSViewRepresentable {
 
     func updateNSView(_ view: AVPlayerView, context: Context) {
         if view.player !== player { view.player = player }
-    }
-}
-
-private struct VendorStreamLaunchStepRow: View {
-    let step: String
-    let index: Int
-    let currentIndex: Int
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(marker)
-                .font(.nvidia(size: 11, weight: .bold))
-                .foregroundStyle(markerColor)
-                .frame(width: 22, alignment: .center)
-            Text(step)
-                .font(.nvidia(size: 12, weight: index == currentIndex ? .bold : .medium))
-                .foregroundStyle(textColor)
-            Spacer(minLength: 0)
-        }
-        .opacity(index > currentIndex && currentIndex >= 0 ? 0.58 : 1)
-    }
-
-    private var marker: String {
-        if index < currentIndex { return "OK" }
-        return String(index + 1)
-    }
-
-    private var markerColor: Color {
-        index <= currentIndex ? .openNowGreen : .white.opacity(0.46)
-    }
-
-    private var textColor: Color {
-        index <= currentIndex || currentIndex < 0 ? .white.opacity(0.84) : .white.opacity(0.52)
     }
 }
 
