@@ -662,11 +662,11 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(error == .sessionLimitReached)
 }
 
-@Test @MainActor func nativeNVSTGeronimoPumpYieldsToAppKitEventTracking() {
+@Test @MainActor func nativeNVSTGeronimoPumpRunsDuringAppKitEventTracking() {
     #expect(NativeNVSTBifrostTransport.geronimoPumpFramesPerSecond == 60)
     #expect(abs(NativeNVSTBifrostTransport.geronimoPumpInterval - (1.0 / 60.0)) < 0.000_001)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .common)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .default)
 }
 
 @Test func nativeNVSTResolvesMicrophonePermissionBeforeGeronimoStartup() {
