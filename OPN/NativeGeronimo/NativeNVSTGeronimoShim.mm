@@ -433,8 +433,10 @@ struct GeronimoFunctions {
 };
 
 struct PendingStart {
+    GridAppSetAuthInfo setAuthInfo = nullptr;
     GridAppStart start = nullptr;
     GridAppResume resume = nullptr;
+    uintptr_t authType = 0;
     bool shouldResume = false;
     std::string resumeSessionId;
     SessionControl::SessionParameters parameters;
@@ -2039,6 +2041,15 @@ int32_t completePreparedStart(MacForceNowNativeNVSTGeronimoSession *session) {
         session->state = NativeSessionState::starting;
         pending = std::move(session->pendingStart);
     }
+    NVbAuthInfo_t authInfo;
+    authInfo.token = session->authToken.c_str();
+    authInfo.authType = pending->authType;
+    if (!pending->setAuthInfo(session->gridApp, &authInfo)) {
+        std::string message = "GridApp::setAuthInfo failed authType=" + std::to_string(authInfo.authType) + ".";
+        setSessionFailure(session, message.c_str());
+        emitEvent(session, 70, 0, 0, 0, -6);
+        return -6;
+    }
     pending->parameters.streamSettingsCount = static_cast<uint32_t>(pending->streamSettings.size());
     pending->parameters.streamSettings = pending->streamSettings.empty() ? nullptr : pending->streamSettings.data();
     if (!pending->streamSettings.empty()) {
@@ -2767,8 +2778,10 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
 
     auto pending = std::make_unique<PendingStart>();
+    pending->setAuthInfo = setAuthInfo;
     pending->start = start;
     pending->resume = resume;
+    pending->authType = resolvedAuthType;
     pending->shouldResume = shouldResume;
     pending->resumeSessionId = session->sessionId;
     pending->metadataStrings = std::move(metadataStrings);
@@ -2840,16 +2853,6 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
         session->state = NativeSessionState::configured;
         session->lastError.clear();
         session->pendingStart = std::move(pending);
-    }
-
-    NVbAuthInfo_t authInfo;
-    authInfo.token = session->authToken.c_str();
-    authInfo.authType = resolvedAuthType;
-    if (!setAuthInfo(session->gridApp, &authInfo)) {
-        std::string message = "GridApp::setAuthInfo failed authType=" + std::to_string(authInfo.authType) + ".";
-        setSessionFailure(session, message.c_str());
-        setError(errorBuffer, errorBufferLength, message.c_str());
-        return -6;
     }
 
     {

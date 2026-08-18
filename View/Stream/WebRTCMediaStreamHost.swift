@@ -74,10 +74,13 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                             image
                                 .resizable()
                                 .scaledToFill()
+                                .frame(width: proxy.size.width + 40, height: proxy.size.height + 40)
+                                .blur(radius: 30)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
                                 .clipped()
                         }
                     }
+                    .transition(.opacity)
                 }
 
                 LinearGradient(
