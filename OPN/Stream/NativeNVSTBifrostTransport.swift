@@ -5,7 +5,7 @@ import Foundation
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoPumpFramesPerSecond = 60.0
     static let geronimoPumpInterval = 1.0 / geronimoPumpFramesPerSecond
-    static let geronimoPumpRunLoopMode = RunLoop.Mode.common
+    static let geronimoPumpRunLoopMode = RunLoop.Mode.default
 
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
     static let geronimoStopTimeoutMessage = "Native NVST stop callback timed out."

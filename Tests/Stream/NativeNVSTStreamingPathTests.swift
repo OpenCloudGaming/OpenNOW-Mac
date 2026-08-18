@@ -473,8 +473,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.connectCount == 1)
 }
 
-@Test func nativeNVSTGeronimoPumpRunsInCommonRunLoopModes() {
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
+@Test func nativeNVSTGeronimoPumpYieldsDuringAppKitEventTracking() {
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
 }
 
 @Test func nativeNVSTSessionRecoveryRequiresBothFlags() {
@@ -782,11 +782,11 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(error == .sessionLimitReached)
 }
 
-@Test @MainActor func nativeNVSTGeronimoPumpRunsDuringAppKitEventTracking() {
+@Test @MainActor func nativeNVSTGeronimoPumpPreservesAppKitEventTracking() {
     #expect(NativeNVSTBifrostTransport.geronimoPumpFramesPerSecond == 60)
     #expect(abs(NativeNVSTBifrostTransport.geronimoPumpInterval - (1.0 / 60.0)) < 0.000_001)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .default)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .common)
 }
 
 @Test func nativeNVSTResolvesMicrophonePermissionBeforeGeronimoStartup() {
