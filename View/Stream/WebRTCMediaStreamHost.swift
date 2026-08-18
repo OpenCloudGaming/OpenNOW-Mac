@@ -309,13 +309,13 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             NativeNVSTStreamHostView { view in
                 nativeView = view
                 configureNativeView(view)
                 startIfNeeded()
             }
-            .ignoresSafeArea()
+            .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             nativeWindowOverlay
             if !isConnected {
                 StreamLaunchLoadingScreen(
@@ -949,7 +949,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             if unifiedHUDVisible {
                 ZStack {
                     Color.black.opacity(0.001)
-                        .ignoresSafeArea()
+                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                         .onTapGesture {}
                     nativeUnifiedHUD
                 }
@@ -962,7 +962,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private var nativeNetworkRecoveryOverlay: some View {
         ZStack {
-            Color.black.opacity(0.72).ignoresSafeArea()
+            Color.black.opacity(0.72).ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             VStack(spacing: 14) {
                 ProgressView().controlSize(.large).tint(WebRTCMediaStreamTheme.accent)
                 Text("CONNECTION INTERRUPTED")
@@ -1348,7 +1348,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private var nativeStreamControlsOverlay: some View {
         ZStack {
-            Color.black.opacity(0.96).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             VStack(spacing: 20) {
                 Text("NATIVE NVST")
                     .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
