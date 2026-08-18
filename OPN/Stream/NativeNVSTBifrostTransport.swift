@@ -91,7 +91,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         connectingAttemptID = attemptID
         lastDiagnosticMetadata = [
             "nvstAttemptID": attemptID.uuidString,
-            "nvstOperation": allocation.isResume ? "resume" : "start",
+            "nvstAllocationMode": allocation.isResume ? "resume" : "fresh",
+            "nvstOperation": "resume",
             "nvstSessionIDPresent": String(!allocation.session.id.isEmpty),
         ]
         defer {
@@ -389,12 +390,13 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let microphoneRequested = microphoneConfiguration.captureRequested
         let microphoneAvailable = await Self.resolveMicrophoneCaptureAccess(requested: microphoneRequested)
         let microphoneEnabled = microphoneAvailable && microphoneConfiguration.initiallyEnabled
-        startAttributes["operation"] = allocation.isResume ? "resume" : "start"
+        startAttributes["allocationMode"] = allocation.isResume ? "resume" : "fresh"
+        startAttributes["operation"] = "resume"
         startAttributes["microphoneRequested"] = String(microphoneRequested)
         startAttributes["microphoneAvailable"] = String(microphoneAvailable)
         startAttributes["microphoneEnabled"] = String(microphoneEnabled)
         startAttributes["videoSurfaceType"] = "NSWindow"
-        WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: allocation.isResume ? "Preparing Geronimo native NVST resume request." : "Preparing Geronimo native NVST start request.", attributes: startAttributes)
+        WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: "Preparing Geronimo native NVST session attachment.", attributes: startAttributes)
         let gameLanguage = Self.string(settings["gameLanguage"], fallback: "en_US")
         let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW"
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
@@ -470,11 +472,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                     allocation.authTokenType.withCString { authTokenTypePointer in
                                         allocation.authToken.withCString { authTokenPointer in
                                             allocation.rawSessionJSON.withCString { cloudSessionPointer in
-                                                if allocation.isResume {
-                                                    OpenNOWNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
-                                                } else {
-                                                    OpenNOWNativeNVSTGeronimoStart(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
-                                                }
+                                                OpenNOWNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
                                             }
                                         }
                                     }
@@ -485,7 +483,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 }
             }
             guard result == 0 else {
-                let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo start failed with result \(result).")
+                let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo session attachment failed with result \(result).")
                 let userMessage = Self.geronimoStartFailureMessage
                 var attributes = startAttributes
                 attributes["result"] = String(result)
@@ -2243,9 +2241,6 @@ private func OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(_ session: UnsafeMut
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
 private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
-
-@_silgen_name("OpenNOWNativeNVSTGeronimoStart")
-private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("OpenNOWNativeNVSTGeronimoResume")
 private func OpenNOWNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
