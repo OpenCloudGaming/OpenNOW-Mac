@@ -724,6 +724,19 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .default)
 }
 
+@Test func nativeNVSTGeronimoPumpYieldsSDLEventProcessingToLocalInputConsumers() {
+    // SDL's Cocoa pump drains the NSApp event queue. Draining while the local
+    // overlay owns pointer input or a control runs its mouse-tracking loop
+    // steals the pending mouse-up, so HUD and quit-menu buttons highlight but
+    // never fire.
+    #expect(!NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: .default, localOverlayCapturesInput: true))
+    #expect(!NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: .eventTracking, localOverlayCapturesInput: false))
+    #expect(!NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: .eventTracking, localOverlayCapturesInput: true))
+    #expect(NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: .default, localOverlayCapturesInput: false))
+    #expect(NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: .modalPanel, localOverlayCapturesInput: false))
+    #expect(NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(inRunLoopMode: nil, localOverlayCapturesInput: false))
+}
+
 @Test func nativeNVSTResolvesMicrophonePermissionBeforeGeronimoStartup() {
     #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: false, authorizationStatus: .notDetermined) == false)
     #expect(NativeNVSTBifrostTransport.microphoneCaptureAccess(requested: true, authorizationStatus: .authorized) == true)

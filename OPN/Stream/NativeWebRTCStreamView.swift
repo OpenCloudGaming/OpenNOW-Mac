@@ -187,6 +187,10 @@ public final class NativeWebRTCStreamView: NSView {
             if !directMouseInputEnabled { setPointerLocked(false) }
         }
     }
+    /// Mirrors the host overlay's hit-testing state so the native Geronimo
+    /// pump can stop draining the NSApp event queue while overlay buttons
+    /// are waiting on those mouse events.
+    public var localOverlayCapturesInput = false
     public var hidesCursorWhilePointerLocked = true {
         didSet {
             guard isPointerLocked else { return }

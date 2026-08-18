@@ -7,6 +7,17 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoPumpInterval = 1.0 / geronimoPumpFramesPerSecond
     static let geronimoPumpRunLoopMode = RunLoop.Mode.common
 
+    /// SDL's Cocoa pump drains the NSApp event queue. While the local overlay
+    /// owns pointer input (HUD sidebar, quit menu, network-recovery panel) or
+    /// AppKit runs an event-tracking loop (control mouse tracking, title-bar
+    /// drags, menus), draining steals the pending mouse events those consumers
+    /// are waiting on, so overlay buttons press but never fire. GridApp
+    /// callback delivery stays live on every tick; only SDL event processing
+    /// yields.
+    static func geronimoPumpProcessesSDLEvents(inRunLoopMode mode: RunLoop.Mode?, localOverlayCapturesInput: Bool) -> Bool {
+        !localOverlayCapturesInput && mode != .eventTracking
+    }
+
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
 
     static func geronimoCallbackFailureMessage(resultCode: Int32, resultName: String?) -> String {
@@ -40,6 +51,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)?
     private let hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?
     private let hapticResetHandler: (@MainActor @Sendable () -> Void)?
+    private let localInputCaptureHandler: (@MainActor @Sendable () -> Bool)?
     private let authRefreshHandler: @Sendable (UInt32) async throws -> String
     private let terminationChannel = NativeNVSTTerminationChannel()
     private var bridge: NVSTNativeBridge?
@@ -60,6 +72,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 prepareVideoSurfaceForShutdown: (@MainActor @Sendable () -> Void)? = nil,
                 hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)? = nil,
                 hapticResetHandler: (@MainActor @Sendable () -> Void)? = nil,
+                localInputCaptureHandler: (@MainActor @Sendable () -> Bool)? = nil,
                 authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String = NativeNVSTAuthRefreshCoordinator.productionToken) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
@@ -68,6 +81,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         self.prepareVideoSurfaceForShutdown = prepareVideoSurfaceForShutdown
         self.hapticHandler = hapticHandler
         self.hapticResetHandler = hapticResetHandler
+        self.localInputCaptureHandler = localInputCaptureHandler
         self.authRefreshHandler = authRefreshHandler
     }
 
@@ -149,6 +163,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                     eventSink: eventSink,
                     hapticHandler: hapticHandler,
                     hapticResetHandler: hapticResetHandler,
+                    localInputCaptureHandler: localInputCaptureHandler,
                     authRefreshHandler: authRefreshHandler,
                     microphoneConfiguration: microphoneConfiguration
                 )
@@ -353,6 +368,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                                             eventSink: NativeNVSTGeronimoEventSink,
                                                             hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?,
                                                             hapticResetHandler: (@MainActor @Sendable () -> Void)?,
+                                                            localInputCaptureHandler: (@MainActor @Sendable () -> Bool)?,
                                                             authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String,
                                                             microphoneConfiguration: NativeNVSTMicrophoneConfiguration) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
@@ -499,7 +515,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             var attributes = startAttributes
             attributes["library"] = status.libraryURL.lastPathComponent
             WebRTCMediaTelemetry.capture("nvst.geronimo.start.accepted", level: .info, message: "Geronimo accepted native NVST start request; waiting for native start delivery.", attributes: attributes)
-            let activePump = NativeNVSTGeronimoPumpDriver(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes)
+            let activePump = NativeNVSTGeronimoPumpDriver(sessionAddress: sessionAddress, eventSink: eventSink, telemetryAttributes: attributes, localInputCaptureHandler: localInputCaptureHandler)
             activePump.start()
             pump = activePump
             do {
@@ -1424,14 +1440,16 @@ private final class NativeNVSTGeronimoPumpDriver {
     private let sessionAddress: UInt
     private let eventSink: NativeNVSTGeronimoEventSink
     private let telemetryAttributes: [String: String]
+    private let localInputCaptureHandler: (@MainActor @Sendable () -> Bool)?
     private var errorBuffer = [CChar](repeating: 0, count: 1024)
     private var timer: Timer?
     private var isRunning = false
 
-    init(sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, telemetryAttributes: [String: String]) {
+    init(sessionAddress: UInt, eventSink: NativeNVSTGeronimoEventSink, telemetryAttributes: [String: String], localInputCaptureHandler: (@MainActor @Sendable () -> Bool)? = nil) {
         self.sessionAddress = sessionAddress
         self.eventSink = eventSink
         self.telemetryAttributes = telemetryAttributes
+        self.localInputCaptureHandler = localInputCaptureHandler
     }
 
     isolated deinit {
@@ -1460,10 +1478,15 @@ private final class NativeNVSTGeronimoPumpDriver {
 
     private func pumpOnce() {
         guard isRunning else { return }
+        let localOverlayCapturesInput = MainActor.assumeIsolated { localInputCaptureHandler?() ?? false }
+        let processSDLEvents: Int32 = NativeNVSTBifrostTransport.geronimoPumpProcessesSDLEvents(
+            inRunLoopMode: RunLoop.main.currentMode,
+            localOverlayCapturesInput: localOverlayCapturesInput
+        ) ? 1 : 0
         let result = errorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
             guard let baseAddress = buffer.baseAddress else { return -1 }
             baseAddress.pointee = 0
-            return MacForceNowNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, baseAddress, buffer.count)
+            return MacForceNowNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, processSDLEvents, baseAddress, buffer.count)
         }
         guard result != 0 else { return }
         stop()
@@ -2265,7 +2288,7 @@ private func MacForceNowNativeNVSTGeronimoSetMicrophoneVolume(_ session: UnsafeM
 private func MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32) -> Int32
 
 @_silgen_name("MacForceNowNativeNVSTGeronimoPump")
-private func MacForceNowNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+private func MacForceNowNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ processSDLEvents: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 @_silgen_name("MacForceNowNativeNVSTGeronimoPause")
 private func MacForceNowNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

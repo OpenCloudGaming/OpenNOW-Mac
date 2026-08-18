@@ -3015,6 +3015,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoResume(void *sessionPointer,
 
 extern "C" int32_t MacForceNowNativeNVSTGeronimoPump(void *sessionPointer,
                                                     int32_t waitTimeoutMilliseconds,
+                                                    int32_t processSDLEvents,
                                                     char *errorBuffer,
                                                     size_t errorBufferLength) {
     @autoreleasepool {
@@ -3058,8 +3059,11 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoPump(void *sessionPointer,
                 }
                 if (session->state == NativeSessionState::stopping) { return 0; }
             }
+            // SDL event processing drains the shared NSApp event queue; the caller
+            // suppresses it while AppKit runs an event-tracking loop so pending
+            // mouse events stay available to the tracking control.
             void *eventProcessor = nullptr;
-            {
+            if (processSDLEvents != 0) {
                 std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
                 eventProcessor = session->eventProcessor;
             }

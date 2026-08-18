@@ -383,6 +383,9 @@ private struct NativeNVSTMediaStreamSurface: View {
             },
             hapticResetHandler: { [weak nativeView] in
                 nativeView?.stopHaptics()
+            },
+            localInputCaptureHandler: { [weak nativeView] in
+                nativeView?.localOverlayCapturesInput ?? false
             }
         )
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
@@ -1491,6 +1494,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
             overlayView.rootView = overlay
             overlayView.isHidden = !visible
             overlayView.capturesInput = capturesInput
+            streamView.localOverlayCapturesInput = capturesInput
             if visible && capturesInput { NSCursor.arrow.set() }
         }
     }
