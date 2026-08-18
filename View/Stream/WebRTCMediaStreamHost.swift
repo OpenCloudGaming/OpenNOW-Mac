@@ -310,16 +310,13 @@ private struct NativeNVSTMediaStreamSurface: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            NativeNVSTStreamHostView(
-                overlay: AnyView(nativeWindowOverlay),
-                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible || !networkPathAvailable || !transientStreamMessage.isEmpty,
-                overlayCapturesInput: unifiedHUDVisible || streamControlsVisible || !networkPathAvailable
-            ) { view in
+            NativeNVSTStreamHostView { view in
                 nativeView = view
                 configureNativeView(view)
                 startIfNeeded()
             }
             .ignoresSafeArea()
+            nativeWindowOverlay
             if !isConnected {
                 StreamLaunchLoadingScreen(
                     title: configuration.title,
@@ -948,11 +945,18 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder private var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
-            if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD }
-            if unifiedHUDVisible { nativeUnifiedHUD }
+            if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD.allowsHitTesting(false) }
+            if unifiedHUDVisible {
+                ZStack {
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .onTapGesture {}
+                    nativeUnifiedHUD
+                }
+            }
             if streamControlsVisible { nativeStreamControlsOverlay }
             if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
-            if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay }
+            if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }
     }
 
@@ -1409,46 +1413,41 @@ private struct NativeNVSTMediaStreamSurface: View {
 }
 
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
-    let overlay: AnyView
-    let overlayVisible: Bool
-    let overlayCapturesInput: Bool
     let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
 
-    func makeNSView(context: Context) -> NativeNVSTContainerView {
-        let view = NativeNVSTContainerView(frame: .zero)
-        view.onResolve = { streamView in
-            Task { @MainActor in onResolve(streamView) }
-        }
-        view.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
+    func makeNSView(context: Context) -> NativeNVSTSurfaceContainerView {
+        let view = NativeNVSTSurfaceContainerView(frame: .zero)
+        view.onResolve = onResolve
         return view
     }
 
-    func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {
-        nsView.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
+    func updateNSView(_ nsView: NativeNVSTSurfaceContainerView, context: Context) {
+        nsView.onResolve = onResolve
+        nsView.resolveIfReady()
     }
 
-    static func dismantleNSView(_ nsView: NativeNVSTContainerView, coordinator: ()) {
+    static func dismantleNSView(_ nsView: NativeNVSTSurfaceContainerView, coordinator: ()) {
         nsView.streamView.remoteInputEnabled = false
         nsView.streamView.setPointerLocked(false)
         nsView.streamView.onInputEvent = nil
         nsView.streamView.onAbsoluteMouseMove = nil
+        nsView.streamView.onGamepadTopologyChanged = nil
         nsView.streamView.onPointerLockChanged = nil
         nsView.streamView.onCommand = nil
         nsView.streamView.shouldHandleCommand = nil
+        nsView.onResolve = nil
     }
 
-    final class NativeNVSTContainerView: NSView {
+    final class NativeNVSTSurfaceContainerView: NSView {
         let streamView = NativeWebRTCStreamView(frame: .zero)
-        private let overlayView = NativeNVSTOverlayHostingView(rootView: AnyView(EmptyView()))
-        var onResolve: ((NativeWebRTCStreamView) -> Void)?
+        var onResolve: (@MainActor (NativeWebRTCStreamView) -> Void)?
+        private var didResolve = false
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor
             addSubview(streamView)
-            overlayView.isHidden = true
-            addSubview(overlayView)
         }
 
         @available(*, unavailable)
@@ -1458,29 +1457,20 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window != nil { onResolve?(streamView) }
+            resolveIfReady()
         }
 
         override func layout() {
             super.layout()
             streamView.frame = bounds
-            overlayView.frame = bounds
-            if window != nil { onResolve?(streamView) }
+            resolveIfReady()
         }
 
-        func updateOverlay(_ overlay: AnyView, visible: Bool, capturesInput: Bool) {
-            overlayView.rootView = overlay
-            overlayView.isHidden = !visible
-            overlayView.capturesInput = capturesInput
-            if visible && capturesInput { NSCursor.arrow.set() }
-        }
-    }
-
-    final class NativeNVSTOverlayHostingView: NSHostingView<AnyView> {
-        var capturesInput = false
-
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            capturesInput ? super.hitTest(point) : nil
+        func resolveIfReady() {
+            streamView.frame = bounds
+            guard !didResolve, window != nil, bounds.width >= 1, bounds.height >= 1, let onResolve else { return }
+            didResolve = true
+            onResolve(streamView)
         }
     }
 }
