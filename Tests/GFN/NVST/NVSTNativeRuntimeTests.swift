@@ -177,7 +177,8 @@ struct NVSTNativeRuntimeTests {
         title: "NVST Authenticated Test",
         applicationID: applicationID,
         accessToken: token,
-        accountLinked: true
+        accountLinked: true,
+        selectedStore: ""
     )
     let provider = OpenNOWStreamSessionCoordinator()
     let surfaceHandle = UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
@@ -207,7 +208,8 @@ struct NVSTNativeRuntimeTests {
         title: "NVST Authenticated Resume Test",
         applicationID: applicationID,
         accessToken: token,
-        accountLinked: true
+        accountLinked: true,
+        selectedStore: ""
     )
     let initialTransport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: UInt(bitPattern: Unmanaged.passUnretained(initialWindow).toOpaque()))
     let initialPath = NativeNVSTStreamingPath(sessionProvider: provider, transport: initialTransport)
@@ -226,6 +228,7 @@ struct NVSTNativeRuntimeTests {
         applicationID: applicationID,
         accessToken: token,
         accountLinked: true,
+        selectedStore: "",
         resumeSessionID: initialSession.id,
         resumeServer: initialSession.serverAddress
     )
