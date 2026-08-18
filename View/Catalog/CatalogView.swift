@@ -661,23 +661,16 @@ private struct VendorLaunchProgressCard: View {
 
     var body: some View {
         VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
-            VStack(alignment: .leading, spacing: 18) {
-                VendorLaunchStepHeader(index: progressIndex, title: progressTitle, message: viewModel.launchFlowMessage)
+            VStack(alignment: .leading, spacing: 14) {
+                Text(progressTitle)
+                    .font(.nvidia(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
                 VendorIndeterminateProgressBar()
                     .frame(height: 4)
                 if !viewModel.launchFlowError.isEmpty {
                     VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
                 }
             }
-        }
-    }
-
-    private var progressIndex: String {
-        switch viewModel.launchFlowState {
-        case .checkingSession: return "2"
-        case .stoppingSession: return "3"
-        case .startingStream: return "4"
-        default: return ""
         }
     }
 
@@ -695,146 +688,24 @@ private struct VendorStreamLaunchLoadingOverlay: View {
     let viewModel: CatalogViewModel
 
     var body: some View {
-        GeometryReader { proxy in
-            let progress = viewModel.activeStreamProgress
-            let steps = progress?.steps ?? []
-            let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
-            let message = progress?.message ?? "Starting GeForce NOW stream..."
-            let queuePosition = progress?.queuePosition
-            ZStack {
-                Color.black
-
-                if let screenshotURL = loadingScreenshotURL {
-                    AsyncImage(url: screenshotURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width + 40, height: proxy.size.height + 40)
-                                .blur(radius: 30)
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            EmptyView()
-                        }
-                    }
-                    .transition(.opacity)
-                }
-
-                Rectangle()
-                    .fill(.black.opacity(0.42))
-
-                RadialGradient(
-                    stops: [
-                        .init(color: .white.opacity(0.18), location: 0.00),
-                        .init(color: .white.opacity(0.05), location: 0.46),
-                        .init(color: .clear, location: 1.00)
-                    ],
-                    center: .top,
-                    startRadius: 0,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
+        let progress = viewModel.activeStreamProgress
+        let configuration = viewModel.activeStreamConfiguration
+        StreamLaunchLoadingScreen(
+            title: progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW",
+            stage: viewModel.activeStreamAdPlayback == nil ? StreamLaunchLoadingStage.label(stepIndex: progress?.currentStepIndex ?? -1, queuePosition: progress?.queuePosition) : "Sponsored break",
+            artworkURL: configuration?.loadingArtworkURL,
+            queuePosition: progress?.queuePosition,
+            accessoryPresented: viewModel.activeStreamAdPlayback != nil,
+            cancelAction: viewModel.cancelActiveStreamLaunch
+        ) {
+            if let ad = viewModel.activeStreamAdPlayback {
+                VendorEmbeddedSessionAdPlayer(
+                    ad: ad,
+                    onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
+                    onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
                 )
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.80), location: 0.00),
-                        .init(color: .black.opacity(0.34), location: 0.24),
-                        .init(color: .black.opacity(0.18), location: 0.50),
-                        .init(color: .black.opacity(0.34), location: 0.76),
-                        .init(color: .black.opacity(0.80), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-
-                VStack(spacing: 22) {
-                    if let ad = viewModel.activeStreamAdPlayback {
-                        VendorEmbeddedSessionAdPlayer(
-                            ad: ad,
-                            onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
-                            onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
-                        )
-                        .frame(width: min(max(proxy.size.width * 0.62, 520), 920), height: min(max(proxy.size.height * 0.48, 300), 540))
-                    } else {
-                        VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                            .scaledToFit()
-                            .frame(width: 174, height: 131)
-                    }
-
-                    VStack(spacing: 10) {
-                        Text(title)
-                            .nvidiaFont(size: 22, weight: .bold)
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Text(message)
-                            .nvidiaFont(size: 13, weight: .bold)
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    if let queuePosition, queuePosition > 0 {
-                        HStack(spacing: 10) {
-                            Text("QUEUE POSITION")
-                                .nvidiaFont(size: 11, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.58))
-                            Text("#\(queuePosition)")
-                                .nvidiaFont(size: 18, weight: .bold)
-                                .foregroundStyle(Color.openNowGreen)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.black.opacity(0.46), in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 1))
-                    }
-
-                    if viewModel.activeStreamAdPlayback == nil {
-                        VendorIndeterminateProgressBar()
-                            .frame(width: 320, height: 4)
-                    }
-
-                    Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                        .accessibilityLabel("Cancel stream launch")
-
-                    if !steps.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                                VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
-                                    .padding(.vertical, 5)
-                            }
-                        }
-                        .frame(width: 320, alignment: .leading)
-                        .background(alignment: .leading) {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.10))
-                                .frame(width: 1)
-                                .frame(maxHeight: .infinity)
-                                .padding(.top, 12)
-                                .padding(.bottom, 12)
-                                .padding(.leading, 6.5)
-                        }
-                    }
-                }
-                .padding(.horizontal, 28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
         }
-        .background(.black)
-    }
-
-    private var loadingScreenshotURL: URL? {
-        guard let configuration = viewModel.activeStreamConfiguration else { return nil }
-        let urls = (configuration.metadata["loadingScreenshotUrls"] ?? "")
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !urls.isEmpty else { return nil }
-        let index = abs(configuration.id.uuidString.hashValue) % urls.count
-        return URL(string: urls[index])
     }
 }
 
@@ -993,63 +864,6 @@ private struct VendorSessionAdPlayerView: NSViewRepresentable {
 
     func updateNSView(_ view: AVPlayerView, context: Context) {
         if view.player !== player { view.player = player }
-    }
-}
-
-private struct VendorStreamLaunchStepRow: View {
-    let step: String
-    let index: Int
-    let currentIndex: Int
-
-    private enum StepState { case completed, active, pending }
-
-    private var state: StepState {
-        if currentIndex < 0 { return .pending }
-        if index < currentIndex { return .completed }
-        if index == currentIndex { return .active }
-        return .pending
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            marker
-            Text(step)
-                .nvidiaFont(size: 12, weight: state == .active ? .bold : .medium)
-                .foregroundStyle(textColor)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var marker: some View {
-        ZStack {
-            switch state {
-            case .completed:
-                Circle()
-                    .fill(Color.openNowGreen)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(.black)
-            case .active:
-                Circle()
-                    .fill(Color.openNowGreen)
-            case .pending:
-                Circle()
-                    .stroke(Color.white.opacity(0.30), lineWidth: 1.5)
-            }
-        }
-        .frame(width: 10, height: 10)
-        .frame(width: 14, height: 14)
-    }
-
-    private var textColor: Color {
-        switch state {
-        case .completed: .white.opacity(0.72)
-        case .active: .white.opacity(0.96)
-        case .pending: .white.opacity(0.42)
-        }
     }
 }
 
