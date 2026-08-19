@@ -162,7 +162,9 @@ final class CatalogViewModel {
         didSet { invalidateDerivedCatalogCaches() }
     }
     var isLoading = false
+    var isLoadingMoreCatalog = false
     var isLoadingPanels = false
+    private var catalogEndCursor = ""
     var errorMessage = ""
     var launchMessage = ""
     var actionMessage = ""
@@ -383,6 +385,14 @@ final class CatalogViewModel {
         filterGroups.filter { !$0.options.isEmpty }
     }
 
+    var showsCatalogLoadingIndicator: Bool {
+        (isLoading && !catalogGames.isEmpty) || isLoadingMoreCatalog
+    }
+
+    var isRefetchingCatalog: Bool {
+        isLoading && !catalogGames.isEmpty
+    }
+
     private var allKnownGames: [OPNCatalogGameObject] {
         marqueeGames + catalogGames + libraryGames + favoriteGames + mainPanelGames
     }
@@ -470,6 +480,8 @@ final class CatalogViewModel {
             catalogGames = []
             totalCatalogCount = 0
             hasMoreCatalogResults = false
+            isLoadingMoreCatalog = false
+            catalogEndCursor = ""
         }
     }
 
@@ -524,6 +536,8 @@ final class CatalogViewModel {
         totalCatalogCount = 0
         hasMoreCatalogResults = false
         isLoading = false
+        isLoadingMoreCatalog = false
+        catalogEndCursor = ""
     }
 
     func showSettings(_ group: CatalogSettingsGroup = .account) {
@@ -541,6 +555,8 @@ final class CatalogViewModel {
         let generation = browseGeneration
         let browseStartTime = CFAbsoluteTimeGetCurrent()
         isLoading = true
+        isLoadingMoreCatalog = false
+        catalogEndCursor = ""
         errorMessage = ""
         configureCatalogService()
         let query = searchQuery.trimmed
@@ -560,6 +576,7 @@ final class CatalogViewModel {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - browseStartTime) * 1000)
                 guard success else {
                     MacForceNowLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
+                    self.isLoadingMoreCatalog = false
                     if self.refreshAuthIfNeeded(error: error) { return }
                     self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
                     return
@@ -576,11 +593,49 @@ final class CatalogViewModel {
                 self.totalCatalogCount = browseResult.totalCount
                 self.supportedCatalogCount = browseResult.numberSupported
                 self.hasMoreCatalogResults = browseResult.hasNextPage
+                self.catalogEndCursor = browseResult.endCursor
+                self.isLoadingMoreCatalog = false
                 self.filterGroups = browseResult.filterGroups
                 self.sortOptions = browseResult.sortOptions
                 MacForceNowLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
                 if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
                 self.selectedFilterIds = browseResult.selectedFilterIds
+                self.schedulePatchingPollIfNeeded()
+            }
+        }
+    }
+
+    func loadNextCatalogPage() {
+        guard hasMoreCatalogResults, !catalogEndCursor.isEmpty, !isLoading, !isLoadingMoreCatalog else { return }
+        let generation = browseGeneration
+        isLoadingMoreCatalog = true
+        let selfBox = CatalogWeakObject(self)
+        MacForceNowLog.info(.catalog, "Show All loading next page cursor=\(catalogEndCursor)")
+        OPNGameServiceSwiftAdapter.browseCatalogObject(
+            searchQuery: searchQuery.trimmed,
+            sortId: selectedSortId.isEmpty ? "a_to_z" : selectedSortId,
+            filterIds: selectedFilterIds,
+            fetchCount: 200,
+            forceRefresh: false,
+            cursor: catalogEndCursor
+        ) { success, result, error in
+            let resultBox = CatalogSendableValue(result)
+            Task { @MainActor in
+                guard let self = selfBox.value, generation == self.browseGeneration else { return }
+                self.isLoadingMoreCatalog = false
+                guard success else {
+                    MacForceNowLog.warning(.catalog, "Show All next page failed error=\(error)")
+                    return
+                }
+                let browseResult = resultBox.value
+                let existingIdentities = Set(self.catalogGames.map(\.catalogIdentity))
+                let newGames = browseResult.games.filter { !existingIdentities.contains($0.catalogIdentity) }
+                self.catalogGames.append(contentsOf: newGames)
+                self.totalCatalogCount = max(self.totalCatalogCount, browseResult.totalCount)
+                self.supportedCatalogCount = max(self.supportedCatalogCount, browseResult.numberSupported)
+                self.hasMoreCatalogResults = browseResult.hasNextPage
+                self.catalogEndCursor = browseResult.endCursor
+                MacForceNowLog.info(.catalog, "Show All next page applied added=\(newGames.count) total=\(self.catalogGames.count) hasNext=\(browseResult.hasNextPage)")
                 self.schedulePatchingPollIfNeeded()
             }
         }

@@ -129,7 +129,7 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    func browseCatalogGames(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool = false, completion: @escaping OPNCatalogBrowseCallback) {
+    func browseCatalogGames(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool = false, cursor: String = "", completion: @escaping OPNCatalogBrowseCallback) {
         let token = accessToken
         let accountIdentifier = userId
         let providerBaseUrl = providerStreamingBaseURL()
@@ -146,6 +146,7 @@ final class OPNGameService: @unchecked Sendable {
                 filterIds: filterIds,
                 fetchCount: fetchCount,
                 forceRefresh: forceRefresh,
+                cursor: cursor,
                 completion: completion
             )
         }
@@ -161,6 +162,7 @@ final class OPNGameService: @unchecked Sendable {
         filterIds: [String],
         fetchCount: Int,
         forceRefresh: Bool,
+        cursor: String,
         completion: @escaping OPNCatalogBrowseCallback
     ) {
         let requestedSortId = sortId.isEmpty ? Self.defaultSortId(searchQuery: searchQuery) : sortId
@@ -183,10 +185,11 @@ final class OPNGameService: @unchecked Sendable {
             searchQuery: searchQuery,
             resolvedVpcId: resolvedVpcId,
             locale: locale,
-            catalogCacheKey: catalogCacheKey
+            catalogCacheKey: catalogCacheKey,
+            cursor: cursor
         )
 
-        if forceRefresh {
+        if forceRefresh || !cursor.isEmpty {
             continueBrowseAfterFreshCacheMiss(parameters: parameters, allowCachedCatalog: false, completion: completion)
             return
         }
@@ -289,7 +292,8 @@ final class OPNGameService: @unchecked Sendable {
                 catalogCacheKey: parameters.catalogCacheKey,
                 deliveredCachedResult: deliveredCachedResult,
                 maxPages: Self.maxCatalogPages,
-                deliverFirstPageEarly: true,
+                callerDrivenPaging: true,
+                startCursor: parameters.cursor,
                 completion: completion
             )
         }
@@ -957,7 +961,7 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, maxPages: Int, deliverFirstPageEarly: Bool = false, completion: @escaping OPNCatalogBrowseCallback) {
+    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, maxPages: Int, callerDrivenPaging: Bool = false, startCursor: String = "", completion: @escaping OPNCatalogBrowseCallback) {
         let state = CatalogPageState(result: baseResult)
         let filterBox = NSDictionaryBox(filters)
         let fetchPage = RecursiveCatalogPageFetcher()
@@ -971,14 +975,15 @@ final class OPNGameService: @unchecked Sendable {
                 let dataBox = data.map(NSDictionaryBox.init)
                 Self.workQueue.async { [dataBox] in
                     if !error.isEmpty {
-                        if !deliveredCachedResult.value { self.dispatchCatalogBrowse(completion, false, OPNCatalogBrowseResult(), error) }
+                        if !deliveredCachedResult.value || deliveredFirstPage.value { self.dispatchCatalogBrowse(completion, false, OPNCatalogBrowseResult(), error) }
                         return
                     }
                     guard let apps = dataBox?.value["apps"] as? NSDictionary else {
-                        if !deliveredCachedResult.value { self.dispatchCatalogBrowse(completion, false, OPNCatalogBrowseResult(), "No apps data") }
+                        if !deliveredCachedResult.value || deliveredFirstPage.value { self.dispatchCatalogBrowse(completion, false, OPNCatalogBrowseResult(), "No apps data") }
                         return
                     }
-                    if let items = apps["items"] as? [NSDictionary] { state.collectedApps.append(contentsOf: items) }
+                    let pageItems = apps["items"] as? [NSDictionary] ?? []
+                    state.collectedApps.append(contentsOf: pageItems)
                     state.result.numberReturned += self.safeInt(apps["numberReturned"])
                     state.result.numberSupported = self.safeInt(apps["numberSupported"])
                     let pageInfo = apps["pageInfo"] as? NSDictionary
@@ -988,37 +993,35 @@ final class OPNGameService: @unchecked Sendable {
                     state.result.hasNextPage = hasNextPage
                     if !endCursor.isEmpty { state.result.endCursor = endCursor }
 
-                    if deliverFirstPageEarly, page == 0, !deliveredCachedResult.value, !deliveredFirstPage.value {
-                        deliveredFirstPage.setTrue()
-                        let firstPageGames = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
-                        self.enrichGames(firstPageGames, vpcId: vpcId) { enriched in
-                            var firstPageResult = state.result
-                            firstPageResult.games = enriched
-                            firstPageResult.numberSupported = max(state.result.numberSupported, enriched.count)
-                            OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: firstPageResult)
-                            self.dispatchCatalogBrowse(completion, true, firstPageResult, "")
-                        }
-                    }
+                    let pageGames = pageItems.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
+                    self.enrichGames(pageGames, vpcId: vpcId) { enriched in
+                        state.enrichedGames.append(contentsOf: enriched)
+                        state.result.numberSupported = max(state.result.numberSupported, state.enrichedGames.count)
+                        state.result.totalCount = max(state.result.totalCount, state.enrichedGames.count)
 
-                    if hasNextPage, !endCursor.isEmpty, page + 1 < maxPages {
-                        fetchPage.action?(page + 1, endCursor)
-                        return
-                    }
-                    if !deliveredFirstPage.value || page > 0 {
-                        let games = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
-                        self.enrichGames(games, vpcId: vpcId) { enriched in
-                            state.result.numberSupported = max(state.result.numberSupported, enriched.count)
-                            state.result.totalCount = max(state.result.totalCount, enriched.count)
-                            var finalResult = state.result
-                            finalResult.games = enriched
-                            OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: finalResult)
-                            self.dispatchCatalogBrowse(completion, true, finalResult, "")
+                        let isCatalogFirstPage = page == 0 && startCursor.isEmpty
+                        let isFinalPage = !hasNextPage || endCursor.isEmpty || page + 1 >= maxPages
+                        let shouldDeliver = callerDrivenPaging || isFinalPage
+                        if shouldDeliver, !(callerDrivenPaging && isCatalogFirstPage && deliveredCachedResult.value) {
+                            var snapshot = state.result
+                            snapshot.games = state.enrichedGames
+                            if isCatalogFirstPage {
+                                deliveredFirstPage.setTrue()
+                            }
+                            if startCursor.isEmpty, isCatalogFirstPage || isFinalPage {
+                                OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: snapshot)
+                            }
+                            self.dispatchCatalogBrowse(completion, true, snapshot, "")
+                        }
+
+                        if !isFinalPage, !callerDrivenPaging {
+                            fetchPage.action?(page + 1, endCursor)
                         }
                     }
                 }
             }
         }
-        fetchPage.action?(0, "")
+        fetchPage.action?(0, startCursor)
     }
 
     private func enrichGames(_ games: [OPNGameInfo], vpcId: String, completion: @escaping @Sendable ([OPNGameInfo]) -> Void) {
@@ -2396,7 +2399,11 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
-        OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh) { success, result, error in
+        browseCatalogObject(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh, cursor: "", completion: completion)
+    }
+
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, cursor: String, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+        OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh, cursor: cursor) { success, result, error in
             completion(success, OPNCatalogBrowseResultObject(result: result), error)
         }
     }
@@ -2644,6 +2651,7 @@ private struct CatalogDefinitionParameters: Sendable {
     let resolvedVpcId: String
     let locale: String
     let catalogCacheKey: String
+    var cursor: String = ""
 }
 
 private struct PublicGameListItem: Decodable, Sendable {
@@ -2706,6 +2714,7 @@ private final class AtomicFlag: @unchecked Sendable {
 
 private final class CatalogPageState: @unchecked Sendable {
     var collectedApps: [NSDictionary] = []
+    var enrichedGames: [OPNGameInfo] = []
     var result: OPNCatalogBrowseResult
 
     init(result: OPNCatalogBrowseResult) {

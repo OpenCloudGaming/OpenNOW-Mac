@@ -248,6 +248,11 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
     }
+
+    func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
+        guard indexPath.item >= parent.games.count - 12 else { return }
+        parent.viewModel.loadNextCatalogPage()
+    }
 }
 
 final class CatalogShowAllGridItem: NSCollectionViewItem {

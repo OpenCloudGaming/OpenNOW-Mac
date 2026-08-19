@@ -877,22 +877,33 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-        // Browse delivers twice: first page for fast paint, then the fully
-        // paginated result. Await the second delivery.
-        let result = await withCheckedContinuation { continuation in
-            nonisolated(unsafe) var deliveryCount = 0
+        // Browse fetches a single page; the caller drives further pages via endCursor.
+        let firstPage = await withCheckedContinuation { continuation in
             OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
-                deliveryCount += 1
-                guard deliveryCount == 2 else { return }
-                continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, error))
+                continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, browseResult.hasNextPage, browseResult.endCursor, error))
             }
         }
 
-        #expect(result.0 == true)
-        #expect(result.4.isEmpty)
-        #expect(result.1 == 45)
-        #expect(result.2 == 45)
-        #expect(result.3 == 45)
+        #expect(firstPage.0 == true)
+        #expect(firstPage.6.isEmpty)
+        #expect(firstPage.1 == 40)
+        #expect(firstPage.2 == 40)
+        #expect(firstPage.3 == 45)
+        #expect(firstPage.4 == true)
+        #expect(firstPage.5 == "cursor-40")
+
+        let nextPage = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true, cursor: firstPage.5) { success, browseResult, error in
+                continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, browseResult.hasNextPage, error))
+            }
+        }
+
+        #expect(nextPage.0 == true)
+        #expect(nextPage.5.isEmpty)
+        #expect(nextPage.1 == 5)
+        #expect(nextPage.2 == 5)
+        #expect(nextPage.3 == 45)
+        #expect(nextPage.4 == false)
         let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
             ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
         }

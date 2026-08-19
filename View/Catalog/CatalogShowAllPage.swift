@@ -30,6 +30,19 @@ struct CatalogShowAllPage: View {
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
+            ZStack(alignment: .top) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: 2)
+                if viewModel.showsCatalogLoadingIndicator {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(Color.openNowGreen)
+                        .frame(height: 2)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: viewModel.showsCatalogLoadingIndicator)
             if viewModel.isLoading && viewModel.catalogGames.isEmpty {
                 CatalogGridSkeletonView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,6 +58,8 @@ struct CatalogShowAllPage: View {
                     onPlay: { viewModel.launch(game: $0) },
                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: $0) }
                 )
+                .opacity(viewModel.isRefetchingCatalog ? 0.45 : 1)
+                .animation(.easeOut(duration: 0.2), value: viewModel.isRefetchingCatalog)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

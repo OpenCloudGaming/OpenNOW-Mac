@@ -12,6 +12,7 @@ import SwiftData
 struct CatalogCachedImageData: @unchecked Sendable {
     let data: Data
     let image: NSImage
+    let decodedByteCount: Int
 }
 
 struct CatalogImageCacheStatistics: Sendable {
@@ -38,8 +39,8 @@ actor CatalogImageCache {
     private let maximumStoredEntries = 2_000
 
     private init() {
-        memoryCache.countLimit = 512
-        memoryCache.totalCostLimit = 128 * 1024 * 1024
+        memoryCache.countLimit = 384
+        memoryCache.totalCostLimit = 160 * 1024 * 1024
     }
 
     nonisolated func configure(container: ModelContainer) {
@@ -115,7 +116,7 @@ actor CatalogImageCache {
             while let url = await self.nextPrefetchURL() {
                 guard !Task.isCancelled else { return }
                 if await self.hasCachedImage(for: url) { continue }
-                _ = await self.image(for: url)
+                _ = await self.image(for: url, maxPixelSize: 620)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
             await self.prefetchDidFinish()
@@ -151,10 +152,10 @@ actor CatalogImageCache {
         var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
         descriptor.fetchLimit = 1
         guard let entry = try? context.fetch(descriptor).first,
-              let image = Self.downsampledImage(from: entry.data, maxPixelSize: maxPixelSize) else { return nil }
+              let decoded = Self.downsampledImage(from: entry.data, maxPixelSize: maxPixelSize) else { return nil }
         deferAccessMetadataUpdate(for: url)
-        let imageData = CatalogCachedImageData(data: entry.data, image: image)
-        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: entry.byteCount)
+        let imageData = CatalogCachedImageData(data: entry.data, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
+        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: decoded.decodedByteCount)
         return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(entry.updatedAt) < maximumCacheAge, eTag: entry.eTag, lastModified: entry.lastModified)
     }
 
@@ -221,11 +222,11 @@ actor CatalogImageCache {
                 await MainActor.run { MacForceNowLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
                 return nil
             }
-            guard let image = Self.downsampledImage(from: data, maxPixelSize: maxPixelSize) else {
+            guard let decoded = Self.downsampledImage(from: data, maxPixelSize: maxPixelSize) else {
                 await MainActor.run { MacForceNowLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
                 return nil
             }
-            let imageData = CatalogCachedImageData(data: data, image: image)
+            let imageData = CatalogCachedImageData(data: data, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
             store(imageData: imageData, response: httpResponse, for: url)
             await MainActor.run { MacForceNowLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
             return imageData
@@ -269,7 +270,7 @@ actor CatalogImageCache {
         entry.byteCount = imageData.data.count
         entry.updatedAt = now
         entry.lastAccessedAt = now
-        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.data.count)
+        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.decodedByteCount)
         try? context.save()
         pruneIfNeeded(context: context)
     }
@@ -297,7 +298,7 @@ actor CatalogImageCache {
         return ModelContext(modelContainer)
     }
 
-    private static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> NSImage? {
+    private static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> (image: NSImage, decodedByteCount: Int)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
             return nil
         }
@@ -310,7 +311,8 @@ actor CatalogImageCache {
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        return (image, cgImage.bytesPerRow * cgImage.height)
     }
 
     private struct StoredImage {

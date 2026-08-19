@@ -1710,7 +1710,7 @@ private struct CatalogStorePickerOverlay: View {
         if let game = viewModel.selectedGame {
             GeometryReader { proxy in
                 ZStack(alignment: .topTrailing) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill)
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                     Color.black.opacity(0.68)
@@ -2007,7 +2007,7 @@ private struct CatalogStorePickerPoster: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.25)
-            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestStorePickerPosterURL, width: 720), contentMode: .fill)
+            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestStorePickerPosterURL, width: 720), contentMode: .fill, maxPixelSize: 720)
                 .frame(width: 292, height: 410)
                 .clipped()
         }
@@ -2918,7 +2918,7 @@ private struct CatalogPanelActionTile: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
-                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 620)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
@@ -3319,7 +3319,7 @@ private struct CatalogGameTile: View, Equatable {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 let isActive = isHovering || isSelected
-                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 620)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .clipped()
                 if isActive {
@@ -3538,7 +3538,8 @@ struct GameDetailPanel: View {
                     CatalogRemoteImage(
                         url: viewModel.optimizedImageURL(imageURL, width: 1600),
                         contentMode: .fill,
-                        fallbackIconOffsetX: hiddenImageLeading / 2
+                        fallbackIconOffsetX: hiddenImageLeading / 2,
+                        maxPixelSize: 1600
                     )
                         .frame(width: imageWidth, height: resolvedHeight)
                         .clipped()
