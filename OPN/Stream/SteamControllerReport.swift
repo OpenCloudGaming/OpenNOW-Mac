@@ -310,10 +310,11 @@ public enum SteamControllerReport {
             return connectionEvent(detail: report[1])
         case tritonBatteryReportID:
             guard report.count >= 3 else { return .ignored }
-            let rawLevel = report[2]
-            let percent = min(100, UInt16(rawLevel) * 100 / 255)
+            // The level byte is already a percentage, not a 0-255 fraction:
+            // scaling it by 100/255 capped a fully charged pad at 39%, so the
+            // HUD never read above 40% on hardware.
             let charging = report[1] == 0x04
-            return .battery(level: UInt8(percent), charging: charging)
+            return .battery(level: min(100, report[2]), charging: charging)
         case 0x7B:
             return .ignored
         default:

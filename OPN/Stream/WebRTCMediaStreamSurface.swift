@@ -81,13 +81,28 @@ struct StreamHUDActionRow: View {
     }
 }
 
-private struct StreamHUDFocusEntry {
+struct StreamHUDFocusEntry {
     let id: String
     let isDisabled: Bool
     let action: () -> Void
+
+    /// Focus only ever lands on enabled rows, so both navigation and activation
+    /// filter the disabled ones out — a row that goes disabled while focused
+    /// must not fire when the pad's activate button is pressed.
+    static func focusID(after current: String?, in entries: [StreamHUDFocusEntry], step: Int) -> String? {
+        let enabled = entries.filter { !$0.isDisabled }
+        guard !enabled.isEmpty else { return nil }
+        guard let currentIndex = enabled.firstIndex(where: { $0.id == current }) else { return enabled.first?.id }
+        return enabled[(currentIndex + step + enabled.count) % enabled.count].id
+    }
+
+    static func activatable(_ current: String?, in entries: [StreamHUDFocusEntry]) -> StreamHUDFocusEntry? {
+        let enabled = entries.filter { !$0.isDisabled }
+        return enabled.first(where: { $0.id == current }) ?? enabled.first
+    }
 }
 
-private struct StreamQuitMenuButton: View {
+struct StreamQuitMenuButton: View {
     let title: String
     let isPrimary: Bool
     let isFocused: Bool
@@ -132,16 +147,162 @@ private struct StreamQuitMenuButton: View {
     }
 }
 
+/// Square design-system dropdown for stream HUD panels. Replaces native
+/// `.pickerStyle(.menu)`, which renders rounded system chrome the stream
+/// design forbids (DESIGN.md "Overflow Menu" / "Don't" sections).
+struct StreamHUDDropdown: View {
+    let label: String
+    let options: [(value: Int, title: String)]
+    let selection: Int
+    let isDisabled: Bool
+    let onSelect: (Int) -> Void
+    @State private var isExpanded = false
+    @State private var isHovering = false
+
+    private var selectedTitle: String {
+        options.first(where: { $0.value == selection })?.title ?? options.first?.title ?? ""
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            Spacer(minLength: 8)
+            Button { isExpanded.toggle() } label: {
+                HStack(spacing: 6) {
+                    Text(selectedTitle)
+                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(Color.white.opacity(isHovering ? 0.14 : 0.075))
+                .overlay {
+                    Rectangle()
+                        .stroke(isExpanded ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+            .overlay {
+                if isExpanded {
+                    // Invisible full-screen catcher so any outside click dismisses.
+                    Color.black.opacity(0.001)
+                        .frame(width: 6000, height: 6000)
+                        .contentShape(Rectangle())
+                        .onTapGesture { isExpanded = false }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isExpanded {
+                    dropdownPanel
+                        .offset(y: 30)
+                }
+            }
+            .onExitCommand { isExpanded = false }
+        }
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.46 : 1)
+        .zIndex(isExpanded ? 10 : 0)
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled { isExpanded = false }
+        }
+    }
+
+    private var dropdownPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(options, id: \.value) { option in
+                StreamHUDDropdownRow(
+                    title: option.title,
+                    isSelected: option.value == selection
+                ) {
+                    isExpanded = false
+                    onSelect(option.value)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: 208)
+        .background(WebRTCMediaStreamTheme.surfaceRaised)
+        .overlay {
+            Rectangle()
+                .stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1)
+        }
+    }
+}
+
+private struct StreamHUDDropdownRow: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.streamNvidia(size: 12, weight: .bold))
+                    .foregroundStyle(isSelected ? WebRTCMediaStreamTheme.accent : (isHovering ? WebRTCMediaStreamTheme.textPrimary : WebRTCMediaStreamTheme.textSecondary))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(Color.white.opacity(isHovering ? 0.08 : 0))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
 /// Per-device gamepad edge tracking for HUD navigation. A plain class on
 /// purpose: mutating it from input callbacks must not invalidate the view.
 @MainActor
-private final class StreamHUDGamepadTracker {
+final class StreamHUDGamepadTracker {
+    enum NavigationStep {
+        case move(Int)
+        case activate
+        case back
+    }
+
     var lastButtons: [InputDeviceID: GamepadButtons] = [:]
     var lastStickStep: [InputDeviceID: Int] = [:]
 
     func reset() {
         lastButtons.removeAll()
         lastStickStep.removeAll()
+    }
+
+    func navigationStep(_ state: GamepadState) -> NavigationStep? {
+        let previousButtons = lastButtons[state.deviceID] ?? state.buttons
+        let pressed = state.buttons.subtracting(previousButtons)
+        lastButtons[state.deviceID] = state.buttons
+
+        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
+        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
+        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
+        let previousStickStep = lastStickStep[state.deviceID] ?? 0
+        lastStickStep[state.deviceID] = stickStep
+
+        if pressed.contains(.south) { return .activate }
+        if pressed.contains(.east) { return .back }
+        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
+        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
+        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
+        return nil
     }
 }
 
@@ -234,6 +395,31 @@ struct StreamHUDSection<Content: View>: View {
     }
 }
 
+/// Wraps HUD cards and action buttons onto extra rows instead of overflowing
+/// the dock. An `HStack` cannot compress children past their intrinsic width,
+/// so rows spilled over the dock's trailing edge once the controller battery
+/// cards joined the status row.
+struct StreamHUDWrappingRow<Content: View>: View {
+    private let columns: [GridItem]
+    private let spacing: CGFloat
+    private let content: Content
+
+    /// - Parameter fixedItemWidth: pass the item's exact width for controls that
+    ///   must not stretch (the 42-wide action buttons); leave nil so cards share
+    ///   the row width equally.
+    init(minimumItemWidth: CGFloat, fixedItemWidth: CGFloat? = nil, spacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
+        self.columns = [GridItem(.adaptive(minimum: minimumItemWidth, maximum: fixedItemWidth ?? .infinity), spacing: spacing)]
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
+            content
+        }
+    }
+}
+
 struct StreamHUDMetricCard: View {
     let title: String
     let value: String
@@ -258,6 +444,49 @@ struct StreamHUDMetricCard: View {
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+}
+
+struct StreamHUDBatteryCard: View {
+    let label: String
+    let level: Int
+    let charging: Bool
+
+    var body: some View {
+        let displayValue = level >= 0 ? "\(level)%" : "—"
+        let isLow = level >= 0 && level <= 20
+        let iconName = charging ? "bolt.fill" : Self.batteryIconName(for: level)
+        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(iconColor)
+                Text(label.uppercased())
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(displayValue)
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+
+    private static func batteryIconName(for level: Int) -> String {
+        switch level {
+        case 90...: return "battery.100percent"
+        case 60..<90: return "battery.75percent"
+        case 30..<60: return "battery.50percent"
+        case 15..<30: return "battery.25percent"
+        default: return "battery.0percent"
+        }
     }
 }
 
@@ -358,12 +587,11 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
     @State private var controllerBatteries: [ControllerBatteryInfo] = []
-    @State private var batteryAlertThresholds: [String: Set<Int>] = [:]
+    @State private var batteryAlertTracker = ControllerBatteryAlertTracker()
     @State private var hudFocusID: String?
     @State private var quitMenuFocusIndex = 0
     @State private var hudGamepadTracker = StreamHUDGamepadTracker()
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
-    private let batteryRefreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     @State private var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -405,11 +633,17 @@ public struct WebRTCMediaStreamSurface: View {
         .onAppear {
             registerStreamLifecycle()
             refreshRemoteCoOpState()
-            refreshControllerBatteries()
+        }
+        // A `Timer.publish` stored on the view would be rebuilt on every
+        // re-render, resetting the interval before it ever fires.
+        .task {
+            while !Task.isCancelled {
+                refreshControllerBatteries()
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
-        .onReceive(batteryRefreshTimer) { _ in refreshControllerBatteries() }
         .sheet(isPresented: $showingControllerMapping) {
             SteamControllerMappingView()
         }
@@ -605,7 +839,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudStatusPanel: some View {
-        HStack(spacing: 8) {
+        StreamHUDWrappingRow(minimumItemWidth: 84) {
             hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
             hudMetricCard(title: "Rec", value: recordingStatusText, positive: recordingStatus.isRecording)
             hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
@@ -618,45 +852,8 @@ public struct WebRTCMediaStreamSurface: View {
                 hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
             }
             ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
-                hudBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+                StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
             }
-        }
-    }
-
-    private func hudBatteryCard(label: String, level: Int, charging: Bool) -> some View {
-        let displayValue = level >= 0 ? "\(level)%" : "—"
-        let isLow = level >= 0 && level <= 20
-        let iconName = charging ? "bolt.fill" : batteryIconName(for: level)
-        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
-        return VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: iconName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(iconColor)
-                Text(label.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.46))
-            }
-            Text(displayValue)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
-    }
-
-    private func batteryIconName(for level: Int) -> String {
-        switch level {
-        case 90...: return "battery.100percent"
-        case 60..<90: return "battery.75percent"
-        case 30..<60: return "battery.50percent"
-        case 15..<30: return "battery.25percent"
-        default: return "battery.0percent"
         }
     }
 
@@ -717,7 +914,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var hudControlsPanel: some View {
         hudSection(label: "CONTROLS", spacing: 8) {
-            HStack(spacing: 8) {
+            StreamHUDWrappingRow(minimumItemWidth: 42, fixedItemWidth: 42) {
                 StreamHUDActionRow(
                     title: microphoneEnabled ? "Mute microphone" : "Unmute microphone",
                     subtitle: microphoneStatusText,
@@ -810,7 +1007,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var hudNetworkPanel: some View {
         hudSection(label: "NETWORK", spacing: 8) {
-            HStack(spacing: 8) {
+            StreamHUDWrappingRow(minimumItemWidth: 84) {
                 hudMetricCard(title: "Health", value: networkHealthText, positive: networkHealthIsGood)
                 hudMetricCard(title: "Latency", value: formatted(latestStats?.latencyMs, suffix: " ms"), positive: (latestStats?.latencyMs ?? 0) < 90)
                 hudMetricCard(title: "Loss", value: formatted(latestStats?.packetLossPercent, suffix: "%"), positive: (latestStats?.packetLossPercent ?? 0) < 1)
@@ -1003,15 +1200,13 @@ public struct WebRTCMediaStreamSurface: View {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
                 }
-                Picker("Pillarbox Fill", selection: Binding(get: { runtimeSettings.pillarboxFillMode }, set: { updateVideoEnhancement(pillarboxFillMode: $0) })) {
-                    ForEach(OPNPillarboxFillMode.pickerCases, id: \.rawValue) { fill in
-                        Text(fill.label).tag(fill.rawValue)
-                    }
-                }
-                .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.menu)
-                .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!isStreamReady)
+                StreamHUDDropdown(
+                    label: "Pillarbox Fill",
+                    options: OPNPillarboxFillMode.pickerCases.map { ($0.rawValue, $0.label) },
+                    selection: runtimeSettings.pillarboxFillMode,
+                    isDisabled: !isStreamReady,
+                    onSelect: { updateVideoEnhancement(pillarboxFillMode: $0) }
+                )
                 if OPNPillarboxFillMode.from(runtimeSettings.pillarboxFillMode).usesDim {
                     videoStepperRow("Fill Dim", value: runtimeSettings.pillarboxFillDim, range: 0...100, step: 5) { value in
                         updateVideoEnhancement(pillarboxFillDim: value)
@@ -1472,33 +1667,24 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func handleHUDGamepad(_ state: GamepadState) {
-        guard let step = gamepadNavigationStep(state) else { return }
+        guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
         case .move(let delta):
             moveHUDFocus(by: delta)
         case .activate:
-            let entries = hudFocusEntries
-            if let entry = entries.first(where: { $0.id == hudFocusID }) ?? entries.first(where: { !$0.isDisabled }) {
-                entry.action()
-            }
+            StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
         case .back:
             setUnifiedHUDVisible(false)
         }
     }
 
     private func moveHUDFocus(by step: Int) {
-        let entries = hudFocusEntries.filter { !$0.isDisabled }
-        guard !entries.isEmpty else { return }
-        guard let currentIndex = entries.firstIndex(where: { $0.id == hudFocusID }) else {
-            hudFocusID = entries.first?.id
-            return
-        }
-        let nextIndex = (currentIndex + step + entries.count) % entries.count
-        hudFocusID = entries[nextIndex].id
+        guard let next = StreamHUDFocusEntry.focusID(after: hudFocusID, in: hudFocusEntries, step: step) else { return }
+        hudFocusID = next
     }
 
     private func handleQuitMenuGamepad(_ state: GamepadState) {
-        guard let step = gamepadNavigationStep(state) else { return }
+        guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
         case .move(let delta):
             quitMenuFocusIndex = (quitMenuFocusIndex + delta + 3) % 3
@@ -1511,31 +1697,6 @@ public struct WebRTCMediaStreamSurface: View {
         case .back:
             dismissQuitMenu()
         }
-    }
-
-    private enum GamepadNavigationStep {
-        case move(Int)
-        case activate
-        case back
-    }
-
-    private func gamepadNavigationStep(_ state: GamepadState) -> GamepadNavigationStep? {
-        let previousButtons = hudGamepadTracker.lastButtons[state.deviceID] ?? state.buttons
-        let pressed = state.buttons.subtracting(previousButtons)
-        hudGamepadTracker.lastButtons[state.deviceID] = state.buttons
-
-        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
-        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
-        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
-        let previousStickStep = hudGamepadTracker.lastStickStep[state.deviceID] ?? 0
-        hudGamepadTracker.lastStickStep[state.deviceID] = stickStep
-
-        if pressed.contains(.south) { return .activate }
-        if pressed.contains(.east) { return .back }
-        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
-        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
-        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
-        return nil
     }
 
     private func setUnifiedHUDVisible(_ visible: Bool) {
@@ -1990,51 +2151,11 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func refreshControllerBatteries() {
-        var batteries: [ControllerBatteryInfo] = []
-        let steamLevels = SteamControllerHIDMonitor.shared.batteryLevels
-        let steamCharging = SteamControllerHIDMonitor.shared.batteryCharging
-        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
-        for (index, deviceID) in activeIDs.enumerated() {
-            let level = steamLevels[deviceID].map { Int($0) } ?? -1
-            let charging = steamCharging[deviceID] ?? false
-            batteries.append(ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(index + 1)", level: level, charging: charging))
+        let batteries = ControllerBatteryInfo.currentSnapshot()
+        for message in batteryAlertTracker.messages(for: batteries) {
+            showTransientStreamMessage(message)
         }
-        let nativeControllers = GCController.controllers().filter { $0.extendedGamepad != nil }
-        let steamCount = activeIDs.count
-        for (index, controller) in nativeControllers.enumerated() {
-            let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
-            let charging = controller.battery?.batteryState == .charging
-            batteries.append(ControllerBatteryInfo(id: "native-\(ObjectIdentifier(controller).hashValue)", label: "P\(steamCount + index + 1)", level: percent, charging: charging))
-        }
-        let sorted = batteries.sorted { $0.label < $1.label }
-        let relabeled = sorted.enumerated().map { index, info in
-            ControllerBatteryInfo(id: info.id, label: "P\(index + 1)", level: info.level, charging: info.charging)
-        }
-        checkBatteryAlerts(relabeled)
-        controllerBatteries = relabeled
-    }
-
-    private func checkBatteryAlerts(_ batteries: [ControllerBatteryInfo]) {
-        let thresholds = [20, 10, 5]
-        var currentIDs = Set<String>()
-        for battery in batteries {
-            currentIDs.insert(battery.id)
-            let level = battery.level
-            guard level >= 0 else { continue }
-            var fired = batteryAlertThresholds[battery.id] ?? []
-            for threshold in thresholds where level <= threshold && !fired.contains(threshold) {
-                fired.insert(threshold)
-                let severity = threshold <= 5 ? "critical" : "low"
-                showTransientStreamMessage("\(battery.label) \(severity) battery — \(level)%")
-            }
-            if level > 20 {
-                fired.removeAll()
-            }
-            batteryAlertThresholds[battery.id] = fired
-        }
-        for removedID in Set(batteryAlertThresholds.keys).subtracting(currentIDs) {
-            batteryAlertThresholds.removeValue(forKey: removedID)
-        }
+        controllerBatteries = batteries
     }
 
     private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
@@ -2199,7 +2320,7 @@ public struct WebRTCMediaStreamSurface: View {
         transientStreamMessageTask = nil
         transientStreamMessage = ""
         controllerBatteries.removeAll()
-        batteryAlertThresholds.removeAll()
+        batteryAlertTracker.reset()
         sessionLimit = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false

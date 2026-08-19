@@ -324,10 +324,14 @@ private func tritonReport(reportID: UInt8 = 0x42,
     }
 
     @Test func parsesBatteryReport() {
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0xFF], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
+        // The level byte is a percentage, so a full pad must report 100 — not
+        // 39, which is what scaling 0x64 by 100/255 used to produce.
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x64], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
         #expect(SteamControllerReport.parse([0x43, 0x01, 0x00], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 0, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0x5B], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x04, 0x5B], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: true))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x23], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x04, 0x23], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: true))
+        // Out-of-range levels clamp instead of overflowing the percentage.
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0xFF], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
         #expect(SteamControllerReport.parse([0x43, 0x01], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
     }
 

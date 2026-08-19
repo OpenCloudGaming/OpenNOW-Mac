@@ -310,6 +310,12 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var networkPathAvailable = true
     @State private var pointerLocked = false
     @State private var pillarboxFillModeIndex = 0
+    @State private var controllerBatteries: [ControllerBatteryInfo] = []
+    @State private var batteryAlertTracker = ControllerBatteryAlertTracker()
+    @State private var showingControllerMapping = false
+    @State private var hudFocusID: String?
+    @State private var hudGamepadTracker = StreamHUDGamepadTracker()
+    @State private var streamControlsFocusIndex = 0
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
 
     var body: some View {
@@ -337,7 +343,18 @@ private struct NativeNVSTMediaStreamSurface: View {
             WebRTCMediaTelemetry.configure(sink: MacForceNowWebRTCMediaTelemetrySink())
             startIfNeeded()
         }
+        // A `Timer.publish` stored on the view would be rebuilt on every
+        // re-render, resetting the interval before it ever fires.
+        .task {
+            while !Task.isCancelled {
+                refreshControllerBatteries()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .onDisappear { stopStream() }
+        .sheet(isPresented: $showingControllerMapping) {
+            SteamControllerMappingView()
+        }
     }
 
     private func startIfNeeded() {
@@ -519,6 +536,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         microphoneMode = "disabled"
         microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = false
+        batteryAlertTracker.reset()
         nativeView?.stopHaptics()
         nativeView?.setNativeNVSTVideoVisible(false)
         guard !didEnd else {
@@ -685,6 +703,58 @@ private struct NativeNVSTMediaStreamSurface: View {
             guard let path, isConnected, !isEnding, !didEnd else { return }
             Task { try? await path.updateGamepadTopology(topology) }
         }
+        view.onLocalGamepadState = { state in
+            guard !isEnding, !didEnd, !showingControllerMapping else { return }
+            if streamControlsVisible {
+                handleStreamControlsGamepad(state)
+            } else if unifiedHUDVisible {
+                handleHUDGamepad(state)
+            }
+        }
+    }
+
+    private var hudFocusEntries: [StreamHUDFocusEntry] {
+        [
+            StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, action: toggleNativeMicrophone),
+            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, action: toggleNativePointerLock),
+            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, action: toggleNativeAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
+            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { showingControllerMapping = true }),
+            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showStreamControls() }),
+        ]
+    }
+
+    private func handleHUDGamepad(_ state: GamepadState) {
+        guard let step = hudGamepadTracker.navigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            moveHUDFocus(by: delta)
+        case .activate:
+            StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
+        case .back:
+            setUnifiedHUDVisible(false)
+        }
+    }
+
+    private func moveHUDFocus(by step: Int) {
+        guard let next = StreamHUDFocusEntry.focusID(after: hudFocusID, in: hudFocusEntries, step: step) else { return }
+        hudFocusID = next
+    }
+
+    private func handleStreamControlsGamepad(_ state: GamepadState) {
+        guard let step = hudGamepadTracker.navigationStep(state) else { return }
+        switch step {
+        case .move(let delta):
+            streamControlsFocusIndex = (streamControlsFocusIndex + delta + 3) % 3
+        case .activate:
+            switch streamControlsFocusIndex {
+            case 0: dismissStreamControls()
+            case 1: pauseFromStreamControls()
+            default: endFromStreamControls()
+            }
+        case .back:
+            dismissStreamControls()
+        }
     }
 
     private func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
@@ -790,6 +860,14 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
     }
 
+    private func refreshControllerBatteries() {
+        let batteries = ControllerBatteryInfo.currentSnapshot()
+        for message in batteryAlertTracker.messages(for: batteries) {
+            showNativeTransientStreamMessage(message)
+        }
+        controllerBatteries = batteries
+    }
+
     private func showNativeTransientStreamMessage(_ message: String) {
         transientStreamMessageTask?.cancel()
         transientStreamMessage = message
@@ -826,6 +904,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         unifiedHUDVisible = false
+        hudFocusID = nil
+        hudGamepadTracker.reset()
+        streamControlsFocusIndex = 0
         nativeView?.remoteInputEnabled = false
         nativeView?.setNativeNVSTVideoVisible(isConnected)
         streamControlsVisible = true
@@ -835,6 +916,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func dismissStreamControls() {
         guard !isEnding else { return }
         streamControlsVisible = false
+        hudGamepadTracker.reset()
         let completion = pendingApplicationQuitCompletion
         pendingApplicationQuitCompletion = nil
         nativeView?.remoteInputEnabled = isConnected && !unifiedHUDVisible
@@ -846,11 +928,14 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func setUnifiedHUDVisible(_ visible: Bool) {
         guard isConnected, !streamControlsVisible else { return }
+        hudGamepadTracker.reset()
         if visible {
             nativeView?.remoteInputEnabled = false
             unifiedHUDVisible = true
+            hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
         } else {
             unifiedHUDVisible = false
+            hudFocusID = nil
             nativeView?.remoteInputEnabled = true
             nativeView?.restoreInputFocus()
         }
@@ -1219,7 +1304,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private var nativeHUDStatusPanel: some View {
-        HStack(spacing: 8) {
+        StreamHUDWrappingRow(minimumItemWidth: 84) {
             StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, positive: microphoneEnabled && microphoneAvailable)
             StreamHUDMetricCard(title: "Rec", value: "Unavailable", positive: false)
             StreamHUDMetricCard(title: "AFK", value: antiAFKMouseMovementEnabled ? "On" : "Off", positive: antiAFKMouseMovementEnabled)
@@ -1231,18 +1316,22 @@ private struct NativeNVSTMediaStreamSurface: View {
             if remoteCoOpPreferences.isAlphaOptedIn {
                 StreamHUDMetricCard(title: "Co-Op", value: "Unavailable", positive: false)
             }
+            ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
+                StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+            }
         }
     }
 
     private var nativeHUDControlsPanel: some View {
         StreamHUDSection(label: "CONTROLS", spacing: 8) {
-            HStack(spacing: 8) {
+            StreamHUDWrappingRow(minimumItemWidth: 42, fixedItemWidth: 42) {
                 StreamHUDActionRow(
                     title: microphoneEnabled ? "Mute microphone" : "Unmute microphone",
                     subtitle: nativeMicrophoneStatusText,
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && microphoneAvailable,
                     isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil,
+                    isFocused: hudFocusID == "microphone",
                     action: toggleNativeMicrophone
                 )
                 StreamHUDActionRow(
@@ -1259,6 +1348,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     systemName: pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
                     isActive: pointerLocked,
                     isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true,
+                    isFocused: hudFocusID == "pointer",
                     action: toggleNativePointerLock
                 )
                 StreamHUDActionRow(
@@ -1267,6 +1357,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     systemName: "cursorarrow.motionlines",
                     isActive: antiAFKMouseMovementEnabled,
                     isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected,
+                    isFocused: hudFocusID == "anti-afk",
                     action: toggleNativeAntiAFKMouseMovement
                 )
                 StreamHUDActionRow(
@@ -1275,7 +1366,26 @@ private struct NativeNVSTMediaStreamSurface: View {
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: nativeStatsVisible,
                     isDisabled: !sidebarCapabilities.supports(.floatingStats),
+                    isFocused: hudFocusID == "floating-stats",
                     action: toggleNativeStatsHUD
+                )
+                StreamHUDActionRow(
+                    title: "Controller Mapping",
+                    subtitle: "Steam Controller grip binds",
+                    systemName: "gamecontroller",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "controller-mapping",
+                    action: { showingControllerMapping = true }
+                )
+                StreamHUDActionRow(
+                    title: "Quit Menu",
+                    subtitle: "End session",
+                    systemName: "power",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "quit",
+                    action: { showStreamControls() }
                 )
             }
         }
@@ -1283,7 +1393,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private var nativeHUDNetworkPanel: some View {
         StreamHUDSection(label: "NETWORK", spacing: 8) {
-            HStack(spacing: 8) {
+            StreamHUDWrappingRow(minimumItemWidth: 84) {
                 StreamHUDMetricCard(title: "Health", value: nativeNetworkHealthText, positive: nativeNetworkHealthIsGood)
                 StreamHUDMetricCard(title: "Latency", value: nativeLatencyText, positive: (latestNativeStats?.latencyMilliseconds ?? 0) < 90)
                 StreamHUDMetricCard(title: "Loss", value: nativePacketLossText, positive: (latestNativeStats?.packetLoss ?? 0) == 0)
@@ -1347,15 +1457,13 @@ private struct NativeNVSTMediaStreamSurface: View {
                 .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
                 .disabled(!sidebarCapabilities.supports(.videoEnhancement))
-                Picker("Pillarbox Fill", selection: Binding(get: { pillarboxFillModeIndex }, set: { updateNativePillarboxFill(modeIndex: $0) })) {
-                    ForEach(OPNPillarboxFillMode.pickerCases, id: \.rawValue) { fill in
-                        Text(fill.label).tag(fill.rawValue)
-                    }
-                }
-                .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.menu)
-                .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!isConnected)
+                StreamHUDDropdown(
+                    label: "Pillarbox Fill",
+                    options: OPNPillarboxFillMode.pickerCases.map { ($0.rawValue, $0.label) },
+                    selection: pillarboxFillModeIndex,
+                    isDisabled: !isConnected,
+                    onSelect: { updateNativePillarboxFill(modeIndex: $0) }
+                )
                 nativeHUDDetailRow(label: "Active", value: "Native")
                 nativeHUDDetailRow(label: "Target", value: "Native")
                 nativeHUDDetailRow(label: "Resolution", value: "\(profile.resolution.width) x \(profile.resolution.height)")
@@ -1377,53 +1485,89 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func nativeHUDDetailRow(label: String, value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.streamNvidia(size: 10, weight: .medium))
+                .font(.streamNvidia(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamNvidia(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 
     private var nativeStreamControlsOverlay: some View {
         ZStack {
-            Color.black.opacity(0.96).ignoresSafeArea()
-            VStack(spacing: 20) {
-                Text("NATIVE NVST")
-                    .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen)
-                    .tracking(2.2)
-                Text("STREAM CONTROLS")
-                    .font(MacForceNowNVIDIAFont.font(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(MacForceNowNVIDIAFont.font(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.68))
-                Text("Remote input is paused. Resume to return focus to the game.")
-                    .font(MacForceNowNVIDIAFont.font(size: 13, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.54))
-                    .multilineTextAlignment(.center)
-                HStack(spacing: 12) {
-                    Button("Resume", action: dismissStreamControls)
-                        .keyboardShortcut(.cancelAction)
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.openNowGreen)
-                    Button("Pause Stream", action: pauseFromStreamControls)
-                        .buttonStyle(.bordered)
-                    Button(pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit MacForceNow", action: endFromStreamControls)
-                        .buttonStyle(.bordered)
+            Rectangle()
+                .fill(.black.opacity(0.54))
+                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("STREAM PAUSED")
+                        .font(.streamNvidia(size: 10, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                .controlSize(.large)
-                .disabled(isEnding)
-                Text("\(WebRTCMediaStreamCommand.shortcutGuide)   Esc Resume")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.36))
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(WebRTCMediaStreamTheme.appBar)
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
+                        .font(.streamNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        StreamQuitMenuButton(
+                            title: "Resume",
+                            isPrimary: true,
+                            isFocused: streamControlsFocusIndex == 0,
+                            isDisabled: isEnding,
+                            action: dismissStreamControls
+                        )
+                        .keyboardShortcut(.cancelAction)
+                        StreamQuitMenuButton(
+                            title: "Pause Stream",
+                            isPrimary: false,
+                            isFocused: streamControlsFocusIndex == 1,
+                            isDisabled: isEnding,
+                            action: pauseFromStreamControls
+                        )
+                        StreamQuitMenuButton(
+                            title: isEnding ? "Quitting..." : (pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit MacForceNow"),
+                            isPrimary: false,
+                            isFocused: streamControlsFocusIndex == 2,
+                            isDisabled: isEnding,
+                            action: endFromStreamControls
+                        )
+                    }
+                    Text("\(WebRTCMediaStreamCommand.shortcutGuide)   Esc Resume")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.36))
+                }
+                .padding(18)
             }
-            .padding(36)
-            .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.openNowGreen.opacity(0.32), lineWidth: 1))
+            .frame(width: 440)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay {
+                Rectangle()
+                    .stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
         }
     }
 

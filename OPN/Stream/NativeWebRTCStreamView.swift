@@ -159,6 +159,9 @@ public final class NativeWebRTCStreamView: NSView {
     public var onPointerLockChanged: ((Bool) -> Void)?
     public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
     public var shouldHandleCommand: ((WebRTCMediaStreamCommand) -> Bool)?
+    /// Gamepad states delivered while `remoteInputEnabled` is false, for local
+    /// overlay navigation (unified HUD, quit menu).
+    public var onLocalGamepadState: ((GamepadState) -> Void)?
     public private(set) var isPointerLocked = false
     public var locksPointerWhenRelativeModeSelected = false
     public var mouseInputMode: NativeStreamMouseInputMode = .relative {
@@ -261,15 +264,17 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     /// The quick access button toggles the local unified HUD (same as Cmd-G)
-    /// instead of reaching the stream, where GFN ignores it.
+    /// instead of reaching the stream, where GFN ignores it. It must keep
+    /// working while `remoteInputEnabled` is false — that is exactly the state
+    /// the HUD puts us in, and the button has to be able to close it again.
     private func handleGamepadEvent(_ event: UserInputEvent) {
-        guard remoteInputEnabled else { return }
         guard case .gamepad(let state) = event else {
+            guard remoteInputEnabled else { return }
             onInputEvent?(event)
             return
         }
         guard state.buttons.contains(.quickAccess) || quickAccessPressedDevices.contains(state.deviceID) else {
-            receiveGamepadState(state)
+            routeGamepadState(state)
             return
         }
         let isPressed = state.buttons.contains(.quickAccess)
@@ -291,7 +296,17 @@ public final class NativeWebRTCStreamView: NSView {
             rightStickY: state.rightStickY,
             timestamp: state.timestamp
         )
-        receiveGamepadState(stripped)
+        routeGamepadState(stripped)
+    }
+
+    /// Remote input disabled means a local overlay owns the pad: hand the
+    /// state to the host for HUD/quit-menu navigation instead of the stream.
+    private func routeGamepadState(_ state: GamepadState) {
+        if remoteInputEnabled {
+            receiveGamepadState(state)
+        } else {
+            onLocalGamepadState?(state)
+        }
     }
 
     @available(*, unavailable)
