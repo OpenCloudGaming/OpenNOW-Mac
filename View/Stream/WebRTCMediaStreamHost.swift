@@ -309,6 +309,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var networkPathTask: Task<Void, Never>?
     @State private var networkPathAvailable = true
     @State private var pointerLocked = false
+    @State private var pillarboxFillModeIndex = 0
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
 
     var body: some View {
@@ -445,6 +446,9 @@ private struct NativeNVSTMediaStreamSurface: View {
                     loadingStepIndex = StreamLaunchStep.connected.rawValue
                     startNativeStatsPolling(path: path)
                     refreshAntiAFKMouseMovementTask()
+                    let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+                    pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
+                    nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
                     return true
@@ -483,6 +487,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private func stopStream() {
+        MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(false)
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -1342,6 +1347,15 @@ private struct NativeNVSTMediaStreamSurface: View {
                 .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
                 .disabled(!sidebarCapabilities.supports(.videoEnhancement))
+                Picker("Pillarbox Fill", selection: Binding(get: { pillarboxFillModeIndex }, set: { updateNativePillarboxFill(modeIndex: $0) })) {
+                    ForEach(OPNPillarboxFillMode.pickerCases, id: \.rawValue) { fill in
+                        Text(fill.label).tag(fill.rawValue)
+                    }
+                }
+                .font(.streamNvidia(size: 12, weight: .medium))
+                .pickerStyle(.menu)
+                .tint(WebRTCMediaStreamTheme.accent)
+                .disabled(!isConnected)
                 nativeHUDDetailRow(label: "Active", value: "Native")
                 nativeHUDDetailRow(label: "Target", value: "Native")
                 nativeHUDDetailRow(label: "Resolution", value: "\(profile.resolution.width) x \(profile.resolution.height)")
@@ -1349,6 +1363,15 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeHUDDetailRow(label: "Codec", value: profile.codec.value.uppercased())
             }
         }
+    }
+
+    private func updateNativePillarboxFill(modeIndex: Int) {
+        let mode = OPNPillarboxFillMode.from(modeIndex)
+        pillarboxFillModeIndex = mode.rawValue
+        OPNStreamPreferences.savePillarboxFillModeIndex(mode.rawValue)
+        let dim = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).pillarboxFillDim
+        nativeView?.setPillarboxFill(mode: mode.rawValue, dim: dim)
+        WebRTCMediaTelemetry.capture("nvst.ui.pillarbox.update", level: .info, message: "Native NVST pillarbox fill changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode.label])
     }
 
     private func nativeHUDDetailRow(label: String, value: String) -> some View {

@@ -1004,7 +1004,7 @@ public struct WebRTCMediaStreamSurface: View {
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
                 }
                 Picker("Pillarbox Fill", selection: Binding(get: { runtimeSettings.pillarboxFillMode }, set: { updateVideoEnhancement(pillarboxFillMode: $0) })) {
-                    ForEach(OPNPillarboxFillMode.allCases, id: \.rawValue) { fill in
+                    ForEach(OPNPillarboxFillMode.pickerCases, id: \.rawValue) { fill in
                         Text(fill.label).tag(fill.rawValue)
                     }
                 }

@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 
 #import <AppKit/AppKit.h>
+#import <CoreVideo/CoreVideo.h>
 
 #include <stdint.h>
 #include <dlfcn.h>
@@ -722,7 +723,7 @@ bool boundedRange(uint64_t offset, uint64_t size, uint64_t limit) {
     return offset <= limit && size <= limit - offset;
 }
 
-void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
+void **findLazySymbolPointer(void *imageSymbol, const char *symbolName, bool includeNonLazy = false) {
     Dl_info imageInfo{};
     if (imageSymbol == nullptr || symbolName == nullptr || dladdr(imageSymbol, &imageInfo) == 0 || imageInfo.dli_fbase == nullptr) { return nullptr; }
     const auto *header = static_cast<const mach_header_64 *>(imageInfo.dli_fbase);
@@ -750,7 +751,8 @@ void **findLazySymbolPointer(void *imageSymbol, const char *symbolName) {
                 const section_64 &section = sections[sectionIndex];
                 if (segment->vmaddr > UINT64_MAX - segment->vmsize || section.addr < segment->vmaddr ||
                     !boundedRange(section.addr, section.size, segment->vmaddr + segment->vmsize)) { return nullptr; }
-                if ((section.flags & SECTION_TYPE) == S_LAZY_SYMBOL_POINTERS) { lazySections.push_back(&section); }
+                const uint32_t sectionType = section.flags & SECTION_TYPE;
+                if (sectionType == S_LAZY_SYMBOL_POINTERS || (includeNonLazy && sectionType == S_NON_LAZY_SYMBOL_POINTERS)) { lazySections.push_back(&section); }
             }
         } else if (command->cmd == LC_SYMTAB && command->cmdsize >= sizeof(symtab_command)) {
             symtab = reinterpret_cast<const symtab_command *>(command);
@@ -858,6 +860,169 @@ void releaseBifrostRegistrationHook() {
     gOriginalRegisterBifrostCallback.store(nullptr, std::memory_order_release);
     gBifrostRegistrationContext.store(nullptr, std::memory_order_release);
     gPreRegisteredBifrostClient.store(nullptr, std::memory_order_release);
+}
+
+// MARK: - Decoded video frame capture (pillarbox blur fill source)
+//
+// Zoom/mirror pillarbox fill needs the decoded picture pixels. Geronimo owns
+// video decode and render; the decoded CVPixelBuffer surfaces only as an argument
+// to the non-virtual `MetalAsyncVideoFrameRenderer::addVideoFramePass`, which on
+// arm64 + hardened runtime cannot be safely inline-patched. But that function
+// calls `CVPixelBufferGetPixelFormatType(buffer)` once at its start. Rebinding
+// Geronimo's import slot for that C function (a writable __DATA/__got pointer, the
+// same mechanism the Bifrost callback hook uses) lets us observe every decoded
+// buffer without touching any executable page. We retain the newest one so the
+// client-side overlay renderer can sample it.
+
+using CVGetPixelFormatTypeFn = OSType (*)(CVPixelBufferRef);
+std::atomic<CVGetPixelFormatTypeFn> gOriginalCVGetPixelFormatType{nullptr};
+void **gCVFormatImportSlot = nullptr;
+std::atomic<bool> gFrameCaptureActive{false};
+std::atomic<bool> gFrameCaptureHookInstalled{false};
+// Install progress, readable from Swift: 0 not-attempted, 1 branch-reached,
+// 2 dlsym-avfp-failed, 3 cv-target-failed, 4 slot-not-found, 5 slot-bad,
+// 6 cas-failed, 7 installed.
+std::atomic<int> gFrameCaptureInstallStatus{0};
+uintptr_t gAddVideoFramePassStart = 0;
+uintptr_t gAddVideoFramePassEnd = 0;
+std::mutex gLatestFrameMutex;
+CVPixelBufferRef gLatestCapturedFrame = nullptr; // retained under gLatestFrameMutex
+std::atomic<uint64_t> gFrameCaptureCount{0};
+
+OSType openNOWCVGetPixelFormatType(CVPixelBufferRef buffer) {
+    CVGetPixelFormatTypeFn original = gOriginalCVGetPixelFormatType.load(std::memory_order_acquire);
+    const OSType result = original != nullptr ? original(buffer) : 0;
+    if (buffer != nullptr && gFrameCaptureActive.load(std::memory_order_relaxed)) {
+        // Only the call inside addVideoFramePass carries the decoded picture; other
+        // callers (recording, overlays, our own WebRTC path) must be ignored so the
+        // captured buffer is always the frame about to be presented.
+        const uintptr_t caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+        if (caller >= gAddVideoFramePassStart && caller < gAddVideoFramePassEnd) {
+            CVPixelBufferRef retained = CVPixelBufferRetain(buffer);
+            CVPixelBufferRef previous = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(gLatestFrameMutex);
+                previous = gLatestCapturedFrame;
+                gLatestCapturedFrame = retained;
+            }
+            if (previous != nullptr) { CFRelease(previous); }
+            const uint64_t count = gFrameCaptureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (count == 1 || (count % 600) == 0) {
+                NSLog(@"[OpenNOW] NVST frame capture #%llu: %zux%zu fmt=0x%08x",
+                      static_cast<unsigned long long>(count),
+                      CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer),
+                      static_cast<unsigned int>(result));
+            }
+        }
+    }
+    return result;
+}
+
+// Finds an import pointer slot in `imageSymbol`'s image whose current value equals
+// `targetAddress`. Unlike findLazySymbolPointer this needs no indirect-symbol table,
+// so it works regardless of lazy/non-lazy/chained-fixups layout: it just scans the
+// pointer sections for the resolved function address.
+void **findImportSlotByValue(void *imageSymbol, void *targetAddress) {
+    Dl_info imageInfo{};
+    if (imageSymbol == nullptr || targetAddress == nullptr || dladdr(imageSymbol, &imageInfo) == 0 || imageInfo.dli_fbase == nullptr) { return nullptr; }
+    const auto *header = static_cast<const mach_header_64 *>(imageInfo.dli_fbase);
+    if (header->magic != MH_MAGIC_64 || header->ncmds == 0 || header->ncmds > 4096 || header->sizeofcmds > 16 * 1024 * 1024) { return nullptr; }
+    const uint8_t *commands = reinterpret_cast<const uint8_t *>(header) + sizeof(*header);
+    const uint64_t commandsSize = header->sizeofcmds;
+    const segment_command_64 *textSegment = nullptr;
+    std::vector<const section_64 *> pointerSections;
+    uint64_t commandOffset = 0;
+    for (uint32_t index = 0; index < header->ncmds; ++index) {
+        if (!boundedRange(commandOffset, sizeof(load_command), commandsSize)) { return nullptr; }
+        const auto *command = reinterpret_cast<const load_command *>(commands + commandOffset);
+        if (command->cmdsize < sizeof(load_command) || !boundedRange(commandOffset, command->cmdsize, commandsSize)) { return nullptr; }
+        if (command->cmd == LC_SEGMENT_64 && command->cmdsize >= sizeof(segment_command_64)) {
+            const auto *segment = reinterpret_cast<const segment_command_64 *>(command);
+            if (segment->nsects > 4096 || sizeof(segment_command_64) + static_cast<uint64_t>(segment->nsects) * sizeof(section_64) > command->cmdsize) { return nullptr; }
+            if (strncmp(segment->segname, SEG_TEXT, sizeof(segment->segname)) == 0) { textSegment = segment; }
+            const auto *sections = reinterpret_cast<const section_64 *>(segment + 1);
+            for (uint32_t sectionIndex = 0; sectionIndex < segment->nsects; ++sectionIndex) {
+                const section_64 &section = sections[sectionIndex];
+                const uint32_t sectionType = section.flags & SECTION_TYPE;
+                if (sectionType == S_LAZY_SYMBOL_POINTERS || sectionType == S_NON_LAZY_SYMBOL_POINTERS) { pointerSections.push_back(&section); }
+            }
+        }
+        commandOffset += command->cmdsize;
+    }
+    if (textSegment == nullptr || pointerSections.empty()) { return nullptr; }
+    const uintptr_t slide = reinterpret_cast<uintptr_t>(header) - textSegment->vmaddr;
+    for (const section_64 *section : pointerSections) {
+        if (section->size % sizeof(void *) != 0 || slide > UINTPTR_MAX - section->addr) { continue; }
+        auto **pointers = reinterpret_cast<void **>(slide + section->addr);
+        const uint64_t pointerCount = section->size / sizeof(void *);
+        for (uint64_t pointerIndex = 0; pointerIndex < pointerCount; ++pointerIndex) {
+            if (__atomic_load_n(&pointers[pointerIndex], __ATOMIC_ACQUIRE) == targetAddress) { return &pointers[pointerIndex]; }
+        }
+    }
+    return nullptr;
+}
+
+bool acquireFrameCaptureHook(void *geronimoHandle) {
+    static const char *kAddVideoFramePassSymbol =
+        "_ZN28MetalAsyncVideoFrameRenderer17addVideoFramePassEU13block_pointerFPU34objcproto23MTLRenderCommandEncoder11objc_objectvEjP10__CVBufferd6CGRectPU27objcproto16MTLCommandBuffer11objc_objectPU21objcproto10MTLTexture11objc_object";
+    gFrameCaptureInstallStatus.store(1, std::memory_order_release);
+    if (geronimoHandle == nullptr) { return false; }
+    void *addVideoFramePass = dlsym(geronimoHandle, kAddVideoFramePassSymbol);
+    if (addVideoFramePass == nullptr) { gFrameCaptureInstallStatus.store(2, std::memory_order_release); NSLog(@"[OpenNOW] frame tap: dlsym addVideoFramePass FAILED"); return false; }
+    gAddVideoFramePassStart = reinterpret_cast<uintptr_t>(addVideoFramePass);
+    // The function is a few KB (large stack frame, many format branches); a generous
+    // window bounds the caller check without needing the exact symbol size.
+    gAddVideoFramePassEnd = gAddVideoFramePassStart + 0x8000;
+    void *cvTarget = dlsym(RTLD_DEFAULT, "CVPixelBufferGetPixelFormatType");
+    if (cvTarget == nullptr) { gFrameCaptureInstallStatus.store(3, std::memory_order_release); }
+    // Value scan is primary (fixup-scheme agnostic); the indirect-symbol name walk is
+    // a fallback in case the resolved address is unexpectedly ambiguous.
+    void **slot = cvTarget != nullptr ? findImportSlotByValue(addVideoFramePass, cvTarget) : nullptr;
+    if (slot == nullptr) {
+        slot = findLazySymbolPointer(addVideoFramePass, "_CVPixelBufferGetPixelFormatType", true);
+        NSLog(@"[OpenNOW] frame tap: value scan missed, name scan %@", slot != nullptr ? @"hit" : @"MISSED");
+    } else {
+        NSLog(@"[OpenNOW] frame tap: value scan hit slot=%p", (void *)slot);
+    }
+    if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) { gFrameCaptureInstallStatus.store(4, std::memory_order_release); return false; }
+    void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+    void *hook = reinterpret_cast<void *>(&openNOWCVGetPixelFormatType);
+    if (current == nullptr || current == hook) { gFrameCaptureInstallStatus.store(5, std::memory_order_release); return false; }
+    gOriginalCVGetPixelFormatType.store(reinterpret_cast<CVGetPixelFormatTypeFn>(current), std::memory_order_release);
+    // Non-lazy (__got) slots can live on a read-only page; make it writable first.
+    // Data pages carry no code-signing kill, unlike executable pages.
+    const uintptr_t pageSize = static_cast<uintptr_t>(getpagesize());
+    const uintptr_t pageStart = reinterpret_cast<uintptr_t>(slot) & ~(pageSize - 1);
+    vm_protect(mach_task_self(), pageStart, pageSize, false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    if (!__atomic_compare_exchange_n(slot, &current, hook, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        gOriginalCVGetPixelFormatType.store(nullptr, std::memory_order_release);
+        gFrameCaptureInstallStatus.store(6, std::memory_order_release);
+        return false;
+    }
+    gCVFormatImportSlot = slot;
+    gFrameCaptureInstallStatus.store(7, std::memory_order_release);
+    return true;
+}
+
+void releaseFrameCaptureHook() {
+    gFrameCaptureActive.store(false, std::memory_order_release);
+    void *hook = reinterpret_cast<void *>(&openNOWCVGetPixelFormatType);
+    void *expected = hook;
+    CVGetPixelFormatTypeFn original = gOriginalCVGetPixelFormatType.load(std::memory_order_acquire);
+    if (gCVFormatImportSlot != nullptr && original != nullptr) {
+        __atomic_compare_exchange_n(gCVFormatImportSlot, &expected, reinterpret_cast<void *>(original), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    }
+    gCVFormatImportSlot = nullptr;
+    gOriginalCVGetPixelFormatType.store(nullptr, std::memory_order_release);
+    CVPixelBufferRef previous = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(gLatestFrameMutex);
+        previous = gLatestCapturedFrame;
+        gLatestCapturedFrame = nullptr;
+    }
+    if (previous != nullptr) { CFRelease(previous); }
+    gFrameCaptureCount.store(0, std::memory_order_relaxed);
+    gFrameCaptureHookInstalled.store(false, std::memory_order_release);
 }
 
 void *openNOWCreateBifrostClient() {
@@ -1172,6 +1337,11 @@ void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
                 callVoidVirtual(session->videoDecoder, 0x58);
                 session->videoDecoderStarted = session->videoDecoder != nullptr;
             }
+            if (session->videoDecoderStarted && !gFrameCaptureHookInstalled.exchange(true, std::memory_order_acq_rel)) {
+                if (!acquireFrameCaptureHook(session->libraryHandle)) {
+                    gFrameCaptureHookInstalled.store(false, std::memory_order_release);
+                }
+            }
         }
         emitConnectedIfReady(session);
     } catch (...) {
@@ -1233,6 +1403,12 @@ void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
         if (decoderReady && streamingBegan && !session->videoDecoderStarted) {
             callVoidVirtual(session->videoDecoder, 0x58);
             session->videoDecoderStarted = true;
+            if (!gFrameCaptureHookInstalled.exchange(true, std::memory_order_acq_rel)) {
+                NSLog(@"[OpenNOW] frame tap: decoder started, installing capture hook");
+                if (!acquireFrameCaptureHook(session->libraryHandle)) {
+                    gFrameCaptureHookInstalled.store(false, std::memory_order_release);
+                }
+            }
         }
     }
     if (!decoderReady) {
@@ -3479,6 +3655,45 @@ extern "C" void MacForceNowNativeNVSTGeronimoStop(void *sessionPointer) {
     MacForceNowNativeNVSTGeronimoStopWithResult(sessionPointer, "MacForce Now native NVST stop", 0, nullptr, 0);
 }
 
+// Enables decoded-frame capture for pillarbox blur fill. The interpose is installed
+// once the decoder starts, but only records frames while this is on, so the caller
+// keeps it off unless a zoom/mirror fill mode is selected.
+extern "C" void MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(bool active) {
+    gFrameCaptureActive.store(active, std::memory_order_release);
+}
+
+// Diagnostics: -1 when the capture hook failed to install (import slot not found),
+// otherwise the number of decoded frames captured so far. Lets the Swift side report
+// tap health through the app's own logger instead of NSLog.
+extern "C" int64_t MacForceNowNativeNVSTGeronimoFrameCaptureCount(void) {
+    if (!gFrameCaptureHookInstalled.load(std::memory_order_acquire)) { return -1; }
+    return static_cast<int64_t>(gFrameCaptureCount.load(std::memory_order_relaxed));
+}
+
+// Install progress code (see gFrameCaptureInstallStatus). Lets Swift report exactly
+// where the hook install stopped.
+extern "C" int32_t MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus(void) {
+    return static_cast<int32_t>(gFrameCaptureInstallStatus.load(std::memory_order_acquire));
+}
+
+// Latest captured frame width/height packed as (width << 32 | height), 0 if none.
+extern "C" uint64_t MacForceNowNativeNVSTGeronimoLatestVideoFrameSize(void) {
+    std::lock_guard<std::mutex> lock(gLatestFrameMutex);
+    if (gLatestCapturedFrame == nullptr) { return 0; }
+    const uint64_t w = CVPixelBufferGetWidth(gLatestCapturedFrame);
+    const uint64_t h = CVPixelBufferGetHeight(gLatestCapturedFrame);
+    return (w << 32) | (h & 0xFFFFFFFF);
+}
+
+// Returns the most recently captured decoded frame, retained (+1). The caller owns
+// the reference and must CFRelease/CVPixelBufferRelease it. NULL when nothing has
+// been captured yet or capture is inactive.
+extern "C" CVPixelBufferRef MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame(void) {
+    std::lock_guard<std::mutex> lock(gLatestFrameMutex);
+    if (gLatestCapturedFrame == nullptr) { return nullptr; }
+    return CVPixelBufferRetain(gLatestCapturedFrame);
+}
+
 extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
     auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return; }
@@ -3523,6 +3738,7 @@ extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
     }
     try { teardownPlatformMedia(session); }
     catch (...) { fprintf(stderr, "MacForce Now native media destruction raised an unexpected C++ exception.\n"); }
+    if (gFrameCaptureHookInstalled.load(std::memory_order_acquire)) { releaseFrameCaptureHook(); }
     if (session->microphoneRoute != nullptr) {
         unregisterMicrophoneRoute(session->microphoneRoute);
         session->microphoneRoute = nullptr;

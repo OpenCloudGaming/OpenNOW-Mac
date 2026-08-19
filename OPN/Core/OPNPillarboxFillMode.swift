@@ -44,6 +44,35 @@ import Foundation
     /// default, so it can stay on WebRTC's own renderer.
     public var needsCustomRenderPath: Bool { self != .black }
 
+    /// Whether the native NVST path can honour this fill.
+    ///
+    /// On NVST the decoded picture is a Geronimo-owned Metal layer that we host
+    /// and aspect-fit ourselves; the pillarbox is the AppKit region left uncovered
+    /// around that layer, and we never see the frame's pixels. That makes the
+    /// geometry fills (crop/stretch) and flat colours reachable purely by resizing
+    /// the layer and painting the uncovered region, but the blur modes — which have
+    /// to sample the picture edge — are not. Those fall back to `black`.
+    public var isNVSTSupported: Bool {
+        switch self {
+        case .black, .solidColor, .cropFill, .stretchEdges: return true
+        case .blurredMirror, .blurredZoom: return false
+        }
+    }
+
+    /// The fill actually used on NVST: unsupported modes collapse to `black`.
+    public var nvstResolved: OPNPillarboxFillMode { isNVSTSupported ? self : .black }
+
+    /// The subset of modes the native NVST HUD offers, in menu order.
+    public static var nvstSupportedCases: [OPNPillarboxFillMode] {
+        allCases.filter(\.isNVSTSupported)
+    }
+
+    /// Modes offered in the UI. Solid colour was retired; the case stays for
+    /// raw-value stability but is never presented as a choice.
+    public static var pickerCases: [OPNPillarboxFillMode] {
+        allCases.filter { $0 != .solidColor }
+    }
+
     public static func from(_ rawValue: Int) -> OPNPillarboxFillMode {
         OPNPillarboxFillMode(rawValue: rawValue) ?? .black
     }

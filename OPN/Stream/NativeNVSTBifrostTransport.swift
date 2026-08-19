@@ -2302,6 +2302,31 @@ private func MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(_ session: UnsafeMut
 @_silgen_name("MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay")
 private func MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
+/// Enables recording of Geronimo's decoded frames for pillarbox blur fill. Kept off
+/// unless a zoom/mirror fill mode is selected. Module-internal so the client-side
+/// overlay renderer can drive it.
+@_silgen_name("MacForceNowNativeNVSTGeronimoSetFrameCaptureActive")
+func MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(_ active: Bool)
+
+/// Copies the most recently captured decoded frame, retained (+1). Wrap the result
+/// with `Unmanaged<CVPixelBuffer>.fromOpaque(_:).takeRetainedValue()`. NULL when no
+/// frame has been captured or capture is inactive.
+@_silgen_name("MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame")
+func MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame() -> OpaquePointer?
+
+/// -1 when the capture hook failed to install, else count of frames captured.
+@_silgen_name("MacForceNowNativeNVSTGeronimoFrameCaptureCount")
+func MacForceNowNativeNVSTGeronimoFrameCaptureCount() -> Int64
+
+/// Latest captured frame size packed as (width << 32 | height), 0 if none.
+@_silgen_name("MacForceNowNativeNVSTGeronimoLatestVideoFrameSize")
+func MacForceNowNativeNVSTGeronimoLatestVideoFrameSize() -> UInt64
+
+/// Install progress: 0 not-attempted, 1 branch-reached, 2 dlsym-avfp-failed,
+/// 3 cv-target-failed, 4 slot-not-found, 5 slot-bad, 6 cas-failed, 7 installed.
+@_silgen_name("MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus")
+func MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus() -> Int32
+
 @_silgen_name("MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate")
 private func MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate(_ session: UnsafeMutableRawPointer?, _ bitrateKbps: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 

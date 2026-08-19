@@ -212,6 +212,10 @@ public final class NativeWebRTCStreamView: NSView {
     private var quickAccessPressedDevices: Set<InputDeviceID> = []
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
+    private let pillarboxOverlay = NativeNVSTPillarboxOverlayView()
+    private var pillarboxFillMode: OPNPillarboxFillMode = .black
+    private var pillarboxContentLeft: Double = 0
+    private var pillarboxContentRight: Double = 1
     private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
         contentRect: .zero,
         styleMask: .borderless,
@@ -230,6 +234,16 @@ public final class NativeWebRTCStreamView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         addSubview(videoSurface)
+        // Clip the video layer when crop/stretch grows it past the surface edges so
+        // the pushed-out bars are cropped instead of drawn beyond the picture.
+        videoSurface.layer?.masksToBounds = true
+        // Above the video surface so the blur fill composites over Geronimo's baked
+        // black bars; hidden until a blur fill mode is selected.
+        pillarboxOverlay.isHidden = true
+        pillarboxOverlay.onContentRect = { [weak self] left, right in
+            self?.updatePillarboxContentRect(left: left, right: right)
+        }
+        addSubview(pillarboxOverlay)
         nativeNVSTRendererWindow.backgroundColor = .clear
         nativeNVSTRendererWindow.contentView = NativeWebRTCVideoSurfaceView(frame: .zero)
         nativeNVSTRendererWindow.hasShadow = false
@@ -325,6 +339,76 @@ public final class NativeWebRTCStreamView: NSView {
         needsLayout = true
     }
 
+    /// Selects the NVST pillarbox fill. Blur modes (mirror/zoom) enable the decoded-
+    /// frame tap and drive the overlay renderer; other modes leave the baked bars
+    /// as-is and stop the tap.
+    public func setPillarboxFill(mode: Int, dim: Int) {
+        let fill = OPNPillarboxFillMode.from(mode)
+        pillarboxFillMode = fill
+        // Blur and crop/stretch both need the decoded-frame tap: blur samples it,
+        // crop/stretch measure the content rect from it.
+        let needsCapture = fill == .blurredMirror || fill == .blurredZoom || fill == .cropFill || fill == .stretchEdges
+        MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(needsCapture)
+        pillarboxOverlay.setFill(mode: fill, dim: dim)
+        applyPillarboxGeometry()
+    }
+
+    private func updatePillarboxContentRect(left: Double, right: Double) {
+        guard pillarboxContentLeft != left || pillarboxContentRight != right else { return }
+        pillarboxContentLeft = left
+        pillarboxContentRight = right
+        applyPillarboxGeometry()
+    }
+
+    /// Scales Geronimo's video layer so the picture content fills the surface for the
+    /// crop/stretch modes. Geronimo fills whatever drawable we hand it, so enlarging
+    /// the metal view centred pushes the baked bars off the (clipped) edges: uniform
+    /// for crop, horizontal-only for stretch. Every other mode uses the identity size.
+    private func applyPillarboxGeometry() {
+        guard let metalView = nativeNVSTMetalView else { return }
+        let bounds = videoSurface.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        let contentWidth = pillarboxContentRight - pillarboxContentLeft
+        let isGeometry = contentWidth > 0.05 && contentWidth < 0.999
+        let scale = isGeometry ? 1.0 / contentWidth : 1.0
+
+        metalView.layer?.transform = CATransform3DIdentity
+
+        if pillarboxFillMode == .cropFill, isGeometry {
+            // Uniform: Geronimo fills the (same-aspect) enlarged drawable, so a bigger
+            // centred metal view scales the picture up and clips the bars off the edges.
+            let width = bounds.width * scale, height = bounds.height * scale
+            let frame = CGRect(x: (bounds.width - width) / 2, y: (bounds.height - height) / 2, width: width, height: height)
+            if metalView.frame != frame {
+                metalView.frame = frame
+                updateNativeNVSTMetalDrawableSize(metalView)
+            }
+            return
+        }
+
+        // Non-crop modes render at native size; stretch then scales the rendered layer
+        // horizontally. A drawable resize can't stretch (Geronimo aspect-fits it), so
+        // the non-uniform scale has to be a display-time layer transform.
+        if metalView.frame != bounds {
+            metalView.frame = bounds
+            updateNativeNVSTMetalDrawableSize(metalView)
+        }
+
+        if pillarboxFillMode == .stretchEdges, isGeometry, let layer = metalView.layer {
+            // Scale about the layer's geometric centre regardless of its anchor point.
+            let b = metalView.bounds
+            let anchor = layer.anchorPoint
+            let ax = Double(anchor.x * b.width), ay = Double(anchor.y * b.height)
+            let cx = Double(b.width) / 2, cy = Double(b.height) / 2
+            var t = CATransform3DIdentity
+            t = CATransform3DTranslate(t, CGFloat(cx - ax), CGFloat(cy - ay), 0)
+            t = CATransform3DScale(t, CGFloat(scale), 1, 1)
+            t = CATransform3DTranslate(t, CGFloat(ax - cx), CGFloat(ay - cy), 0)
+            layer.transform = t
+        }
+    }
+
     public var gamepadTopology: NativeWebRTCGamepadTopology {
         gamepadMonitor.topology
     }
@@ -398,12 +482,14 @@ public final class NativeWebRTCStreamView: NSView {
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
+        pillarboxOverlay.frame = videoSurface.frame
         nativeNVSTMetalView?.frame = videoSurface.bounds
         if nativeNVSTRendererEnabled {
             updateNativeNVSTRendererWindowFrame()
             updateNativeNVSTPresentation()
             if !nativeNVSTRendererPreparedForShutdown { _ = embedNativeNVSTMetalViewIfAvailable() }
         }
+        applyPillarboxGeometry()
     }
 
     private func updateNativeNVSTRendererWindowParent() {
@@ -447,18 +533,21 @@ public final class NativeWebRTCStreamView: NSView {
             nativeNVSTMetalView.isHidden = !nativeNVSTVideoVisible
             updateNativeNVSTMetalDrawableSize(nativeNVSTMetalView)
             updateNativeNVSTPresentation()
+            applyPillarboxGeometry()
             return true
         }
         guard nativeNVSTVideoVisible,
               let metalView = nativeNVSTRendererWindow.contentView?.subviews.first(where: { $0.layer is CAMetalLayer }) else { return false }
         metalView.removeFromSuperview()
         metalView.frame = videoSurface.bounds
-        metalView.autoresizingMask = [.width, .height]
+        // Position explicitly (not autoresized) so crop/stretch can centre-scale it.
+        metalView.autoresizingMask = []
         metalView.isHidden = !nativeNVSTVideoVisible
         videoSurface.addSubview(metalView)
         nativeNVSTMetalView = metalView
         updateNativeNVSTMetalDrawableSize(metalView)
         updateNativeNVSTPresentation()
+        applyPillarboxGeometry()
         return true
     }
 

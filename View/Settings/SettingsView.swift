@@ -1745,11 +1745,7 @@ private struct ResolutionUpscalingSettingsPage: View {
             }
 
             SettingsCard(title: "Pillarbox", uiScale: uiScale) {
-                SettingsOptionRow(title: "Pillarbox Fill", subtitle: "Repaints the black bars GeForce NOW bakes into 16:9-only titles on wider displays.", options: OPNPillarboxFillMode.allCases.map(\.label), selectedIndex: viewModel.streamProfile.pillarboxFillModeIndex, uiScale: uiScale, action: viewModel.setPillarboxFillModeIndex)
-                if viewModel.streamProfile.pillarboxFillMode == .solidColor {
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsColorRow(title: "Fill Color", subtitle: "Flat color painted into the bar columns.", hex: viewModel.streamProfile.pillarboxFillColor, uiScale: uiScale, action: viewModel.setPillarboxFillColor)
-                }
+                SettingsOptionRow(title: "Pillarbox Fill", subtitle: "Repaints the black bars GeForce NOW bakes into 16:9-only titles on wider displays.", options: OPNPillarboxFillMode.pickerCases.map(\.label), selectedIndex: OPNPillarboxFillMode.pickerCases.firstIndex(of: viewModel.streamProfile.pillarboxFillMode) ?? 0, uiScale: uiScale, action: { index in viewModel.setPillarboxFillModeIndex(OPNPillarboxFillMode.pickerCases[index].rawValue) })
                 if viewModel.streamProfile.pillarboxFillMode.usesDim {
                     SettingsDivider(uiScale: uiScale)
                     SettingsSliderRow(title: "Edge Dimming", valueText: "\(viewModel.streamProfile.pillarboxFillDim)%", value: Double(viewModel.streamProfile.pillarboxFillDim), range: 0...100, uiScale: uiScale, action: viewModel.setPillarboxFillDim)
