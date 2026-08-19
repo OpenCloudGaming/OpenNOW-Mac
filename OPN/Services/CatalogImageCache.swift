@@ -23,8 +23,8 @@ struct CatalogImageCacheStatistics: Sendable {
 actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
-    private let memoryCache = NSCache<NSURL, CatalogCachedImageBox>()
-    private let containerStore = CatalogImageCacheContainerStore()
+    nonisolated private let memoryCache = CatalogImageMemoryCache()
+    nonisolated private let containerStore = CatalogImageCacheContainerStore()
     private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
     private var prefetchQueue: [URL] = []
@@ -37,11 +37,11 @@ actor CatalogImageCache {
     private let maximumCacheAge: TimeInterval = 14 * 24 * 60 * 60
     private let maximumStoredBytes = 512 * 1024 * 1024
     private let maximumStoredEntries = 2_000
+    private let pruneStoreThreshold = 25
+    private let pruneInterval: TimeInterval = 60
+    nonisolated private let pruneThrottle = CatalogImageCachePruneThrottle()
 
-    private init() {
-        memoryCache.countLimit = 384
-        memoryCache.totalCostLimit = 160 * 1024 * 1024
-    }
+    private init() {}
 
     nonisolated func configure(container: ModelContainer) {
         containerStore.configure(container: container)
@@ -54,18 +54,18 @@ actor CatalogImageCache {
     }
 
     func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2) async -> CatalogCachedImageData? {
-        if let cached = memoryCache.object(forKey: url as NSURL) {
-            return cached.value
+        if let cached = memoryCache.image(for: url) {
+            return cached
         }
 
         if let existingTask = inFlightLoads[url] {
             return await existingTask.value
         }
 
-        let task = Task<CatalogCachedImageData?, Never> { [weak self] in
+        let task = Task<CatalogCachedImageData?, Never>.detached(priority: .utility, operation: { [weak self] in
             guard let self else { return nil }
             return await self.loadImage(for: url, maxPixelSize: maxPixelSize)
-        }
+        })
         inFlightLoads[url] = task
         let result = await task.value
         inFlightLoads[url] = nil
@@ -88,11 +88,12 @@ actor CatalogImageCache {
         }
         do {
             try context.save()
-            memoryCache.removeAllObjects()
+            memoryCache.removeAll()
             prefetchQueue.removeAll()
             queuedPrefetchURLs.removeAll()
             prefetchTask?.cancel()
             prefetchTask = nil
+            pruneThrottle.reset()
             return true
         } catch {
             return false
@@ -115,7 +116,7 @@ actor CatalogImageCache {
             guard let self else { return }
             while let url = await self.nextPrefetchURL() {
                 guard !Task.isCancelled else { return }
-                if await self.hasCachedImage(for: url) { continue }
+                if self.hasCachedImage(for: url) { continue }
                 _ = await self.image(for: url, maxPixelSize: 620)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
@@ -135,8 +136,8 @@ actor CatalogImageCache {
         startPrefetchTaskIfNeeded()
     }
 
-    private func loadImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
-        if let stored = loadStoredImage(for: url, maxPixelSize: maxPixelSize) {
+    nonisolated private func loadImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
+        if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize) {
             if stored.isFresh {
                 return stored.imageData
             }
@@ -146,16 +147,16 @@ actor CatalogImageCache {
         return await downloadAndStoreImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize)
     }
 
-    private func loadStoredImage(for url: URL, maxPixelSize: CGFloat) -> StoredImage? {
+    nonisolated private func loadStoredImage(for url: URL, maxPixelSize: CGFloat) async -> StoredImage? {
         guard let context = makeContext() else { return nil }
         let key = url.absoluteString
         var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
         descriptor.fetchLimit = 1
         guard let entry = try? context.fetch(descriptor).first,
               let decoded = Self.downsampledImage(from: entry.data, maxPixelSize: maxPixelSize) else { return nil }
-        deferAccessMetadataUpdate(for: url)
+        await deferAccessMetadataUpdate(for: url)
         let imageData = CatalogCachedImageData(data: entry.data, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
-        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: decoded.decodedByteCount)
+        memoryCache.setImage(imageData, for: url)
         return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(entry.updatedAt) < maximumCacheAge, eTag: entry.eTag, lastModified: entry.lastModified)
     }
 
@@ -169,17 +170,22 @@ actor CatalogImageCache {
 
     private func scheduleMetadataFlush() {
         guard metadataFlushTask == nil else { return }
-        metadataFlushTask = Task(priority: .background) { [weak self, metadataFlushInterval] in
+        metadataFlushTask = Task.detached(priority: .utility) { [weak self, metadataFlushInterval] in
             try? await Task.sleep(nanoseconds: UInt64(metadataFlushInterval * 1_000_000_000))
-            await self?.flushAccessMetadata()
+            guard let self, let hits = await self.drainPendingAccessHits() else { return }
+            self.flushAccessMetadata(hits)
         }
     }
 
-    private func flushAccessMetadata() {
+    private func drainPendingAccessHits() -> [String: Int]? {
         metadataFlushTask = nil
-        guard !pendingAccessHits.isEmpty else { return }
+        guard !pendingAccessHits.isEmpty else { return nil }
         let hits = pendingAccessHits
         pendingAccessHits.removeAll()
+        return hits
+    }
+
+    nonisolated private func flushAccessMetadata(_ hits: [String: Int]) {
         guard let context = makeContext() else { return }
         let keys = Array(hits.keys)
         let descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { keys.contains($0.url) })
@@ -192,14 +198,14 @@ actor CatalogImageCache {
         try? context.save()
     }
 
-    private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) {
-        Task(priority: .background) { [weak self] in
+    nonisolated private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) {
+        Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize)
         }
     }
 
-    private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
+    nonisolated private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
@@ -216,7 +222,7 @@ actor CatalogImageCache {
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
                 await MainActor.run { MacForceNowLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
-                return loadStoredImage(for: url, maxPixelSize: maxPixelSize)?.imageData
+                return await loadStoredImage(for: url, maxPixelSize: maxPixelSize)?.imageData
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
                 await MainActor.run { MacForceNowLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
@@ -237,11 +243,11 @@ actor CatalogImageCache {
         }
     }
 
-    private func hasCachedImage(for url: URL) -> Bool {
-        memoryCache.object(forKey: url as NSURL) != nil
+    nonisolated private func hasCachedImage(for url: URL) -> Bool {
+        memoryCache.containsImage(for: url)
     }
 
-    private func markStoredImageFresh(for url: URL) {
+    nonisolated private func markStoredImageFresh(for url: URL) {
         guard let context = makeContext() else { return }
         let key = url.absoluteString
         var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
@@ -253,7 +259,7 @@ actor CatalogImageCache {
         try? context.save()
     }
 
-    private func store(imageData: CatalogCachedImageData, response: HTTPURLResponse, for url: URL) {
+    nonisolated private func store(imageData: CatalogCachedImageData, response: HTTPURLResponse, for url: URL) {
         guard let context = makeContext() else { return }
         let key = url.absoluteString
         var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
@@ -270,12 +276,15 @@ actor CatalogImageCache {
         entry.byteCount = imageData.data.count
         entry.updatedAt = now
         entry.lastAccessedAt = now
-        memoryCache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.decodedByteCount)
+        memoryCache.setImage(imageData, for: url)
         try? context.save()
         pruneIfNeeded(context: context)
     }
 
-    private func pruneIfNeeded(context: ModelContext) {
+    nonisolated private func pruneIfNeeded(context: ModelContext) {
+        // A prune does a full-table fetch + sort; running it per store turns a burst of image
+        // downloads into O(n²) scan work. Throttle to every N stores or T seconds.
+        guard pruneThrottle.shouldPrune(storeThreshold: pruneStoreThreshold, interval: pruneInterval) else { return }
         let descriptor = FetchDescriptor<CatalogImageCacheEntry>(sortBy: [SortDescriptor(\CatalogImageCacheEntry.lastAccessedAt, order: .reverse)])
         guard let entries = try? context.fetch(descriptor) else { return }
         var totalBytes = 0
@@ -293,7 +302,7 @@ actor CatalogImageCache {
         try? context.save()
     }
 
-    private func makeContext() -> ModelContext? {
+    nonisolated private func makeContext() -> ModelContext? {
         guard let modelContainer = containerStore.container() else { return nil }
         return ModelContext(modelContainer)
     }
@@ -323,6 +332,30 @@ actor CatalogImageCache {
     }
 }
 
+nonisolated private final class CatalogImageCachePruneThrottle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storesSincePrune = 0
+    private var lastPruneDate = Date.distantPast
+
+    func shouldPrune(storeThreshold: Int, interval: TimeInterval) -> Bool {
+        lock.withLock {
+            storesSincePrune += 1
+            let now = Date()
+            guard storesSincePrune >= storeThreshold || now.timeIntervalSince(lastPruneDate) >= interval else { return false }
+            storesSincePrune = 0
+            lastPruneDate = now
+            return true
+        }
+    }
+
+    func reset() {
+        lock.withLock {
+            storesSincePrune = 0
+            lastPruneDate = .distantPast
+        }
+    }
+}
+
 nonisolated private final class CatalogImageCacheContainerStore: @unchecked Sendable {
     private let lock = NSLock()
     private var modelContainer: ModelContainer?
@@ -335,6 +368,31 @@ nonisolated private final class CatalogImageCacheContainerStore: @unchecked Send
 
     func container() -> ModelContainer? {
         lock.withLock { modelContainer }
+    }
+}
+
+nonisolated private final class CatalogImageMemoryCache: @unchecked Sendable {
+    private let cache = NSCache<NSURL, CatalogCachedImageBox>()
+
+    init() {
+        cache.countLimit = 384
+        cache.totalCostLimit = 160 * 1024 * 1024
+    }
+
+    func image(for url: URL) -> CatalogCachedImageData? {
+        cache.object(forKey: url as NSURL)?.value
+    }
+
+    func setImage(_ imageData: CatalogCachedImageData, for url: URL) {
+        cache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.decodedByteCount)
+    }
+
+    func removeAll() {
+        cache.removeAllObjects()
+    }
+
+    func containsImage(for url: URL) -> Bool {
+        cache.object(forKey: url as NSURL) != nil
     }
 }
 
