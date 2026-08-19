@@ -136,20 +136,21 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                         Text("Position \(queuePosition)")
                             .font(.nvidia(size: 13, weight: .bold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, MacForceNowDesign.Spacing.contentVertical)
                             .frame(height: 32)
-                            .background(.black.opacity(0.48), in: Capsule())
-                            .overlay(Capsule().stroke(Color.openNowGreen.opacity(0.38), lineWidth: 1))
+                            .background(Color.black.opacity(0.48))
+                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.38), lineWidth: 1) }
                     }
 
                     if let cancelAction {
                         Button("Cancel", action: cancelAction)
-                            .font(.nvidia(size: 12, weight: .bold))
+                            .font(.nvidia(size: 13, weight: .bold))
                             .buttonStyle(.plain)
-                            .foregroundStyle(.white.opacity(0.68))
-                            .padding(.horizontal, 18)
+                            .foregroundStyle(.white.opacity(0.88))
+                            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
                             .frame(height: 34)
-                            .overlay(Capsule().stroke(.white.opacity(0.20), lineWidth: 1))
+                            .background(Color.white.opacity(0.08))
+                            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
                             .accessibilityLabel("Cancel stream launch")
                     }
 

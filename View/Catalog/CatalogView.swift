@@ -747,10 +747,10 @@ private struct VendorEmbeddedSessionAdPlayer: View {
                 Text("AD · \(countdownText)")
                     .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
                     .padding(.vertical, 7)
-                    .background(.black.opacity(0.72), in: Capsule())
-                    .padding(14)
+                    .background(Color.black.opacity(0.72))
+                    .padding(MacForceNowDesign.Spacing.contentVertical)
             }
             .background(.black)
 
@@ -783,8 +783,8 @@ private struct VendorEmbeddedSessionAdPlayer: View {
             .padding(.vertical, 12)
             .background(.black.opacity(0.86))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.16), lineWidth: 1))
+        .clipShape(Rectangle())
+        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
         .onAppear(perform: startPlayback)
         .onDisappear(perform: stopPlayback)
@@ -1194,7 +1194,7 @@ private struct CatalogHamburgerLabel: View {
         ZStack {
             VStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
-                    Capsule()
+                    Rectangle()
                         .fill((isOpen || isHovering) ? Color.openNowGreen : Color.white.opacity(0.84))
                         .frame(width: index == 1 ? 20 : 23, height: 2)
                 }
@@ -1253,17 +1253,17 @@ private struct CatalogMainMenuPanel: View {
                     .nvidiaFont(size: 20, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
-            .padding(.horizontal, 22)
-            .padding(.top, MacForceNowDesign.Spacing.large)
-            .padding(.bottom, MacForceNowDesign.Spacing.card)
+            .padding(.horizontal, 22 * uiScale)
+            .padding(.top, MacForceNowDesign.Spacing.large(scale: uiScale))
+            .padding(.bottom, MacForceNowDesign.Spacing.card(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
-                .padding(.horizontal, MacForceNowDesign.Spacing.card)
-                .padding(.vertical, MacForceNowDesign.Spacing.contentVertical)
+                .padding(.horizontal, MacForceNowDesign.Spacing.card(scale: uiScale))
+                .padding(.vertical, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -1271,7 +1271,7 @@ private struct CatalogMainMenuPanel: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 6 * uiScale) {
                         CatalogMainMenuSectionLabel("NAVIGATION")
                         CatalogMainMenuRow(
                             title: CatalogDestination.home.title,
@@ -1291,10 +1291,10 @@ private struct CatalogMainMenuPanel: View {
                             isPresented = false
                         }
                     }
-                    .padding(.horizontal, MacForceNowDesign.Spacing.section)
-                    .padding(.top, MacForceNowDesign.Spacing.contentVertical)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 6 * uiScale) {
                         CatalogMainMenuSectionLabel("ACTIONS")
                         CatalogMainMenuRow(title: viewModel.isCatalogRefreshInProgress ? "Refreshing Catalog" : "Refresh Catalog", subtitle: viewModel.isCatalogRefreshInProgress ? "Fetching latest panels and game metadata" : "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false, isLoading: viewModel.isCatalogRefreshInProgress) {
                             viewModel.refresh()
@@ -1306,9 +1306,9 @@ private struct CatalogMainMenuPanel: View {
                             }
                         }
                     }
-                    .padding(.horizontal, MacForceNowDesign.Spacing.section)
-                    .padding(.top, MacForceNowDesign.Spacing.contentVertical)
-                    .padding(.bottom, MacForceNowDesign.Spacing.card)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+                    .padding(.bottom, MacForceNowDesign.Spacing.card(scale: uiScale))
                 }
             }
 
@@ -1320,8 +1320,8 @@ private struct CatalogMainMenuPanel: View {
                 isPresented = false
                 onSignOut()
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.section)
-            .padding(.vertical, MacForceNowDesign.Spacing.small)
+            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
+            .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
         .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
@@ -1393,9 +1393,9 @@ private struct CatalogAccountDropdownPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                CatalogAccountAvatar(account: viewModel.account, size: 44)
-                VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: MacForceNowDesign.Spacing.small(scale: uiScale)) {
+                CatalogAccountAvatar(account: viewModel.account, size: 44 * uiScale)
+                VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(viewModel.account.displayName)
                         .nvidiaFont(size: 15, weight: .medium)
                         .foregroundStyle(.white)
@@ -1404,26 +1404,26 @@ private struct CatalogAccountDropdownPanel: View {
                         .nvidiaFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, 8)
-                        .frame(height: 18)
+                        .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: MacForceNowDesign.Spacing.card(scale: uiScale))
                         .background(Color.openNowGreen)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(.vertical, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xxSmall(scale: uiScale)) {
                 Text("ACCOUNTS")
                     .nvidiaFont(size: 10, weight: .bold)
                     .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.42))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.small(scale: uiScale))
+                    .padding(.vertical, 5 * uiScale)
                 ForEach(accounts) { account in
                     let isActive = account === viewModel.account
                     CatalogAccountDropdownRow(
@@ -1440,15 +1440,15 @@ private struct CatalogAccountDropdownPanel: View {
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
+            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
+            .padding(.top, MacForceNowDesign.Spacing.section(scale: uiScale))
+            .padding(.bottom, MacForceNowDesign.Spacing.small(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xxSmall(scale: uiScale)) {
                 CatalogAccountDropdownRow(
                     title: "Sign Out",
                     subtitle: nil,
@@ -1472,8 +1472,8 @@ private struct CatalogAccountDropdownPanel: View {
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
+            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
+            .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
         .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
@@ -1498,11 +1498,12 @@ private struct CatalogAccountDropdownRow: View {
     let isActive: Bool
     let role: ButtonRole?
     let action: () -> Void
+    @Environment(\.opnUIScale) private var uiScale
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: MacForceNowDesign.Spacing.small(scale: uiScale)) {
                 if let systemImage {
                     ZStack {
                         Rectangle()
@@ -1511,9 +1512,9 @@ private struct CatalogAccountDropdownRow: View {
                             .nvidiaFont(size: 13, weight: .bold)
                             .foregroundStyle(iconColor)
                     }
-                    .frame(width: 30, height: 30)
+                    .frame(width: 30 * uiScale, height: 30 * uiScale)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(title)
                         .nvidiaFont(size: 14, weight: .bold)
                         .foregroundStyle(titleColor)
@@ -1527,10 +1528,10 @@ private struct CatalogAccountDropdownRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, MacForceNowDesign.Spacing.xSmall)
-            .padding(.trailing, MacForceNowDesign.Spacing.controlRow)
+            .padding(.leading, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 42)
+            .frame(height: 42 * uiScale)
             .background(rowBackground)
             .contentShape(Rectangle())
         }
@@ -1558,6 +1559,8 @@ private struct CatalogAccountDropdownRow: View {
 private struct CatalogMainMenuSectionLabel: View {
     let title: String
 
+    @Environment(\.opnUIScale) private var uiScale
+
     init(_ title: String) {
         self.title = title
     }
@@ -1567,8 +1570,8 @@ private struct CatalogMainMenuSectionLabel: View {
             .nvidiaFont(size: 10, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(.white.opacity(0.42))
-            .padding(.horizontal, MacForceNowDesign.Spacing.small)
-            .padding(.vertical, 5)
+            .padding(.horizontal, MacForceNowDesign.Spacing.small(scale: uiScale))
+            .padding(.vertical, 5 * uiScale)
     }
 }
 
@@ -1576,10 +1579,12 @@ private struct CatalogMainMenuPlaytimeCard: View {
     let status: CatalogSubscriptionStatus
     let activeStreamProgress: StreamProgress?
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let activeSession = activeSessionTime(at: context.date)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.section(scale: uiScale)) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
                         .nvidiaFont(size: 10, weight: .bold)
@@ -1590,8 +1595,8 @@ private struct CatalogMainMenuPlaytimeCard: View {
                         .nvidiaFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, 8)
-                        .frame(height: 20)
+                        .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: MacForceNowDesign.Spacing.large(scale: uiScale))
                         .background(Color.openNowGreen)
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
@@ -1603,7 +1608,7 @@ private struct CatalogMainMenuPlaytimeCard: View {
                     .foregroundStyle(.white.opacity(0.56))
                     .lineLimit(1)
             }
-            .padding(14)
+            .padding(MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
             .background(Color.white.opacity(0.055))
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
         }
@@ -1643,11 +1648,12 @@ private struct CatalogMainMenuRow: View {
     var compact = false
     var role: ButtonRole?
     let action: () -> Void
+    @Environment(\.opnUIScale) private var uiScale
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 13) {
+            HStack(spacing: 13 * uiScale) {
                 ZStack {
                     Rectangle()
                         .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
@@ -1655,16 +1661,16 @@ private struct CatalogMainMenuRow: View {
                         ProgressView()
                             .controlSize(.small)
                             .tint(iconColor)
-                            .scaleEffect(compact ? 0.72 : 0.82)
+                            .scaleEffect((compact ? 0.72 : 0.82) * uiScale)
                     } else {
                         Image(systemName: systemImage)
                             .nvidiaFont(size: compact ? 12 : 14, weight: .bold)
                             .foregroundStyle(iconColor)
                     }
                 }
-                .frame(width: compact ? 28 : 34, height: compact ? 28 : 34)
+                .frame(width: (compact ? 28 : 34) * uiScale, height: (compact ? 28 : 34) * uiScale)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(title)
                         .nvidiaFont(size: compact ? 12 : 14, weight: .bold)
                         .foregroundStyle(titleColor)
@@ -1678,10 +1684,10 @@ private struct CatalogMainMenuRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, MacForceNowDesign.Spacing.xSmall)
-            .padding(.trailing, MacForceNowDesign.Spacing.controlRow)
+            .padding(.leading, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: compact ? 38 : 50)
+            .frame(height: (compact ? 38 : 50) * uiScale)
             .background(rowBackground)
             .overlay(alignment: .leading) {
                 Rectangle()

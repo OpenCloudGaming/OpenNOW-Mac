@@ -180,6 +180,11 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   16 horizontal padding, square corners. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
+- **Compact Row Action** (`MacForceNowCompactButtonStyle`): settings/inline row
+  actions. Height 28, NVIDIA Sans 12pt bold, 14 horizontal padding, square corners.
+  Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
+  #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
+  `uiScale`; call sites never restyle the label.
 - **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black NVIDIA Sans
   bold (tracking 0.3), 16 horizontal padding, square corners. Pressed: accent @ 0.78.
   Two sizes: **regular** (14pt, height 36 — login and inline CTAs) and **large**
@@ -268,6 +273,20 @@ Buttons. Escape (`.cancelAction`) maps to the primary dismiss action.
 
 252-wide top-trailing panel, Panel background @ 0.92, 1px accent @ 0.28 stroke, 14
 padding, eyebrow header, label/value stat rows (11pt).
+
+### Stream Launch Loading Screen (`StreamLaunchLoadingScreen`)
+
+Full-cover black surface with blurred loading artwork, a top-to-bottom scrim
+gradient, and an accent radial glow. Centered stack: signal indicator, 32pt bold
+title (24 compact), eyebrow stage line (11pt bold, tracking 1.5, white @ 0.72) with
+a glowing accent status dot, optional queue badge, Cancel button, and a 3px
+indeterminate progress bar. The queue badge and Cancel button follow the standard
+square spec — 1px Stroke Regular `Rectangle`s, no capsules: badge is black @ 0.48
+with an accent @ 0.38 stroke (13pt bold, 14 horizontal padding, height 32); Cancel
+is the Secondary button (white @ 0.08 fill, 13pt bold, 16 horizontal padding,
+height 34). The embedded ad player accessory is a square `Rectangle` card with a
+1px Stroke Regular and floating-layer shadow; its countdown badge is black @ 0.72,
+square.
 
 ### Focus Ring (`openNowFocusRing`)
 

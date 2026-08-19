@@ -1210,26 +1210,12 @@ private struct ExperimentalFeaturesSettingsPage: View {
                                 Button("Grant Permission") {
                                     hidMonitor.requestInputMonitoringPermission()
                                 }
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 14 * uiScale)
-                                .frame(height: 28 * uiScale)
-                                .background(Color.openNowGreen)
-                                .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                                .clipShape(RoundedRectangle(cornerRadius: 5 * uiScale))
-                                .buttonStyle(.plain)
+                                .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
 
                                 Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                     resetInputMonitoringPermission()
                                 }
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14 * uiScale)
-                                .frame(height: 28 * uiScale)
-                                .background(Color.black.opacity(0.35))
-                                .overlay { Rectangle().stroke(Color.red.opacity(0.85), lineWidth: 1) }
-                                .clipShape(RoundedRectangle(cornerRadius: 5 * uiScale))
-                                .buttonStyle(.plain)
+                                .buttonStyle(MacForceNowCompactButtonStyle(role: .destructive, uiScale: uiScale))
                                 .disabled(permissionResetInFlight)
                                 .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
                             }
@@ -1237,14 +1223,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
                             Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                 resetInputMonitoringPermission()
                             }
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14 * uiScale)
-                            .frame(height: 28 * uiScale)
-                            .background(Color.black.opacity(0.35))
-                            .overlay { Rectangle().stroke(Color.red.opacity(0.85), lineWidth: 1) }
-                            .clipShape(RoundedRectangle(cornerRadius: 5 * uiScale))
-                            .buttonStyle(.plain)
+                            .buttonStyle(MacForceNowCompactButtonStyle(role: .destructive, uiScale: uiScale))
                             .disabled(permissionResetInFlight)
                             .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
                         }
@@ -1301,14 +1280,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         Button("Open Tester") {
                             showingControllerTest = true
                         }
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 16 * uiScale)
-                        .frame(height: 32 * uiScale)
-                        .background(Color.openNowGreen)
-                        .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                        .clipShape(RoundedRectangle(cornerRadius: 6 * uiScale))
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
                     }
 
                     SettingsDivider(uiScale: uiScale)
@@ -1325,14 +1297,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         Button("Open Mapping") {
                             showingControllerMapping = true
                         }
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 16 * uiScale)
-                        .frame(height: 32 * uiScale)
-                        .background(Color.openNowGreen)
-                        .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                        .clipShape(RoundedRectangle(cornerRadius: 6 * uiScale))
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
                     }
                     .sheet(isPresented: $showingControllerMapping) {
                         SteamControllerMappingView()
@@ -1359,14 +1324,7 @@ private struct ExperimentalFeaturesSettingsPage: View {
                             Button("Grant Permission") {
                                 SteamControllerLocalCursorInjector.requestAccessibilityPermission()
                             }
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 14 * uiScale)
-                            .frame(height: 28 * uiScale)
-                            .background(Color.openNowGreen)
-                            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                            .clipShape(RoundedRectangle(cornerRadius: 5 * uiScale))
-                            .buttonStyle(.plain)
+                            .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
                         }
                     }
                     .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }

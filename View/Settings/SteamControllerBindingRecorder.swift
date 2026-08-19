@@ -31,10 +31,9 @@ struct SteamControllerBindingRecorder: View {
             .frame(height: 32)
             .background(isRecording ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.05))
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                Rectangle()
                     .stroke(isRecording ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .onDisappear { stopMonitoring() }
