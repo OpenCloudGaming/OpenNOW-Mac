@@ -3241,28 +3241,31 @@ private struct CatalogGameTile: View, Equatable {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Button(action: onSelect) {
-                tileContent
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityValue(isSelected ? "Details open" : "")
+        CatalogHoverTracker(onHover: { isHovering = $0 }) {
+            ZStack(alignment: .topLeading) {
+                Button(action: onSelect) {
+                    tileContent
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityValue(isSelected ? "Details open" : "")
 
-            if isHovering {
                 ZStack(alignment: .topLeading) {
                     playButton
                 }
                 .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                 .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+                .accessibilityHidden(!isHovering)
                 .zIndex(2)
             }
+            .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .zIndex(isHovering ? 1 : 0)
         }
-        .onHover { isHovering = $0 }
-        .animation(.easeOut(duration: 0.16), value: isHovering)
     }
 
     private var playButton: some View {
@@ -3363,8 +3366,6 @@ private struct CatalogGameTile: View, Equatable {
             }
         }
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
-        .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
-        .animation(.easeOut(duration: 0.2), value: isHovering)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)

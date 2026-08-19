@@ -33,6 +33,16 @@ private final class CatalogSendableValue<T>: @unchecked Sendable {
     }
 }
 
+private final class CatalogDeliveryGate: @unchecked Sendable {
+    private var delivered = false
+
+    func claimFirstDelivery() -> Bool {
+        if delivered { return false }
+        delivered = true
+        return true
+    }
+}
+
 private struct CatalogSettingsPreferencesSnapshot: Sendable {
     let capabilities: OPNStreamDeviceCapabilities
     let profile: OPNStreamPreferenceProfile
@@ -741,10 +751,12 @@ final class CatalogViewModel {
     private func resolveShortcutByBrowsing(_ shortcut: GFNGameShortcut, title: String) {
         MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let selfBox = CatalogWeakObject(self)
+        let handledBox = CatalogSendableValue(CatalogDeliveryGate())
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
             let resultBox = CatalogSendableValue(result)
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
+                guard handledBox.value.claimFirstDelivery() else { return }
                 guard success else {
                     MacForceNowLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
                     self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error

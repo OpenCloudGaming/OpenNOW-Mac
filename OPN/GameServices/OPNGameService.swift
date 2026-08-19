@@ -288,7 +288,8 @@ final class OPNGameService: @unchecked Sendable {
                 filters: filters as NSDictionary,
                 catalogCacheKey: parameters.catalogCacheKey,
                 deliveredCachedResult: deliveredCachedResult,
-                maxPages: 1,
+                maxPages: Self.maxCatalogPages,
+                deliverFirstPageEarly: true,
                 completion: completion
             )
         }
@@ -956,7 +957,7 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, maxPages: Int, completion: @escaping OPNCatalogBrowseCallback) {
+    private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, maxPages: Int, deliverFirstPageEarly: Bool = false, completion: @escaping OPNCatalogBrowseCallback) {
         let state = CatalogPageState(result: baseResult)
         let filterBox = NSDictionaryBox(filters)
         let fetchPage = RecursiveCatalogPageFetcher()
@@ -987,7 +988,7 @@ final class OPNGameService: @unchecked Sendable {
                     state.result.hasNextPage = hasNextPage
                     if !endCursor.isEmpty { state.result.endCursor = endCursor }
 
-                    if maxPages == 1, page == 0, !deliveredCachedResult.value, !deliveredFirstPage.value {
+                    if deliverFirstPageEarly, page == 0, !deliveredCachedResult.value, !deliveredFirstPage.value {
                         deliveredFirstPage.setTrue()
                         let firstPageGames = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
                         self.enrichGames(firstPageGames, vpcId: vpcId) { enriched in
@@ -1003,7 +1004,7 @@ final class OPNGameService: @unchecked Sendable {
                         fetchPage.action?(page + 1, endCursor)
                         return
                     }
-                    if !deliveredFirstPage.value {
+                    if !deliveredFirstPage.value || page > 0 {
                         let games = state.collectedApps.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
                         self.enrichGames(games, vpcId: vpcId) { enriched in
                             state.result.numberSupported = max(state.result.numberSupported, enriched.count)

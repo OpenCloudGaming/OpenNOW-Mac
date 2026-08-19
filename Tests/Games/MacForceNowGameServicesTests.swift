@@ -877,22 +877,27 @@ import Foundation
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
+        // Browse delivers twice: first page for fast paint, then the fully
+        // paginated result. Await the second delivery.
         let result = await withCheckedContinuation { continuation in
+            nonisolated(unsafe) var deliveryCount = 0
             OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+                deliveryCount += 1
+                guard deliveryCount == 2 else { return }
                 continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, error))
             }
         }
 
         #expect(result.0 == true)
         #expect(result.4.isEmpty)
-        #expect(result.1 == 40)
-        #expect(result.2 == 40)
+        #expect(result.1 == 45)
+        #expect(result.2 == 45)
         #expect(result.3 == 45)
         let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
             ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
         }
-        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == [""])
-        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["sortString"] as? String } == ["sortName:ASC"])
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == ["", "cursor-40"])
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["sortString"] as? String } == ["sortName:ASC", "sortName:ASC"])
     }
 }
 

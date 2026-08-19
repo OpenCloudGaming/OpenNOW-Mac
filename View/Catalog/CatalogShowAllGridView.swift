@@ -312,23 +312,26 @@ struct CatalogShowAllGridTile: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            tileContent
-                .contentShape(Rectangle())
-                .onTapGesture { onSelect() }
-                .onHover { isHovering = $0 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
-                .accessibilityAddTraits(.isButton)
+        CatalogHoverTracker(onHover: { isHovering = $0 }) {
+            ZStack(alignment: .topLeading) {
+                tileContent
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSelect() }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
+                    .accessibilityAddTraits(.isButton)
 
-            if isHovering {
                 playButton
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .opacity(isHovering ? 1 : 0)
+                    .allowsHitTesting(isHovering)
+                    .accessibilityHidden(!isHovering)
                     .zIndex(2)
             }
+            .scaleEffect(isHovering ? CatalogShowAllLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .zIndex(isHovering ? 1 : 0)
         }
-        .animation(.easeOut(duration: 0.16), value: isHovering)
     }
 
     private var playButton: some View {
@@ -390,8 +393,6 @@ struct CatalogShowAllGridTile: View {
             }
         }
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
-        .scaleEffect(isHovering ? CatalogShowAllLayout.tileScaleFactor : 1.0)
-        .animation(.easeOut(duration: 0.2), value: isHovering)
     }
 }
 
