@@ -76,6 +76,24 @@ sed -i '' 's/INFOPLIST_KEY_CFBundleDisplayName = MacForceNow;/INFOPLIST_KEY_CFBu
 sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/release.yml .github/workflows/unit-tests.yml
 ```
 
+## UI Scaling & Design System Re-Application
+
+Upstream has no `uiScale` system and does not follow this fork's `DESIGN.md` tokens. Any upstream-added or upstream-modified UI code (new views, modified modifiers, new constants) must be migrated to the fork's design system, not merged verbatim:
+
+- **Thread `uiScale` through every merged view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `MacForceNowDesign.Spacing.*(scale:)`).
+- **Scale consistently within one geometric expression.** Every constant contributing to the same size must scale identically. Mixing scaled and unscaled values only breaks at `uiScale != 1` and looks correct at 1.0 — e.g. `wideTileWidth(scale:) - 32 * uiScale` combined with an unscaled `.padding(.horizontal, 16)` left the tile tray background narrower than the tile (and its full-width selection bar) at any scale above 1.0.
+- **Use fork fonts and colors**: `.nvidiaFont(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `MacForceNowDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
+- **New upstream components** must follow `DESIGN.md` component patterns; update `DESIGN.md` if the merge introduces a genuinely new pattern.
+- **Verify visually at a non-default UI scale** (e.g. 1.25 and 1.5 via Settings) for every merged view — layout bugs from inconsistent scaling are invisible at 1.0.
+
+Sweep the view files touched by the merge for unscaled constants as a heuristic:
+
+```sh
+git diff upstream/main...HEAD --name-only -- 'View/**/*.swift' | xargs rg -n '\.(frame|padding|offset)\(' | rg -v 'uiScale|scale:|\.infinity|minLength: 0'
+```
+
+Review each hit; not every unscaled value is wrong (stroke widths, 1pt dividers, and deliberate fixed sizes are fine), but any constant paired with scaled siblings in the same layout expression is a bug.
+
 ## Sync Procedure
 
 1. Fetch the `upstream-sync` PR locally and merge `upstream/main` into a working branch off `main`.
@@ -93,15 +111,17 @@ sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/rele
    - `MacForceNow.xcodeproj/project.pbxproj`: Debug `PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev"`, Release `= "com.necorico.macforce-now"`, Debug `PRODUCT_NAME = "MacForce Now Dev"`. Any upstream-added targets (e.g. test targets) must also get fork IDs (`com.necorico.macforce-now.*`), not `io.github.opencloudgaming.*`.
    - `MacForceNowApp.swift`: updater is `MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")`.
    - `.github/workflows/`: fork keeps `unit-tests.yml`; do not adopt upstream CI replacements without user approval.
-6. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. **Zero failures required before committing.** Hardware-dependent NVST tests stay gated behind `ENABLE_NVST_HARDWARE_TESTS=1`.
-7. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
-8. Commit the merge with `chore: sync upstream` and push.
+6. Apply the UI Scaling & Design System Re-Application rules to every upstream-touched view: thread `uiScale`, replace hardcoded fonts/colors/spacing with design tokens, then visually verify merged screens at 1.25x and 1.5x UI scale.
+7. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. **Zero failures required before committing.** Hardware-dependent NVST tests stay gated behind `ENABLE_NVST_HARDWARE_TESTS=1`.
+8. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
+9. Commit the merge with `chore: sync upstream` and push.
 
 ## Sync Pitfalls (learned from the 1.51 sync)
 
 - **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In the 1.51 sync, `--theirs` wiped the fork's quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` with the fork version as `ours` and review every conflict.
 - **Upstream feature deletions are decisions, not defaults.** When upstream deletes a subsystem the fork integrated (e.g. Twitch removal in `e688e8a`), surface it to the user before accepting the deletion — the fork may have built UI, settings, and tests around it that must be removed consistently.
 - **Fork features live inside shared files.** Fork-only code (Steam Controller hooks, Discord presence, pillarbox fill UI, Show All grid, uiScale) is inlined in files upstream also edits. After resolving, diff the result against fork `main` and grep for those feature keywords to confirm nothing was dropped.
+- **Upstream UI code bypasses uiScale and the design system.** Merged-in views come with hardcoded dimensions, system fonts, and raw colors that silently break at non-default UI scales and drift from `DESIGN.md`. Always run the UI Scaling & Design System Re-Application pass (above) on upstream-touched views; partially scaled expressions (some constants scaled, some not) are worse than none because they only fail at `uiScale != 1`.
 - **Modifying vendored dylibs breaks macOS code signing.** `install_name_tool` invalidates signatures; every process that stats the file afterwards (including `git status`) gets SIGKILL'd with `CODESIGNING: Invalid Page`. Re-sign immediately: `codesign --force --sign - <dylib>` (and `codesign --force --deep --sign -` for frameworks).
 - **Never rebase a sync branch.** `git rebase` flattens the upstream merge commit into a regular commit — the tree carries upstream's changes but upstream's commit history never enters the fork. GitHub then reports the fork as permanently "N commits behind", and `sync-fork.yml`'s ancestor check (`git merge-base --is-ancestor upstream/main origin/main`) opens redundant PRs forever. Keep the merge commit; if the branch needs main's latest, merge main INTO the sync branch, never rebase. If history was already flattened, repair with `git merge -s ours <upstream-sha-synced> -m "chore: record upstream ancestry"` on main.
 

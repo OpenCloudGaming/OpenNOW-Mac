@@ -2705,7 +2705,7 @@ private struct CatalogRailView: View {
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
                                     showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
-                                    onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                                    onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },
                                     onMarkOwned: {
                                         viewModel.selectGame(game, inSection: section.id)
@@ -2833,7 +2833,7 @@ private struct CatalogDestinationGridView: View {
                         isSelectionActive: viewModel.selectedGame != nil,
                         isQueuedForPatching: viewModel.isQueuedForPatching(game),
                         showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
-                        onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                        onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
                         onPlay: { viewModel.launch(game: game) },
                         onMarkOwned: {
                             viewModel.selectGame(game, inSection: section.id)
@@ -3362,10 +3362,9 @@ private struct CatalogGameTile: View, Equatable {
                                 .nvidiaFont(size: 10, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.76))
                         }
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) - 32 * uiScale, height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 16 * uiScale)
+                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
                         .background(CatalogVendorLayout.tileTray.opacity(1))
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale))
                     }
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                 }

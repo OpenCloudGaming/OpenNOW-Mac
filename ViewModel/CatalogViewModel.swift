@@ -724,6 +724,14 @@ final class CatalogViewModel {
         actionMessage = ""
     }
 
+    func toggleGameSelection(_ game: OPNCatalogGameObject, inSection sectionId: String) {
+        if let selectedGame, selectedSectionId == sectionId, Self.looseIdentityMatches(selectedGame, game) {
+            selectGame(nil)
+            return
+        }
+        selectGame(game, inSection: sectionId)
+    }
+
     func selectGameFromHero(_ game: OPNCatalogGameObject) {
         selectGame(game)
         requestSelectedGameReveal(for: game, sectionId: "")

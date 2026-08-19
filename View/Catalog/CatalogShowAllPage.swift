@@ -54,7 +54,7 @@ struct CatalogShowAllPage: View {
                     selectedGame: viewModel.selectedGame,
                     isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
                     imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
-                    onSelect: { viewModel.selectGame($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
+                    onSelect: { viewModel.toggleGameSelection($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
                     onPlay: { viewModel.launch(game: $0) },
                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: $0) }
                 )
