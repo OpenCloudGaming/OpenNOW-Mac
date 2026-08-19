@@ -18,6 +18,10 @@ concurrency:
 jobs:
   release-please:
     name: Release Please
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, 'chore(main): release') ||
+      contains(github.event.head_commit.message, 'release-please--branches--')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
