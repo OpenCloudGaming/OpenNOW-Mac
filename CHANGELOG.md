@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.15.0](https://github.com/anderson-oki/macforce-now/compare/v0.14.1...v0.15.0) (2026-08-19)
+
+
+### Features
+
+* Add nsvt pillarbox filters ([b9b7e9a](https://github.com/anderson-oki/macforce-now/commit/b9b7e9a146fafedadfa026911b96d499fc3b7201))
+* add nsvt steam controller hud ([ec72b7a](https://github.com/anderson-oki/macforce-now/commit/ec72b7a11b5383fe23fc33b12721c671b8aeee5e))
+* add settings controller category ([461d7ac](https://github.com/anderson-oki/macforce-now/commit/461d7ac0f7453140a65f9c1a3cf6ce24cf7cf7d2))
+* catalog performance improvements ([10b0b4f](https://github.com/anderson-oki/macforce-now/commit/10b0b4ffa5f3a0ac5bdcfbc5f3f622a6267c7663))
+* Improve catalog performance ([77973e9](https://github.com/anderson-oki/macforce-now/commit/77973e96c0214db4c8eec029ab03197dace61340))
+
+
+### Bug Fixes
+
+* align launch screen, menu panels, and settings buttons with design spec ([be878fc](https://github.com/anderson-oki/macforce-now/commit/be878fcfa1e40391472ccfe934826312f783c1a9))
+* align native NVST decoder and prepare ABI ([1e0562e](https://github.com/anderson-oki/macforce-now/commit/1e0562e466f2d635f1ca4fb4569365e93fd57078))
+* authenticate NVST before prepare [skip ci] ([c122517](https://github.com/anderson-oki/macforce-now/commit/c122517fd72e7da8a8d54043dd114c9fd9da3dd6))
+* authenticate NVST before prepare [skip ci] ([671a194](https://github.com/anderson-oki/macforce-now/commit/671a19493b9b650cb7f32c1dcc62a9e50980b8f8))
+* catalog view hover ([91ff7b0](https://github.com/anderson-oki/macforce-now/commit/91ff7b06317d67dc0b7d67bf4d34883014e74bc9))
+* complete synchronous NVST prepare inline ([9cafb68](https://github.com/anderson-oki/macforce-now/commit/9cafb6849c0058519291b7f6c3ce4b22da775e1b))
+* full-width tile tray and collapse details on re-click, document uiScale sync rules ([6f6d654](https://github.com/anderson-oki/macforce-now/commit/6f6d654cf0940ba015f3c804de1bcefc459dd758))
+* harden native NVST launch diagnostics ([51f53ec](https://github.com/anderson-oki/macforce-now/commit/51f53ecf35033978abd2ffca7a5aa8a507d61c27))
+* keep asynchronous Geronimo prepare after upstream sync ([39d999b](https://github.com/anderson-oki/macforce-now/commit/39d999bb06818a3e3a64259cbeacca04d01ccf34))
+* Native NVST cursor handling ([#47](https://github.com/anderson-oki/macforce-now/issues/47)) ([d48879b](https://github.com/anderson-oki/macforce-now/commit/d48879baa0e487346fe8b707708b31a58752cf31))
+* NVST actions HUD ([92777d0](https://github.com/anderson-oki/macforce-now/commit/92777d0ceb77a6088144c55abb4ee1a3692d2212))
+* nvst cycle ([fea9321](https://github.com/anderson-oki/macforce-now/commit/fea93215fc8021deaf3c29595af7b0f50635ec51))
+* restore fork async prepare auth flow and loading screen blur ([a6eb08b](https://github.com/anderson-oki/macforce-now/commit/a6eb08b9d8760fea7c37e87459f3dff8312bce74))
+* Special keys ([ba33e57](https://github.com/anderson-oki/macforce-now/commit/ba33e57fcf4be4246cd8e9582e4cb90af6d52f33))
+
 ## [0.14.1](https://github.com/anderson-oki/macforce-now/compare/v0.14.0...v0.14.1) (2026-08-17)
 
 
