@@ -264,10 +264,12 @@ private struct SettingsContent: View {
             StreamingSettingsGroup(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsGroup(viewModel: viewModel)
+        case .controller:
+            SteamControllerSettingsPage(uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .about:
-            AboutSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            AboutSettingsGroup(viewModel: viewModel, uiScale: uiScale)
         }
     }
 }
@@ -352,8 +354,19 @@ private struct GeneralSettingsGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             InterfaceSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            SystemSettingsPage(viewModel: viewModel, uiScale: uiScale)
             ExperimentalFeaturesSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        }
+    }
+}
+
+private struct AboutSettingsGroup: View {
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            AboutSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            SystemSettingsPage(viewModel: viewModel, uiScale: uiScale)
         }
     }
 }
@@ -1129,15 +1142,7 @@ private enum StoreIconAsset: CaseIterable {
 private struct ExperimentalFeaturesSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
-    @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
-    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
-    @State private var showingControllerTest = false
-    @State private var showingControllerMapping = false
-    @State private var permissionResetInFlight = false
-    @State private var permissionResetError: String?
-    @State private var accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -1151,16 +1156,6 @@ private struct ExperimentalFeaturesSettingsPage: View {
                 )
             }
 
-            SettingsCard(title: "Stream Transport", uiScale: uiScale) {
-                SettingsToggleRow(
-                    title: "Native/NVST Transport",
-                    subtitle: "Off uses the default WebRTC session path. On requests native NVST secure RTSP transport with matching CloudMatch headers.",
-                    isOn: viewModel.streamProfile.transportMode.value == "nvst",
-                    uiScale: uiScale,
-                    action: viewModel.setNVSTTransportEnabled
-                )
-            }
-
             SettingsCard(title: "Recording", uiScale: uiScale) {
                 SettingsToggleRow(
                     title: "Recording Editor Early Beta",
@@ -1170,25 +1165,39 @@ private struct ExperimentalFeaturesSettingsPage: View {
                     action: setRecordingEditorEarlyBetaEnabled
                 )
             }
+        }
+    }
 
-            SettingsCard(title: "Input", uiScale: uiScale) {
-                HStack(alignment: .center, spacing: 18 * uiScale) {
-                    VStack(alignment: .leading, spacing: 5 * uiScale) {
-                        Text("Steam Controller Support")
-                            .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                            .foregroundStyle(.white.opacity(1))
-                        Text(steamControllerSupportEnabled ? "Valve Steam Controller input is forwarded to streams. Requires the Input Monitoring permission and the Steam client to be closed." : "Opt in to recognize Valve Steam Controllers (original and 2026 models) over USB, dongle, or Puck during streams.")
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.58))
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(get: { steamControllerSupportEnabled }, set: { setSteamControllerSupportEnabled($0) }))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                }
+    private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
+        recordingEditorEarlyBetaEnabled = enabled
+    }
+}
 
-                if steamControllerSupportEnabled {
-                    SettingsDivider(uiScale: uiScale)
+private struct SteamControllerSettingsPage: View {
+    let uiScale: CGFloat
+    @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
+    @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
+    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
+    @State private var showingControllerTest = false
+    @State private var showingControllerMapping = false
+    @State private var permissionResetInFlight = false
+    @State private var permissionResetError: String?
+    @State private var accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            SettingsCard(title: "Steam Controller", uiScale: uiScale) {
+                SettingsToggleRow(
+                    title: "Steam Controller Support",
+                    subtitle: steamControllerSupportEnabled ? "Valve Steam Controller input is forwarded to streams. Requires the Input Monitoring permission and the Steam client to be closed." : "Opt in to recognize Valve Steam Controllers (original and 2026 models) over USB, dongle, or Puck during streams.",
+                    isOn: steamControllerSupportEnabled,
+                    uiScale: uiScale,
+                    action: setSteamControllerSupportEnabled
+                )
+            }
+
+            if steamControllerSupportEnabled {
+                SettingsCard(title: "Permissions", uiScale: uiScale) {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.system(size: 14 * uiScale))
@@ -1230,6 +1239,36 @@ private struct ExperimentalFeaturesSettingsPage: View {
                     }
 
                     SettingsDivider(uiScale: uiScale)
+                    HStack(spacing: 12 * uiScale) {
+                        Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 14 * uiScale))
+                            .foregroundStyle(accessibilityPermissionGranted ? Color.openNowGreen : .orange)
+
+                        VStack(alignment: .leading, spacing: 2 * uiScale) {
+                            Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
+                                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.88))
+                            Text(accessibilityPermissionGranted ? "Holding the Steam button lets the right pad move the real macOS cursor mid-stream." : "Without it, holding the Steam button and moving a pad does nothing during a stream. Grant permission in System Settings → Privacy & Security → Accessibility.")
+                                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        Spacer()
+
+                        if !accessibilityPermissionGranted {
+                            Button("Grant Permission") {
+                                SteamControllerLocalCursorInjector.requestAccessibilityPermission()
+                            }
+                            .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
+                        }
+                    }
+                    .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }
+                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                        accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
+                    }
+                }
+
+                SettingsCard(title: "Status", uiScale: uiScale) {
                     HStack(spacing: 16 * uiScale) {
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text("Monitor Status")
@@ -1265,8 +1304,9 @@ private struct ExperimentalFeaturesSettingsPage: View {
 
                         Spacer()
                     }
+                }
 
-                    SettingsDivider(uiScale: uiScale)
+                SettingsCard(title: "Tools", uiScale: uiScale) {
                     HStack {
                         VStack(alignment: .leading, spacing: 5 * uiScale) {
                             Text("Test Controller")
@@ -1299,43 +1339,14 @@ private struct ExperimentalFeaturesSettingsPage: View {
                         }
                         .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
                     }
-                    .sheet(isPresented: $showingControllerMapping) {
-                        SteamControllerMappingView()
-                    }
-
-                    SettingsDivider(uiScale: uiScale)
-                    HStack(spacing: 12 * uiScale) {
-                        Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .font(.system(size: 14 * uiScale))
-                            .foregroundStyle(accessibilityPermissionGranted ? Color.openNowGreen : .orange)
-
-                        VStack(alignment: .leading, spacing: 2 * uiScale) {
-                            Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.88))
-                            Text(accessibilityPermissionGranted ? "Holding the Steam button lets the right pad move the real macOS cursor mid-stream." : "Without it, holding the Steam button and moving a pad does nothing during a stream. Grant permission in System Settings → Privacy & Security → Accessibility.")
-                                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.58))
-                        }
-
-                        Spacer()
-
-                        if !accessibilityPermissionGranted {
-                            Button("Grant Permission") {
-                                SteamControllerLocalCursorInjector.requestAccessibilityPermission()
-                            }
-                            .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
-                        }
-                    }
-                    .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }
-                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                        accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
-                    }
                 }
             }
         }
         .sheet(isPresented: $showingControllerTest) {
             SteamControllerTestView()
+        }
+        .sheet(isPresented: $showingControllerMapping) {
+            SteamControllerMappingView()
         }
         .alert(
             "Reset Failed",
@@ -1348,10 +1359,6 @@ private struct ExperimentalFeaturesSettingsPage: View {
         } message: {
             Text(permissionResetError ?? "")
         }
-    }
-
-    private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
-        recordingEditorEarlyBetaEnabled = enabled
     }
 
     private func setSteamControllerSupportEnabled(_ enabled: Bool) {
@@ -1410,6 +1417,8 @@ private struct GameplaySettingsPage: View {
             }
 
             SettingsCard(title: "Stream Transport", uiScale: uiScale) {
+                SettingsToggleRow(title: "Native/NVST Transport", subtitle: "Off uses the default WebRTC session path. On requests native NVST secure RTSP transport with matching CloudMatch headers.", isOn: viewModel.streamProfile.transportMode.value == "nvst", uiScale: uiScale, action: viewModel.setNVSTTransportEnabled)
+                SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(title: "Quality Profile", subtitle: "Maps to the vendor streaming profile sent with the session request.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, uiScale: uiScale, action: viewModel.setStreamingQualityProfileIndex)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Cloud G-Sync", subtitle: qualityLocked ? lockedProfileSubtitle : "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)

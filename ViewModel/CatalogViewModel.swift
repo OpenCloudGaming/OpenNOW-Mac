@@ -101,6 +101,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
     case streaming
     case connections
+    case controller
     case general
     case about
 
@@ -111,6 +112,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .account: return "Account"
         case .streaming: return "Streaming"
         case .connections: return "Connections"
+        case .controller: return "Controller"
         case .general: return "General"
         case .about: return "About"
         }
@@ -121,8 +123,9 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .account: return "Membership, profile, and current NVIDIA session details."
         case .streaming: return "Tune streaming quality, server location, and MetalFX upscaling."
         case .connections: return "Manage store accounts and Twitch broadcast settings."
-        case .general: return "Interface mode, system capability, and experimental features."
-        case .about: return "MacForce Now Mac runtime and service identifiers."
+        case .controller: return "Steam Controller support, permissions, input testing, and mapping."
+        case .general: return "Interface mode, display scale, and experimental features."
+        case .about: return "MacForce Now Mac runtime, system capability, and service identifiers."
         }
     }
 
@@ -131,6 +134,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .account: return "person.crop.circle.fill"
         case .streaming: return "play.tv.fill"
         case .connections: return "link"
+        case .controller: return "gamecontroller.fill"
         case .general: return "gearshape.2.fill"
         case .about: return "info.circle.fill"
         }
