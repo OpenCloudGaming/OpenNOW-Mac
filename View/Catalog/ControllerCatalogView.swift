@@ -128,6 +128,7 @@ private struct ControllerLayoutMetrics {
 struct ControllerCatalogView: View {
     let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    let topInset: CGFloat
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
@@ -155,7 +156,7 @@ struct ControllerCatalogView: View {
                 }
 
                 VStack(spacing: 0) {
-                    ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout)
+                    ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout, topInset: topInset)
                     ControllerNavigationBar(
                         items: navigationItems,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
@@ -222,6 +223,7 @@ struct ControllerCatalogView: View {
                         selectedIndex: controllerViewModel.actionMenuIndex,
                         glyphs: activeGlyphs,
                         layout: layout,
+                        topInset: topInset,
                         isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
                         perform: executeActionMenuItem,
                         close: closeActionMenu
@@ -723,7 +725,7 @@ private struct ControllerHeader: View {
     let viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
-    @Environment(\.opnUIScale) private var uiScale
+    let topInset: CGFloat
 
     var body: some View {
         HStack(spacing: 16) {
@@ -742,7 +744,7 @@ private struct ControllerHeader: View {
         }
         .frame(width: layout.contentWidth)
         .frame(height: 72)
-        .padding(.top, CatalogVendorLayout.windowTopInset(scale: uiScale))
+        .padding(.top, topInset)
         .background {
             Color.black.opacity(0.24)
             WindowDragArea()
@@ -1445,10 +1447,10 @@ private struct ControllerActionMenuOverlay: View {
     let selectedIndex: Int
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
+    let topInset: CGFloat
     let isRefreshingCatalog: Bool
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
-    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -1456,7 +1458,7 @@ private struct ControllerActionMenuOverlay: View {
             VStack(alignment: .leading, spacing: 0) {
                 ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
                     .padding(.horizontal, 22)
-                    .padding(.top, 22 + CatalogVendorLayout.windowTopInset(scale: uiScale))
+                    .padding(.top, 22 + topInset)
                     .padding(.bottom, 12)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 8) {

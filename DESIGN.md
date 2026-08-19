@@ -102,9 +102,30 @@ Twitch panel, transient message pills). Do not use them in new code.
 
 ### App Shell (`MacForceNowDesign.Spacing`)
 
+**Scale** — 4pt-grid values for generic layout spacing. Each exists as an unscaled
+static let and a `scale:`-parameterized function; use the function on surfaces that
+multiply by `opnUIScale`.
+
+| Token | Value | | Token | Value |
+|---|---|---|---|---|
+| `xxSmall` | 4 | | `large` | 20 |
+| `xSmall` | 8 | | `xLarge` | 24 |
+| `small` | 12 | | `xxLarge` | 32 |
+| `medium` | 16 | | `xxxLarge` | 40 |
+
+**Structural and component tokens**
+
 - **Page Horizontal**: 40 — page content margins.
 - **Rail Horizontal**: 32 — sidebar/rail padding.
 - **Card**: 18 — card internal padding.
+- **Section**: 10 — section container padding (main menu sections, HUD sections).
+- **Content Vertical**: 14 — vertical rhythm inside panels and cards.
+- **Control Row**: 12 — horizontal padding inside controls, triggers, and menu rows.
+- **Menu Panel Vertical**: 4 — dropdown panel vertical padding.
+
+**Window top inset** — the titlebar has a fixed physical height regardless of
+interface scale. Chrome measures it with `WindowTopInsetReader` and never scales it;
+`CatalogVendorLayout.fallbackWindowTopInset` (32) is only the pre-measurement fallback.
 
 ### Stream HUD
 
@@ -159,8 +180,11 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   16 horizontal padding, square corners. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
-- **Vendor Get-In**: Accent background, black NVIDIA Sans 14pt bold, height 36,
-  16 horizontal padding. Pressed: accent @ 0.78.
+- **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black NVIDIA Sans
+  bold (tracking 0.3), 16 horizontal padding, square corners. Pressed: accent @ 0.78.
+  Two sizes: **regular** (14pt, height 36 — login and inline CTAs) and **large**
+  (15pt, height 40 — hero and game-detail primary actions, optional `minimumWidth`).
+  Call sites pass `uiScale` and never override font or frame on the label.
 
 ### Stream HUD Action Row (`StreamHUDActionRow`)
 
@@ -177,15 +201,35 @@ Full-width rectangular button, height 38, NVIDIA Sans 12pt bold (tracking 0.4).
   Divider stroke.
 - **Focused**: accent stroke at 2px. **Disabled**: opacity 0.46.
 
-### Overflow Menu (app shell dropdown)
+### Dropdown Menu (`MacForceNowDropdownMenu`)
 
-Square dropdown replacing native `Menu` for app-shell overflow actions (e.g. game
-detail "⋮" menu). Panel: Panel Raised background, 1px Stroke Regular, 4 vertical
-padding, width 208, leading-aligned to the trigger and anchored 4pt below it, no
-shadow. Rows: full width,
-height 30, 12 horizontal padding, NVIDIA Sans 12pt bold — Text Secondary resting,
-Text Primary + #FFFFFF @ 0.08 fill on hover. Dismisses on outside click, Escape, or
-selection, and closes when the underlying selection changes.
+Square dropdown replacing native `Menu` for every app-shell dropdown: game detail
+"⋮" actions, catalog sort and filter groups, recordings sort, login provider picker.
+Built from `MacForceNowDropdownPanel` + `MacForceNowDropdownRow`
+(`View/Components/MacForceNowDropdown.swift`). Panel: Panel Raised background, 1px
+Stroke Regular, 4 (Menu Panel Vertical) padding, width 208, leading-aligned to the
+trigger and anchored 4pt below it, no shadow. Rows: full width, height 30, 12
+(Control Row) horizontal padding, NVIDIA Sans 12pt bold — Text Secondary resting,
+Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
+checkmark. Dismisses on outside click, Escape, or selection, and closes when the
+underlying item set changes.
+
+### Main Menu (app shell)
+
+Full-height leading panel (`CatalogMainMenuPanel`), width 344, surface #171717 @
+0.985, 1px white @ 0.10 trailing stroke, 2px accent bar along the top edge. Header
+block: 22 horizontal, 20 (Large) top, 18 (Card) bottom — 11pt bold accent eyebrow
+(tracking 1.4) over a 20pt bold title. Playtime card: Section Fill (#FFFFFF @ 0.055)
+with 1px white @ 0.10 stroke, 14 padding, 18 (Card) horizontal / 14 (Content
+Vertical) vertical margins. Sections: 10 (Section) horizontal margins, 14 (Content
+Vertical) top spacing, 6 between rows. Section labels are eyebrows (10pt bold,
+tracking 1.1, white @ 0.42) with 12 (Small) horizontal / 5 vertical padding. Rows
+(`CatalogMainMenuRow`): height 50 (38 compact), 8 (X-Small) leading / 12 (Control
+Row) trailing padding, 34×34 icon tile (accent fill when active, #FFFFFF @ 0.08
+resting / 0.16 hover), 13 icon-to-text spacing, 14pt bold title over an 11pt medium
+subtitle (white @ 0.52). Active row: accent @ 0.095 fill + 3px accent leading bar.
+Destructive rows tint icon and title #FF8A80. Sign Out is pinned below a divider
+with 10 (Section) horizontal / 12 (Small) vertical padding.
 
 ### Text Fields (login)
 

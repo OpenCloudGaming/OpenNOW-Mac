@@ -46,28 +46,28 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
 }
 
 struct VendorGetInButtonStyle: ButtonStyle {
+    enum Size {
+        case regular
+        case large
+
+        var height: CGFloat { self == .regular ? 36 : 40 }
+        var fontSize: CGFloat { self == .regular ? 14 : 15 }
+    }
+
+    var size: Size = .regular
+    var uiScale: CGFloat = 1
+    var minimumWidth: CGFloat?
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: 14, weight: .bold))
+            .font(.nvidiaSans(size: size.fontSize * uiScale, weight: .bold))
             .foregroundStyle(.black)
             .tracking(0.3)
-            .padding(.horizontal, 16)
-            .frame(height: 36)
+            .padding(.horizontal, MacForceNowDesign.Spacing.medium(scale: uiScale))
+            .frame(minWidth: minimumWidth.map { $0 * uiScale })
+            .frame(height: size.height * uiScale)
             .background(configuration.isPressed ? Color.openNowGreen.opacity(0.78) : Color.openNowGreen)
             .opacity(configuration.isPressed ? 0.92 : 1)
-    }
-}
-
-struct VendorProviderPickerButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 14)
-            .frame(height: 50)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .overlay {
-                Rectangle()
-                    .stroke(configuration.isPressed ? Color.openNowGreen.opacity(0.75) : Color.gfnStroke, lineWidth: 1)
-            }
     }
 }
 

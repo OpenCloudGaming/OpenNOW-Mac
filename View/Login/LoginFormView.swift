@@ -155,14 +155,17 @@ struct LoginFormView: View {
                 .foregroundStyle(Color.gfnTextTertiary)
                 .tracking(0.8)
 
-            Menu {
-                ForEach(viewModel.providers) { provider in
-                    Button(provider.title) {
-                        viewModel.selectProvider(provider)
-                    }
-                }
-            } label: {
-                HStack(spacing: 12) {
+            MacForceNowDropdownMenu(
+                items: viewModel.providers.map { provider in
+                    MacForceNowDropdownItem(
+                        id: provider.id,
+                        title: provider.title,
+                        isSelected: provider.id == viewModel.selectedProvider.id
+                    ) { viewModel.selectProvider(provider) }
+                },
+                isDisabled: viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating
+            ) {
+                HStack(spacing: MacForceNowDesign.Spacing.small) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(viewModel.selectedProvider.title)
                             .font(.nvidiaSans(size: 14, weight: .bold))
@@ -182,10 +185,14 @@ struct LoginFormView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color.openNowGreen)
                 }
-                .frame(maxWidth: 260, alignment: .leading)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: 260, minHeight: 50, alignment: .leading)
+                .background(Color.white.opacity(0.08))
+                .overlay {
+                    Rectangle()
+                        .stroke(Color.gfnStroke, lineWidth: 1)
+                }
             }
-            .buttonStyle(VendorProviderPickerButtonStyle())
-            .disabled(viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
 
             if viewModel.isLoadingProviders {
                 Text("Loading provider list...")

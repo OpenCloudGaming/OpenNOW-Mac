@@ -35,7 +35,10 @@ enum CatalogVendorLayout {
     private static let baseMainMenuWidth: CGFloat = 344
     private static let baseAccountMenuWidth: CGFloat = 260
 
-    static func windowTopInset(scale: CGFloat) -> CGFloat { baseWindowTopInset * scale }
+    /// The window titlebar has a fixed physical height regardless of interface scale; chrome below
+    /// it is positioned with the measured inset (WindowTopInsetReader) and falls back to this value.
+    static var fallbackWindowTopInset: CGFloat { baseWindowTopInset }
+
     static func appBarHeight(scale: CGFloat) -> CGFloat { baseAppBarHeight * scale }
     static func sectionHeaderMargin(scale: CGFloat) -> CGFloat { baseSectionHeaderMargin * scale }
     static func carouselContainerMargin(scale: CGFloat) -> CGFloat { baseCarouselContainerMargin * scale }
@@ -134,6 +137,11 @@ struct CatalogView: View {
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
     @State private var streamWindowTopInset: CGFloat = 0
+    @State private var catalogWindowTopInset: CGFloat = 0
+
+    private var measuredCatalogTopInset: CGFloat {
+        catalogWindowTopInset > 0 ? catalogWindowTopInset : CatalogVendorLayout.fallbackWindowTopInset
+    }
 
     init(
         account: LoginAccount,
@@ -186,14 +194,14 @@ struct CatalogView: View {
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                 }
-                .background(StreamWindowTopInsetReader { streamWindowTopInset = $0 })
+                .background(WindowTopInsetReader { streamWindowTopInset = $0 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .transition(.opacity)
             } else {
                 ZStack {
                     if controllerModeEnabled {
-                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                             .transition(.opacity)
                     } else {
                         VStack(spacing: 0) {
@@ -206,22 +214,21 @@ struct CatalogView: View {
                                 CatalogContentView(viewModel: viewModel)
                             }
                         }
-                        .padding(.top, CatalogVendorLayout.windowTopInset(scale: uiScale))
+                        .padding(.top, measuredCatalogTopInset)
                         .transition(.opacity)
 
                         if showsMainMenu {
-                            CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
+                            CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset, onSignOut: onSignOut)
                                 .transition(.opacity)
                                 .zIndex(12)
                         }
 
                         if showsAccountMenu {
-                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                                 .transition(.opacity)
                                 .zIndex(13)
                         }
                     }
-
                     if controllerModeEnabled == false {
                         EmptyView()
                     }
@@ -238,6 +245,7 @@ struct CatalogView: View {
                             .zIndex(18)
                     }
                 }
+                .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
             }
 
@@ -323,7 +331,7 @@ private struct VendorLaunchFlowOverlay: View {
     }
 }
 
-private struct StreamWindowTopInsetReader: NSViewRepresentable {
+private struct WindowTopInsetReader: NSViewRepresentable {
     let onChange: @MainActor (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -1207,6 +1215,7 @@ private struct CatalogHamburgerLabel: View {
 private struct CatalogMainMenuOverlay: View {
     let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
+    let topInset: CGFloat
     let onSignOut: () -> Void
     @Environment(\.opnUIScale) private var uiScale
 
@@ -1217,8 +1226,8 @@ private struct CatalogMainMenuOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture { isPresented = false }
 
-                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - CatalogVendorLayout.windowTopInset(scale: uiScale)))
-                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + CatalogVendorLayout.windowTopInset(scale: uiScale))
+                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - topInset))
+                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
                     .padding(.leading, 0)
             }
         }
@@ -1245,16 +1254,16 @@ private struct CatalogMainMenuPanel: View {
                     .foregroundStyle(.white.opacity(0.96))
             }
             .padding(.horizontal, 22)
-            .padding(.top, 20)
-            .padding(.bottom, 18)
+            .padding(.top, MacForceNowDesign.Spacing.large)
+            .padding(.bottom, MacForceNowDesign.Spacing.card)
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
+                .padding(.horizontal, MacForceNowDesign.Spacing.card)
+                .padding(.vertical, MacForceNowDesign.Spacing.contentVertical)
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -1282,8 +1291,8 @@ private struct CatalogMainMenuPanel: View {
                             isPresented = false
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 14)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.section)
+                    .padding(.top, MacForceNowDesign.Spacing.contentVertical)
 
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
@@ -1297,9 +1306,9 @@ private struct CatalogMainMenuPanel: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 14)
-                    .padding(.bottom, 18)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.section)
+                    .padding(.top, MacForceNowDesign.Spacing.contentVertical)
+                    .padding(.bottom, MacForceNowDesign.Spacing.card)
                 }
             }
 
@@ -1311,8 +1320,8 @@ private struct CatalogMainMenuPanel: View {
                 isPresented = false
                 onSignOut()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
+            .padding(.horizontal, MacForceNowDesign.Spacing.section)
+            .padding(.vertical, MacForceNowDesign.Spacing.small)
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
         .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
@@ -1350,6 +1359,7 @@ private struct CatalogAccountDropdownOverlay: View {
     let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
     @Binding var isPresented: Bool
+    let topInset: CGFloat
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
@@ -1363,7 +1373,7 @@ private struct CatalogAccountDropdownOverlay: View {
                     .onTapGesture { isPresented = false }
 
                 CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, isPresented: $isPresented, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + CatalogVendorLayout.windowTopInset(scale: uiScale))
+                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
                     .padding(.trailing, 22)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -1517,8 +1527,8 @@ private struct CatalogAccountDropdownRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 12)
+            .padding(.leading, MacForceNowDesign.Spacing.xSmall)
+            .padding(.trailing, MacForceNowDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 42)
             .background(rowBackground)
@@ -1557,7 +1567,7 @@ private struct CatalogMainMenuSectionLabel: View {
             .nvidiaFont(size: 10, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(.white.opacity(0.42))
-            .padding(.horizontal, 12)
+            .padding(.horizontal, MacForceNowDesign.Spacing.small)
             .padding(.vertical, 5)
     }
 }
@@ -1668,8 +1678,8 @@ private struct CatalogMainMenuRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 12)
+            .padding(.leading, MacForceNowDesign.Spacing.xSmall)
+            .padding(.trailing, MacForceNowDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: compact ? 38 : 50)
             .background(rowBackground)
@@ -2382,10 +2392,8 @@ private struct CatalogHeroView: View {
                         .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
                         Button { viewModel.selectGameFromHero(game) } label: {
                             Text("VIEW DETAILS")
-                                .nvidiaFont(size: 14, weight: .bold)
-                                .frame(width: 142 * uiScale, height: 41 * uiScale)
                         }
-                        .buttonStyle(VendorGetInButtonStyle())
+                        .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: uiScale, minimumWidth: 142))
                     }
                     .frame(width: textWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2491,46 +2499,52 @@ private struct CatalogBrowseControlsView: View {
                         .nvidiaFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.84))
                 }
-                Menu {
-                    ForEach(viewModel.sortOptions, id: \.id) { option in
-                        Button(option.label.isEmpty ? option.id : option.label) { viewModel.setSort(option.id) }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
+                MacForceNowDropdownMenu(
+                    items: viewModel.sortOptions.map { option in
+                        MacForceNowDropdownItem(
+                            id: option.id,
+                            title: option.label.isEmpty ? option.id : option.label,
+                            isSelected: option.id == viewModel.selectedSortId
+                        ) { viewModel.setSort(option.id) }
+                    },
+                    isDisabled: viewModel.sortOptions.isEmpty
+                ) {
+                    HStack(spacing: MacForceNowDesign.Spacing.xSmall) {
                         Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                         Image(systemName: "chevron.down")
                     }
                     .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
                     .frame(height: 34)
                     .background(Color.white.opacity(0.08))
                 }
-                .menuStyle(.button)
-                .disabled(viewModel.sortOptions.isEmpty)
             }
 
             if !viewModel.visibleFilterGroups.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(viewModel.visibleFilterGroups, id: \.id) { group in
-                            Menu {
-                                ForEach(group.options, id: \.id) { option in
-                                    Button(filterTitle(option: option)) { viewModel.toggleFilter(option.id) }
+                            MacForceNowDropdownMenu(
+                                items: group.options.map { option in
+                                    MacForceNowDropdownItem(
+                                        id: option.id,
+                                        title: option.label.isEmpty ? option.id : option.label,
+                                        isSelected: viewModel.selectedFilterIds.contains(option.id)
+                                    ) { viewModel.toggleFilter(option.id) }
                                 }
-                            } label: {
+                            ) {
                                 HStack(spacing: 7) {
                                     Text((group.label.isEmpty ? group.id : group.label).uppercased())
                                     Image(systemName: "slider.horizontal.3")
                                 }
                                 .nvidiaFont(size: 11, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.82))
-                                .padding(.horizontal, 11)
+                                .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
                                 .frame(height: 32)
                                 .background(Color.white.opacity(0.075))
                                 .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
                             }
-                            .menuStyle(.button)
                         }
                         ForEach(selectedFilterOptions, id: \.id) { option in
                             Button { viewModel.toggleFilter(option.id) } label: {
@@ -2554,11 +2568,6 @@ private struct CatalogBrowseControlsView: View {
 
     private var selectedFilterOptions: [OPNCatalogFilterOptionObject] {
         viewModel.visibleFilterGroups.flatMap(\.options).filter { viewModel.selectedFilterIds.contains($0.id) }
-    }
-
-    private func filterTitle(option: OPNCatalogFilterOptionObject) -> String {
-        let selectedPrefix = viewModel.selectedFilterIds.contains(option.id) ? "✓ " : ""
-        return selectedPrefix + (option.label.isEmpty ? option.id : option.label)
     }
 }
 
@@ -3486,28 +3495,6 @@ private struct MallRibbonShape: Shape {
     }
 }
 
-private struct CatalogDetailActionsMenuItem: View {
-    let title: String
-    let action: () -> Void
-    @State private var isHovering = false
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .nvidiaFont(size: 12, weight: .bold)
-                .foregroundStyle(isHovering ? MacForceNowDesign.Text.primary : MacForceNowDesign.Text.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12 * uiScale)
-                .frame(height: 30 * uiScale)
-                .background(isHovering ? Color.white.opacity(0.08) : .clear)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-    }
-}
-
 struct GameDetailPanel: View {
     let viewModel: CatalogViewModel
     /// Width the panel will occupy. Needed up front because the panel height is derived from it.
@@ -3766,20 +3753,18 @@ struct GameDetailPanel: View {
         HStack(spacing: 10) {
             Button { primaryAction(game: game) } label: {
                 Text(primaryActionTitle(game: game))
-                    .nvidiaFont(size: 15, weight: .bold)
-                    .tracking(0.3)
-                    .frame(width: (primaryActionTitle(game: game) == "PLAY" ? 72 : 132) * uiScale, height: 40 * uiScale)
             }
-            .buttonStyle(VendorGetInButtonStyle())
+            .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: uiScale, minimumWidth: primaryActionTitle(game: game) == "PLAY" ? 72 : 132))
             .disabled((game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game))
             .fixedSize()
 
             Button { showsActionsMenu.toggle() } label: {
-                Text("⋮")
-                    .font(.system(size: 26 * uiScale, weight: .bold))
+                Image(systemName: "ellipsis")
+                    .nvidiaFont(size: 15, weight: .bold)
                     .foregroundStyle(.white.opacity(0.88))
-                    .offset(y: -1)
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
+                    .background(Color.white.opacity(0.08))
+                    .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .overlay {
@@ -3803,44 +3788,37 @@ struct GameDetailPanel: View {
     }
 
     private func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if game.variants.count > 1 {
-                CatalogDetailActionsMenuItem(title: "Change game store") {
-                    showsActionsMenu = false
-                    viewModel.changeSelectedGameStore()
-                }
-            }
-            CatalogDetailActionsMenuItem(title: "Share") {
+        var items: [MacForceNowDropdownItem] = []
+        if game.variants.count > 1 {
+            items.append(MacForceNowDropdownItem(id: "changeStore", title: "Change game store") {
                 showsActionsMenu = false
-                viewModel.shareSelectedGame()
-            }
-            CatalogDetailActionsMenuItem(title: "Add shortcut") {
-                showsActionsMenu = false
-                viewModel.addShortcutForSelectedGame()
-            }
-            if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
-                CatalogDetailActionsMenuItem(title: "Unmark as owned") {
-                    showsActionsMenu = false
-                    viewModel.removeSelectedVariantOwned()
-                }
-            } else if selectedVariant != nil {
-                CatalogDetailActionsMenuItem(title: "Mark as owned") {
-                    showsActionsMenu = false
-                    viewModel.markSelectedVariantOwned()
-                }
-            }
-            CatalogDetailActionsMenuItem(title: "Visit game store") {
-                showsActionsMenu = false
-                viewModel.openStoreForSelectedVariant()
-            }
+                viewModel.changeSelectedGameStore()
+            })
         }
-        .padding(.vertical, 4 * uiScale)
-        .frame(width: 208 * uiScale)
-        .background(MacForceNowDesign.Surface.panelRaised)
-        .overlay {
-            Rectangle()
-                .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
+        items.append(MacForceNowDropdownItem(id: "share", title: "Share") {
+            showsActionsMenu = false
+            viewModel.shareSelectedGame()
+        })
+        items.append(MacForceNowDropdownItem(id: "addShortcut", title: "Add shortcut") {
+            showsActionsMenu = false
+            viewModel.addShortcutForSelectedGame()
+        })
+        if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+            items.append(MacForceNowDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {
+                showsActionsMenu = false
+                viewModel.removeSelectedVariantOwned()
+            })
+        } else if selectedVariant != nil {
+            items.append(MacForceNowDropdownItem(id: "markOwned", title: "Mark as owned") {
+                showsActionsMenu = false
+                viewModel.markSelectedVariantOwned()
+            })
         }
+        items.append(MacForceNowDropdownItem(id: "visitStore", title: "Visit game store") {
+            showsActionsMenu = false
+            viewModel.openStoreForSelectedVariant()
+        })
+        return MacForceNowDropdownPanel(items: items)
     }
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {

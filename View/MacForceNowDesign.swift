@@ -26,13 +26,53 @@ enum MacForceNowDesign {
     }
 
     enum Spacing {
+        private static let baseXXSmall: CGFloat = 4
+        private static let baseXSmall: CGFloat = 8
+        private static let baseSmall: CGFloat = 12
+        private static let baseMedium: CGFloat = 16
+        private static let baseLarge: CGFloat = 20
+        private static let baseXLarge: CGFloat = 24
+        private static let baseXXLarge: CGFloat = 32
+        private static let baseXXXLarge: CGFloat = 40
         private static let basePageHorizontal: CGFloat = 40
         private static let baseRailHorizontal: CGFloat = 32
         private static let baseCard: CGFloat = 18
+        private static let baseSection: CGFloat = 10
+        private static let baseContentVertical: CGFloat = 14
+        private static let baseControlRow: CGFloat = 12
+        private static let baseMenuPanelVertical: CGFloat = 4
 
+        static let xxSmall: CGFloat = baseXXSmall
+        static let xSmall: CGFloat = baseXSmall
+        static let small: CGFloat = baseSmall
+        static let medium: CGFloat = baseMedium
+        static let large: CGFloat = baseLarge
+        static let xLarge: CGFloat = baseXLarge
+        static let xxLarge: CGFloat = baseXXLarge
+        static let xxxLarge: CGFloat = baseXXXLarge
+        static let pageHorizontal: CGFloat = basePageHorizontal
+        static let railHorizontal: CGFloat = baseRailHorizontal
+        static let card: CGFloat = baseCard
+        static let section: CGFloat = baseSection
+        static let contentVertical: CGFloat = baseContentVertical
+        static let controlRow: CGFloat = baseControlRow
+        static let menuPanelVertical: CGFloat = baseMenuPanelVertical
+
+        static func xxSmall(scale: CGFloat) -> CGFloat { baseXXSmall * scale }
+        static func xSmall(scale: CGFloat) -> CGFloat { baseXSmall * scale }
+        static func small(scale: CGFloat) -> CGFloat { baseSmall * scale }
+        static func medium(scale: CGFloat) -> CGFloat { baseMedium * scale }
+        static func large(scale: CGFloat) -> CGFloat { baseLarge * scale }
+        static func xLarge(scale: CGFloat) -> CGFloat { baseXLarge * scale }
+        static func xxLarge(scale: CGFloat) -> CGFloat { baseXXLarge * scale }
+        static func xxxLarge(scale: CGFloat) -> CGFloat { baseXXXLarge * scale }
         static func pageHorizontal(scale: CGFloat) -> CGFloat { basePageHorizontal * scale }
         static func railHorizontal(scale: CGFloat) -> CGFloat { baseRailHorizontal * scale }
         static func card(scale: CGFloat) -> CGFloat { baseCard * scale }
+        static func section(scale: CGFloat) -> CGFloat { baseSection * scale }
+        static func contentVertical(scale: CGFloat) -> CGFloat { baseContentVertical * scale }
+        static func controlRow(scale: CGFloat) -> CGFloat { baseControlRow * scale }
+        static func menuPanelVertical(scale: CGFloat) -> CGFloat { baseMenuPanelVertical * scale }
     }
 
     enum Radius {

@@ -191,11 +191,11 @@ struct RecordingsView: View {
     private var sortAndFilters: some View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             HStack(spacing: 10 * uiScale) {
-                Menu {
-                    ForEach(RecordingSortOrder.allCases) { order in
-                        Button(order.title) { sortOrder = order }
+                MacForceNowDropdownMenu(
+                    items: RecordingSortOrder.allCases.map { order in
+                        MacForceNowDropdownItem(id: order.id, title: order.title, isSelected: order == sortOrder) { sortOrder = order }
                     }
-                } label: {
+                ) {
                     HStack(spacing: 8 * uiScale) {
                         Image(systemName: "arrow.up.arrow.down")
                         Text(sortOrder.title)
@@ -204,12 +204,11 @@ struct RecordingsView: View {
                     }
                     .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.84))
-                    .padding(.horizontal, 12 * uiScale)
+                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
                     .background(RecordingsLayout.card)
                     .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
                 }
-                .buttonStyle(.plain)
 
                 Spacer()
 
