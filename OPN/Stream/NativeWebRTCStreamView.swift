@@ -34,6 +34,7 @@ public enum WebRTCMediaStreamCommand: Equatable, Sendable {
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
+    case toggleOnScreenKeyboard
 
     static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘P Capture   ⌘Q Quit"
 
@@ -217,6 +218,13 @@ public final class NativeWebRTCStreamView: NSView {
     /// pump can stop draining the NSApp event queue while overlay buttons
     /// are waiting on those mouse events.
     public var localOverlayCapturesInput = false
+    /// Passthrough to the gamepad monitor: while this returns true for a Steam
+    /// Controller report, the raw snapshot goes to the on-screen keyboard instead
+    /// of the binding engine. Set by the active stream host.
+    public var onScreenKeyboardCapture: ((InputDeviceID, SteamControllerInputSnapshot) -> Bool)? {
+        get { gamepadMonitor.onScreenKeyboardCapture }
+        set { gamepadMonitor.onScreenKeyboardCapture = newValue }
+    }
     public var hidesCursorWhilePointerLocked = true {
         didSet {
             guard isPointerLocked else { return }
@@ -238,7 +246,6 @@ public final class NativeWebRTCStreamView: NSView {
     private var pushToTalkState: NativeNVSTPushToTalkState?
     private var pressedMouseButtons: Set<MouseButton> = []
     private var activeGamepadStates: [Int: GamepadState] = [:]
-    private var quickAccessPressedDevices: Set<InputDeviceID> = []
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private let pillarboxOverlay = NativeNVSTPillarboxOverlayView()
@@ -282,6 +289,13 @@ public final class NativeWebRTCStreamView: NSView {
         nativeNVSTRendererWindow.alphaValue = 0
         nativeNVSTRendererWindow.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         gamepadMonitor.onInputEvent = { [weak self] event in self?.handleGamepadEvent(event) }
+        gamepadMonitor.onChordCommand = { [weak self] command in
+            guard let self else { return }
+            switch command {
+            case .toggleUnifiedHUD: self.onCommand?(.toggleUnifiedHUD)
+            case .toggleOnScreenKeyboard: self.onCommand?(.toggleOnScreenKeyboard)
+            }
+        }
         gamepadMonitor.onTopologyChanged = { [weak self] topology in
             guard let self else { return }
             self.activeGamepadStates = self.activeGamepadStates.filter { topology.playerIndices.contains($0.key) }
@@ -290,40 +304,17 @@ public final class NativeWebRTCStreamView: NSView {
         gamepadMonitor.start()
     }
 
-    /// The quick access button toggles the local unified HUD (same as Cmd-G)
-    /// instead of reaching the stream, where GFN ignores it. It must keep
-    /// working while `remoteInputEnabled` is false — that is exactly the state
-    /// the HUD puts us in, and the button has to be able to close it again.
+    /// The `...` quick-access HUD toggle and the Steam+X on-screen keyboard chord
+    /// are resolved in the gamepad monitor ahead of the binding engine, so
+    /// quickAccess never reaches this point. Remote input disabled means a local
+    /// overlay owns the pad: hand gamepad state to the host instead of the stream.
     private func handleGamepadEvent(_ event: UserInputEvent) {
         guard case .gamepad(let state) = event else {
             guard remoteInputEnabled else { return }
             onInputEvent?(event)
             return
         }
-        guard state.buttons.contains(.quickAccess) || quickAccessPressedDevices.contains(state.deviceID) else {
-            routeGamepadState(state)
-            return
-        }
-        let isPressed = state.buttons.contains(.quickAccess)
-        if isPressed, !quickAccessPressedDevices.contains(state.deviceID) {
-            quickAccessPressedDevices.insert(state.deviceID)
-            onCommand?(.toggleUnifiedHUD)
-        } else if !isPressed {
-            quickAccessPressedDevices.remove(state.deviceID)
-        }
-        let stripped = GamepadState(
-            deviceID: state.deviceID,
-            playerIndex: state.playerIndex,
-            buttons: state.buttons.subtracting(.quickAccess),
-            leftTrigger: state.leftTrigger,
-            rightTrigger: state.rightTrigger,
-            leftStickX: state.leftStickX,
-            leftStickY: state.leftStickY,
-            rightStickX: state.rightStickX,
-            rightStickY: state.rightStickY,
-            timestamp: state.timestamp
-        )
-        routeGamepadState(stripped)
+        routeGamepadState(state)
     }
 
     /// Remote input disabled means a local overlay owns the pad: hand the

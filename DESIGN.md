@@ -280,6 +280,22 @@ Buttons. Escape (`.cancelAction`) maps to the primary dismiss action.
 252-wide top-trailing panel, Panel background @ 0.92, 1px accent @ 0.28 stroke, 14
 padding, eyebrow header, label/value stat rows (11pt).
 
+### On-Screen Keyboard (`StreamOnScreenKeyboardOverlay`)
+
+Bottom-anchored panel invoked in-stream with Steam + X (Steam Deck-style chord);
+works on both the WebRTC and native NVST paths. Panel background @ 0.985, 2px accent
+top bar, 1px Divider stroke. App Bar header strip holds the eyebrow label, a live
+echo of recently typed text (12pt medium Text Primary, head-truncated), and accent
+state badges for latched Shift and the symbols layer. The key grid is 10 columns ×
+4 rows of square 46×40 keys (13pt bold, Row Fill resting background, 1px Divider
+stroke), split between columns 5/6: each trackpad owns one half. Cursor highlights:
+left pad = Accent Soft stroke + 0.28 fill, right pad = accent stroke + 0.28 fill,
+d-pad/stick grid cursor = 2px Text Primary stroke. Latched Shift / active symbols
+keys use the accent fill with black glyph. A bottom bar holds the layer toggle,
+a wide space key, and the dismiss key, followed by a 9pt bold hint footer. Key
+activation sends UTF-8 text events for characters and macOS keycode press/release
+pairs for Return/Backspace, matching the physical-keyboard passthrough.
+
 ### Stream Launch Loading Screen (`StreamLaunchLoadingScreen`)
 
 Full-cover black surface with blurred loading artwork, a top-to-bottom scrim

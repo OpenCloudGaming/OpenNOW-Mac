@@ -64,6 +64,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var hudFocusID: String?
     @State private var quitMenuFocusIndex = 0
     @State private var hudGamepadTracker = StreamHUDGamepadTracker()
+    @State private var onScreenKeyboardVisible = false
+    @State private var restorePointerLockOnKeyboardHide = false
+    @StateObject private var onScreenKeyboard = StreamOnScreenKeyboardController()
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
     @State private var sessionLimit: StreamSessionSidebarLimit?
 
@@ -93,6 +96,17 @@ public struct WebRTCMediaStreamSurface: View {
                 view.shouldHandleCommand = { _ in true }
                 view.onCommand = { command in
                     handle(command)
+                }
+                view.onScreenKeyboardCapture = { deviceID, snapshot in
+                    guard onScreenKeyboardVisible else { return false }
+                    onScreenKeyboard.handleSteamSnapshot(deviceID: deviceID, snapshot: snapshot)
+                    return true
+                }
+                onScreenKeyboard.onOutput = { output in
+                    sendOnScreenKeyboardOutput(output)
+                }
+                onScreenKeyboard.onDismiss = {
+                    setOnScreenKeyboardVisible(false)
                 }
                 if startTask == nil {
                     startTask = Task { await startIfNeeded(nativeView: view) }
@@ -133,6 +147,7 @@ public struct WebRTCMediaStreamSurface: View {
         if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
         if statsVisible { statsHUD }
         if unifiedHUDVisible { unifiedHUD }
+        if onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: onScreenKeyboard) }
         if isStreamReady { sessionLimitCountdownOverlay }
         if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
         if quitMenuVisible { quitMenu }
@@ -1185,6 +1200,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             return
         }
+        if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
         restorePointerLockOnHUDHide = pointerLocked
         hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
         nativeView?.setPointerLocked(false)
@@ -1367,6 +1383,13 @@ public struct WebRTCMediaStreamSurface: View {
             handleRecordingStatusChanged(status)
         }
         nativeView.onInputEvent = { event in
+            if onScreenKeyboardVisible, !isEndingStream, case .gamepad(let state) = event {
+                onScreenKeyboard.handleGamepadState(state)
+                if isStreamReady {
+                    transport.sendNow(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
+                }
+                return
+            }
             if unifiedHUDVisible || quitMenuVisible, !isEndingStream, case .gamepad(let state) = event {
                 if quitMenuVisible {
                     handleQuitMenuGamepad(state)
@@ -1572,6 +1595,43 @@ public struct WebRTCMediaStreamSurface: View {
             togglePointerLockFromHUD()
         case .showQuitMenu:
             showQuitMenu()
+        case .toggleOnScreenKeyboard:
+            toggleOnScreenKeyboard()
+        }
+    }
+
+    private func toggleOnScreenKeyboard() {
+        guard isStreamReady, !isEndingStream, !didEndStream else { return }
+        setOnScreenKeyboardVisible(!onScreenKeyboardVisible)
+        WebRTCMediaTelemetry.capture("webrtc.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["visible": String(onScreenKeyboardVisible)])
+    }
+
+    private func setOnScreenKeyboardVisible(_ visible: Bool) {
+        if visible {
+            if quitMenuVisible { dismissQuitMenu() }
+            if unifiedHUDVisible { setUnifiedHUDVisible(false) }
+            onScreenKeyboard.reset()
+            restorePointerLockOnKeyboardHide = pointerLocked
+            if pointerLocked { nativeView?.setPointerLocked(false) }
+        }
+        onScreenKeyboardVisible = visible
+        guard !visible, restorePointerLockOnKeyboardHide else { return }
+        restorePointerLockOnKeyboardHide = false
+        if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
+            nativeView?.setPointerLocked(true)
+        }
+    }
+
+    private func sendOnScreenKeyboardOutput(_ output: StreamOSKOutput) {
+        guard isStreamReady, !isEndingStream, let transport else { return }
+        let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+        lastAcceptedStreamInputAt = Date()
+        switch output {
+        case .text(let value):
+            transport.sendNow(.text(deviceID: "keyboard", value: value, timestamp: timestamp))
+        case .keyPress(let keyCode):
+            transport.sendNow(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: keyCode, scanCode: keyCode, isPressed: true, timestamp: timestamp)))
+            transport.sendNow(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: keyCode, scanCode: keyCode, isPressed: false, timestamp: timestamp)))
         }
     }
 
@@ -1676,6 +1736,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func showQuitMenu(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
+        if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
@@ -1795,6 +1856,9 @@ public struct WebRTCMediaStreamSurface: View {
         controllerBatteries.removeAll()
         batteryAlertTracker.reset()
         sessionLimit = nil
+        onScreenKeyboardVisible = false
+        restorePointerLockOnKeyboardHide = false
+        nativeView?.onScreenKeyboardCapture = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)

@@ -152,8 +152,18 @@ public final class NativeWebRTCGamepadMonitor {
     private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]
     private var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
     private var localCursorModeHeld: Set<InputDeviceID> = []
+    private var chordTracker = StreamOSKChordTracker()
+    private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
     private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     private var accessibilityPromptShown = false
+
+    /// Controller chords: the `...` quick-access button toggles the HUD, and
+    /// Steam+X toggles the on-screen keyboard. Fired for every Steam Controller
+    /// report, including while the keyboard captures the device.
+    public var onChordCommand: ((StreamOSKChordCommand) -> Void)?
+    /// Returning true hands the raw snapshot to the on-screen keyboard instead of
+    /// the binding engine. The keyboard also owns button navigation while active.
+    public var onScreenKeyboardCapture: ((InputDeviceID, SteamControllerInputSnapshot) -> Bool)?
 
     private let mappingProvider: any SteamControllerMappingProviding
 
@@ -209,6 +219,8 @@ public final class NativeWebRTCGamepadMonitor {
         reapplyTasks.values.forEach { $0.cancel() }
         reapplyTasks.removeAll()
         bindingEngines.removeAll()
+        chordTracker.reset()
+        onScreenKeyboardCapturedDevices.removeAll()
         if !localCursorModeHeld.isEmpty {
             localCursorModeHeld.removeAll()
             SteamControllerLocalCursorInjector.shared.reset()
@@ -265,6 +277,10 @@ public final class NativeWebRTCGamepadMonitor {
             bindingEngines.removeValue(forKey: deviceID)
             reapplyTasks.removeValue(forKey: deviceID)?.cancel()
         }
+        for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
+            chordTracker.removeDevice(deviceID)
+            onScreenKeyboardCapturedDevices.remove(deviceID)
+        }
         let staleCursorDeviceIDs = localCursorModeHeld.filter { newSteamSlots[$0] == nil }
         if !staleCursorDeviceIDs.isEmpty {
             localCursorModeHeld.subtract(staleCursorDeviceIDs)
@@ -295,7 +311,7 @@ public final class NativeWebRTCGamepadMonitor {
         for (deviceID, slot) in currentSteamSlots where previousSteamSlots[deviceID] != slot {
             guard let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID),
                   snapshot != SteamControllerInputSnapshot() else { continue }
-            applyBindingEngine(deviceID: deviceID, playerIndex: slot, snapshot: snapshot, includePointerMotion: !snapshot.buttons.contains(.mode))
+            processSteamSnapshot(deviceID: deviceID, playerIndex: slot, snapshot: snapshot)
         }
         let occupiedSlots = Set(currentControllerSlots.values).union(currentSteamSlots.values)
         for slot in previousOccupiedSlots.subtracting(occupiedSlots) {
@@ -332,6 +348,32 @@ public final class NativeWebRTCGamepadMonitor {
 
     private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot) {
         guard pollingAllowed, let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
+        processSteamSnapshot(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot)
+    }
+
+    /// Single entry for every Steam Controller report — live or replayed — so the
+    /// chord tracker and the on-screen keyboard capture observe the same stream of
+    /// state. Chords are resolved first (Steam+X must keep working while the
+    /// keyboard captures the device), then the capture split, then normal binding.
+    /// The Steam button itself is left in the buttons — the local-cursor modifier
+    /// below reads it.
+    private func processSteamSnapshot(deviceID: InputDeviceID, playerIndex: Int, snapshot: SteamControllerInputSnapshot) {
+        let chord = chordTracker.process(buttons: snapshot.buttons, deviceID: deviceID)
+        var snapshot = snapshot
+        snapshot.buttons = chord.buttons
+        if let command = chord.command {
+            onChordCommand?(command)
+        }
+        if onScreenKeyboardCapture?(deviceID, snapshot) == true {
+            if onScreenKeyboardCapturedDevices.insert(deviceID).inserted {
+                applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: SteamControllerInputSnapshot(), includePointerMotion: true)
+            }
+            if localCursorModeHeld.remove(deviceID) != nil {
+                SteamControllerLocalCursorInjector.shared.reset()
+            }
+            return
+        }
+        onScreenKeyboardCapturedDevices.remove(deviceID)
         applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot, includePointerMotion: !snapshot.buttons.contains(.mode))
         if snapshot.buttons.contains(.mode) {
             let isRisingEdge = localCursorModeHeld.insert(deviceID).inserted
@@ -376,7 +418,7 @@ public final class NativeWebRTCGamepadMonitor {
             self.reapplyTasks.removeValue(forKey: deviceID)
             guard self.pollState.steamControllerSlots[deviceID] == playerIndex,
                   let latest = SteamControllerHIDMonitor.shared.snapshot(for: deviceID) else { return }
-            self.applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: latest, includePointerMotion: !latest.buttons.contains(.mode))
+            self.processSteamSnapshot(deviceID: deviceID, playerIndex: playerIndex, snapshot: latest)
         }
     }
 

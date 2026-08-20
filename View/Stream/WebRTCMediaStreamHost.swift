@@ -3,6 +3,7 @@
 //  Created by OpenCode on 6/16/26.
 //
 
+import Combine
 import Foundation
 import SwiftUI
 
@@ -318,6 +319,9 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var hudFocusID: String?
     @State private var hudGamepadTracker = StreamHUDGamepadTracker()
     @State private var streamControlsFocusIndex = 0
+    @State private var onScreenKeyboardVisible = false
+    @State private var restorePointerLockOnKeyboardHide = false
+    @StateObject private var onScreenKeyboard = StreamOnScreenKeyboardController()
     @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
 
     var body: some View {
@@ -554,6 +558,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
+        nativeView?.onScreenKeyboardCapture = nil
         if let path {
             Task {
                 await inputDispatcher?.finish()
@@ -630,6 +635,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         isConnected = false
         unifiedHUDVisible = false
         streamControlsVisible = false
+        onScreenKeyboardVisible = false
+        restorePointerLockOnKeyboardHide = false
+        nativeView?.localOverlayCapturesInput = false
         nativeStatsVisible = false
         microphoneAvailable = false
         microphoneEnabled = false
@@ -689,6 +697,13 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func configureInput(for view: NativeWebRTCStreamView) {
         view.onInputEvent = { [weak view] event in
+            if onScreenKeyboardVisible, !isEnding, !didEnd, case .gamepad(let state) = event {
+                onScreenKeyboard.handleGamepadState(state)
+                if isConnected {
+                    inputDispatcher?.enqueue(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
+                }
+                return
+            }
             guard path != nil, let view, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
             if view.remoteInputEnabled && !NativeNVSTInputDispatcher.isNeutralizing(event) {
                 guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
@@ -718,6 +733,17 @@ private struct NativeNVSTMediaStreamSurface: View {
         view.onGamepadTopologyChanged = { topology in
             guard let path, isConnected, !isEnding, !didEnd else { return }
             Task { try? await path.updateGamepadTopology(topology) }
+        }
+        view.onScreenKeyboardCapture = { deviceID, snapshot in
+            guard onScreenKeyboardVisible else { return false }
+            onScreenKeyboard.handleSteamSnapshot(deviceID: deviceID, snapshot: snapshot)
+            return true
+        }
+        onScreenKeyboard.onOutput = { output in
+            sendOnScreenKeyboardOutput(output)
+        }
+        onScreenKeyboard.onDismiss = {
+            setOnScreenKeyboardVisible(false)
         }
         view.onLocalGamepadState = { state in
             guard !isEnding, !didEnd, !showingControllerMapping else { return }
@@ -791,6 +817,43 @@ private struct NativeNVSTMediaStreamSurface: View {
             toggleNativePointerLock()
         case .showQuitMenu:
             if !streamControlsVisible { showStreamControls() }
+        case .toggleOnScreenKeyboard:
+            toggleOnScreenKeyboard()
+        }
+    }
+
+    private func toggleOnScreenKeyboard() {
+        guard isConnected, !isEnding, !didEnd, !streamControlsVisible else { return }
+        setOnScreenKeyboardVisible(!onScreenKeyboardVisible)
+        WebRTCMediaTelemetry.capture("nvst.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(onScreenKeyboardVisible)])
+    }
+
+    private func setOnScreenKeyboardVisible(_ visible: Bool) {
+        if visible {
+            if unifiedHUDVisible { setUnifiedHUDVisible(false) }
+            onScreenKeyboard.reset()
+            restorePointerLockOnKeyboardHide = pointerLocked
+            if pointerLocked { nativeView?.setPointerLocked(false) }
+        }
+        onScreenKeyboardVisible = visible
+        nativeView?.localOverlayCapturesInput = visible
+        guard !visible, restorePointerLockOnKeyboardHide else { return }
+        restorePointerLockOnKeyboardHide = false
+        if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
+            nativeView?.setPointerLocked(true)
+        }
+    }
+
+    private func sendOnScreenKeyboardOutput(_ output: StreamOSKOutput) {
+        guard isConnected, !isEnding, !didEnd, inputDispatcher != nil else { return }
+        let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+        lastAcceptedStreamInputAt = Date()
+        switch output {
+        case .text(let value):
+            inputDispatcher?.enqueue(.text(deviceID: "keyboard", value: value, timestamp: timestamp))
+        case .keyPress(let keyCode):
+            inputDispatcher?.enqueue(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: keyCode, scanCode: keyCode, isPressed: true, timestamp: timestamp)))
+            inputDispatcher?.enqueue(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: keyCode, scanCode: keyCode, isPressed: false, timestamp: timestamp)))
         }
     }
 
@@ -920,6 +983,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         unifiedHUDVisible = false
+        onScreenKeyboardVisible = false
+        nativeView?.localOverlayCapturesInput = false
         hudFocusID = nil
         hudGamepadTracker.reset()
         streamControlsFocusIndex = 0
@@ -946,6 +1011,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard isConnected, !streamControlsVisible else { return }
         hudGamepadTracker.reset()
         if visible {
+            if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
             nativeView?.remoteInputEnabled = false
             unifiedHUDVisible = true
             hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
@@ -1085,6 +1151,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     nativeUnifiedHUD
                 }
             }
+            if onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: onScreenKeyboard) }
             if streamControlsVisible { nativeStreamControlsOverlay }
             if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }

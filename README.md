@@ -34,6 +34,7 @@ Not a wrapped web page. A real Mac app — SwiftUI front to back, native WebRTC 
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, plus persistent Library and Favorites. |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session — signed invites, host-approved, native input path. |
+| ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game — dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app — catalog, details, settings — from the pad. Never reach for the mouse. |
 | 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |
@@ -86,8 +87,6 @@ The two-transport architecture is documented in [`docs/StreamTransportArchitectu
 
 ## Steam Controller, Unlocked
 
-<sub>Experimental</sub>
-
 MacForce Now talks to Valve's controllers directly over HID, so you get the pad in your GeForce NOW stream without Steam running in the background.
 
 - **Every 2026 variant** — wired, BLE, and both dongles — plus the original 2015 controller.
@@ -99,6 +98,17 @@ MacForce Now talks to Valve's controllers directly over HID, so you get the pad 
 - **Lizard mode off** — the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 
 ![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)
+
+### Steam + X On-Screen Keyboard
+
+![On-screen keyboard over a game — 10×4 QWERTY grid with split-half trackpad cursors, accent highlights, and a bottom bar with layer toggle, space, position flip, and dismiss](docs/screenshots/on-screen-keyboard.png)
+
+A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NOW title. The keyboard works on **both the WebRTC and native NVST streaming paths** and sends keys exactly the way a physical keyboard does — UTF‑8 text for characters, macOS keycodes for Return/Backspace.
+
+- **Dual trackpads** each own one half of the grid. Touch a pad to aim, click it (or pull L2/R2) to type the aimed key.
+- **No trackpads?** D‑pad or left stick moves the grid cursor; A types, B is Backspace, X is Space, Y toggles Shift, Start presses Enter.
+- **Overlapping game UI?** Tap the ⬍ position key in the bottom bar to flip the keyboard to the top of the screen.
+- **Steam alone** still works as the local‑cursor modifier — hold Steam to drive the Mac cursor with the right pad, same as before.
 
 > Steam grabs the controller exclusively while it's running. Quit Steam first.
 
