@@ -290,6 +290,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var nativeStatsVisible = false
     @State private var latestNativeStats: NativeNVSTPerformanceSnapshot?
     @State private var nativeStatsTask: Task<Void, Never>?
+    @State private var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
     @State private var inputDispatcher: NativeNVSTInputDispatcher?
     @State private var microphoneAvailable = false
     @State private var microphoneEnabled = false
@@ -321,17 +322,14 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            NativeNVSTStreamHostView(
-                overlay: AnyView(nativeWindowOverlay),
-                overlayVisible: nativeStatsVisible || unifiedHUDVisible || streamControlsVisible || !networkPathAvailable || !transientStreamMessage.isEmpty,
-                overlayCapturesInput: unifiedHUDVisible || streamControlsVisible || !networkPathAvailable
-            ) { view in
+            Color.black.ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+            NativeNVSTStreamHostView { view in
                 nativeView = view
                 configureNativeView(view)
                 startIfNeeded()
             }
-            .ignoresSafeArea()
+            .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+            nativeWindowOverlay
             if !isConnected {
                 StreamLaunchLoadingScreen(
                     title: configuration.title,
@@ -376,6 +374,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let initialMicrophoneEnabled = microphoneEnabled
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000), l4sEnabled: profile.enableL4S)
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
@@ -397,6 +396,9 @@ private struct NativeNVSTMediaStreamSurface: View {
             prepareVideoSurfaceForShutdown: {
                 nativeView.prepareNativeNVSTRendererForShutdown()
             },
+            restoreVideoSurfaceAfterRecovery: {
+                nativeView.setNativeNVSTVideoVisible(true)
+            },
             hapticHandler: { [weak nativeView] command in
                 nativeView?.playHaptic(command)
             },
@@ -407,7 +409,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeView?.localOverlayCapturesInput ?? false
             }
         )
-        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport)
+        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
         let inputDispatcher = NativeNVSTInputDispatcher { input in
             switch input {
             case .event(let event):
@@ -516,6 +518,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil
         networkGovernor = nil
         networkPathTask?.cancel()
@@ -581,7 +584,16 @@ private struct NativeNVSTMediaStreamSurface: View {
             return false
         }
         do {
-            try await path.setMicrophoneEnabled(false)
+            do {
+                try await path.setMicrophoneEnabled(false)
+            } catch {
+                WebRTCMediaTelemetry.capture(
+                    "nvst.microphone.shutdown.failed",
+                    level: .warning,
+                    message: Self.message(for: error),
+                    attributes: ["applicationID": configuration.applicationID, "reason": reason.rawValue]
+                )
+            }
             let report = try await path.stop(reason: reason, message: message)
             await MainActor.run { finishOnce(report: report) }
             return true
@@ -628,6 +640,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
         latestNativeStats = nil
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil
         networkGovernor = nil
         networkPathTask?.cancel()
@@ -658,6 +671,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         view.directMouseInputEnabled = profile.directMouseInput
         view.locksPointerWhenRelativeModeSelected = true
+        view.confinesCursorToWindowInAbsoluteMode = profile.directMouseInput
         view.hidesCursorWhilePointerLocked = true
         view.onPointerLockChanged = { locked in pointerLocked = locked }
         if path == nil { view.mouseInputMode = .absolute }
@@ -695,8 +709,9 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         view.onAbsoluteMouseMove = { event in
             guard isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd,
-                  view.remoteInputEnabled, view.mouseInputMode == .absolute,
-                  NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+                  view.remoteInputEnabled, view.mouseInputMode == .absolute else { return }
+            guard view.isEmittingNeutralizingAbsolutePosition ||
+                    (NSApplication.shared.isActive && view.window?.isKeyWindow == true) else { return }
             lastAcceptedStreamInputAt = Date()
             inputDispatcher?.enqueueAbsoluteMove(event)
         }
@@ -966,11 +981,21 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeStatsTask?.cancel()
         nativeStatsTask = Task {
             while !Task.isCancelled {
-                if let snapshot = await path.performanceSnapshot(), isConnected, !isEnding, !didEnd {
+                let snapshot = await path.performanceSnapshot()
+                if snapshot == nil {
+                    nativeStreamHealth = NativeNVSTStreamHealthMonitor()
+                }
+                if let snapshot, isConnected, !isEnding, !didEnd {
                     latestNativeStats = snapshot
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
+                }
+                if isConnected, !isEnding, !didEnd,
+                   let failure = nativeStreamHealth.observe(snapshot: snapshot, rendererReady: nativeView?.nativeNVSTRendererSurfaceReady == true) {
+                    WebRTCMediaTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
+                    _ = await finish(reason: .failed, message: failure.message)
+                    return
                 }
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -1051,18 +1076,25 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder private var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
-            if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD }
-            if unifiedHUDVisible { nativeUnifiedHUD }
+            if nativeStatsVisible && !streamControlsVisible { nativeStatsHUD.allowsHitTesting(false) }
+            if unifiedHUDVisible {
+                ZStack {
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                        .onTapGesture {}
+                    nativeUnifiedHUD
+                }
+            }
             if streamControlsVisible { nativeStreamControlsOverlay }
             if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
-            if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay }
+            if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }
         .macForceNowInterfaceScale(uiScale)
     }
 
     private var nativeNetworkRecoveryOverlay: some View {
         ZStack {
-            Color.black.opacity(0.72).ignoresSafeArea()
+            Color.black.opacity(0.72).ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             VStack(spacing: 14) {
                 ProgressView().controlSize(.large).tint(WebRTCMediaStreamTheme.accent)
                 Text("CONNECTION INTERRUPTED")
@@ -1599,46 +1631,41 @@ private struct NativeNVSTMediaStreamSurface: View {
 }
 
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
-    let overlay: AnyView
-    let overlayVisible: Bool
-    let overlayCapturesInput: Bool
     let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
 
-    func makeNSView(context: Context) -> NativeNVSTContainerView {
-        let view = NativeNVSTContainerView(frame: .zero)
-        view.onResolve = { streamView in
-            Task { @MainActor in onResolve(streamView) }
-        }
-        view.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
+    func makeNSView(context: Context) -> NativeNVSTSurfaceContainerView {
+        let view = NativeNVSTSurfaceContainerView(frame: .zero)
+        view.onResolve = onResolve
         return view
     }
 
-    func updateNSView(_ nsView: NativeNVSTContainerView, context: Context) {
-        nsView.updateOverlay(overlay, visible: overlayVisible, capturesInput: overlayCapturesInput)
+    func updateNSView(_ nsView: NativeNVSTSurfaceContainerView, context: Context) {
+        nsView.onResolve = onResolve
+        nsView.resolveIfReady()
     }
 
-    static func dismantleNSView(_ nsView: NativeNVSTContainerView, coordinator: ()) {
+    static func dismantleNSView(_ nsView: NativeNVSTSurfaceContainerView, coordinator: ()) {
         nsView.streamView.remoteInputEnabled = false
         nsView.streamView.setPointerLocked(false)
         nsView.streamView.onInputEvent = nil
         nsView.streamView.onAbsoluteMouseMove = nil
+        nsView.streamView.onGamepadTopologyChanged = nil
         nsView.streamView.onPointerLockChanged = nil
         nsView.streamView.onCommand = nil
         nsView.streamView.shouldHandleCommand = nil
+        nsView.onResolve = nil
     }
 
-    final class NativeNVSTContainerView: NSView {
+    final class NativeNVSTSurfaceContainerView: NSView {
         let streamView = NativeWebRTCStreamView(frame: .zero)
-        private let overlayView = NativeNVSTOverlayHostingView(rootView: AnyView(EmptyView()))
-        var onResolve: ((NativeWebRTCStreamView) -> Void)?
+        var onResolve: (@MainActor (NativeWebRTCStreamView) -> Void)?
+        private var didResolve = false
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor
             addSubview(streamView)
-            overlayView.isHidden = true
-            addSubview(overlayView)
         }
 
         @available(*, unavailable)
@@ -1648,22 +1675,20 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window != nil { onResolve?(streamView) }
+            resolveIfReady()
         }
 
         override func layout() {
             super.layout()
             streamView.frame = bounds
-            overlayView.frame = bounds
-            if window != nil { onResolve?(streamView) }
+            resolveIfReady()
         }
 
-        func updateOverlay(_ overlay: AnyView, visible: Bool, capturesInput: Bool) {
-            overlayView.rootView = overlay
-            overlayView.isHidden = !visible
-            overlayView.capturesInput = capturesInput
-            streamView.localOverlayCapturesInput = capturesInput
-            if visible && capturesInput { NSCursor.arrow.set() }
+        func resolveIfReady() {
+            streamView.frame = bounds
+            guard !didResolve, window != nil, bounds.width >= 1, bounds.height >= 1, let onResolve else { return }
+            didResolve = true
+            onResolve(streamView)
         }
     }
 

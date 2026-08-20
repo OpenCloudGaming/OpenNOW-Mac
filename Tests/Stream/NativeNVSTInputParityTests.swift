@@ -4,9 +4,55 @@ import Testing
 
 private actor NativeInputRecorder {
     private var inputs: [NativeNVSTInput] = []
+    private var countWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     func append(_ input: NativeNVSTInput) {
         inputs.append(input)
+        let readyWaiters = countWaiters.filter { inputs.count >= $0.0 }
+        countWaiters.removeAll { inputs.count >= $0.0 }
+        readyWaiters.forEach { $0.1.resume() }
+    }
+
+    func snapshot() -> [NativeNVSTInput] {
+        inputs
+    }
+
+    func waitForCount(_ count: Int) async {
+        guard inputs.count < count else { return }
+        await withCheckedContinuation { continuation in
+            countWaiters.append((count, continuation))
+        }
+    }
+}
+
+private actor ControlledNativeInputRecorder {
+    private var inputs: [NativeNVSTInput] = []
+    private var blocked = true
+    private var unblockContinuation: CheckedContinuation<Void, Never>?
+    private var countWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    func append(_ input: NativeNVSTInput) async {
+        inputs.append(input)
+        let readyWaiters = countWaiters.filter { inputs.count >= $0.0 }
+        countWaiters.removeAll { inputs.count >= $0.0 }
+        readyWaiters.forEach { $0.1.resume() }
+        guard blocked else { return }
+        await withCheckedContinuation { continuation in
+            unblockContinuation = continuation
+        }
+    }
+
+    func waitForCount(_ count: Int) async {
+        guard inputs.count < count else { return }
+        await withCheckedContinuation { continuation in
+            countWaiters.append((count, continuation))
+        }
+    }
+
+    func unblock() {
+        blocked = false
+        unblockContinuation?.resume()
+        unblockContinuation = nil
     }
 
     func snapshot() -> [NativeNVSTInput] {
@@ -34,6 +80,7 @@ private actor NativeInputRecorder {
     dispatcher.enqueue(gamepad)
     dispatcher.enqueueAbsoluteMove(absolute)
     dispatcher.enqueue(mouse)
+    await recorder.waitForCount(5)
     await dispatcher.finish()
 
     #expect(await recorder.snapshot() == [.event(keyboard), .event(text), .event(gamepad), .absoluteMove(absolute), .event(mouse)])
@@ -47,6 +94,143 @@ private actor NativeInputRecorder {
     #expect(NativeNVSTInputDispatcher.isNeutralizing(.gamepad(GamepadState(deviceID: "controller", playerIndex: 0, timestamp: timestamp))))
     #expect(!NativeNVSTInputDispatcher.isNeutralizing(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))))
     #expect(!NativeNVSTInputDispatcher.isNeutralizing(.gamepad(GamepadState(deviceID: "controller", playerIndex: 0, buttons: .south, timestamp: timestamp))))
+}
+
+@Test func nativeNVSTDispatcherCoalescesAdjacentRelativeMotionWithoutReorderingButtons() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 4) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: timestamp))
+    let release = UserInputEvent.mouse(.button(deviceID: "mouse", button: .left, isPressed: false, timestamp: timestamp))
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(.mouse(.moved(deviceID: "mouse", deltaX: 4, deltaY: -2, timestamp: timestamp)))
+    dispatcher.enqueue(.mouse(.moved(deviceID: "mouse", deltaX: 3, deltaY: 5, timestamp: MediaTimestamp(nanoseconds: 2_000))))
+    dispatcher.enqueue(release)
+    await recorder.unblock()
+    await recorder.waitForCount(3)
+    await dispatcher.finish()
+
+    #expect(await recorder.snapshot() == [
+        .event(press),
+        .event(.mouse(.moved(deviceID: "mouse", deltaX: 7, deltaY: 3, timestamp: MediaTimestamp(nanoseconds: 2_000)))),
+        .event(release),
+    ])
+}
+
+@Test func nativeNVSTDispatcherBoundsBacklogAndRetainsNeutralizationAtShutdown() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 3) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let keyPress = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let keyRelease = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: false, timestamp: timestamp))
+    let gamepadNeutral = UserInputEvent.gamepad(GamepadState(deviceID: "controller", playerIndex: 0, timestamp: timestamp))
+
+    dispatcher.enqueue(keyPress)
+    await recorder.waitForCount(1)
+    for playerIndex in 0..<20 {
+        dispatcher.enqueue(.gamepad(GamepadState(deviceID: InputDeviceID("controller-\(playerIndex)"), playerIndex: playerIndex, leftStickX: 0.5, timestamp: timestamp)))
+        #expect(dispatcher.pendingInputCount <= 3)
+    }
+    dispatcher.enqueue(keyRelease)
+    dispatcher.enqueue(gamepadNeutral)
+    #expect(dispatcher.pendingInputCount <= 3)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(keyPress), .event(keyRelease), .event(gamepadNeutral)])
+}
+
+@Test func nativeNVSTDispatcherPrioritizesReleaseOverNonLossyBacklog() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 2) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let release = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: false, timestamp: timestamp))
+    let firstText = UserInputEvent.text(deviceID: "keyboard", value: "a", timestamp: timestamp)
+    let secondText = UserInputEvent.text(deviceID: "keyboard", value: "b", timestamp: timestamp)
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(firstText)
+    dispatcher.enqueue(secondText)
+    dispatcher.enqueue(release)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(press), .event(secondText), .event(release)])
+}
+
+@Test func nativeNVSTDispatcherCoalescesAdjacentWheelDetents() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 3) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(.mouse(.wheel(deviceID: "mouse", delta: 40, timestamp: timestamp)))
+    dispatcher.enqueue(.mouse(.wheel(deviceID: "mouse", delta: 80, timestamp: MediaTimestamp(nanoseconds: 2_000))))
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [
+        .event(press),
+        .event(.mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: MediaTimestamp(nanoseconds: 2_000)))),
+    ])
+}
+
+@Test func nativeNVSTDispatcherPreservesOppositeWheelEdges() async {
+    let recorder = NativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let up = UserInputEvent.mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
+    let down = UserInputEvent.mouse(.wheel(deviceID: "mouse", delta: -120, timestamp: MediaTimestamp(nanoseconds: 2_000)))
+
+    dispatcher.enqueue(up)
+    dispatcher.enqueue(down)
+    await dispatcher.finish()
+
+    #expect(await recorder.snapshot() == [.event(up), .event(down)])
+}
+
+@Test func nativeNVSTDispatcherKeepsAbsolutePositionWithButtonUnderPressure() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 2) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let key = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let textEvents = (0..<66).map {
+        UserInputEvent.text(deviceID: "keyboard", value: String($0), timestamp: timestamp)
+    }
+    let position = NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp)
+    let button = UserInputEvent.mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: timestamp))
+
+    dispatcher.enqueue(key)
+    await recorder.waitForCount(1)
+    textEvents.forEach { dispatcher.enqueue($0) }
+    dispatcher.enqueueAbsoluteMove(position)
+    dispatcher.enqueue(button)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(key)] + textEvents.map { .event($0) } + [.absoluteMove(position), .event(button)])
 }
 
 @Test @MainActor func focusLossNeutralizesEveryActiveDeviceBeforePointerUnlock() throws {

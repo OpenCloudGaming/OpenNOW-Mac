@@ -37,6 +37,14 @@ private func nativeAudioFrameTriggersRendererReopen(_ configuredChannelCount: UI
     #expect(!NativeWebRTCStreamView.nativeNVSTPresentationUsesEDR(requestedHDR: true, codecSupportsHDR: true, screenSupportsEDR: false))
 }
 
+@Test @MainActor func nativeDrawableSizeTracksBackingScaleDeterministically() {
+    #expect(NativeWebRTCStreamView.nativeNVSTDrawableSize(boundsSize: CGSize(width: 640.5, height: 360.5), backingScaleFactor: 2) == CGSize(width: 1_281, height: 721))
+    #expect(NativeWebRTCStreamView.nativeNVSTDrawableSize(boundsSize: CGSize(width: 640, height: 360), backingScaleFactor: 1) == CGSize(width: 640, height: 360))
+    #expect(NativeWebRTCStreamView.nativeNVSTDrawableSize(boundsSize: .zero, backingScaleFactor: 2) == nil)
+    #expect(NativeWebRTCStreamView.nativeNVSTDrawableSize(boundsSize: CGSize(width: CGFloat.nan, height: 360), backingScaleFactor: 2) == nil)
+    #expect(NativeWebRTCStreamView.nativeNVSTDrawableSize(boundsSize: CGSize(width: 640, height: 360), backingScaleFactor: .infinity) == nil)
+}
+
 @Test func nativeModeSelectionSuppressesUnsupportedCodecHDRClaims() throws {
     var capabilities = OPNStreamDeviceCapabilities()
     capabilities.h265HardwareDecodeSupported = true
@@ -64,6 +72,48 @@ private func nativeAudioFrameTriggersRendererReopen(_ configuredChannelCount: UI
     #expect(nativeAudioFrameTriggersRendererReopen(2, 8) == 1)
     #expect(nativeAudioFrameTriggersRendererReopen(6, 6) == 0)
     #expect(nativeAudioFrameTriggersRendererReopen(8, 8) == 0)
+}
+
+@Test func nativeStreamHealthRequiresFramesAndDetectsSustainedStalls() {
+    var health = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 2, stalledSampleLimit: 2, rendererSampleLimit: 2)
+    let stopped = nativePerformanceSnapshot(streamFramesPerSecond: 0)
+    let running = nativePerformanceSnapshot(streamFramesPerSecond: 60)
+
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(health.observe(snapshot: running, rendererReady: true) == nil)
+    #expect(health.receivedFrames)
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(health.observe(snapshot: stopped, rendererReady: true) == .streamStalled)
+}
+
+@Test func nativeStreamHealthDetectsMissingInitialFramesAndRenderer() {
+    var missingFrames = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 2, stalledSampleLimit: 2, rendererSampleLimit: 3)
+    let stopped = nativePerformanceSnapshot(streamFramesPerSecond: 0)
+    #expect(missingFrames.observe(snapshot: stopped, rendererReady: true) == nil)
+    #expect(missingFrames.observe(snapshot: stopped, rendererReady: true) == .firstFrameTimedOut)
+
+    var missingRenderer = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: 3, stalledSampleLimit: 2, rendererSampleLimit: 2)
+    #expect(missingRenderer.observe(snapshot: stopped, rendererReady: false) == nil)
+    #expect(missingRenderer.observe(snapshot: stopped, rendererReady: false) == .rendererUnavailable)
+}
+
+private func nativePerformanceSnapshot(streamFramesPerSecond: Double) -> NativeNVSTPerformanceSnapshot {
+    NativeNVSTPerformanceSnapshot(
+        available: true,
+        gameFramesPerSecond: streamFramesPerSecond,
+        streamFramesPerSecond: streamFramesPerSecond,
+        latencyMilliseconds: 20,
+        jitterMilliseconds: 1,
+        frameLoss: 0,
+        totalFrameLoss: 0,
+        packetLoss: 0,
+        totalPacketLoss: 0,
+        bitrateMegabitsPerSecond: 20,
+        bandwidthUtilizationPercent: 50,
+        resolution: "1920x1080",
+        codec: "H265",
+        serverLocation: "test"
+    )
 }
 
 private func selectedFeatures(codec: String, capabilities: OPNStreamDeviceCapabilities) throws -> [String: Any] {

@@ -65,49 +65,53 @@ public protocol NativeNVSTMediaReceiver: Sendable {
 }
 
 public actor NativeNVSTMediaSession: NativeNVSTMediaReceiver {
-    private var videoContinuation: AsyncStream<NativeNVSTVideoFrame>.Continuation?
-    private var audioContinuation: AsyncStream<NativeNVSTAudioFrame>.Continuation?
+    private var videoContinuation: (id: UUID, value: AsyncStream<NativeNVSTVideoFrame>.Continuation)?
+    private var audioContinuation: (id: UUID, value: AsyncStream<NativeNVSTAudioFrame>.Continuation)?
 
     public init() {}
 
     public func videoFrames(bufferingPolicy: AsyncStream<NativeNVSTVideoFrame>.Continuation.BufferingPolicy = .bufferingNewest(120)) -> AsyncStream<NativeNVSTVideoFrame> {
-        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
-            videoContinuation = continuation
+        let id = UUID()
+        return AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            videoContinuation?.value.finish()
+            videoContinuation = (id, continuation)
             continuation.onTermination = { [weak self] _ in
-                Task { await self?.clearVideoContinuation() }
+                Task { await self?.clearVideoContinuation(id: id) }
             }
         }
     }
 
     public func audioFrames(bufferingPolicy: AsyncStream<NativeNVSTAudioFrame>.Continuation.BufferingPolicy = .bufferingNewest(240)) -> AsyncStream<NativeNVSTAudioFrame> {
-        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
-            audioContinuation = continuation
+        let id = UUID()
+        return AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            audioContinuation?.value.finish()
+            audioContinuation = (id, continuation)
             continuation.onTermination = { [weak self] _ in
-                Task { await self?.clearAudioContinuation() }
+                Task { await self?.clearAudioContinuation(id: id) }
             }
         }
     }
 
     public func receiveVideoFrame(_ frame: NativeNVSTVideoFrame) async {
-        videoContinuation?.yield(frame)
+        videoContinuation?.value.yield(frame)
     }
 
     public func receiveAudioFrame(_ frame: NativeNVSTAudioFrame) async {
-        audioContinuation?.yield(frame)
+        audioContinuation?.value.yield(frame)
     }
 
     public func finish() {
-        videoContinuation?.finish()
-        audioContinuation?.finish()
+        videoContinuation?.value.finish()
+        audioContinuation?.value.finish()
         videoContinuation = nil
         audioContinuation = nil
     }
 
-    private func clearVideoContinuation() {
-        videoContinuation = nil
+    private func clearVideoContinuation(id: UUID) {
+        if videoContinuation?.id == id { videoContinuation = nil }
     }
 
-    private func clearAudioContinuation() {
-        audioContinuation = nil
+    private func clearAudioContinuation(id: UUID) {
+        if audioContinuation?.id == id { audioContinuation = nil }
     }
 }
