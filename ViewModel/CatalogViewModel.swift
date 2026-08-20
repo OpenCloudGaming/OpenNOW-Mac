@@ -8,14 +8,6 @@ import AppKit
 import Foundation
 import Observation
 
-private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
-    weak var value: T?
-
-    init(_ value: T) {
-        self.value = value
-    }
-}
-
 private extension OPNCatalogGameObject {
     func matchesGFNShortcutIdentifiers(_ identifiers: Set<String>) -> Bool {
         for value in [id, uuid, launchAppId, shortName] where identifiers.contains(value.lowercased()) {
@@ -25,15 +17,8 @@ private extension OPNCatalogGameObject {
     }
 }
 
-private final class CatalogSendableValue<T>: @unchecked Sendable {
-    nonisolated(unsafe) let value: T
-
-    nonisolated init(_ value: T) {
-        self.value = value
-    }
-}
-
-private final class CatalogDeliveryGate: @unchecked Sendable {
+@MainActor
+private final class CatalogDeliveryGate {
     private var delivered = false
 
     func claimFirstDelivery() -> Bool {
@@ -562,47 +547,43 @@ final class CatalogViewModel {
         configureCatalogService()
         let query = searchQuery.trimmed
         let resultCount = catalogGames.count
-        let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(
             searchQuery: query,
             sortId: selectedSortId.isEmpty ? "a_to_z" : selectedSortId,
             filterIds: selectedFilterIds,
             fetchCount: 200,
             forceRefresh: forceRefresh
-        ) { success, result, error in
-            let resultBox = CatalogSendableValue(result)
-            Task { @MainActor in
-                guard let self = selfBox.value, generation == self.browseGeneration else { return }
-                self.isLoading = false
-                let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - browseStartTime) * 1000)
-                guard success else {
-                    MacForceNowLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
-                    self.isLoadingMoreCatalog = false
-                    if self.refreshAuthIfNeeded(error: error) { return }
-                    self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
-                    return
-                }
-                let browseResult = resultBox.value
-                let newCount = browseResult.games.count
-                let isPartialDelivery = newCount < browseResult.totalCount && browseResult.hasNextPage
-                if isPartialDelivery {
-                    MacForceNowLog.info(.catalog, "Show All first page delivered elapsed=\(elapsedMs)ms games=\(newCount) total=\(browseResult.totalCount) hasNext=\(browseResult.hasNextPage)")
-                } else {
-                    MacForceNowLog.info(.catalog, "Show All browse completed elapsed=\(elapsedMs)ms games=\(newCount) prevGames=\(resultCount) total=\(browseResult.totalCount)")
-                }
-                self.catalogGames = browseResult.games
-                self.totalCatalogCount = browseResult.totalCount
-                self.supportedCatalogCount = browseResult.numberSupported
-                self.hasMoreCatalogResults = browseResult.hasNextPage
-                self.catalogEndCursor = browseResult.endCursor
+        ) { [weak self] success, result, error in
+            guard let self, generation == self.browseGeneration else { return }
+            self.isLoading = false
+            let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - browseStartTime) * 1000)
+            guard success else {
+                MacForceNowLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
                 self.isLoadingMoreCatalog = false
-                self.filterGroups = browseResult.filterGroups
-                self.sortOptions = browseResult.sortOptions
-                MacForceNowLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
-                if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
-                self.selectedFilterIds = browseResult.selectedFilterIds
-                self.schedulePatchingPollIfNeeded()
+                if self.refreshAuthIfNeeded(error: error) { return }
+                self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
+                return
             }
+            let browseResult = result
+            let newCount = browseResult.games.count
+            let isPartialDelivery = newCount < browseResult.totalCount && browseResult.hasNextPage
+            if isPartialDelivery {
+                MacForceNowLog.info(.catalog, "Show All first page delivered elapsed=\(elapsedMs)ms games=\(newCount) total=\(browseResult.totalCount) hasNext=\(browseResult.hasNextPage)")
+            } else {
+                MacForceNowLog.info(.catalog, "Show All browse completed elapsed=\(elapsedMs)ms games=\(newCount) prevGames=\(resultCount) total=\(browseResult.totalCount)")
+            }
+            self.catalogGames = browseResult.games
+            self.totalCatalogCount = browseResult.totalCount
+            self.supportedCatalogCount = browseResult.numberSupported
+            self.hasMoreCatalogResults = browseResult.hasNextPage
+            self.catalogEndCursor = browseResult.endCursor
+            self.isLoadingMoreCatalog = false
+            self.filterGroups = browseResult.filterGroups
+            self.sortOptions = browseResult.sortOptions
+            MacForceNowLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
+            if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
+            self.selectedFilterIds = browseResult.selectedFilterIds
+            self.schedulePatchingPollIfNeeded()
         }
     }
 
@@ -610,7 +591,6 @@ final class CatalogViewModel {
         guard hasMoreCatalogResults, !catalogEndCursor.isEmpty, !isLoading, !isLoadingMoreCatalog else { return }
         let generation = browseGeneration
         isLoadingMoreCatalog = true
-        let selfBox = CatalogWeakObject(self)
         MacForceNowLog.info(.catalog, "Show All loading next page cursor=\(catalogEndCursor)")
         OPNGameServiceSwiftAdapter.browseCatalogObject(
             searchQuery: searchQuery.trimmed,
@@ -619,26 +599,23 @@ final class CatalogViewModel {
             fetchCount: 200,
             forceRefresh: false,
             cursor: catalogEndCursor
-        ) { success, result, error in
-            let resultBox = CatalogSendableValue(result)
-            Task { @MainActor in
-                guard let self = selfBox.value, generation == self.browseGeneration else { return }
-                self.isLoadingMoreCatalog = false
-                guard success else {
-                    MacForceNowLog.warning(.catalog, "Show All next page failed error=\(error)")
-                    return
-                }
-                let browseResult = resultBox.value
-                let existingIdentities = Set(self.catalogGames.map(\.catalogIdentity))
-                let newGames = browseResult.games.filter { !existingIdentities.contains($0.catalogIdentity) }
-                self.catalogGames.append(contentsOf: newGames)
-                self.totalCatalogCount = max(self.totalCatalogCount, browseResult.totalCount)
-                self.supportedCatalogCount = max(self.supportedCatalogCount, browseResult.numberSupported)
-                self.hasMoreCatalogResults = browseResult.hasNextPage
-                self.catalogEndCursor = browseResult.endCursor
-                MacForceNowLog.info(.catalog, "Show All next page applied added=\(newGames.count) total=\(self.catalogGames.count) hasNext=\(browseResult.hasNextPage)")
-                self.schedulePatchingPollIfNeeded()
+        ) { [weak self] success, result, error in
+            guard let self, generation == self.browseGeneration else { return }
+            self.isLoadingMoreCatalog = false
+            guard success else {
+                MacForceNowLog.warning(.catalog, "Show All next page failed error=\(error)")
+                return
             }
+            let browseResult = result
+            let existingIdentities = Set(self.catalogGames.map(\.catalogIdentity))
+            let newGames = browseResult.games.filter { !existingIdentities.contains($0.catalogIdentity) }
+            self.catalogGames.append(contentsOf: newGames)
+            self.totalCatalogCount = max(self.totalCatalogCount, browseResult.totalCount)
+            self.supportedCatalogCount = max(self.supportedCatalogCount, browseResult.numberSupported)
+            self.hasMoreCatalogResults = browseResult.hasNextPage
+            self.catalogEndCursor = browseResult.endCursor
+            MacForceNowLog.info(.catalog, "Show All next page applied added=\(newGames.count) total=\(self.catalogGames.count) hasNext=\(browseResult.hasNextPage)")
+            self.schedulePatchingPollIfNeeded()
         }
     }
 
@@ -779,26 +756,21 @@ final class CatalogViewModel {
         }
         if Int(shortcut.cmsId) != nil {
             MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
-            let selfBox = CatalogWeakObject(self)
-            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId(shortcut.cmsId) { success, game, error in
-                let gameBox = CatalogSendableValue(game)
-                Task { @MainActor in
-                    guard let self = selfBox.value else { return }
-                    let game = gameBox.value
-                    if success, let game {
-                        MacForceNowLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
-                        self.selectGame(game)
-                        self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
-                        return
-                    }
-                    MacForceNowLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
-                    if let game = Self.launchGame(from: shortcut, title: title) {
-                        MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
-                        self.selectGame(game)
-                        self.launch(game: game, variantIndex: 0)
-                    } else {
-                        self.resolveShortcutByBrowsing(shortcut, title: title)
-                    }
+            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId(shortcut.cmsId) { [weak self] success, game, error in
+                guard let self else { return }
+                if success, let game {
+                    MacForceNowLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
+                    self.selectGame(game)
+                    self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
+                    return
+                }
+                MacForceNowLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
+                if let game = Self.launchGame(from: shortcut, title: title) {
+                    MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+                    self.selectGame(game)
+                    self.launch(game: game, variantIndex: 0)
+                } else {
+                    self.resolveShortcutByBrowsing(shortcut, title: title)
                 }
             }
             return
@@ -814,30 +786,26 @@ final class CatalogViewModel {
 
     private func resolveShortcutByBrowsing(_ shortcut: GFNGameShortcut, title: String) {
         MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
-        let selfBox = CatalogWeakObject(self)
-        let handledBox = CatalogSendableValue(CatalogDeliveryGate())
-        OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
-            let resultBox = CatalogSendableValue(result)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                guard handledBox.value.claimFirstDelivery() else { return }
-                guard success else {
-                    MacForceNowLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
-                    self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
-                    return
-                }
-                let games = resultBox.value.games
-                MacForceNowLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
-                guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
-                    MacForceNowLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
-                    self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
-                    return
-                }
-                MacForceNowLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
-                self.catalogGames = games
-                self.selectGame(game)
-                self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
+        let deliveryGate = CatalogDeliveryGate()
+        OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { [weak self] success, result, error in
+            guard let self else { return }
+            guard deliveryGate.claimFirstDelivery() else { return }
+            guard success else {
+                MacForceNowLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
+                self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
+                return
             }
+            let games = result.games
+            MacForceNowLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
+            guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
+                MacForceNowLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
+                self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
+                return
+            }
+            MacForceNowLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            self.catalogGames = games
+            self.selectGame(game)
+            self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
         }
     }
 
@@ -892,17 +860,14 @@ final class CatalogViewModel {
         guard !isRefreshingSettingsRegions else { return }
         isRefreshingSettingsRegions = true
         let token = launchToken
-        let selfBox = CatalogWeakObject(self)
-        OPNStreamPreferences.fetchRegions(token: token, providerStreamingBaseUrl: OPNGameServiceSwiftAdapter.providerStreamingBaseURL()) { regions in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                self.isRefreshingSettingsRegions = false
-                self.settingsRegionOptions = Self.launchRegionOptions(from: regions)
-                if !self.selectedSettingsRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedSettingsRegionUrl }) {
-                    self.unavailableSettingsRegionUrl = self.selectedSettingsRegionUrl
-                } else {
-                    self.unavailableSettingsRegionUrl = ""
-                }
+        OPNStreamPreferences.fetchRegions(token: token, providerStreamingBaseUrl: OPNGameServiceSwiftAdapter.providerStreamingBaseURL()) { [weak self] regions in
+            guard let self else { return }
+            self.isRefreshingSettingsRegions = false
+            self.settingsRegionOptions = Self.launchRegionOptions(from: regions)
+            if !self.selectedSettingsRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedSettingsRegionUrl }) {
+                self.unavailableSettingsRegionUrl = self.selectedSettingsRegionUrl
+            } else {
+                self.unavailableSettingsRegionUrl = ""
             }
         }
     }
@@ -1219,16 +1184,13 @@ final class CatalogViewModel {
             NSWorkspace.shared.open(url)
             return
         }
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.resolveStoreURL(game: selectedGame, variantIndex: variantIndex) { success, storeURL, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                guard success, let url = URL(string: storeURL), !storeURL.isEmpty else {
-                    self.errorMessage = error.isEmpty ? "No store URL is available for this game." : error
-                    return
-                }
-                NSWorkspace.shared.open(url)
+        OPNGameServiceSwiftAdapter.resolveStoreURL(game: selectedGame, variantIndex: variantIndex) { [weak self] success, storeURL, error in
+            guard let self else { return }
+            guard success, let url = URL(string: storeURL), !storeURL.isEmpty else {
+                self.errorMessage = error.isEmpty ? "No store URL is available for this game." : error
+                return
             }
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -1250,28 +1212,25 @@ final class CatalogViewModel {
         let appId = Self.favoriteAppId(for: selectedGame)
         let identity = Self.identity(for: selectedGame)
         guard !appId.isEmpty, !identity.isEmpty else { return }
-        let previousGames = CatalogSendableValue(favoriteGames)
+        let previousGames = favoriteGames
         let previousIdentities = favoriteGameIdentities
-        let selfBox = CatalogWeakObject(self)
         if isFavorite(selectedGame) {
             favoriteGameIdentities.remove(identity)
             favoriteGames.removeAll { Self.identity(for: $0) == identity }
             updateGameFavoriteState(identity: identity, isFavorited: false)
             actionMessage = "Removing from favorites..."
-            OPNGameServiceSwiftAdapter.removeFavoriteApp(appId) { success, error in
-                Task { @MainActor in
-                    guard let self = selfBox.value else { return }
-                    if success {
-                        self.actionMessage = "Removed from favorites."
-                        self.loadFavorites()
-                        self.refreshShowAllIfFavoritesFiltered()
-                    } else {
-                        self.favoriteGames = previousGames.value
-                        self.favoriteGameIdentities = previousIdentities
-                        self.updateGameFavoriteState(identity: identity, isFavorited: true)
-                        if self.refreshAuthIfNeeded(error: error) { return }
-                        self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
-                    }
+            OPNGameServiceSwiftAdapter.removeFavoriteApp(appId) { [weak self] success, error in
+                guard let self else { return }
+                if success {
+                    self.actionMessage = "Removed from favorites."
+                    self.loadFavorites()
+                    self.refreshShowAllIfFavoritesFiltered()
+                } else {
+                    self.favoriteGames = previousGames
+                    self.favoriteGameIdentities = previousIdentities
+                    self.updateGameFavoriteState(identity: identity, isFavorited: true)
+                    if self.refreshAuthIfNeeded(error: error) { return }
+                    self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
                 }
             }
         } else {
@@ -1281,20 +1240,18 @@ final class CatalogViewModel {
             favoriteSnapshot.isFavorited = true
             favoriteGames.insert(favoriteSnapshot, at: 0)
             actionMessage = "Adding to favorites..."
-            OPNGameServiceSwiftAdapter.addFavoriteApp(appId) { success, error in
-                Task { @MainActor in
-                    guard let self = selfBox.value else { return }
-                    if success {
-                        self.actionMessage = "Added to favorites."
-                        self.loadFavorites()
-                        self.refreshShowAllIfFavoritesFiltered()
-                    } else {
-                        self.favoriteGames = previousGames.value
-                        self.favoriteGameIdentities = previousIdentities
-                        self.updateGameFavoriteState(identity: identity, isFavorited: false)
-                        if self.refreshAuthIfNeeded(error: error) { return }
-                        self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
-                    }
+            OPNGameServiceSwiftAdapter.addFavoriteApp(appId) { [weak self] success, error in
+                guard let self else { return }
+                if success {
+                    self.actionMessage = "Added to favorites."
+                    self.loadFavorites()
+                    self.refreshShowAllIfFavoritesFiltered()
+                } else {
+                    self.favoriteGames = previousGames
+                    self.favoriteGameIdentities = previousIdentities
+                    self.updateGameFavoriteState(identity: identity, isFavorited: false)
+                    if self.refreshAuthIfNeeded(error: error) { return }
+                    self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
                 }
             }
         }
@@ -1400,23 +1357,20 @@ final class CatalogViewModel {
         let variantId = variant.id
         let variantIndex = selectedVariantIndex
         let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
-        let selfBox = CatalogWeakObject(self)
         setActionMessage("Adding free-to-play \(title) to library...")
-        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
-                    self.actionMessage = "Added to library. Launching \(title)..."
-                    self.refreshCatalogAfterOwnershipChange()
-                    if let game = self.selectedGame {
-                        self.launch(game: game, variantIndex: variantIndex)
-                    }
-                } else {
-                    if self.refreshAuthIfNeeded(error: error) { return }
-                    self.errorMessage = error.isEmpty ? "Unable to add this free-to-play game to your library." : error
-                    self.markSelectedVariantOwned()
+        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
+                self.actionMessage = "Added to library. Launching \(title)..."
+                self.refreshCatalogAfterOwnershipChange()
+                if let game = self.selectedGame {
+                    self.launch(game: game, variantIndex: variantIndex)
                 }
+            } else {
+                if self.refreshAuthIfNeeded(error: error) { return }
+                self.errorMessage = error.isEmpty ? "Unable to add this free-to-play game to your library." : error
+                self.markSelectedVariantOwned()
             }
         }
     }
@@ -1433,16 +1387,13 @@ final class CatalogViewModel {
             ownershipFlowMessage = ""
             return
         }
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { _, _ in
-            Task { @MainActor in
-                guard let self = selfBox.value, self.ownershipFlowStage == .resyncing else { return }
-                self.loadAccountAndStores()
-                self.loadLibrary()
-                self.browseCatalog()
-                self.ownershipFlowStage = .storeSelection
-                self.ownershipFlowMessage = ""
-            }
+        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { [weak self] _, _ in
+            guard let self, self.ownershipFlowStage == .resyncing else { return }
+            self.loadAccountAndStores()
+            self.loadLibrary()
+            self.browseCatalog()
+            self.ownershipFlowStage = .storeSelection
+            self.ownershipFlowMessage = ""
         }
     }
 
@@ -1456,20 +1407,17 @@ final class CatalogViewModel {
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
         let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
-        let selfBox = CatalogWeakObject(self)
         setActionMessage("Adding \(title) to library...")
-        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
-                    self.ownershipFlowStage = .success
-                    self.ownershipFlowMessage = ""
-                    self.actionMessage = "Added to library."
-                    self.refreshCatalogAfterOwnershipChange()
-                } else {
-                    self.errorMessage = error.isEmpty ? "Unable to add this game to your library." : error
-                }
+        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
+                self.ownershipFlowStage = .success
+                self.ownershipFlowMessage = ""
+                self.actionMessage = "Added to library."
+                self.refreshCatalogAfterOwnershipChange()
+            } else {
+                self.errorMessage = error.isEmpty ? "Unable to add this game to your library." : error
             }
         }
     }
@@ -1483,18 +1431,15 @@ final class CatalogViewModel {
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
         let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
-        let selfBox = CatalogWeakObject(self)
         setActionMessage("Removing \(title) from library...")
-        OPNGameServiceSwiftAdapter.removeOwnedVariant(variantId) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: false)
-                    self.actionMessage = "Removed from library."
-                    self.refreshCatalogAfterOwnershipChange()
-                } else {
-                    self.errorMessage = error.isEmpty ? "Unable to remove this game from your library." : error
-                }
+        OPNGameServiceSwiftAdapter.removeOwnedVariant(variantId) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: false)
+                self.actionMessage = "Removed from library."
+                self.refreshCatalogAfterOwnershipChange()
+            } else {
+                self.errorMessage = error.isEmpty ? "Unable to remove this game from your library." : error
             }
         }
     }
@@ -1502,17 +1447,14 @@ final class CatalogViewModel {
     func selectOwnedVariant(_ variant: OPNCatalogGameVariantObject) {
         guard !variant.id.isEmpty else { return }
         let variantId = variant.id
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.selectOwnedVariant(variantId) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.selectedGame?.variants.forEach { $0.librarySelected = $0.id == variantId }
-                    self.actionMessage = "Store selection updated."
-                    self.refreshCatalogAfterOwnershipChange()
-                } else {
-                    self.errorMessage = error.isEmpty ? "Unable to update store selection." : error
-                }
+        OPNGameServiceSwiftAdapter.selectOwnedVariant(variantId) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.selectedGame?.variants.forEach { $0.librarySelected = $0.id == variantId }
+                self.actionMessage = "Store selection updated."
+                self.refreshCatalogAfterOwnershipChange()
+            } else {
+                self.errorMessage = error.isEmpty ? "Unable to update store selection." : error
             }
         }
     }
@@ -1524,19 +1466,16 @@ final class CatalogViewModel {
 
     func syncStoreAccount(_ store: String) {
         guard !store.isEmpty else { return }
-        let selfBox = CatalogWeakObject(self)
         setActionMessage("Syncing \(displayName(forStore: store)) account...")
-        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.actionMessage = "Store sync started."
-                    self.loadAccountAndStores()
-                    self.loadLibrary()
-                    self.browseCatalog()
-                } else {
-                    self.errorMessage = error.isEmpty ? "Unable to sync this store account." : error
-                }
+        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.actionMessage = "Store sync started."
+                self.loadAccountAndStores()
+                self.loadLibrary()
+                self.browseCatalog()
+            } else {
+                self.errorMessage = error.isEmpty ? "Unable to sync this store account." : error
             }
         }
     }
@@ -1548,19 +1487,16 @@ final class CatalogViewModel {
 
     func linkStoreAccount(_ store: String) {
         guard !store.isEmpty else { return }
-        let selfBox = CatalogWeakObject(self)
         setActionMessage("Opening \(displayName(forStore: store)) account linking...")
-        OPNGameServiceSwiftAdapter.startAccountLinking(store: store) { success, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.actionMessage = "Account linked."
-                    self.loadAccountAndStores()
-                    self.loadLibrary()
-                    self.browseCatalog()
-                } else {
-                    self.errorMessage = error.isEmpty ? "Unable to link this store account." : error
-                }
+        OPNGameServiceSwiftAdapter.startAccountLinking(store: store) { [weak self] success, error in
+            guard let self else { return }
+            if success {
+                self.actionMessage = "Account linked."
+                self.loadAccountAndStores()
+                self.loadLibrary()
+                self.browseCatalog()
+            } else {
+                self.errorMessage = error.isEmpty ? "Unable to link this store account." : error
             }
         }
     }
@@ -2001,73 +1937,58 @@ final class CatalogViewModel {
         errorMessage = ""
         configureCatalogService()
         let panelStartTime = CFAbsoluteTimeGetCurrent()
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.fetchMarqueePanelObjects { success, panels, error in
-            let panelBox = CatalogSendableValue(panels)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
-                    MacForceNowLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panelBox.value.flatMap(\.sections).count)")
-                    self.marqueePanels = panelBox.value
-                    self.schedulePatchingPollIfNeeded()
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.isLoadingPanels = false
-                } else if self.errorMessage.isEmpty {
-                    self.errorMessage = error
-                }
+        OPNGameServiceSwiftAdapter.fetchMarqueePanelObjects { [weak self] success, panels, error in
+            guard let self else { return }
+            if success {
+                let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
+                MacForceNowLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
+                self.marqueePanels = panels
+                self.schedulePatchingPollIfNeeded()
+            } else if self.refreshAuthIfNeeded(error: error) {
+                self.isLoadingPanels = false
+            } else if self.errorMessage.isEmpty {
+                self.errorMessage = error
             }
         }
-        OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
-            let panelBox = CatalogSendableValue(panels)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
+        OPNGameServiceSwiftAdapter.fetchMainPanelObjects { [weak self] success, panels, error in
+            guard let self else { return }
+            self.isLoadingPanels = false
+            if success {
+                let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
+                let gameCount = panels.flatMap(\.sections).flatMap(\.games).count
+                MacForceNowLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
+                self.mainPanels = panels
+                self.schedulePatchingPollIfNeeded()
+            } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
-                if success {
-                    let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
-                    let gameCount = panelBox.value.flatMap(\.sections).flatMap(\.games).count
-                    MacForceNowLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
-                    self.mainPanels = panelBox.value
-                    self.schedulePatchingPollIfNeeded()
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.isLoadingPanels = false
-                } else if self.errorMessage.isEmpty {
-                    self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW home panels." : error
-                }
+            } else if self.errorMessage.isEmpty {
+                self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW home panels." : error
             }
         }
     }
 
     private func loadLibrary() {
         configureCatalogService()
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
-            let gamesBox = CatalogSendableValue(games)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.libraryGames = gamesBox.value
-                    self.schedulePatchingPollIfNeeded()
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.libraryGames = []
-                }
+        OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { [weak self] success, games, error in
+            guard let self else { return }
+            if success {
+                self.libraryGames = games
+                self.schedulePatchingPollIfNeeded()
+            } else if self.refreshAuthIfNeeded(error: error) {
+                self.libraryGames = []
             }
         }
     }
 
     private func loadFavorites() {
         configureCatalogService()
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.fetchFavoriteGameObjects { success, games, error in
-            let gamesBox = CatalogSendableValue(games)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.updateFavoriteGames(gamesBox.value)
-                    self.schedulePatchingPollIfNeeded()
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.updateFavoriteGames([])
-                }
+        OPNGameServiceSwiftAdapter.fetchFavoriteGameObjects { [weak self] success, games, error in
+            guard let self else { return }
+            if success {
+                self.updateFavoriteGames(games)
+                self.schedulePatchingPollIfNeeded()
+            } else if self.refreshAuthIfNeeded(error: error) {
+                self.updateFavoriteGames([])
             }
         }
     }
@@ -2087,53 +2008,39 @@ final class CatalogViewModel {
 
     private func loadAccountAndStores() {
         configureCatalogService()
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.fetchUserAccountDictionary { success, account, error in
-            let accountBox = CatalogSendableValue(account)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    self.accountStores = Self.parseStoreAccounts(accountBox.value)
-                    self.accountSubscriptions = Self.parseAccountSubscriptions(accountBox.value)
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.accountStores = []
-                    self.accountSubscriptions = []
-                }
+        OPNGameServiceSwiftAdapter.fetchUserAccountDictionary { [weak self] success, account, error in
+            guard let self else { return }
+            if success {
+                self.accountStores = Self.parseStoreAccounts(account)
+                self.accountSubscriptions = Self.parseAccountSubscriptions(account)
+            } else if self.refreshAuthIfNeeded(error: error) {
+                self.accountStores = []
+                self.accountSubscriptions = []
             }
         }
-        OPNGameServiceSwiftAdapter.fetchStoreDefinitionDictionaries { success, definitions, _ in
-            let definitionsBox = CatalogSendableValue(definitions)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success { self.storeDefinitions = definitionsBox.value.map(Self.parseStoreDefinition) }
-            }
+        OPNGameServiceSwiftAdapter.fetchStoreDefinitionDictionaries { [weak self] success, definitions, _ in
+            guard let self else { return }
+            if success { self.storeDefinitions = definitions.map(Self.parseStoreDefinition) }
         }
-        OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { success, definitions, _ in
-            let definitionsBox = CatalogSendableValue(definitions)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success { self.subscriptionDefinitions = definitionsBox.value.map(Self.parseSubscriptionDefinition) }
-            }
+        OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { [weak self] success, definitions, _ in
+            guard let self else { return }
+            if success { self.subscriptionDefinitions = definitions.map(Self.parseSubscriptionDefinition) }
         }
         let userId = session.userId.isEmpty ? account.userId : session.userId
         guard !userId.isEmpty else {
             subscriptionStatus = .unavailable
             return
         }
-        OPNGameServiceSwiftAdapter.fetchSubscriptionInfo(userId: userId) { success, subscription, error in
-            let subscriptionBox = CatalogSendableValue(subscription)
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                if success {
-                    let subscription = subscriptionBox.value
-                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
-                    let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !membershipTier.isEmpty {
-                        self.account.membershipTier = membershipTier
-                    }
-                } else if self.refreshAuthIfNeeded(error: error) {
-                    self.subscriptionStatus = .unavailable
+        OPNGameServiceSwiftAdapter.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
+            guard let self else { return }
+            if success {
+                self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
+                let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !membershipTier.isEmpty {
+                    self.account.membershipTier = membershipTier
                 }
+            } else if self.refreshAuthIfNeeded(error: error) {
+                self.subscriptionStatus = .unavailable
             }
         }
     }
@@ -2454,12 +2361,9 @@ final class CatalogViewModel {
             completion(url)
             return
         }
-        let selfBox = CatalogWeakObject(self)
-        OPNGameServiceSwiftAdapter.resolveStoreURL(game: selectedGame, variantIndex: max(variantIndex, 0)) { success, storeURL, _ in
-            Task { @MainActor in
-                guard selfBox.value != nil else { return }
-                completion(success ? URL(string: storeURL) : nil)
-            }
+        OPNGameServiceSwiftAdapter.resolveStoreURL(game: selectedGame, variantIndex: max(variantIndex, 0)) { [weak self] success, storeURL, _ in
+            guard self != nil else { return }
+            completion(success ? URL(string: storeURL) : nil)
         }
     }
 

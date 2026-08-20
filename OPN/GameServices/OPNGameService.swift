@@ -1,19 +1,19 @@
 import AppKit
 import Foundation
 
-typealias OPNPanelCallback = @Sendable (_ success: Bool, _ panels: [OPNPanelResult], _ error: String) -> Void
-typealias OPNCatalogCallback = @Sendable (_ success: Bool, _ games: [OPNGameInfo], _ error: String) -> Void
-typealias OPNCatalogBrowseCallback = @Sendable (_ success: Bool, _ result: OPNCatalogBrowseResult, _ error: String) -> Void
-typealias OPNSubscriptionCallback = @Sendable (_ success: Bool, _ subscription: OPNSubscriptionInfo, _ error: String) -> Void
-typealias OPNStoreURLCallback = @Sendable (_ success: Bool, _ storeURL: String, _ error: String) -> Void
+typealias OPNPanelCallback = @MainActor @Sendable (_ success: Bool, _ panels: [OPNPanelResult], _ error: String) -> Void
+typealias OPNCatalogCallback = @MainActor @Sendable (_ success: Bool, _ games: [OPNGameInfo], _ error: String) -> Void
+typealias OPNCatalogBrowseCallback = @MainActor @Sendable (_ success: Bool, _ result: OPNCatalogBrowseResult, _ error: String) -> Void
+typealias OPNSubscriptionCallback = @MainActor @Sendable (_ success: Bool, _ subscription: OPNSubscriptionInfo, _ error: String) -> Void
+typealias OPNStoreURLCallback = @MainActor @Sendable (_ success: Bool, _ storeURL: String, _ error: String) -> Void
 typealias OPNLaunchAppIdCallback = @Sendable (_ appId: String) -> Void
-typealias OPNProviderInfoCallback = @Sendable (_ success: Bool, _ providerInfo: OPNGameProviderInfo, _ selectedEndpoint: OPNGameProviderEndpoint, _ error: String) -> Void
-typealias OPNOwnershipActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
-typealias OPNFavoriteActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
-typealias OPNUserAccountCallback = @Sendable (_ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) -> Void
-typealias OPNStoreDefinitionsCallback = @Sendable (_ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) -> Void
-typealias OPNSubscriptionDefinitionsCallback = @Sendable (_ success: Bool, _ definitions: [OPNSubscriptionDefinition], _ error: String) -> Void
-typealias OPNAppPatchStatusesCallback = @Sendable (_ success: Bool, _ statuses: [String: OPNAppPatchStatus], _ error: String) -> Void
+typealias OPNProviderInfoCallback = @MainActor @Sendable (_ success: Bool, _ providerInfo: OPNGameProviderInfo, _ selectedEndpoint: OPNGameProviderEndpoint, _ error: String) -> Void
+typealias OPNOwnershipActionCallback = @MainActor @Sendable (_ success: Bool, _ error: String) -> Void
+typealias OPNFavoriteActionCallback = @MainActor @Sendable (_ success: Bool, _ error: String) -> Void
+typealias OPNUserAccountCallback = @MainActor @Sendable (_ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) -> Void
+typealias OPNStoreDefinitionsCallback = @MainActor @Sendable (_ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) -> Void
+typealias OPNSubscriptionDefinitionsCallback = @MainActor @Sendable (_ success: Bool, _ definitions: [OPNSubscriptionDefinition], _ error: String) -> Void
+typealias OPNAppPatchStatusesCallback = @MainActor @Sendable (_ success: Bool, _ statuses: [String: OPNAppPatchStatus], _ error: String) -> Void
 
 public struct OPNAppPatchStatus: Equatable, Sendable {
     public var appId = ""
@@ -2306,9 +2306,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 }
 
-@objc(OPNGameServiceSwiftAdapter)
 public final class OPNGameServiceSwiftAdapter: NSObject {
-    @objc(configureCatalogSessionWithAccessToken:idToken:userId:)
     public static func configureCatalogSession(accessToken: String, idToken: String, userId: String) {
         let token = idToken.isEmpty ? accessToken : idToken
         OPNGameService.shared.setAccessToken(token)
@@ -2318,49 +2316,41 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
         OPNGameService.shared.prewarmLaunchData()
     }
 
-    @objc(setAccessToken:)
     public static func setAccessToken(_ token: String) {
         OPNGameService.shared.setAccessToken(token)
     }
 
-    @objc(setAccountLinkingToken:)
     public static func setAccountLinkingToken(_ token: String) {
         OPNGameService.shared.setAccountLinkingToken(token)
     }
 
-    @objc(setVpcId:)
     public static func setVpcId(_ id: String) {
         OPNGameService.shared.setVpcId(id)
     }
 
-    @objc(setUserId:)
     public static func setUserId(_ id: String) {
         OPNGameService.shared.setUserId(id)
     }
 
-    @objc(setStreamingBaseUrl:)
     public static func setStreamingBaseUrl(_ url: String) {
         OPNGameService.shared.setStreamingBaseUrl(url)
     }
 
-    @objc(providerStreamingBaseURL)
     public static func providerStreamingBaseURL() -> String {
         OPNGameService.shared.providerStreamingBaseURL()
     }
 
-    @objc(prewarmLaunchData)
     public static func prewarmLaunchData() {
         OPNGameService.shared.prewarmLaunchData()
     }
 
-    @objc(fetchProviderInfoWithIdpId:completion:)
-    static func fetchProviderInfo(idpId: String, completion: @escaping @Sendable (Bool, OPNParsedGameProviderInfo, OPNParsedGameProviderEndpoint, String) -> Void) {
+    static func fetchProviderInfo(idpId: String, completion: @escaping @MainActor @Sendable (Bool, OPNParsedGameProviderInfo, OPNParsedGameProviderEndpoint, String) -> Void) {
         OPNGameService.shared.fetchProviderInfo(idpId: idpId) { success, info, endpoint, error in
             completion(success, OPNParsedGameProviderInfo(info: info), OPNParsedGameProviderEndpoint(endpoint: endpoint), error)
         }
     }
 
-    public static func fetchGameProviderInfo(idpId: String, completion: @escaping @Sendable (Bool, OPNGameProviderInfo, OPNGameProviderEndpoint, String) -> Void) {
+    public static func fetchGameProviderInfo(idpId: String, completion: @escaping @MainActor @Sendable (Bool, OPNGameProviderInfo, OPNGameProviderEndpoint, String) -> Void) {
         OPNGameService.shared.fetchProviderInfo(idpId: idpId) { success, info, endpoint, error in
             completion(success, info, endpoint, error)
         }
@@ -2370,143 +2360,124 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
         OPNGameService.shared.selectGameProviderEndpoint(info, idpId: idpId)
     }
 
-    @objc(fetchSubscriptionInfoWithUserId:completion:)
-    public static func fetchSubscriptionInfo(userId: String, completion: @escaping @Sendable (Bool, OPNParsedSubscriptionInfo, String) -> Void) {
+    public static func fetchSubscriptionInfo(userId: String, completion: @escaping @MainActor @Sendable (Bool, OPNParsedSubscriptionInfo, String) -> Void) {
         OPNGameService.shared.fetchSubscriptionInfo(userId: userId) { success, subscription, error in
             completion(success, OPNParsedSubscriptionInfo(subscription: subscription), error)
         }
     }
 
-    @objc(fetchMainPanelObjectsWithCompletion:)
-    public static func fetchMainPanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
+    public static func fetchMainPanelObjects(completion: @escaping @MainActor @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
         OPNGameService.shared.fetchMainPanels { success, panels, error in
             completion(success, panels.map(OPNCatalogPanelObject.init), error)
         }
     }
 
-    @objc(fetchMarqueePanelObjectsWithCompletion:)
-    public static func fetchMarqueePanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
+    public static func fetchMarqueePanelObjects(completion: @escaping @MainActor @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
         OPNGameService.shared.fetchMarqueePanels { success, panels, error in
             completion(success, panels.map(OPNCatalogPanelObject.init), error)
         }
     }
 
-    @objc(browseCatalogObjectWithSearchQuery:sortId:filterIds:fetchCount:completion:)
-    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping @MainActor @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
         OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: false) { success, result, error in
             completion(success, OPNCatalogBrowseResultObject(result: result), error)
         }
     }
 
-    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, completion: @escaping @MainActor @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
         browseCatalogObject(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh, cursor: "", completion: completion)
     }
 
-    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, cursor: String, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, cursor: String, completion: @escaping @MainActor @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
         OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh, cursor: cursor) { success, result, error in
             completion(success, OPNCatalogBrowseResultObject(result: result), error)
         }
     }
 
-    @objc(fetchLibraryGameObjectsWithCompletion:)
-    public static func fetchLibraryGameObjects(completion: @escaping @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
+    public static func fetchLibraryGameObjects(completion: @escaping @MainActor @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
         OPNGameService.shared.fetchLibraryGames { success, games, error in
             completion(success, games.map(OPNCatalogGameObject.init), error)
         }
     }
 
-    @objc(fetchFavoriteGameObjectsWithCompletion:)
-    public static func fetchFavoriteGameObjects(completion: @escaping @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
+    public static func fetchFavoriteGameObjects(completion: @escaping @MainActor @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
         OPNGameService.shared.fetchFavoriteGames { success, games, error in
             completion(success, games.map(OPNCatalogGameObject.init), error)
         }
     }
 
-    public static func fetchGameObjectByCMSId(_ cmsId: String, completion: @escaping @Sendable (Bool, OPNCatalogGameObject?, String) -> Void) {
+    public static func fetchGameObjectByCMSId(_ cmsId: String, completion: @escaping @MainActor @Sendable (Bool, OPNCatalogGameObject?, String) -> Void) {
         OPNGameService.shared.fetchGameByCMSId(cmsId) { success, games, error in
             completion(success, games.first.map(OPNCatalogGameObject.init), error)
         }
     }
 
-    @objc(fetchUserAccountDictionaryWithCompletion:)
-    public static func fetchUserAccountDictionary(completion: @escaping @Sendable (Bool, NSDictionary, String) -> Void) {
+    public static func fetchUserAccountDictionary(completion: @escaping @MainActor @Sendable (Bool, NSDictionary, String) -> Void) {
         OPNGameService.shared.fetchUserAccount { success, account, error in
             completion(success, userAccountDictionary(account), error)
         }
     }
 
-    @objc(fetchStoreDefinitionDictionariesWithCompletion:)
-    public static func fetchStoreDefinitionDictionaries(completion: @escaping @Sendable (Bool, [NSDictionary], String) -> Void) {
+    public static func fetchStoreDefinitionDictionaries(completion: @escaping @MainActor @Sendable (Bool, [NSDictionary], String) -> Void) {
         OPNGameService.shared.fetchStoreDefinitions { success, definitions, error in
             completion(success, definitions.map(storeDefinitionDictionary), error)
         }
     }
 
-    public static func fetchSubscriptionDefinitionDictionaries(completion: @escaping @Sendable (Bool, [NSDictionary], String) -> Void) {
+    public static func fetchSubscriptionDefinitionDictionaries(completion: @escaping @MainActor @Sendable (Bool, [NSDictionary], String) -> Void) {
         OPNGameService.shared.fetchSubscriptionDefinitions { success, definitions, error in
             completion(success, definitions.map(subscriptionDefinitionDictionary), error)
         }
     }
 
-    public static func fetchAppPatchStatuses(appIds: [String], completion: @escaping @Sendable (Bool, [String: OPNAppPatchStatus], String) -> Void) {
+    public static func fetchAppPatchStatuses(appIds: [String], completion: @escaping @MainActor @Sendable (Bool, [String: OPNAppPatchStatus], String) -> Void) {
         OPNGameService.shared.fetchAppPatchStatuses(appIds: appIds, completion: completion)
     }
 
-    public static func fetchLibraryPatchStatuses(completion: @escaping @Sendable (Bool, [String: OPNAppPatchStatus], String) -> Void) {
+    public static func fetchLibraryPatchStatuses(completion: @escaping @MainActor @Sendable (Bool, [String: OPNAppPatchStatus], String) -> Void) {
         OPNGameService.shared.fetchLibraryPatchStatuses(completion: completion)
     }
 
-    @objc(addOwnedVariant:completion:)
-    public static func addOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func addOwnedVariant(_ variantId: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.addOwnedVariant(variantId, completion: completion)
     }
 
-    @objc(removeOwnedVariant:completion:)
-    public static func removeOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func removeOwnedVariant(_ variantId: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.removeOwnedVariant(variantId, completion: completion)
     }
 
-    @objc(selectOwnedVariant:completion:)
-    public static func selectOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func selectOwnedVariant(_ variantId: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.selectOwnedVariant(variantId, completion: completion)
     }
 
-    @objc(addFavoriteApp:completion:)
-    public static func addFavoriteApp(_ appId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func addFavoriteApp(_ appId: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.addFavoriteApp(appId, completion: completion)
     }
 
-    @objc(removeFavoriteApp:completion:)
-    public static func removeFavoriteApp(_ appId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func removeFavoriteApp(_ appId: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.removeFavoriteApp(appId, completion: completion)
     }
 
-    @objc(syncAccountProviderWithStore:completion:)
-    public static func syncAccountProvider(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func syncAccountProvider(store: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.syncAccountProvider(store: store, completion: completion)
     }
 
-    @objc(startAccountLinkingWithStore:completion:)
-    public static func startAccountLinking(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func startAccountLinking(store: String, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.startAccountLinking(store: store, completion: completion)
     }
 
-    @objc(resolveStoreURLWithGameObject:variantIndex:completion:)
-    public static func resolveStoreURL(game: OPNCatalogGameObject, variantIndex: Int, completion: @escaping @Sendable (Bool, String, String) -> Void) {
+    public static func resolveStoreURL(game: OPNCatalogGameObject, variantIndex: Int, completion: @escaping @MainActor @Sendable (Bool, String, String) -> Void) {
         OPNGameService.shared.resolveStoreURL(game: game.swiftValue, variantIndex: variantIndex, completion: completion)
     }
 
-    @objc(optimizeImageURL:width:)
     public static func optimizeImageURL(_ url: String, width: Int) -> String {
         OPNGameService.optimizeImageURL(url, width: width)
     }
 
-    @objc(parseProviderInfoFromJSON:)
     static func parseProviderInfo(from json: NSDictionary?) -> OPNParsedGameProviderInfo {
         OPNParsedGameProviderInfo(info: OPNGameService.shared.parseGameProviderInfo(json))
     }
 
-    @objc(selectProviderEndpointFromInfo:idpId:)
     static func selectProviderEndpoint(from info: OPNParsedGameProviderInfo, idpId: String) -> OPNParsedGameProviderEndpoint {
         let swiftInfo = info.swiftValue
         return OPNParsedGameProviderEndpoint(endpoint: OPNGameService.shared.selectGameProviderEndpoint(swiftInfo, idpId: idpId))

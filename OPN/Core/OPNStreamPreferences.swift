@@ -794,7 +794,7 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
-    public static func fetchCloudVariables(token: String, userId: String = "", idpId: String = "", completion: @escaping @Sendable (OPNStreamCloudVariables) -> Void) {
+    public static func fetchCloudVariables(token: String, userId: String = "", idpId: String = "", completion: @escaping @MainActor @Sendable (OPNStreamCloudVariables) -> Void) {
         let cached = loadCachedCloudVariables()
         let cachedAt = storage.double(forKey: k.cachedCloudVariablesTimestamp)
         if cached.fetched, cachedAt > 0, Date().timeIntervalSince1970 - cachedAt < Double(cached.refreshIntervalSeconds) {
@@ -880,7 +880,7 @@ public enum OPNStreamPreferences {
         return identifier.isEmpty ? "en_US" : identifier
     }
 
-    public static func fetchRegions(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
+    public static func fetchRegions(token: String, providerStreamingBaseUrl: String, completion: @escaping @MainActor @Sendable ([OPNStreamRegionOption]) -> Void) {
         let baseUrl = providerStreamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : providerStreamingBaseUrl
         var request = serverInfoRequest(baseUrl: baseUrl, token: token)
         request.timeoutInterval = 4
@@ -921,7 +921,7 @@ public enum OPNStreamPreferences {
         return parsed
     }
 
-    public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
+    public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @MainActor @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         var initial = OPNStreamNetworkPreflightResult()
         initial.streamingBaseUrl = loadSelectedStreamingBaseUrl()
         initial.networkType = currentNetworkType()
@@ -1377,7 +1377,7 @@ public enum OPNStreamPreferences {
         return request
     }
 
-    private static func finishNetworkPreflight(_ seed: OPNStreamNetworkPreflightResult, token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
+    private static func finishNetworkPreflight(_ seed: OPNStreamNetworkPreflightResult, token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @MainActor @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         Task {
             var result = seed
             do {
@@ -1423,7 +1423,7 @@ public enum OPNStreamPreferences {
         Double(downlinkBandwidth) / 1_000_000.0
     }
 
-    private static func measureRegions(_ regions: [OPNStreamRegionOption], token: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
+    private static func measureRegions(_ regions: [OPNStreamRegionOption], token: String, completion: @escaping @MainActor @Sendable ([OPNStreamRegionOption]) -> Void) {
         if regions.isEmpty {
             Task { @MainActor in completion([]) }
             return
