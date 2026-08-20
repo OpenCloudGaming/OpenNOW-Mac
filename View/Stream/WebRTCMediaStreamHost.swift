@@ -94,7 +94,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                 )
 
                 RadialGradient(
-                    colors: [Color.openNowGreen.opacity(0.18), .clear],
+                    colors: [MacForceNowDesign.accent.opacity(0.18), .clear],
                     center: .center,
                     startRadius: 12,
                     endRadius: compact ? 260 : 480
@@ -122,9 +122,9 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(Color.openNowGreen)
+                                .fill(MacForceNowDesign.accent)
                                 .frame(width: 6, height: 6)
-                                .shadow(color: Color.openNowGreen, radius: 6)
+                                .shadow(color: MacForceNowDesign.accent, radius: 6)
                             Text(stage.uppercased())
                                 .font(.nvidia(size: 11, weight: .bold))
                                 .tracking(1.5)
@@ -139,7 +139,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                             .padding(.horizontal, MacForceNowDesign.Spacing.contentVertical)
                             .frame(height: 32)
                             .background(Color.black.opacity(0.48))
-                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.38), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.38), lineWidth: 1) }
                     }
 
                     if let cancelAction {
@@ -180,13 +180,13 @@ private struct StreamLaunchSignal: View {
             let rotation = reduceMotion ? 0 : cycle * 360
             ZStack {
                 Circle()
-                    .fill(Color.openNowGreen.opacity(0.12))
+                    .fill(MacForceNowDesign.accent.opacity(0.12))
                     .blur(radius: 14)
                 Circle()
                     .stroke(.white.opacity(0.15), lineWidth: 1)
                 Circle()
                     .trim(from: 0.06, to: 0.70)
-                    .stroke(Color.openNowGreen, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(MacForceNowDesign.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(rotation))
                 Circle()
                     .trim(from: 0.12, to: 0.42)
@@ -194,9 +194,9 @@ private struct StreamLaunchSignal: View {
                     .padding(9)
                     .rotationEffect(.degrees(-rotation * 0.72))
                 Circle()
-                    .fill(Color.openNowGreen)
+                    .fill(MacForceNowDesign.accent)
                     .frame(width: 8, height: 8)
-                    .shadow(color: Color.openNowGreen, radius: 8)
+                    .shadow(color: MacForceNowDesign.accent, radius: 8)
             }
         }
     }
@@ -1118,7 +1118,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(latestNativeStats?.frameLoss), detail: nativeStatsTotal(latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
                 nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsCount(latestNativeStats?.packetLoss), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
                 nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: Color.openNowGreen)
+                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: MacForceNowDesign.accent)
                 nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)

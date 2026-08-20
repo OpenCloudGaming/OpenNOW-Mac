@@ -73,8 +73,8 @@ struct SteamControllerSettingsPage: View {
                 SettingsCard(title: "Permissions", uiScale: uiScale) {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .font(.system(size: 14 * uiScale))
-                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? Color.openNowGreen : .orange)
+                            .font(.nvidiaSans(size: 14 * uiScale))
+                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? MacForceNowDesign.accent : .orange)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(hidMonitor.inputMonitoringPermissionGranted ? "Input Monitoring Permission Granted" : "Input Monitoring Permission Required")
@@ -114,8 +114,8 @@ struct SteamControllerSettingsPage: View {
                     SettingsDivider(uiScale: uiScale)
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .font(.system(size: 14 * uiScale))
-                            .foregroundStyle(accessibilityPermissionGranted ? Color.openNowGreen : .orange)
+                            .font(.nvidiaSans(size: 14 * uiScale))
+                            .foregroundStyle(accessibilityPermissionGranted ? MacForceNowDesign.accent : .orange)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
@@ -149,7 +149,7 @@ struct SteamControllerSettingsPage: View {
                                 .foregroundStyle(.white.opacity(0.58))
                             HStack(spacing: 6 * uiScale) {
                                 Circle()
-                                    .fill(hidMonitor.isMonitorActive ? Color.openNowGreen : .red)
+                                    .fill(hidMonitor.isMonitorActive ? MacForceNowDesign.accent : .red)
                                     .frame(width: 8 * uiScale, height: 8 * uiScale)
                                 Text(hidMonitor.isMonitorActive ? "Active" : "Inactive")
                                     .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
@@ -475,7 +475,7 @@ struct GameplayProfileMetricTile: View {
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsNvidia(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? Color.openNowGreen : .white.opacity(0.86))
+                .foregroundStyle(emphasized ? MacForceNowDesign.accent : .white.opacity(0.86))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -483,6 +483,6 @@ struct GameplayProfileMetricTile: View {
         .padding(.vertical, 11 * uiScale)
         .frame(width: width ?? ((emphasized ? 180 : 154) * uiScale), height: 72 * uiScale, alignment: .leading)
         .background(Color.white.opacity(emphasized ? 0.065 : 0.045))
-        .overlay { Rectangle().stroke(emphasized ? Color.openNowGreen.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(emphasized ? MacForceNowDesign.accent.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }

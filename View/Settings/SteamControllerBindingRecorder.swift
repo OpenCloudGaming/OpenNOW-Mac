@@ -19,20 +19,20 @@ struct SteamControllerBindingRecorder: View {
             HStack(spacing: 6) {
                 if isRecording {
                     Image(systemName: "keyboard")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.nvidiaSans(size: 10, weight: .bold))
                     Text("Press a key… (Esc to cancel)")
                 } else {
                     Text(currentLabel)
                 }
             }
             .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
-            .foregroundStyle(isRecording ? Color.openNowGreen : .white.opacity(0.85))
+            .foregroundStyle(isRecording ? MacForceNowDesign.accent : .white.opacity(0.85))
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .background(isRecording ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.05))
+            .background(isRecording ? MacForceNowDesign.accent.opacity(0.12) : Color.white.opacity(0.05))
             .overlay(
                 Rectangle()
-                    .stroke(isRecording ? Color.openNowGreen.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(isRecording ? MacForceNowDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

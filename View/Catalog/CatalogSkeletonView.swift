@@ -123,7 +123,7 @@ struct CatalogHomeSkeletonView: View {
             }
             .padding(.bottom, 44)
         }
-        .background(Color.gfnBackgroundGreen)
+        .background(MacForceNowDesign.Surface.app)
         .allowsHitTesting(false)
         .accessibilityLabel("Loading games")
     }

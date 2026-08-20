@@ -46,7 +46,7 @@ struct CatalogMainMenuPanel: View {
                 Text("GEFORCE NOW")
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(1.4)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
                 Text("MacForce Now Menu")
                     .nvidiaFont(size: 20, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
@@ -122,7 +122,7 @@ struct CatalogMainMenuPanel: View {
             .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
-        .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
+        .background(MacForceNowDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -130,7 +130,7 @@ struct CatalogMainMenuPanel: View {
         }
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(Color.openNowGreen)
+                .fill(MacForceNowDesign.accent)
                 .frame(height: 2)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -204,7 +204,7 @@ struct CatalogAccountDropdownPanel: View {
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: MacForceNowDesign.Spacing.card(scale: uiScale))
-                        .background(Color.openNowGreen)
+                        .background(MacForceNowDesign.accent)
                 }
                 Spacer(minLength: 0)
             }
@@ -274,10 +274,10 @@ struct CatalogAccountDropdownPanel: View {
             .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
-        .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
+        .background(MacForceNowDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(Color.openNowGreen)
+                .fill(MacForceNowDesign.accent)
                 .frame(height: 2)
         }
         .overlay(alignment: .trailing) {
@@ -305,7 +305,7 @@ struct CatalogAccountDropdownRow: View {
                 if let systemImage {
                     ZStack {
                         Rectangle()
-                            .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                            .fill(isActive ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
                         Image(systemName: systemImage)
                             .nvidiaFont(size: 13, weight: .bold)
                             .foregroundStyle(iconColor)
@@ -339,17 +339,17 @@ struct CatalogAccountDropdownRow: View {
     }
 
     private var rowBackground: Color {
-        if isActive { return Color.openNowGreen.opacity(0.095) }
+        if isActive { return MacForceNowDesign.accent.opacity(0.095) }
         return Color.white.opacity(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
         return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
-        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
         return isActive ? .black : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 }
@@ -395,7 +395,7 @@ struct CatalogMainMenuPlaytimeCard: View {
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: MacForceNowDesign.Spacing.large(scale: uiScale))
-                        .background(Color.openNowGreen)
+                        .background(MacForceNowDesign.accent)
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
                     .nvidiaFont(size: 22, weight: .bold)
@@ -454,7 +454,7 @@ struct CatalogMainMenuRow: View {
             HStack(spacing: 13 * uiScale) {
                 ZStack {
                     Rectangle()
-                        .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                        .fill(isActive ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
@@ -489,7 +489,7 @@ struct CatalogMainMenuRow: View {
             .background(rowBackground)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(isActive ? Color.openNowGreen : Color.clear)
+                    .fill(isActive ? MacForceNowDesign.accent : Color.clear)
                     .frame(width: 3)
             }
             .contentShape(Rectangle())
@@ -501,18 +501,18 @@ struct CatalogMainMenuRow: View {
     }
 
     private var rowBackground: Color {
-        if isActive { return Color.openNowGreen.opacity(0.095) }
+        if isActive { return MacForceNowDesign.accent.opacity(0.095) }
         return Color.white.opacity(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
         return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
         if isActive { return .black.opacity(0.86) }
-        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
         return .white.opacity(isHovering ? 0.94 : 0.72)
     }
 }

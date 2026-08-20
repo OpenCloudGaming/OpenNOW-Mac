@@ -238,11 +238,8 @@ import Foundation
 }
 
 @Test func sessionManagerRejectsZeroBeforeTokenValidation() async {
-    let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.createSession(appId: "0", internalTitle: "Invalid Launch", settings: [:]) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (success, _, error) = await OPNSessionManager.shared.createSession(appId: "0", internalTitle: "Invalid Launch", settings: [:])
+    let result = (success, error)
 
     #expect(result.0 == false)
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
@@ -1063,11 +1060,8 @@ import Foundation
     settings["hdrColorSpace"] = 2
     settings["resolution"] = "7680x4320"
 
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let result = (createSucceeded, createError)
 
     let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
@@ -1144,11 +1138,8 @@ import Foundation
     settings["relayProtocol"] = 2
     settings["relayLocation"] = 1
 
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let result = (createSucceeded, createError)
 
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
@@ -1178,11 +1169,8 @@ import Foundation
     var settings = minimalSettings()
     settings["transportMode"] = "nvst"
 
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let result = (createSucceeded, createError)
 
     let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
@@ -1223,11 +1211,8 @@ import Foundation
     var settings = minimalSettings()
     settings["transportMode"] = "nvst"
 
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, info, error in
-            continuation.resume(returning: (success, info["rawSessionJSON"] as? String, error))
-        }
-    }
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let result = (createSucceeded, createInfo["rawSessionJSON"] as? String, createError)
 
     let rawSessionJSON = try #require(result.1)
     let rawSessionData = try #require(rawSessionJSON.data(using: .utf8))
@@ -1269,12 +1254,9 @@ import Foundation
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
 
-    let result = await withCheckedContinuation { continuation in
-        manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
-            let media = info["mediaConnectionInfo"] as? [String: Any] ?? [:]
-            continuation.resume(returning: (success, media["ip"] as? String ?? "", media["port"] as? Int ?? 0, error))
-        }
-    }
+    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host)
+    let pollMedia = pollInfo["mediaConnectionInfo"] as? [String: Any] ?? [:]
+    let result = (pollSucceeded, pollMedia["ip"] as? String ?? "", pollMedia["port"] as? Int ?? 0, pollError)
 
     #expect(result.0 == true)
     #expect(result.3.isEmpty)
@@ -1359,11 +1341,8 @@ import Foundation
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
 
-    let result = await withCheckedContinuation { continuation in
-        manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
-            continuation.resume(returning: (success, info["remainingSessionLimitSeconds"] as? Int ?? 0, error))
-        }
-    }
+    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host)
+    let result = (pollSucceeded, pollInfo["remainingSessionLimitSeconds"] as? Int ?? 0, pollError)
 
     #expect(result.0 == true)
     #expect(result.1 == 7200)
@@ -1590,11 +1569,8 @@ import Foundation
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let result = (createSucceeded, createError)
 
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
@@ -1613,11 +1589,8 @@ import Foundation
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
-            continuation.resume(returning: (success, error))
-        }
-    }
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let result = (createSucceeded, createError)
 
     #expect(result.0 == false)
     #expect(result.1 == "GeForce NOW says this game is out of limited playtime. Add playtime or try another game.")
@@ -1647,19 +1620,16 @@ import Foundation
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
-            continuation.resume(returning: (
-                success,
-                info["isSessionLimitConflict"] as? Bool ?? false,
-                info["sessionId"] as? String ?? "",
-                info["appId"] as? Int ?? 0,
-                info["serverIp"] as? String ?? "",
-                info["isResumable"] as? Bool ?? false,
-                error
-            ))
-        }
-    }
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let result = (
+        createSucceeded,
+        createInfo["isSessionLimitConflict"] as? Bool ?? false,
+        createInfo["sessionId"] as? String ?? "",
+        createInfo["appId"] as? Int ?? 0,
+        createInfo["serverIp"] as? String ?? "",
+        createInfo["isResumable"] as? Bool ?? false,
+        createError
+    )
 
     #expect(result.0 == false)
     #expect(result.1)
@@ -1695,16 +1665,13 @@ import Foundation
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
-    let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
-            continuation.resume(returning: (
-                success,
-                info["isSessionLimitConflict"] as? Bool ?? false,
-                info["isResumable"] as? Bool ?? false,
-                error
-            ))
-        }
-    }
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let result = (
+        createSucceeded,
+        createInfo["isSessionLimitConflict"] as? Bool ?? false,
+        createInfo["isResumable"] as? Bool ?? false,
+        createError
+    )
 
     #expect(result.0 == false)
     #expect(result.1)
@@ -1814,20 +1781,14 @@ import Foundation
         manager.setAccessToken("token")
         manager.setStreamingBaseUrl("https://\(host)")
 
-        let first = await withCheckedContinuation { continuation in
-            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
-                let adState = info["adState"] as? [String: Any]
-                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
-                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
-            }
+        let pollAd: ((Bool, [String: Any], String)) -> (Bool, String, String, String) = { result in
+            let (success, info, error) = result
+            let adState = info["adState"] as? [String: Any]
+            let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
+            return (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error)
         }
-        let second = await withCheckedContinuation { continuation in
-            manager.pollSession(sessionId: "resume-session", serverIp: host) { success, info, error in
-                let adState = info["adState"] as? [String: Any]
-                let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
-                continuation.resume(returning: (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error))
-            }
-        }
+        let first = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host))
+        let second = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host))
 
         #expect(first.0)
         #expect(first.3.isEmpty)

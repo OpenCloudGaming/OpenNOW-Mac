@@ -259,7 +259,7 @@ struct CatalogView: View {
             }
         }
         .ignoresSafeArea(edges: .all)
-        .background(Color.gfnBackgroundGreen)
+        .background(MacForceNowDesign.Surface.app)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
         .task { @MainActor in
             viewModel.start()

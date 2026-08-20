@@ -112,7 +112,7 @@ struct CatalogContentView: View {
                             .padding(.bottom, 44)
                         }
                         .background(
-                            Color.gfnBackgroundGreen
+                            MacForceNowDesign.Surface.app
                                 .contentShape(Rectangle())
                                 .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                         )
@@ -133,7 +133,7 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
-                .background(Color.gfnBackgroundGreen)
+                .background(MacForceNowDesign.Surface.app)
                 .onReceive(heroTimer) { _ in
                     guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -284,7 +284,7 @@ struct CatalogHeroView: View {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
-                                    .fill(index == activeIndex ? Color.openNowGreen : Color.white.opacity(0.58))
+                                    .fill(index == activeIndex ? MacForceNowDesign.accent : Color.white.opacity(0.58))
                                     .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
@@ -354,7 +354,7 @@ struct CatalogBrowseControlsView: View {
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
                         .nvidiaFont(size: 12, weight: .bold)
-                        .foregroundStyle(Color.openNowGreen.opacity(0.88))
+                        .foregroundStyle(MacForceNowDesign.accent.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
@@ -420,7 +420,7 @@ struct CatalogBrowseControlsView: View {
                                 .foregroundStyle(.black.opacity(0.88))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
-                                .background(Color.openNowGreen)
+                                .background(MacForceNowDesign.accent)
                             }
                             .buttonStyle(.plain)
                         }
@@ -444,7 +444,7 @@ struct CatalogEmptyDestinationView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .nvidiaFont(size: 22, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -677,7 +677,7 @@ struct CatalogDestinationGridView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
                     .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen.opacity(0.86))
+                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.86))
                     .tracking(0.8)
                 Spacer(minLength: 0)
             }
@@ -802,7 +802,7 @@ struct CatalogPanelActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .nvidiaFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(Color.openNowGreen)
+                            .foregroundStyle(MacForceNowDesign.accent)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -815,12 +815,12 @@ struct CatalogPanelActionTile: View {
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 10)
                         .frame(height: 25)
-                        .background(Color.openNowGreen)
+                        .background(MacForceNowDesign.accent)
                 }
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
-            .overlay { Rectangle().stroke(isHovering ? Color.openNowGreen : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? MacForceNowDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
             .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
             .animation(.easeOut(duration: 0.2), value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))

@@ -93,7 +93,7 @@ struct VendorSplashLoadingView: View {
                             VendorIndeterminateProgressBar()
                                 .frame(width: isCompact ? 188 : 260, height: 4)
                             Text(message)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.nvidiaSans(size: 13, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
                     }
@@ -122,7 +122,7 @@ struct VendorIndeterminateProgressBar: View {
                     Rectangle()
                         .fill(.white.opacity(0.24))
                     Rectangle()
-                        .fill(Color.openNowGreen)
+                        .fill(MacForceNowDesign.accent)
                         .frame(width: indicatorWidth)
                         .offset(x: phase * width)
                 }
@@ -304,6 +304,6 @@ struct AccountAvatar: View {
             .font(.system(size: size * 0.34, weight: .bold, design: .rounded))
             .foregroundStyle(.black)
             .frame(width: size, height: size)
-            .background(Color.openNowGreen, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .background(MacForceNowDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }

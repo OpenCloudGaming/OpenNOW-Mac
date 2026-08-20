@@ -17,7 +17,7 @@ struct SteamControllerMappingView: View {
     @State private var selectedControl: SteamControllerControl = .leftGrip
     @State private var bindingKindOverride: BindingKind?
 
-    private static let backgroundColor = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+    private static let backgroundColor = MacForceNowDesign.Surface.deep
     private static let panelColor = Color(red: 24 / 255, green: 25 / 255, blue: 24 / 255)
     private static let sidebarColor = Color(red: 21 / 255, green: 22 / 255, blue: 21 / 255)
 
@@ -78,8 +78,8 @@ struct SteamControllerMappingView: View {
     private var header: some View {
         HStack {
             Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(Color.openNowGreen)
+                .font(.nvidiaSans(size: 18))
+                .foregroundStyle(MacForceNowDesign.accent)
             Text("CONTROLLER MAPPING")
                 .font(MacForceNowNVIDIAFont.font(size: 15, weight: .bold))
                 .tracking(1.2)
@@ -89,7 +89,7 @@ struct SteamControllerMappingView: View {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.nvidiaSans(size: 13, weight: .bold))
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(width: 28, height: 28)
                     .background(Color.white.opacity(0.06))
@@ -114,7 +114,7 @@ struct SteamControllerMappingView: View {
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.nvidiaSans(size: 9, weight: .bold))
                         .foregroundStyle(.white.opacity(0.4))
                 }
                 .padding(.horizontal, 12)
@@ -143,7 +143,7 @@ struct SteamControllerMappingView: View {
                     }
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.nvidiaSans(size: 11, weight: .bold))
                         .foregroundStyle(.white.opacity(0.55))
                         .frame(width: 30, height: 30)
                         .background(Color.white.opacity(0.06))
@@ -163,7 +163,7 @@ struct SteamControllerMappingView: View {
             .foregroundStyle(.black)
             .padding(.horizontal, 14)
             .frame(height: 30)
-            .background(Color.openNowGreen)
+            .background(MacForceNowDesign.accent)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .buttonStyle(.plain)
         }
@@ -199,7 +199,7 @@ struct SteamControllerMappingView: View {
             .foregroundStyle(hasUnsavedChanges ? .black : .black.opacity(0.4))
             .padding(.horizontal, 22)
             .frame(height: 32)
-            .background(Color.openNowGreen.opacity(hasUnsavedChanges ? 1 : 0.35))
+            .background(MacForceNowDesign.accent.opacity(hasUnsavedChanges ? 1 : 0.35))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .buttonStyle(.plain)
             .disabled(!hasUnsavedChanges)
@@ -211,7 +211,7 @@ struct SteamControllerMappingView: View {
     private var noProfileMessage: some View {
         VStack(spacing: 12) {
             Image(systemName: "gamecontroller")
-                .font(.system(size: 44))
+                .font(.nvidiaSans(size: 44))
                 .foregroundStyle(.white.opacity(0.15))
             Text("No profile selected")
                 .font(MacForceNowNVIDIAFont.font(size: 14, weight: .medium))
@@ -258,16 +258,16 @@ struct SteamControllerMappingView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: category.systemImage)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.nvidiaSans(size: 12, weight: .semibold))
                             .frame(width: 16)
                         Text(category.label)
                             .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
                     }
-                    .foregroundStyle(selectedControl.category == category ? Color.openNowGreen : .white.opacity(0.6))
+                    .foregroundStyle(selectedControl.category == category ? MacForceNowDesign.accent : .white.opacity(0.6))
                     .padding(.horizontal, 14)
                     .frame(height: 34)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(selectedControl.category == category ? Color.openNowGreen.opacity(0.12) : Color.clear)
+                    .background(selectedControl.category == category ? MacForceNowDesign.accent.opacity(0.12) : Color.clear)
                 }
                 .buttonStyle(.plain)
             }
@@ -294,7 +294,7 @@ struct SteamControllerMappingView: View {
                         .font(MacForceNowNVIDIAFont.font(size: 13, weight: .bold))
                         .foregroundStyle(held ? .black : .white.opacity(0.9))
                         .frame(width: 44, height: 26)
-                        .background(held ? Color.openNowGreen : Color.white.opacity(0.08))
+                        .background(held ? MacForceNowDesign.accent : Color.white.opacity(0.08))
                         .clipShape(Capsule())
                     Text(control.category.label)
                         .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
@@ -385,7 +385,7 @@ struct SteamControllerMappingView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
                 .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : Color.openNowGreen.opacity(0.9))
+                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : MacForceNowDesign.accent.opacity(0.9))
             let columns = [GridItem(.adaptive(minimum: 64), spacing: 6)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
                 ForEach(SteamControllerGripComboTarget.all) { chip in
@@ -400,8 +400,8 @@ struct SteamControllerMappingView: View {
                             .foregroundStyle(selected ? .black : .white.opacity(0.55))
                             .frame(maxWidth: .infinity)
                             .frame(height: 24)
-                            .background(selected ? Color.openNowGreen : Color.white.opacity(0.05))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? Color.openNowGreen.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
+                            .background(selected ? MacForceNowDesign.accent : Color.white.opacity(0.05))
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? MacForceNowDesign.accent.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
@@ -445,7 +445,7 @@ struct SteamControllerMappingView: View {
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 30)
-                    .background(current == button ? Color.openNowGreen : Color.white.opacity(0.05))
+                    .background(current == button ? MacForceNowDesign.accent : Color.white.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)

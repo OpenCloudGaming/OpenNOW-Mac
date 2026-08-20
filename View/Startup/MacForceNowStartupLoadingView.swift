@@ -57,8 +57,8 @@ private struct MacForceNowStartupBackdrop: View {
 
             RadialGradient(
                 stops: [
-                    .init(color: Color.openNowGreen.opacity(0.28 * environmentReveal), location: 0.00),
-                    .init(color: Color.openNowGreen.opacity(0.10 * environmentReveal), location: 0.34),
+                    .init(color: MacForceNowDesign.accent.opacity(0.28 * environmentReveal), location: 0.00),
+                    .init(color: MacForceNowDesign.accent.opacity(0.10 * environmentReveal), location: 0.34),
                     .init(color: .clear, location: 1.00)
                 ],
                 center: UnitPoint(x: 0.50 + sin(loop * .pi * 2) * 0.035, y: 0.46),
@@ -81,7 +81,7 @@ private struct MacForceNowStartupBackdrop: View {
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: [.clear, Color.openNowGreen.opacity(0.045 * environmentReveal), .clear],
+                        colors: [.clear, MacForceNowDesign.accent.opacity(0.045 * environmentReveal), .clear],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -111,7 +111,7 @@ private struct MacForceNowStartupDepthGrid: View {
                 let opacity = reveal * (0.16 - Double(index) * 0.018)
 
                 RoundedRectangle(cornerRadius: 34, style: .continuous)
-                    .stroke(Color.openNowGreen.opacity(opacity), lineWidth: index == 0 ? 1.4 : 0.9)
+                    .stroke(MacForceNowDesign.accent.opacity(opacity), lineWidth: index == 0 ? 1.4 : 0.9)
                     .frame(width: size, height: size * 0.54)
                     .scaleEffect(CGFloat(scaleValue))
                     .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
@@ -122,7 +122,7 @@ private struct MacForceNowStartupDepthGrid: View {
 
             ForEach(0..<9, id: \.self) { index in
                 Capsule()
-                    .fill(Color.openNowGreen.opacity(reveal * 0.12))
+                    .fill(MacForceNowDesign.accent.opacity(reveal * 0.12))
                     .frame(width: size * 0.70, height: index.isMultiple(of: 3) ? 1.2 : 0.7)
                     .offset(y: CGFloat(index - 4) * (compact ? 20 : 28) * uiScale)
                     .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
@@ -153,7 +153,7 @@ private struct MacForceNowStartupCoreLogo: View {
 
         ZStack {
             Circle()
-                .fill(Color.openNowGreen.opacity(0.14 + systemReveal * 0.08))
+                .fill(MacForceNowDesign.accent.opacity(0.14 + systemReveal * 0.08))
                 .frame(width: size * (1.10 + completion * 0.20), height: size * (1.10 + completion * 0.20))
                 .blur(radius: (compact ? 26 : 42) * uiScale)
                 .opacity(logoReveal)
@@ -162,7 +162,7 @@ private struct MacForceNowStartupCoreLogo: View {
                 Circle()
                     .trim(from: CGFloat(0.06 + Double(index) * 0.04), to: CGFloat(0.84 - Double(index) * 0.06))
                     .stroke(
-                        Color.openNowGreen.opacity(0.20 + systemReveal * 0.20),
+                        MacForceNowDesign.accent.opacity(0.20 + systemReveal * 0.20),
                         style: StrokeStyle(lineWidth: CGFloat(index == 0 ? 1.8 : 1.0), lineCap: .round, dash: index == 1 ? [10, 15] : [22, 18])
                     )
                     .frame(width: size * CGFloat(1.22 + Double(index) * 0.20), height: size * CGFloat(1.22 + Double(index) * 0.20))
@@ -177,7 +177,7 @@ private struct MacForceNowStartupCoreLogo: View {
                 .rotation3DEffect(.degrees(rotation), axis: (x: 0.10, y: 1, z: 0.02), perspective: 0.74)
                 .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), perspective: 0.74)
                 .scaleEffect(CGFloat(0.86 + logoReveal * 0.14 + completion * 0.05))
-                .shadow(color: Color.openNowGreen.opacity(0.74), radius: (compact ? 24 : 38) * uiScale)
+                .shadow(color: MacForceNowDesign.accent.opacity(0.74), radius: (compact ? 24 : 38) * uiScale)
                 .shadow(color: .white.opacity(0.16 + completion * 0.12), radius: (compact ? 8 : 12) * uiScale)
                 .opacity(logoReveal)
         }
@@ -250,12 +250,12 @@ private struct MacForceNowStartupModuleCard: View {
     var body: some View {
         HStack(spacing: (compact ? 8 : 10) * uiScale) {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.openNowGreen.opacity(0.18 + load * 0.18))
-                .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.openNowGreen.opacity(0.46), lineWidth: 1) }
+                .fill(MacForceNowDesign.accent.opacity(0.18 + load * 0.18))
+                .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(MacForceNowDesign.accent.opacity(0.46), lineWidth: 1) }
                 .frame(width: (compact ? 22 : 28) * uiScale, height: (compact ? 22 : 28) * uiScale)
                 .overlay {
                     Circle()
-                        .fill(load > 0.96 ? Color.openNowGreen : Color.white.opacity(0.32))
+                        .fill(load > 0.96 ? MacForceNowDesign.accent : Color.white.opacity(0.32))
                         .frame(width: (compact ? 7 : 9) * uiScale, height: (compact ? 7 : 9) * uiScale)
                 }
 
@@ -265,8 +265,8 @@ private struct MacForceNowStartupModuleCard: View {
                     .tracking(1.2)
                     .foregroundStyle(.white.opacity(0.90))
                 Text(module.detail)
-                    .font(.system(size: (compact ? 8 : 9) * uiScale, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen.opacity(0.72))
+                    .font(.nvidiaSans(size: (compact ? 8 : 9) * uiScale, weight: .bold))
+                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.72))
             }
 
             Spacer(minLength: 0)
@@ -275,13 +275,13 @@ private struct MacForceNowStartupModuleCard: View {
         .background(.black.opacity(0.40), in: RoundedRectangle(cornerRadius: (compact ? 16 : 19) * uiScale, style: .continuous))
         .overlay(alignment: .bottomLeading) {
             Capsule()
-                .fill(Color.openNowGreen.opacity(0.82))
+                .fill(MacForceNowDesign.accent.opacity(0.82))
                 .frame(width: CGFloat(load) * (compact ? 112 : 154) * uiScale, height: 2)
                 .padding(.horizontal, (compact ? 13 : 16) * uiScale)
                 .padding(.bottom, 6)
         }
-        .overlay { RoundedRectangle(cornerRadius: (compact ? 16 : 19) * uiScale, style: .continuous).stroke(Color.openNowGreen.opacity(0.26), lineWidth: 1) }
-        .shadow(color: Color.openNowGreen.opacity(0.20), radius: (compact ? 10 : 16) * uiScale)
+        .overlay { RoundedRectangle(cornerRadius: (compact ? 16 : 19) * uiScale, style: .continuous).stroke(MacForceNowDesign.accent.opacity(0.26), lineWidth: 1) }
+        .shadow(color: MacForceNowDesign.accent.opacity(0.20), radius: (compact ? 10 : 16) * uiScale)
     }
 }
 
@@ -301,7 +301,7 @@ private struct MacForceNowStartupDiagnostics: View {
     var body: some View {
         VStack(alignment: .leading, spacing: (compact ? 8 : 10) * uiScale) {
             Text("LOAD SEQUENCE")
-                .font(.system(size: (compact ? 9 : 10) * uiScale, weight: .black))
+                .font(.nvidiaSans(size: (compact ? 9 : 10) * uiScale, weight: .black))
                 .tracking(2.2)
                 .foregroundStyle(.white.opacity(0.46))
 
@@ -310,7 +310,7 @@ private struct MacForceNowStartupDiagnostics: View {
 
                 HStack(spacing: 8 * uiScale) {
                     Circle()
-                        .fill(itemProgress > 0.96 ? Color.openNowGreen : Color.white.opacity(0.18))
+                        .fill(itemProgress > 0.96 ? MacForceNowDesign.accent : Color.white.opacity(0.18))
                         .frame(width: 7 * uiScale, height: 7 * uiScale)
                     Text(item.0.uppercased())
                         .font(.system(size: (compact ? 9 : 10) * uiScale, weight: .bold, design: .monospaced))
@@ -318,7 +318,7 @@ private struct MacForceNowStartupDiagnostics: View {
                     Spacer(minLength: 0)
                     Text(itemProgress > 0.96 ? "OK" : "SYNC")
                         .font(.system(size: (compact ? 8 : 9) * uiScale, weight: .black, design: .monospaced))
-                        .foregroundStyle(itemProgress > 0.96 ? Color.openNowGreen : .white.opacity(0.38))
+                        .foregroundStyle(itemProgress > 0.96 ? MacForceNowDesign.accent : .white.opacity(0.38))
                 }
             }
         }
@@ -350,7 +350,7 @@ private struct MacForceNowStartupSequenceFooter: View {
                 .frame(width: (compact ? 230 : 360) * uiScale, height: 5 * uiScale)
 
             Text("Logo core initializes first. Services attach as the cloud client comes online.")
-                .font(.system(size: (compact ? 10 : 11) * uiScale, weight: .semibold))
+                .font(.nvidiaSans(size: (compact ? 10 : 11) * uiScale, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.42))
                 .multilineTextAlignment(.center)
                 .frame(width: (compact ? 280 : 420) * uiScale)
@@ -386,19 +386,19 @@ private struct MacForceNowStartupProgressRail: View {
                 Capsule()
                     .fill(.white.opacity(0.15))
                 Capsule()
-                    .fill(Color.openNowGreen.opacity(0.24))
+                    .fill(MacForceNowDesign.accent.opacity(0.24))
                     .frame(width: fillWidth)
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [.clear, Color.openNowGreen.opacity(0.72), Color.openNowGreen, Color.openNowGreen.opacity(0.72), .clear],
+                            colors: [.clear, MacForceNowDesign.accent.opacity(0.72), MacForceNowDesign.accent, MacForceNowDesign.accent.opacity(0.72), .clear],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
                     .frame(width: sweepWidth)
                     .offset(x: offset)
-                    .shadow(color: Color.openNowGreen.opacity(0.70), radius: 8 * uiScale)
+                    .shadow(color: MacForceNowDesign.accent.opacity(0.70), radius: 8 * uiScale)
             }
             .clipShape(Capsule())
         }

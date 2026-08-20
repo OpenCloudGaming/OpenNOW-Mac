@@ -66,9 +66,9 @@ struct RecordingTimelineView: View {
         let isSelected = item.segment.id == selectedSegmentID
         return ZStack(alignment: .leading) {
             Rectangle()
-                .fill(isSelected ? Color.openNowGreen.opacity(0.30) : Color.white.opacity(0.10))
+                .fill(isSelected ? MacForceNowDesign.accent.opacity(0.30) : Color.white.opacity(0.10))
             Rectangle()
-                .stroke(isSelected ? Color.openNowGreen : Color.white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
+                .stroke(isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.segment.recording.title)
@@ -87,7 +87,7 @@ struct RecordingTimelineView: View {
                         .foregroundStyle(.black.opacity(0.82))
                         .padding(.horizontal, 5)
                         .frame(height: 15)
-                        .background(Color.openNowGreen)
+                        .background(MacForceNowDesign.accent)
                 }
             }
             .padding(.horizontal, 10)
@@ -102,12 +102,12 @@ struct RecordingTimelineView: View {
 
     private func trimHandle(item: (segment: RecordingEditorSegment, x: CGFloat, width: CGFloat), isLeading: Bool) -> some View {
         RoundedRectangle(cornerRadius: 2)
-            .fill(Color.openNowGreen)
+            .fill(MacForceNowDesign.accent)
             .frame(width: 12, height: 72)
             .overlay(alignment: isLeading ? .leading : .trailing) {
                 Rectangle().fill(Color.black.opacity(0.30)).frame(width: 2)
             }
-            .shadow(color: Color.openNowGreen.opacity(0.55), radius: 6)
+            .shadow(color: MacForceNowDesign.accent.opacity(0.55), radius: 6)
             .gesture(DragGesture(minimumDistance: 1)
                 .onChanged { value in
                     let key = item.segment.id.uuidString + (isLeading ? "-leading" : "-trailing")
@@ -131,7 +131,7 @@ struct RecordingTimelineView: View {
         Rectangle()
             .fill(Color.white.opacity(0.94))
             .frame(width: 2, height: 94)
-            .shadow(color: Color.openNowGreen.opacity(0.95), radius: 7)
+            .shadow(color: MacForceNowDesign.accent.opacity(0.95), radius: 7)
             .offset(x: playheadX(in: width), y: -4)
     }
 
@@ -145,9 +145,9 @@ struct RecordingTimelineView: View {
 
     private func insertionIndicator(x: CGFloat) -> some View {
         Rectangle()
-            .fill(Color.openNowGreen)
+            .fill(MacForceNowDesign.accent)
             .frame(width: 3, height: 78)
-            .shadow(color: Color.openNowGreen.opacity(0.80), radius: 8)
+            .shadow(color: MacForceNowDesign.accent.opacity(0.80), radius: 8)
             .offset(x: x - 1.5, y: 8)
     }
 

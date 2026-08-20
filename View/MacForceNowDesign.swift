@@ -10,6 +10,13 @@ enum MacForceNowDesign {
         static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
         static let field = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
         static let scrim = Color.black.opacity(0.58)
+        static let deep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+        static let overlay = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
+        static let chrome = Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255)
+    }
+
+    enum Semantic {
+        static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
     }
 
     enum Text {
@@ -81,7 +88,7 @@ enum MacForceNowDesign {
         static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
     }
 
-    static let accent = Color.openNowGreen
+    static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
 
     static func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
         min(max(value, minimum), maximum)
@@ -92,7 +99,7 @@ extension View {
     func openNowFocusRing(_ isFocused: Bool) -> some View {
         overlay {
             Rectangle()
-                .stroke(isFocused ? Color.openNowGreen : .clear, lineWidth: 2)
+                .stroke(isFocused ? MacForceNowDesign.accent : .clear, lineWidth: 2)
         }
     }
 

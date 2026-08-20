@@ -91,7 +91,7 @@ struct LoginFormView: View {
                 Button(action: startDeviceCodeLogin) {
                     Text("BROWSER SIGN-IN")
                         .font(.nvidiaSans(size: 12, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
+                        .foregroundStyle(MacForceNowDesign.accent)
                         .tracking(0.8)
                 }
                 .buttonStyle(.plain)
@@ -106,7 +106,7 @@ struct LoginFormView: View {
                             .foregroundStyle(.white)
                         Text(viewModel.deviceCodeVerificationURI)
                             .font(.nvidiaSans(size: 12, weight: .regular))
-                            .foregroundStyle(Color.gfnTextSecondary)
+                            .foregroundStyle(MacForceNowDesign.Text.secondary)
                             .lineLimit(2)
                     }
                     .padding(.bottom, 20)
@@ -115,7 +115,7 @@ struct LoginFormView: View {
                 if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                     Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
                         .font(.nvidiaSans(size: 13, weight: .regular))
-                        .foregroundStyle(viewModel.validationMessage.isEmpty ? Color.openNowGreen : .orange)
+                        .foregroundStyle(viewModel.validationMessage.isEmpty ? MacForceNowDesign.accent : .orange)
                         .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
@@ -133,14 +133,14 @@ struct LoginFormView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(appVersionText)
                     .font(.nvidiaSans(size: 14, weight: .regular))
-                    .foregroundStyle(Color.gfnTextSecondary)
+                    .foregroundStyle(MacForceNowDesign.Text.secondary)
                     .lineLimit(1)
             }
             .frame(width: max(metrics.panelWidth - metrics.contentLeft - metrics.contentRight, 0), alignment: .leading)
             .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 36)
 
             Rectangle()
-                .fill(Color.openNowGreen)
+                .fill(MacForceNowDesign.accent)
                 .frame(width: 8)
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -152,7 +152,7 @@ struct LoginFormView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SERVICE PROVIDER")
                 .font(.nvidiaSans(size: 11, weight: .bold))
-                .foregroundStyle(Color.gfnTextTertiary)
+                .foregroundStyle(MacForceNowDesign.Text.tertiary)
                 .tracking(0.8)
 
             MacForceNowDropdownMenu(
@@ -174,7 +174,7 @@ struct LoginFormView: View {
                         if !viewModel.selectedProvider.loginProviderCode.isEmpty {
                             Text(viewModel.selectedProvider.loginProviderCode)
                                 .font(.nvidiaSans(size: 11, weight: .regular))
-                                .foregroundStyle(Color.gfnTextTertiary)
+                                .foregroundStyle(MacForceNowDesign.Text.tertiary)
                                 .lineLimit(1)
                         }
                     }
@@ -182,22 +182,22 @@ struct LoginFormView: View {
                     Spacer(minLength: 12)
 
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
+                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.accent)
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: 260, minHeight: 50, alignment: .leading)
                 .background(Color.white.opacity(0.08))
                 .overlay {
                     Rectangle()
-                        .stroke(Color.gfnStroke, lineWidth: 1)
+                        .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
                 }
             }
 
             if viewModel.isLoadingProviders {
                 Text("Loading provider list...")
                     .font(.nvidiaSans(size: 12, weight: .regular))
-                    .foregroundStyle(Color.gfnTextTertiary)
+                    .foregroundStyle(MacForceNowDesign.Text.tertiary)
             }
         }
     }
@@ -275,12 +275,12 @@ private struct VendorContentString: View {
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             Circle()
-                .fill(Color.openNowGreen)
+                .fill(MacForceNowDesign.accent)
                 .frame(width: 8, height: 8)
                 .padding(.top, 4)
             Text(text)
                 .font(.nvidiaSans(size: 14, weight: .regular))
-                .foregroundStyle(Color.gfnTextSecondary)
+                .foregroundStyle(MacForceNowDesign.Text.secondary)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -295,7 +295,7 @@ private struct TermsOfUseDialog: View {
             HStack(spacing: 12) {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.nvidiaSans(size: 22, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
                 Text("GeForce NOW Terms of Use")
                     .font(.nvidiaSans(size: 18, weight: .bold))
                     .foregroundStyle(.white)
@@ -311,10 +311,10 @@ private struct TermsOfUseDialog: View {
                 HStack {
                     Image(systemName: "link")
                         .font(.nvidiaSans(size: 11, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
+                        .foregroundStyle(MacForceNowDesign.accent)
                     Link("Read the full GeForce NOW Terms of Use", destination: touURL)
                         .font(.nvidiaSans(size: 13, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
+                        .foregroundStyle(MacForceNowDesign.accent)
                 }
             }
 

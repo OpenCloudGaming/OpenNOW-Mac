@@ -113,7 +113,7 @@ struct CatalogStorePickerOverlay: View {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .scaleEffect(1.7)
-                    .tint(Color.openNowGreen)
+                    .tint(MacForceNowDesign.accent)
                 Text(viewModel.ownershipFlowMessage.isEmpty ? "Syncing connected game libraries..." : viewModel.ownershipFlowMessage)
                     .nvidiaFont(size: 15, weight: .medium)
                     .foregroundStyle(.white.opacity(0.84))
@@ -186,7 +186,7 @@ struct CatalogStorePickerOverlay: View {
                 Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
                     .buttonStyle(.plain)
                     .nvidiaFont(size: 15, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
             }
             .lineLimit(3)
             .frame(maxWidth: 650, alignment: .leading)
@@ -256,7 +256,7 @@ struct CatalogStorePickerOverlay: View {
                     .background(Color.black.opacity(0.24))
                 Image(systemName: "checkmark")
                     .nvidiaFont(size: 13, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
             }
         }
     }
@@ -303,7 +303,7 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .foregroundStyle(.black.opacity(0.88))
             .frame(width: 112, height: 46)
-            .background(Color.openNowGreen.opacity(configuration.isPressed ? 0.78 : 1))
+            .background(MacForceNowDesign.accent.opacity(configuration.isPressed ? 0.78 : 1))
     }
 }
 
@@ -417,7 +417,7 @@ extension CatalogStorePickerRow {
     private var selectedCheckmark: some View {
         Image(systemName: "checkmark")
             .nvidiaFont(size: 14, weight: .bold)
-            .foregroundStyle(Color.openNowGreen)
+            .foregroundStyle(MacForceNowDesign.accent)
             .frame(width: 20, height: 20)
             .opacity(isSelected ? 1 : 0)
     }

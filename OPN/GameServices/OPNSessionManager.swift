@@ -20,16 +20,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         lock.withLock { streamingBaseUrl = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: url, serverIP: "") }
     }
 
-    func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func createSession(appId: String, internalTitle: String, settings: [String: Any]) async -> (Bool, [String: Any], String) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
-            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
-            return
+            return (false, [:], "This game does not include a launchable GeForce NOW app id.")
         }
         let token = currentAccessToken()
         guard !token.isEmpty else {
-            completion(false, [:], "No access token")
-            return
+            return (false, [:], "No access token")
         }
 
         clearPersistedActiveSessionId("")
@@ -101,191 +99,165 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         do {
             bodyData = try JSONSerialization.data(withJSONObject: body)
         } catch {
-            completion(false, [:], "Failed to encode session create request")
-            return
+            return (false, [:], "Failed to encode session create request")
         }
         let headers = CloudMatchClientHeaders.streamSession(transportMode: transportMode)
         guard var request = CloudMatchRequestFactory.createSessionRequest(baseURLString: baseUrl, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
-            completion(false, [:], "Invalid session create URL")
-            return
+            return (false, [:], "Invalid session create URL")
         }
         request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
 
-        nonisolated(unsafe) let createCompletion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: error)
-            guard let self else { return }
-            if let error {
-                createCompletion(false, [:], error.localizedDescription)
-                return
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: nil, response: nil, error: error)
+            return (false, [:], error.localizedDescription)
+        }
+        OPNProtocolDebug.logJSONData(label: "session create response", data: data)
+        let http = response as? HTTPURLResponse
+        guard http?.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
+            if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
+                clearPersistedActiveSessionId("")
+                return (false, [:], staleMessage)
             }
-            guard let data else {
-                createCompletion(false, [:], "No session response")
-                return
+            if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
+                return (false, [:], limitedModeMessage)
             }
-            OPNProtocolDebug.logJSONData(label: "session create response", data: data)
-            let http = response as? HTTPURLResponse
-            guard http?.statusCode == 200 else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
-                if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
-                    self.clearPersistedActiveSessionId("")
-                    createCompletion(false, [:], staleMessage)
-                    return
-                }
-                if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
-                    createCompletion(false, [:], limitedModeMessage)
-                    return
-                }
-                if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
-                    var conflict = selected
-                    let isResumable = self.isResumableActiveSessionStatus(int(selected["status"]))
-                    conflict["isSessionLimitConflict"] = true
-                    conflict["isResumable"] = isResumable
-                    let message = isResumable
-                        ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
-                        : "A GeForce NOW session is already active. End it before launching another game."
-                    createCompletion(false, conflict, message)
-                    return
-                }
-                createCompletion(false, [:], errorMessage)
-                return
+            if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = selectSessionLimitReuseEntry(activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
+                var conflict = selected
+                let isResumable = isResumableActiveSessionStatus(int(selected["status"]))
+                conflict["isSessionLimitConflict"] = true
+                conflict["isResumable"] = isResumable
+                let message = isResumable
+                    ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
+                    : "A GeForce NOW session is already active. End it before launching another game."
+                return (false, conflict, message)
             }
-            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
-                createCompletion(false, [:], CloudMatchResponseParser.requestStatusError(data: data, fallback: "Failed to parse session response"))
-                return
-            }
-            guard let session = json["session"] as? [String: Any] else {
-                createCompletion(false, [:], "No session in response")
-                return
-            }
-            var info = self.sessionInfo(from: session, requestedSessionId: "", baseUrl: baseUrl, clientId: clientId, deviceId: deviceId, initialProfile: [:])
-            self.mergeAndStoreAdState(&info)
-            createCompletion(true, info, "")
-        }.resume()
+            return (false, [:], errorMessage)
+        }
+        guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
+            return (false, [:], CloudMatchResponseParser.requestStatusError(data: data, fallback: "Failed to parse session response"))
+        }
+        guard let session = json["session"] as? [String: Any] else {
+            return (false, [:], "No session in response")
+        }
+        var info = sessionInfo(from: session, requestedSessionId: "", baseUrl: baseUrl, clientId: clientId, deviceId: deviceId, initialProfile: [:])
+        mergeAndStoreAdState(&info)
+        return (true, info, "")
     }
 
-    func pollSession(sessionId: String, serverIp: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func pollSession(sessionId: String, serverIp: String) async -> (Bool, [String: Any], String) {
         let token = currentAccessToken()
         guard !token.isEmpty else {
-            completion(false, [:], "No access token")
-            return
+            return (false, [:], "No access token")
         }
         guard isValidSessionId(sessionId) else {
-            completion(false, [:], "Invalid session id for poll: \(escapedLogString(sessionId))")
-            return
+            return (false, [:], "Invalid session id for poll: \(escapedLogString(sessionId))")
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
         guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            completion(false, [:], "Invalid poll URL")
-            return
+            return (false, [:], "Invalid poll URL")
         }
-        nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollSession")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: error)
-            guard let self else { return }
-            if let error {
-                completion(false, [:], error.localizedDescription)
-                return
-            }
-            guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
-                return
-            }
-            guard let json = CloudMatchResponseParser.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
-                completion(false, [:], "No session in poll response")
-                return
-            }
-            var info = self.sessionInfo(from: session, requestedSessionId: sessionId, baseUrl: base, clientId: "", deviceId: "", initialProfile: [:])
-            guard string(info["sessionId"]) == sessionId else {
-                completion(false, [:], "SESSION_ID_MISMATCH: requested \(escapedLogString(sessionId)) but response contained \(escapedLogString(string(info["sessionId"])))")
-                return
-            }
-            self.mergeAndStoreAdState(&info)
-            self.logPollSessionSummary(httpStatus: http.statusCode, info: info)
-            completion(true, info, "")
-        }.resume()
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: nil, response: nil, error: error)
+            return (false, [:], error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            return (false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
+        }
+        guard let json = CloudMatchResponseParser.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
+            return (false, [:], "No session in poll response")
+        }
+        var info = sessionInfo(from: session, requestedSessionId: sessionId, baseUrl: base, clientId: "", deviceId: "", initialProfile: [:])
+        guard string(info["sessionId"]) == sessionId else {
+            return (false, [:], "SESSION_ID_MISMATCH: requested \(escapedLogString(sessionId)) but response contained \(escapedLogString(string(info["sessionId"])))")
+        }
+        mergeAndStoreAdState(&info)
+        logPollSessionSummary(httpStatus: http.statusCode, info: info)
+        return (true, info, "")
     }
 
-    func stopSession(sessionId: String, serverIp: String, completion: @escaping (Bool, String) -> Void) {
+    func stopSession(sessionId: String, serverIp: String) async -> (Bool, String) {
         let token = currentAccessToken()
         guard !token.isEmpty else {
-            completion(false, "No access token")
-            return
+            return (false, "No access token")
         }
         clearPersistedActiveSessionId(sessionId)
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
         guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            completion(false, "Invalid stop session URL")
-            return
+            return (false, "Invalid stop session URL")
         }
-        nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.stopSession")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: error)
-            if let error {
-                completion(false, error.localizedDescription)
-                return
-            }
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                completion(false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
-                return
-            }
-            completion(true, "")
-        }.resume()
+        let data: Data?
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
+            return (false, error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            return (false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
+        }
+        return (true, "")
     }
 
-    func getActiveSessions(completion: @escaping (Bool, [[String: Any]], String) -> Void) {
+    func getActiveSessions() async -> (Bool, [[String: Any]], String) {
         let token = currentAccessToken()
         guard !token.isEmpty else {
-            completion(false, [], "No access token")
-            return
+            return (false, [], "No access token")
         }
         let base = currentStreamingBaseUrl()
         guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            completion(false, [], "Invalid sessions URL")
-            return
+            return (false, [], "Invalid sessions URL")
         }
-        nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.activeSessions")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: error)
-            guard let self else { return }
-            if let error {
-                completion(false, [], error.localizedDescription)
-                return
-            }
-            guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                completion(false, [], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-                return
-            }
-            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
-                completion(false, [], "API error from sessions endpoint")
-                return
-            }
-            completion(true, self.activeSessionEntries(from: array(json["sessions"]), streamingBaseUrl: base), "")
-        }.resume()
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: nil, response: nil, error: error)
+            return (false, [], error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            return (false, [], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
+            return (false, [], "API error from sessions endpoint")
+        }
+        return (true, activeSessionEntries(from: array(json["sessions"]), streamingBaseUrl: base), "")
     }
 
-    func reportSessionAd(session: [String: Any], adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func reportSessionAd(session: [String: Any], adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String) async -> (Bool, [String: Any], String) {
         let token = currentAccessToken()
         let sessionId = string(session["sessionId"])
         let actionCode = adActionCode(action)
         guard !token.isEmpty else {
-            completion(false, [:], "No access token")
-            return
+            return (false, [:], "No access token")
         }
         guard !sessionId.isEmpty, !adId.isEmpty, actionCode != 0 else {
-            completion(false, [:], "Invalid ad update request")
-            return
+            return (false, [:], "Invalid ad update request")
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: string(session["streamingBaseUrl"]).isEmpty ? currentStreamingBaseUrl() : string(session["streamingBaseUrl"]), serverIP: string(session["serverIp"]))
         var adUpdate: [String: Any] = ["adId": adId, "adAction": actionCode, "clientTimestamp": Int(Date().timeIntervalSince1970)]
@@ -296,48 +268,43 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         do {
             bodyData = try JSONSerialization.data(withJSONObject: ["action": 6, "adUpdates": [adUpdate]])
         } catch {
-            completion(false, [:], "Failed to encode ad update request")
-            return
+            return (false, [:], "Failed to encode ad update request")
         }
         guard var request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), body: bodyData) else {
-            completion(false, [:], "Invalid ad update URL")
-            return
+            return (false, [:], "Invalid ad update URL")
         }
-        nonisolated(unsafe) let completion = completion
-        nonisolated(unsafe) let adSession = session
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.reportSessionAd")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: error)
-            guard let self else { return }
-            if let error {
-                completion(false, [:], error.localizedDescription)
-                return
-            }
-            guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
-                return
-            }
-            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                completion(false, [:], "Ad update API error: \(body)")
-                return
-            }
-            var updated = adSession
-            if let sessionJson = json["session"] as? [String: Any] {
-                let progress = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary)
-                updated["status"] = int(sessionJson["status"])
-                updated["queuePosition"] = progress.queuePosition
-                updated["seatSetupStep"] = progress.seatSetupStep
-                updated["progressState"] = progress.progressState
-                updated["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
-                updated["negotiatedStreamProfile"] = self.negotiatedStreamProfile(from: sessionJson)
-                updated["adState"] = self.sessionAdState(from: sessionJson)
-                self.mergeAndStoreAdState(&updated)
-            }
-            completion(true, updated, "")
-        }.resume()
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: nil, response: nil, error: error)
+            return (false, [:], error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            return (false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
+        }
+        guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            return (false, [:], "Ad update API error: \(body)")
+        }
+        var updated = session
+        if let sessionJson = json["session"] as? [String: Any] {
+            let progress = OPNSessionJSONParser.parseSessionProgress(from: sessionJson as NSDictionary)
+            updated["status"] = int(sessionJson["status"])
+            updated["queuePosition"] = progress.queuePosition
+            updated["seatSetupStep"] = progress.seatSetupStep
+            updated["progressState"] = progress.progressState
+            updated["remainingSessionLimitSeconds"] = progress.remainingSessionLimitSeconds
+            updated["negotiatedStreamProfile"] = negotiatedStreamProfile(from: sessionJson)
+            updated["adState"] = sessionAdState(from: sessionJson)
+            mergeAndStoreAdState(&updated)
+        }
+        return (true, updated, "")
     }
 
     func claimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], recoveryMode: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {

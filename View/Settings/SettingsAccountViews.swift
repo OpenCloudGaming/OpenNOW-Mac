@@ -19,7 +19,7 @@ struct AccountSettingsPage: View {
                 HStack(alignment: .top, spacing: 20 * uiScale) {
                     ZStack {
                         SettingsVendorLayout.cardRaised
-                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.42), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.42), lineWidth: 1) }
                         SettingsAccountAvatar(email: viewModel.account.email, size: 58 * uiScale)
                     }
                     .frame(width: 92 * uiScale, height: 92 * uiScale)
@@ -36,7 +36,7 @@ struct AccountSettingsPage: View {
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
-                                .background(Color.openNowGreen)
+                                .background(MacForceNowDesign.accent)
                         }
                         Text(accountSummaryText)
                             .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
@@ -190,11 +190,11 @@ struct AccountHealthBadge: View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             HStack(spacing: 7 * uiScale) {
                 Circle()
-                    .fill(positive ? Color.openNowGreen : Color.orange)
+                    .fill(positive ? MacForceNowDesign.accent : Color.orange)
                     .frame(width: 7 * uiScale, height: 7 * uiScale)
                 Text(title)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.88))
+                    .foregroundStyle(positive ? MacForceNowDesign.accent : .white.opacity(0.88))
                     .tracking(1.1)
             }
             Text(subtitle)
@@ -205,8 +205,8 @@ struct AccountHealthBadge: View {
         .padding(.horizontal, 14 * uiScale)
         .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
         .background(SettingsVendorLayout.cardRaised)
-        .overlay(alignment: .leading) { Rectangle().fill(positive ? Color.openNowGreen : Color.orange).frame(width: 3 * uiScale) }
-        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
+        .overlay(alignment: .leading) { Rectangle().fill(positive ? MacForceNowDesign.accent : Color.orange).frame(width: 3 * uiScale) }
+        .overlay { Rectangle().stroke(positive ? MacForceNowDesign.accent.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
     }
 }
 
@@ -224,8 +224,8 @@ struct SettingsRevealButton: View {
                 .tracking(0.8)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 32 * uiScale)
-                .background(revealed ? Color.openNowGreen.opacity(isHovering ? 0.90 : 1) : Color.white.opacity(isHovering ? 0.10 : 0.065))
-                .overlay { Rectangle().stroke(revealed ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.20 : 0.13), lineWidth: 1) }
+                .background(revealed ? MacForceNowDesign.accent.opacity(isHovering ? 0.90 : 1) : Color.white.opacity(isHovering ? 0.10 : 0.065))
+                .overlay { Rectangle().stroke(revealed ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.20 : 0.13), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -286,7 +286,7 @@ struct AccountStatusTile: View {
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "Unknown" : value)
                 .font(.settingsNvidia(size: 16 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.78))
+                .foregroundStyle(positive ? MacForceNowDesign.accent : .white.opacity(0.78))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -294,7 +294,7 @@ struct AccountStatusTile: View {
         .padding(.vertical, 12 * uiScale)
         .frame(width: 188 * uiScale, height: 74 * uiScale, alignment: .leading)
         .background(Color.white.opacity(positive ? 0.065 : 0.045))
-        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(positive ? MacForceNowDesign.accent.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
@@ -338,7 +338,7 @@ struct SettingsStatisticTile: View {
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsNvidia(size: (emphasized ? 24 : 19) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? Color.openNowGreen : .white.opacity(0.90))
+                .foregroundStyle(emphasized ? MacForceNowDesign.accent : .white.opacity(0.90))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -346,6 +346,6 @@ struct SettingsStatisticTile: View {
         .padding(.vertical, 12 * uiScale)
         .frame(width: (emphasized ? 206 : 164) * uiScale, height: 78 * uiScale, alignment: .leading)
         .background(Color.white.opacity(emphasized ? 0.075 : 0.052))
-        .overlay { Rectangle().stroke(emphasized ? Color.openNowGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(emphasized ? MacForceNowDesign.accent.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }

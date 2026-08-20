@@ -6,7 +6,9 @@ public enum MacForceNowNVIDIAFont {
     public enum Weight: Hashable, Sendable {
         case regular
         case medium
+        case semibold
         case bold
+        case black
     }
 
     private nonisolated(unsafe) static let descriptors: [Weight: CTFontDescriptor] = {
@@ -14,6 +16,8 @@ public enum MacForceNowNVIDIAFont {
         result[.regular] = loadDescriptor(named: "NVIDIASans_W_Rg")
         result[.medium] = loadDescriptor(named: "NVIDIASans_W_Md")
         result[.bold] = loadDescriptor(named: "NVIDIASans_W_Bd")
+        result[.semibold] = loadDescriptor(named: "NVIDIASans_W_Md")
+        result[.black] = loadDescriptor(named: "NVIDIASans_W_Bd")
         return result
     }()
 
@@ -36,7 +40,9 @@ public enum MacForceNowNVIDIAFont {
         switch weight {
         case .regular: return .regular
         case .medium: return .medium
+        case .semibold: return .semibold
         case .bold: return .bold
+        case .black: return .black
         }
     }
 

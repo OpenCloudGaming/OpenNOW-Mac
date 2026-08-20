@@ -60,7 +60,7 @@ struct UnavailableRegionPrompt: View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             HStack(alignment: .top, spacing: 10 * uiScale) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15 * uiScale, weight: .bold))
+                    .font(.nvidiaSans(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(Color.orange)
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Selected Region Unavailable")

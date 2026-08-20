@@ -77,7 +77,7 @@ struct CatalogImageFallback: View {
             } else {
                 Image(systemName: "play.rectangle.fill")
                     .nvidiaFont(size: 34, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen.opacity(0.78))
+                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
         }
@@ -94,13 +94,13 @@ struct CatalogMessageView: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Rectangle()
-                    .fill(Color.openNowGreen.opacity(0.13))
+                    .fill(MacForceNowDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .nvidiaFont(size: 15, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
             }
             .frame(width: 36, height: 36)
-            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
+            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.30), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
@@ -131,7 +131,7 @@ struct CatalogMessageView: View {
         }
         .padding(14)
         .background(Color.white.opacity(0.060))
-        .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
+        .overlay(alignment: .leading) { Rectangle().fill(MacForceNowDesign.accent).frame(width: 3) }
         .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
     }
 
@@ -295,7 +295,7 @@ struct CatalogRatingBadge: View {
     private var fallbackBadge: some View {
         VStack(spacing: 0) {
             Text(game.ratingLabel.uppercased())
-                .font(.system(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
+                .font(.nvidiaSans(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
@@ -306,11 +306,11 @@ struct CatalogRatingBadge: View {
                 .minimumScaleFactor(0.65)
             Spacer(minLength: 0)
             Text(game.ratingSystemName.isEmpty ? "CONTENT RATED" : "CONTENT RATED BY")
-                .font(.system(size: 5.5, weight: .black))
+                .font(.nvidiaSans(size: 5.5, weight: .black))
                 .foregroundStyle(.black)
                 .lineLimit(1)
             Text(game.ratingSystemName.isEmpty ? "" : game.ratingSystemName.uppercased())
-                .font(.system(size: 9, weight: .black))
+                .font(.nvidiaSans(size: 9, weight: .black))
                 .foregroundStyle(.black)
                 .padding(.bottom, 4)
         }

@@ -5,7 +5,7 @@ struct SteamControllerTestView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = SteamControllerTestModel()
 
-    private static let backgroundColor = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+    private static let backgroundColor = MacForceNowDesign.Surface.deep
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,8 +35,8 @@ struct SteamControllerTestView: View {
     private var header: some View {
         HStack {
             Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(Color.openNowGreen)
+                .font(.nvidiaSans(size: 18))
+                .foregroundStyle(MacForceNowDesign.accent)
             Text("STEAM CONTROLLER TEST")
                 .font(MacForceNowNVIDIAFont.font(size: 15, weight: .bold))
                 .tracking(1.2)
@@ -46,7 +46,7 @@ struct SteamControllerTestView: View {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.nvidiaSans(size: 13, weight: .bold))
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(width: 28, height: 28)
                     .background(Color.white.opacity(0.06))
@@ -61,9 +61,9 @@ struct SteamControllerTestView: View {
     private var connectionStatusBar: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(model.isConnected ? Color.openNowGreen : Color.red.opacity(0.7))
+                .fill(model.isConnected ? MacForceNowDesign.accent : Color.red.opacity(0.7))
                 .frame(width: 8, height: 8)
-                .shadow(color: (model.isConnected ? Color.openNowGreen : Color.red).opacity(0.5), radius: 3)
+                .shadow(color: (model.isConnected ? MacForceNowDesign.accent : Color.red).opacity(0.5), radius: 3)
             Text(model.isConnected ? "Connected" : "No controller detected")
                 .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.7))
@@ -72,7 +72,7 @@ struct SteamControllerTestView: View {
                 if let battery = model.batteryLevel {
                     HStack(spacing: 4) {
                         Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.nvidiaSans(size: 11, weight: .medium))
                             .foregroundStyle(model.isCharging ? .yellow : batteryColor(for: battery))
                         Text("\(Int(battery))%")
                             .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
@@ -105,7 +105,7 @@ struct SteamControllerTestView: View {
 
     private func batteryColor(for level: UInt8) -> Color {
         switch level {
-        case 20...: return .openNowGreen
+        case 20...: return MacForceNowDesign.accent
         case 10..<20: return .orange
         default: return .red
         }
@@ -114,7 +114,7 @@ struct SteamControllerTestView: View {
     private var noControllerMessage: some View {
         VStack(spacing: 12) {
             Image(systemName: "gamecontroller")
-                .font(.system(size: 48))
+                .font(.nvidiaSans(size: 48))
                 .foregroundStyle(.white.opacity(0.15))
             Text("Connect a Steam Controller to begin testing")
                 .font(MacForceNowNVIDIAFont.font(size: 14, weight: .medium))
@@ -190,7 +190,7 @@ struct SteamControllerTestView: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.white.opacity(0.06))
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.openNowGreen.opacity(0.6))
+                            .fill(MacForceNowDesign.accent.opacity(0.6))
                             .frame(width: barWidth * CGFloat(max(0, min(1, displayValue))))
                     }
                 } else {
@@ -202,7 +202,7 @@ struct SteamControllerTestView: View {
                             .frame(width: 1)
                             .position(x: barWidth / 2, y: geo.size.height / 2)
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.openNowGreen.opacity(0.6))
+                            .fill(MacForceNowDesign.accent.opacity(0.6))
                             .frame(width: barWidth * CGFloat(abs(value) / 2))
                             .offset(x: value >= 0 ? barWidth * CGFloat(value) / 4 : -barWidth * CGFloat(abs(value)) / 4)
                     }
@@ -250,11 +250,11 @@ struct SteamControllerTestView: View {
         HStack(spacing: 6) {
             Text(label)
                 .font(MacForceNowNVIDIAFont.font(size: 10, weight: .bold))
-                .foregroundStyle(active ? Color.openNowGreen : .white.opacity(0.35))
+                .foregroundStyle(active ? MacForceNowDesign.accent : .white.opacity(0.35))
                 .frame(width: 28, alignment: .leading)
             Text(active ? "ON" : "OFF")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(active ? Color.openNowGreen.opacity(0.8) : .white.opacity(0.2))
+                .foregroundStyle(active ? MacForceNowDesign.accent.opacity(0.8) : .white.opacity(0.2))
         }
     }
 }

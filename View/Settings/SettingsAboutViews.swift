@@ -24,7 +24,7 @@ struct AboutSettingsPage: View {
                     ZStack {
                         Rectangle()
                             .fill(Color.black.opacity(0.22))
-                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.72), lineWidth: 1) }
                         VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
                             .scaledToFit()
                             .padding(.horizontal, 14 * uiScale)
@@ -42,7 +42,7 @@ struct AboutSettingsPage: View {
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
-                                .background(Color.openNowGreen)
+                                .background(MacForceNowDesign.accent)
                         }
                         Text("A macOS runtime for launching and streaming MacForce Now sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
@@ -111,7 +111,7 @@ struct AboutSettingsPage: View {
                     }
                     Text(diagnosticsState.message)
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(diagnosticsState.isError ? Color(red: 1, green: 0.54, blue: 0.50) : .white.opacity(0.62))
+                        .foregroundStyle(diagnosticsState.isError ? MacForceNowDesign.Semantic.destructive : .white.opacity(0.62))
                 }
             }
         }
@@ -250,13 +250,13 @@ struct DiagnosticsUploadConfirmationDialog: View {
                 HStack(alignment: .top, spacing: 14 * uiScale) {
                     ZStack {
                         Rectangle()
-                            .fill(Color.openNowGreen.opacity(0.16))
+                            .fill(MacForceNowDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
-                            .foregroundStyle(Color.openNowGreen)
+                            .foregroundStyle(MacForceNowDesign.accent)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
-                    .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.42), lineWidth: 1) }
+                    .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.42), lineWidth: 1) }
 
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
@@ -271,7 +271,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
 
                 HStack(alignment: .top, spacing: 10 * uiScale) {
                     Rectangle()
-                        .fill(Color.openNowGreen)
+                        .fill(MacForceNowDesign.accent)
                         .frame(width: 4 * uiScale, height: 42 * uiScale)
                     Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
@@ -328,14 +328,14 @@ struct SettingsDialogButton: View {
 
     private var backgroundColor: Color {
         switch tone {
-        case .primary: return Color.openNowGreen.opacity(isHovering ? 0.88 : 1)
+        case .primary: return MacForceNowDesign.accent.opacity(isHovering ? 0.88 : 1)
         case .secondary: return Color.white.opacity(isHovering ? 0.10 : 0.06)
         }
     }
 
     private var strokeColor: Color {
         switch tone {
-        case .primary: return Color.openNowGreen
+        case .primary: return MacForceNowDesign.accent
         case .secondary: return Color.white.opacity(0.14)
         }
     }

@@ -10,6 +10,7 @@ enum MacForceNowLog {
         case launch = "Launch"
         case shortcut = "GFNShortcut"
         case stream = "WebRTC"
+        case controller = "Controller"
     }
 
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.MacForceNow"

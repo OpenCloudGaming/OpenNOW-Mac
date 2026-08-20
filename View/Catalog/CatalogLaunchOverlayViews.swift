@@ -18,7 +18,7 @@ struct VendorLaunchFlowOverlay: View {
             Color.black.opacity(0.82)
                 .ignoresSafeArea()
             RadialGradient(
-                colors: [Color.openNowGreen.opacity(0.20), .clear],
+                colors: [MacForceNowDesign.accent.opacity(0.20), .clear],
                 center: .top,
                 startRadius: 20,
                 endRadius: 620
@@ -179,7 +179,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
 
                 HStack(spacing: 9) {
                     Image(systemName: volume <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.nvidiaSans(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.72))
                     Slider(value: $volume, in: 0...1)
                         .frame(width: 140)
@@ -305,7 +305,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 Button { } label: {
                     Text("LAUNCH STATUS")
                         .nvidiaFont(size: 10, weight: .bold)
-                        .foregroundStyle(Color.openNowGreen)
+                        .foregroundStyle(MacForceNowDesign.accent)
                         .tracking(1.4)
                 }
                 .buttonStyle(.plain)
@@ -313,12 +313,12 @@ struct VendorLaunchPanel<Content: View>: View {
             }
             .padding(.horizontal, 22)
             .frame(height: 58)
-            .background(Color(red: 57 / 255, green: 57 / 255, blue: 57 / 255))
+            .background(MacForceNowDesign.Surface.chrome)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title.uppercased())
                     .nvidiaFont(size: 13, weight: .bold)
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(MacForceNowDesign.accent)
                     .tracking(1.2)
                 Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
                     .nvidiaFont(size: 28, weight: .bold)
@@ -334,7 +334,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 .padding(.bottom, 26)
         }
         .frame(minWidth: 360, idealWidth: 640, maxWidth: 640)
-        .background(Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255))
+        .background(MacForceNowDesign.Surface.app)
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
         .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
     }
@@ -351,7 +351,7 @@ struct VendorLaunchStepHeader: View {
                 .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.black)
                 .frame(width: 26, height: 26)
-                .background(Color.openNowGreen)
+                .background(MacForceNowDesign.accent)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .nvidiaFont(size: 16, weight: .bold)
@@ -418,7 +418,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)
-            .background(Color.openNowGreen.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .background(MacForceNowDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0))
     }
 }
 

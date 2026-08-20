@@ -348,11 +348,11 @@ struct CatalogShowAllGridTile: View {
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? MacForceNowDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : Color.openNowGreen)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.55) : Color.white.opacity(0.30)) : Color.openNowGreen, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : MacForceNowDesign.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? MacForceNowDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : MacForceNowDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.plain)
@@ -393,7 +393,7 @@ struct CatalogShowAllGridTile: View {
         .overlay(alignment: .bottom) {
             if isSelected {
                 Rectangle()
-                    .fill(Color.openNowGreen)
+                    .fill(MacForceNowDesign.accent)
                     .frame(height: 4)
             }
         }

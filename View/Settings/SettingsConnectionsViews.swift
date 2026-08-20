@@ -109,7 +109,7 @@ struct StoreConnectionRow: View {
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16 * uiScale) {
             Rectangle()
-                .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
+                .fill(isConnected ? MacForceNowDesign.accent : Color.white.opacity(0.18))
                 .frame(width: 4 * uiScale, height: 46 * uiScale)
             StoreIcon(asset: iconAsset, imageURL: iconURL, connected: isConnected, uiScale: uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
@@ -130,8 +130,8 @@ struct StoreConnectionRow: View {
             }
         }
         .padding(12 * uiScale)
-        .background(isConnected ? Color.openNowGreen.opacity(0.095) : SettingsVendorLayout.row)
-        .overlay { Rectangle().stroke(isConnected ? Color.openNowGreen.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1) }
+        .background(isConnected ? MacForceNowDesign.accent.opacity(0.095) : SettingsVendorLayout.row)
+        .overlay { Rectangle().stroke(isConnected ? MacForceNowDesign.accent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 
     private func statusText(_ account: CatalogStoreAccount?) -> String {
@@ -160,7 +160,7 @@ struct StoreIcon: View {
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(connected ? Color.openNowGreen.opacity(0.18) : Color.white.opacity(0.075))
+                .fill(connected ? MacForceNowDesign.accent.opacity(0.18) : Color.white.opacity(0.075))
             if let url = resolvedImageURL {
                 StoreRemoteIconImage(url: url, asset: asset, connected: connected)
             } else {
@@ -168,7 +168,7 @@ struct StoreIcon: View {
             }
         }
         .frame(width: 42 * uiScale, height: 42 * uiScale)
-        .overlay { Rectangle().stroke(connected ? Color.openNowGreen.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(connected ? MacForceNowDesign.accent.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
         .accessibilityHidden(true)
     }
 
@@ -234,7 +234,7 @@ struct StoreLocalIconImage: View {
         } else {
             Image(systemName: "link")
                 .font(.settingsNvidia(size: 17, weight: .bold))
-                .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.56))
+                .foregroundStyle(connected ? MacForceNowDesign.accent : .white.opacity(0.56))
         }
     }
 }

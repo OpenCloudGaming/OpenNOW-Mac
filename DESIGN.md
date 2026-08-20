@@ -15,8 +15,10 @@ Token sources of truth:
 
 ### Brand
 
-- **Accent** (#75E61A): NVIDIA green, `Color.openNowGreen` / `MacForceNowDesign.accent` /
+- **Accent** (#75E61A): NVIDIA green, `MacForceNowDesign.accent` /
   `WebRTCMediaStreamTheme.accent`. Primary actions, active states, focus rings, section
+- **Destructive** (#FF8980): `MacForceNowDesign.Semantic.destructive`. Destructive menu
+  roles, end-stream actions, error accents.
   eyebrows, top edge bars. Never used for large backgrounds.
 - **Accent Soft** (#ABFF5C): `WebRTCMediaStreamTheme.accentSoft`. Status text on the
   stream launch overlay only.
@@ -34,21 +36,25 @@ Token sources of truth:
 - **Field** (#1F1F1F): `Surface.field`. Input backgrounds on app-shell forms.
 - **Scrim** (#000000 @ 0.58 app, 0.54 stream): `Surface.scrim`. Full-cover dim behind
   modals and overlays.
+- **Deep** (#121312): `Surface.deep`. Full-page backdrops for settings-style flows
+  (Settings, Steam Controller test/mapping surfaces).
+- **Overlay** (#171717): `Surface.overlay`. Menu and Show All page backdrops.
+- **Chrome** (#39393B): `Surface.chrome`. Hero gradient base and launch-overlay chrome.
 
 ### Text
 
 - **Text Primary** (#FFFFFF @ 0.96): Main content and values.
 - **Text Secondary** (#FFFFFF @ 0.72): Supporting copy, dialog descriptions.
-- **Text Tertiary** (#FFFFFF @ 0.52 app/stream, 0.48 legacy `gfnTextTertiary`): Section
-  labels, row labels, footers.
+- **Text Tertiary** (#FFFFFF @ 0.52): `Text.tertiary`. Section labels, row labels,
+  footers.
 - **Text Muted** (#FFFFFF @ 0.38): Disabled and placeholder text.
 
 ### Strokes
 
 - **Stroke Subtle / Divider** (#FFFFFF @ 0.10): `Stroke.subtle` /
   `WebRTCMediaStreamTheme.divider`. Default 1px borders and divider bars.
-- **Stroke Regular** (#FFFFFF @ 0.14): `Stroke.regular` / `Color.gfnStroke`. Interactive
-  element borders (buttons, fields, pickers).
+- **Stroke Regular** (#FFFFFF @ 0.14): `Stroke.regular`. Interactive element borders
+  (buttons, fields, pickers).
 - **Stroke Strong** (#FFFFFF @ 0.22): `Stroke.strong`. Emphasized borders, hover states.
 
 ### Fill Tints (stream HUD)

@@ -65,7 +65,7 @@ struct CatalogShowAllResizeZones<ResizeGesture: Gesture>: View {
                                 .fill(Color.white.opacity(0.42))
                                 .frame(width: 15, height: 1)
                             Rectangle()
-                                .fill(Color.openNowGreen.opacity(0.86))
+                                .fill(MacForceNowDesign.accent.opacity(0.86))
                                 .frame(width: 21, height: 1)
                         }
                         .rotationEffect(.degrees(-45))
@@ -223,7 +223,7 @@ struct CatalogShowAllEmptySearchView: View {
         VStack(spacing: 10) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .nvidiaFont(size: 34, weight: .bold)
-                .foregroundStyle(Color.openNowGreen.opacity(0.84))
+                .foregroundStyle(MacForceNowDesign.accent.opacity(0.84))
             Text("No matching games")
                 .nvidiaFont(size: 18, weight: .bold)
                 .foregroundStyle(.white.opacity(0.88))

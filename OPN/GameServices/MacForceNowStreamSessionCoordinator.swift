@@ -185,29 +185,24 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     public func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
         // The server response ([[String: Any]]) is not Sendable, so resolve the blocker and
-        // build the (Sendable) conflict inside the completion and only hand that back.
-        await withCheckedContinuation { continuation in
-            sessionManager.getActiveSessions { [self] _, sessions, _ in
-                let candidates = sessions.filter { string($0["sessionId"]) != sessionID }
-                guard !candidates.isEmpty,
-                      let blocker = sessionManager.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                let blockerSessionID = string(blocker["sessionId"])
-                guard !blockerSessionID.isEmpty else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                let blockerAppID = string(blocker["appId"])
-                continuation.resume(returning: StreamSessionConflict(
-                    sessionID: blockerSessionID,
-                    applicationID: blockerAppID.isEmpty ? applicationID : blockerAppID,
-                    serverAddress: string(blocker["serverIp"]),
-                    isResumable: bool(blocker["isResumable"])
-                ))
-            }
+        // build the (Sendable) conflict from it locally and only hand that back.
+        let (_, sessions, _) = await sessionManager.getActiveSessions()
+        let candidates = sessions.filter { string($0["sessionId"]) != sessionID }
+        guard !candidates.isEmpty,
+              let blocker = sessionManager.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
+            return nil
         }
+        let blockerSessionID = string(blocker["sessionId"])
+        guard !blockerSessionID.isEmpty else {
+            return nil
+        }
+        let blockerAppID = string(blocker["appId"])
+        return StreamSessionConflict(
+            sessionID: blockerSessionID,
+            applicationID: blockerAppID.isEmpty ? applicationID : blockerAppID,
+            serverAddress: string(blocker["serverIp"]),
+            isResumable: bool(blocker["isResumable"])
+        )
     }
 
     public func cancelSessionStart() async {
@@ -295,22 +290,19 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
-        return try await withCheckedThrowingContinuation { continuation in
-            sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings) { success, info, error in
-                if success {
-                    continuation.resume(returning: AllocatedStreamSession(info))
-                } else if info["isSessionLimitConflict"] as? Bool == true {
-                    let applicationID = self.string(info["appId"])
-                    continuation.resume(throwing: MacForceNowStreamSessionError.activeSessionConflict(StreamSessionConflict(
-                        sessionID: self.string(info["sessionId"]),
-                        applicationID: applicationID.isEmpty ? configuration.applicationID : applicationID,
-                        serverAddress: self.string(info["serverIp"]),
-                        isResumable: self.bool(info["isResumable"])
-                    )))
-                } else {
-                    continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error))
-                }
-            }
+        let (success, info, error) = await sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings)
+        if success {
+            return AllocatedStreamSession(info)
+        } else if info["isSessionLimitConflict"] as? Bool == true {
+            let applicationID = self.string(info["appId"])
+            throw MacForceNowStreamSessionError.activeSessionConflict(StreamSessionConflict(
+                sessionID: self.string(info["sessionId"]),
+                applicationID: applicationID.isEmpty ? configuration.applicationID : applicationID,
+                serverAddress: self.string(info["serverIp"]),
+                isResumable: self.bool(info["isResumable"])
+            ))
+        } else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error)
         }
     }
 
@@ -409,26 +401,20 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
-        try await withCheckedThrowingContinuation { continuation in
-            sessionManager.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason) { success, info, error in
-                if success {
-                    continuation.resume(returning: AllocatedStreamSession(info))
-                } else {
-                    continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error))
-                }
-            }
+        let (success, info, error) = await sessionManager.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason)
+        if success {
+            return AllocatedStreamSession(info)
+        } else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error)
         }
     }
 
     private func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
-        try await withCheckedThrowingContinuation { continuation in
-            sessionManager.pollSession(sessionId: sessionId, serverIp: serverIp) { success, info, error in
-                if success {
-                    continuation.resume(returning: AllocatedStreamSession(info))
-                } else {
-                    continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to poll stream session." : error))
-                }
-            }
+        let (success, info, error) = await sessionManager.pollSession(sessionId: sessionId, serverIp: serverIp)
+        if success {
+            return AllocatedStreamSession(info)
+        } else {
+            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to poll stream session." : error)
         }
     }
 

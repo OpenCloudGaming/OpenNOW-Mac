@@ -28,7 +28,7 @@ struct InterfaceSettingsPage: View {
             SettingsCard(title: "Mode", uiScale: uiScale) {
                 HStack(alignment: .center, spacing: 18 * uiScale) {
                     Rectangle()
-                        .fill(controllerModeEnabled ? Color.openNowGreen : Color.white.opacity(0.18))
+                        .fill(controllerModeEnabled ? MacForceNowDesign.accent : Color.white.opacity(0.18))
                         .frame(width: 4 * uiScale, height: 58 * uiScale)
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         Text(controllerModeEnabled ? "Controller mode is active" : "Desktop catalog mode is active")
@@ -72,10 +72,10 @@ struct InterfaceSettingsPage: View {
                 HStack(alignment: .center, spacing: 12 * uiScale) {
                     Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
                         .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
+                        .foregroundStyle(MacForceNowDesign.accent)
                         .frame(width: 34 * uiScale, height: 34 * uiScale)
-                        .background(Color.openNowGreen.opacity(0.12))
-                        .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
+                        .background(MacForceNowDesign.accent.opacity(0.12))
+                        .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.30), lineWidth: 1) }
                     VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
                             .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
@@ -133,11 +133,11 @@ struct InterfaceGlyphPill: View {
                 .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
                 .lineLimit(1)
         }
-        .foregroundStyle(Color.openNowGreen)
+        .foregroundStyle(MacForceNowDesign.accent)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(Color.openNowGreen.opacity(0.12))
-        .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.28), lineWidth: 1) }
+        .background(MacForceNowDesign.accent.opacity(0.12))
+        .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.28), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
     }
 }

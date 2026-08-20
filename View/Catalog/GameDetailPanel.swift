@@ -50,10 +50,10 @@ struct GameDetailPanel: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.99), location: 0.00),
-                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.98), location: 0.34),
-                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.84), location: 0.49),
-                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.22), location: 0.67),
+                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.99), location: 0.00),
+                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.98), location: 0.34),
+                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.84), location: 0.49),
+                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.22), location: 0.67),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
@@ -128,7 +128,7 @@ struct GameDetailPanel: View {
                                     withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }
                                 } label: {
                                     Circle()
-                                        .fill(index == imageIndex ? Color.openNowGreen : Color.white.opacity(0.62))
+                                        .fill(index == imageIndex ? MacForceNowDesign.accent : Color.white.opacity(0.62))
                                         .frame(width: (index == imageIndex ? 12 : 9) * uiScale, height: (index == imageIndex ? 12 : 9) * uiScale)
                                 }
                                 .buttonStyle(.plain)
@@ -148,7 +148,7 @@ struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
-                .background(Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255))
+                .background(MacForceNowDesign.Surface.chrome)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
@@ -180,8 +180,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(chip == "IN LIBRARY" ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 10)
                     .frame(height: 27)
-                    .background(chip == "IN LIBRARY" ? Color.openNowGreen : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: 1) }
+                    .background(chip == "IN LIBRARY" ? MacForceNowDesign.accent : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? MacForceNowDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
             }
         }
     }
@@ -611,8 +611,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(option.isSelected ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 11)
                     .frame(height: 32)
-                    .background(option.isSelected ? Color.openNowGreen : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(option.isSelected ? Color.openNowGreen : Color.white.opacity(0.14), lineWidth: 1) }
+                    .background(option.isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(option.isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)
