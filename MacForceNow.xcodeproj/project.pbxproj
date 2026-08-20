@@ -62,11 +62,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B00000000000000000000120 /* App */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = App;
-			sourceTree = "<group>";
-		};
 		7729CE782FDEDAB300D5C9D5 /* OPN */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = OPN;
@@ -90,6 +85,11 @@
 		B00000000000000000000110 /* ViewModel */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ViewModel;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000120 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
 			sourceTree = "<group>";
 		};
 		C00000000000000000000003 /* Tests */ = {
@@ -170,12 +170,12 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				B00000000000000000000120 /* App */,
 				7729CE782FDEDAB300D5C9D5 /* OPN */,
 				B00000000000000000000101 /* Model */,
 				B00000000000000000000102 /* View */,
 				B00000000000000000000104 /* GFN */,
 				B00000000000000000000110 /* ViewModel */,
+				B00000000000000000000120 /* App */,
 			);
 			name = MacForceNow;
 			packageProductDependencies = (
