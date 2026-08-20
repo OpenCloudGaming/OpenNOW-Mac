@@ -11,14 +11,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-private final class LoginWeakObject<T: AnyObject>: @unchecked Sendable {
-    weak var value: T?
-
-    init(_ value: T) {
-        self.value = value
-    }
-}
-
 @MainActor
 final class LoginViewModel: ObservableObject {
     @Published var email = ""
@@ -41,7 +33,12 @@ final class LoginViewModel: ObservableObject {
     @Published var deviceCodeVerificationURI = ""
 
     private let authService = OPNAuthService.shared
+    private let providerInfoService: any GameProviderInfoServing
     private let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
+
+    init(providerInfoService: any GameProviderInfoServing = OPNGameService.shared) {
+        self.providerInfoService = providerInfoService
+    }
     private var modelContext: ModelContext?
     private var accounts: [LoginAccount] = []
     private var sessions: [LoginSession] = []
@@ -546,17 +543,14 @@ final class LoginViewModel: ObservableObject {
         guard !isLoadingProviders else { return }
         isLoadingProviders = true
         let requestedProviderIdpId = selectedProvider.idpId
-        let selfBox = LoginWeakObject(self)
-        OPNGameService.shared.fetchProviderInfo(idpId: requestedProviderIdpId) { success, info, _, error in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                self.isLoadingProviders = false
-                guard success else {
-                    MacForceNowLog.warning(.auth, "Provider discovery failed: \(error)")
-                    return
-                }
-                self.applyProviderInfo(info)
+        providerInfoService.fetchProviderInfo(idpId: requestedProviderIdpId) { [weak self] success, info, _, error in
+            guard let self else { return }
+            self.isLoadingProviders = false
+            guard success else {
+                MacForceNowLog.warning(.auth, "Provider discovery failed: \(error)")
+                return
             }
+            self.applyProviderInfo(info)
         }
     }
 
