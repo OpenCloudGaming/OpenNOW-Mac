@@ -343,7 +343,6 @@ constexpr uint32_t NVbClientEventSessionNotification = 0x0e;
 constexpr uint32_t NVbClientEventHaptic = 0x14;
 constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
-constexpr size_t NVbAuthRefreshResponseCapacity = 16 * 1024;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
 // Fork divergence from upstream: MacForce Now drives an ASYNCHRONOUS prepare. The native
 // start flow advances its state machine from the async onPrepareResult event delivered by
@@ -354,7 +353,7 @@ constexpr bool GeronimoPrepareSynchronous = false;
 constexpr uint32_t GraphicsContextMetal = 3;
 constexpr uint32_t DefaultNVbCodecH264 = 1;
 constexpr uint32_t MaximumStreamSettingsCount = 64;
-constexpr uint32_t MaximumConnectionInfoCount = 64;
+constexpr uint32_t MaximumConnectionInfoCount = 20;
 constexpr uint32_t MaximumMetadataCount = 64;
 constexpr uint16_t MinimumNVbPacketSize = 512;
 constexpr size_t NVbStreamSettingsPacketSizeOffset = 0x48;
@@ -908,7 +907,7 @@ OSType openNOWCVGetPixelFormatType(CVPixelBufferRef buffer) {
             if (previous != nullptr) { CFRelease(previous); }
             const uint64_t count = gFrameCaptureCount.fetch_add(1, std::memory_order_relaxed) + 1;
             if (count == 1 || (count % 600) == 0) {
-                NSLog(@"[OpenNOW] NVST frame capture #%llu: %zux%zu fmt=0x%08x",
+                NSLog(@"[MacForceNow] NVST frame capture #%llu: %zux%zu fmt=0x%08x",
                       static_cast<unsigned long long>(count),
                       CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer),
                       static_cast<unsigned int>(result));
@@ -968,7 +967,7 @@ bool acquireFrameCaptureHook(void *geronimoHandle) {
     gFrameCaptureInstallStatus.store(1, std::memory_order_release);
     if (geronimoHandle == nullptr) { return false; }
     void *addVideoFramePass = dlsym(geronimoHandle, kAddVideoFramePassSymbol);
-    if (addVideoFramePass == nullptr) { gFrameCaptureInstallStatus.store(2, std::memory_order_release); NSLog(@"[OpenNOW] frame tap: dlsym addVideoFramePass FAILED"); return false; }
+    if (addVideoFramePass == nullptr) { gFrameCaptureInstallStatus.store(2, std::memory_order_release); NSLog(@"[MacForceNow] frame tap: dlsym addVideoFramePass FAILED"); return false; }
     gAddVideoFramePassStart = reinterpret_cast<uintptr_t>(addVideoFramePass);
     // The function is a few KB (large stack frame, many format branches); a generous
     // window bounds the caller check without needing the exact symbol size.
@@ -980,9 +979,9 @@ bool acquireFrameCaptureHook(void *geronimoHandle) {
     void **slot = cvTarget != nullptr ? findImportSlotByValue(addVideoFramePass, cvTarget) : nullptr;
     if (slot == nullptr) {
         slot = findLazySymbolPointer(addVideoFramePass, "_CVPixelBufferGetPixelFormatType", true);
-        NSLog(@"[OpenNOW] frame tap: value scan missed, name scan %@", slot != nullptr ? @"hit" : @"MISSED");
+        NSLog(@"[MacForceNow] frame tap: value scan missed, name scan %@", slot != nullptr ? @"hit" : @"MISSED");
     } else {
-        NSLog(@"[OpenNOW] frame tap: value scan hit slot=%p", (void *)slot);
+        NSLog(@"[MacForceNow] frame tap: value scan hit slot=%p", (void *)slot);
     }
     if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) { gFrameCaptureInstallStatus.store(4, std::memory_order_release); return false; }
     void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
@@ -1223,7 +1222,6 @@ bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callback
         ? gOriginalBifrostCallback.load(std::memory_order_acquire)
         : session->originalBifrostCallback;
     if (originalCallback == nullptr) { return false; }
-    if (session == nullptr) { return originalCallback(gridApp, callbackType, callbackData); }
     GridAppCallbackLease callbackLease{session};
     const bool handled = originalCallback(gridApp, callbackType, callbackData);
     if (callbackType == NVbCallbackTypeEvent) { emitHapticRecords(session, callbackData); }
@@ -1237,17 +1235,6 @@ void openNOWGridAppUpdateAuthToken(void *gridApp, void *updateAuthToken) {
     char *response = loadUnaligned<char *>(updateAuthToken, 0x08);
     if (response == nullptr) { return; }
     response[0] = '\0';
-    MacForceNowGeronimoAuthRefreshHandler handler = nullptr;
-    void *context = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
-        handler = session->authRefreshHandler;
-        context = session->authRefreshContext;
-    }
-    if (handler != nullptr) {
-        handler(context, loadUnaligned<uint32_t>(updateAuthToken, 0), response, NVbAuthRefreshResponseCapacity);
-        response[NVbAuthRefreshResponseCapacity - 1] = '\0';
-    }
 }
 
 template <typename Function>
@@ -1404,7 +1391,7 @@ void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
             callVoidVirtual(session->videoDecoder, 0x58);
             session->videoDecoderStarted = true;
             if (!gFrameCaptureHookInstalled.exchange(true, std::memory_order_acq_rel)) {
-                NSLog(@"[OpenNOW] frame tap: decoder started, installing capture hook");
+                NSLog(@"[MacForceNow] frame tap: decoder started, installing capture hook");
                 if (!acquireFrameCaptureHook(session->libraryHandle)) {
                     gFrameCaptureHookInstalled.store(false, std::memory_order_release);
                 }
@@ -1503,7 +1490,8 @@ void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         locallyRequested = session->stopIssued;
-        session->state = NativeSessionState::stopped;
+        session->state = resultCode == 0 ? NativeSessionState::stopped : NativeSessionState::failed;
+        if (resultCode != 0) { session->lastError = "GridApp stop callback reported failure."; }
     }
     emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode, failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode));
 }
@@ -3727,16 +3715,33 @@ extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
         }
         session->registeredGamepads[sourceIndex] = false;
     }
-    NativeSessionState state;
+    bool shouldForceStop = false;
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
-        state = session->state;
+        shouldForceStop = session->state != NativeSessionState::created &&
+                          session->state != NativeSessionState::configured &&
+                          session->state != NativeSessionState::paused &&
+                          session->state != NativeSessionState::stopping &&
+                          session->state != NativeSessionState::stopped &&
+                          session->state != NativeSessionState::failed &&
+                          session->functions.stop != nullptr;
+        if (shouldForceStop) {
+            session->stopIssued = true;
+            session->state = NativeSessionState::stopping;
+            session->pendingStart.reset();
+        }
     }
-    if (state != NativeSessionState::created && state != NativeSessionState::configured && state != NativeSessionState::paused &&
-        state != NativeSessionState::stopped && state != NativeSessionState::failed && session->functions.stop != nullptr) {
+    if (shouldForceStop) {
         try {
-            session->functions.stop(session->gridApp, "MacForce Now native NVST forced destroy", 0);
+            if (!session->functions.stop(session->gridApp, "MacForce Now native NVST forced destroy", 0)) {
+                std::lock_guard<std::mutex> stateLock(session->stateMutex);
+                session->state = NativeSessionState::failed;
+                session->lastError = "GridApp::stop rejected the forced native stop request.";
+            }
         } catch (...) {
+            std::lock_guard<std::mutex> stateLock(session->stateMutex);
+            session->state = NativeSessionState::failed;
+            session->lastError = "GridApp::stop raised during forced native destruction.";
             fprintf(stderr, "MacForce Now forced native stop raised an unexpected C++ exception.\n");
         }
     }

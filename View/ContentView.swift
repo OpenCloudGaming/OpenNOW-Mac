@@ -29,6 +29,7 @@ struct ContentView: View {
             LoginView(viewModel: viewModel, accounts: accounts) { title in
                 windowTitle = title ?? Self.defaultWindowTitle
             }
+            .accessibilityHidden(isShowingStartupLoading)
 
             if isShowingStartupLoading {
                 MacForceNowStartupLoadingView()
@@ -69,8 +70,12 @@ struct ContentView: View {
     }
 
     private func dismissStartupLoading() async {
-        try? await Task.sleep(nanoseconds: MacForceNowStartupAnimation.dismissalDelayNanoseconds)
-        guard !Task.isCancelled else { return }
+        do {
+            try await Task.sleep(nanoseconds: MacForceNowStartupAnimation.dismissalDelayNanoseconds)
+        } catch {
+            isShowingStartupLoading = false
+            return
+        }
         withAnimation(.easeInOut(duration: MacForceNowStartupAnimation.fadeDuration)) {
             isShowingStartupLoading = false
         }

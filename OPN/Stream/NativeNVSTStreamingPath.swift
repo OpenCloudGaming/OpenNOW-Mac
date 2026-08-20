@@ -82,6 +82,56 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     }
 }
 
+enum NativeNVSTStreamHealthFailure: Equatable, Sendable {
+    case rendererUnavailable
+    case firstFrameTimedOut
+    case streamStalled
+
+    var message: String {
+        switch self {
+        case .rendererUnavailable:
+            "Native NVST lost its video renderer surface."
+        case .firstFrameTimedOut:
+            "Native NVST connected but did not begin receiving video frames."
+        case .streamStalled:
+            "Native NVST stopped receiving video frames."
+        }
+    }
+}
+
+struct NativeNVSTStreamHealthMonitor: Equatable, Sendable {
+    let firstFrameSampleLimit: Int
+    let stalledSampleLimit: Int
+    let rendererSampleLimit: Int
+    private(set) var receivedFrames = false
+    private var zeroFrameSamples = 0
+    private var missingRendererSamples = 0
+
+    init(firstFrameSampleLimit: Int = 15, stalledSampleLimit: Int = 10, rendererSampleLimit: Int = 5) {
+        self.firstFrameSampleLimit = max(1, firstFrameSampleLimit)
+        self.stalledSampleLimit = max(1, stalledSampleLimit)
+        self.rendererSampleLimit = max(1, rendererSampleLimit)
+    }
+
+    mutating func observe(snapshot: NativeNVSTPerformanceSnapshot?, rendererReady: Bool) -> NativeNVSTStreamHealthFailure? {
+        guard let snapshot, snapshot.available else { return nil }
+        missingRendererSamples = rendererReady ? 0 : missingRendererSamples + 1
+        if missingRendererSamples >= rendererSampleLimit { return .rendererUnavailable }
+
+        guard snapshot.streamFramesPerSecond >= 0 else { return nil }
+        if snapshot.streamFramesPerSecond > 0 {
+            receivedFrames = true
+            zeroFrameSamples = 0
+            return nil
+        }
+        zeroFrameSamples += 1
+        if receivedFrames {
+            return zeroFrameSamples >= stalledSampleLimit ? .streamStalled : nil
+        }
+        return zeroFrameSamples >= firstFrameSampleLimit ? .firstFrameTimedOut : nil
+    }
+}
+
 public struct NativeNVSTTerminationValue: Equatable, Sendable {
     public let code: Int32
     public let name: String?
@@ -180,8 +230,8 @@ public enum NativeNVSTRecoveryPolicy {
         switch termination {
         case .sessionTerminated(let info):
             info.permitsSameSessionRecovery
-        case .transportFailed(let failure):
-            failure.recoveryClassification == .transientNetwork && failure.result.map(isTransient) != false
+        case .transportFailed:
+            false
         }
     }
 
@@ -314,12 +364,14 @@ public actor NativeNVSTStreamingPath {
     private let mediaSession: NativeNVSTMediaSession
     private let automaticRecovery: NativeNVSTAutomaticRecovery
     private var state: StreamingPathState = .idle
+    private var startOwner: UUID?
     private var activeSession: StreamSessionDescriptor?
     private var activeAllocation: NativeNVSTSessionAllocation?
     private var launchConfiguration: StreamLaunchConfiguration?
     private var startedAt: ContinuousClock.Instant?
     private var terminalTask: Task<Void, Never>?
     private var cancelStartTask: Task<Void, Never>?
+    private var recoveryAttempted = false
     private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
 
     public init(sessionProvider: any NativeNVSTSessionProvider,
@@ -356,16 +408,21 @@ public actor NativeNVSTStreamingPath {
 
     public func start(configuration: StreamLaunchConfiguration,
                       progress: (@Sendable (StreamProgress) async -> Void)? = nil) async throws -> StreamSessionDescriptor {
-        try await withTaskCancellationHandler {
+        guard activeSession == nil, startOwner == nil else { throw NativeNVSTError.alreadyRunning }
+        let owner = UUID()
+        startOwner = owner
+        defer {
+            if startOwner == owner { startOwner = nil }
+        }
+        return try await withTaskCancellationHandler {
             try await startStreaming(configuration: configuration, progress: progress)
         } onCancel: {
-            Task { await self.cancelStart() }
+            Task { await self.cancelStart(owner: owner) }
         }
     }
 
     private func startStreaming(configuration: StreamLaunchConfiguration,
                                 progress: (@Sendable (StreamProgress) async -> Void)?) async throws -> StreamSessionDescriptor {
-        guard activeSession == nil else { throw NativeNVSTError.alreadyRunning }
         WebRTCMediaTelemetry.capture("nvst.path.start", level: .info, message: "Starting native NVST streaming path.", attributes: ["configurationId": configuration.id.uuidString, "applicationID": configuration.applicationID])
 
         try Task.checkCancellation()
@@ -423,6 +480,7 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = allocation
         launchConfiguration = configuration
         startedAt = .now
+        recoveryAttempted = false
         state = .running(allocation.session)
         monitorTransportTermination()
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
@@ -493,14 +551,24 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
+        recoveryAttempted = false
         WebRTCMediaTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
-        let diagnostics = await transport.diagnosticMetadata()
         await transport.disconnect()
-        try await sessionProvider.finishSession(activeSession, reason: reason)
+        let diagnostics = await transport.diagnosticMetadata()
+        let finishError: Error?
+        do {
+            try await sessionProvider.finishSession(activeSession, reason: reason)
+            finishError = nil
+        } catch {
+            finishError = error
+        }
         await mediaSession.finish()
         var metadata = ["transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
-        let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
+        if let finishError {
+            metadata["cloudFinishError"] = Self.message(for: finishError)
+        }
+        let report = StreamReport(title: activeSession.title, success: reason != .failed && finishError == nil, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
         state = .ended(report)
         publish(report)
         return report
@@ -513,11 +581,13 @@ public actor NativeNVSTStreamingPath {
         let originalStartedAt = startedAt
         let originalAllocation = activeAllocation
         let originalConfiguration = launchConfiguration
+        let originalRecoveryAttempted = recoveryAttempted
         let durationSeconds = streamDurationSeconds()
         self.activeSession = nil
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
+        recoveryAttempted = false
         WebRTCMediaTelemetry.capture("nvst.path.pause", level: .info, message: message, attributes: ["sessionId": activeSession.id])
         do {
             try await transport.pause()
@@ -534,6 +604,7 @@ public actor NativeNVSTStreamingPath {
             activeAllocation = originalAllocation
             launchConfiguration = originalConfiguration
             startedAt = originalStartedAt
+            recoveryAttempted = originalRecoveryAttempted
             state = .running(activeSession)
             monitorTransportTermination()
             throw error
@@ -541,6 +612,12 @@ public actor NativeNVSTStreamingPath {
     }
 
     public func cancelStart() async {
+        guard let startOwner else { return }
+        await cancelStart(owner: startOwner)
+    }
+
+    private func cancelStart(owner: UUID) async {
+        guard startOwner == owner else { return }
         if let cancelStartTask {
             await cancelStartTask.value
             return
@@ -579,9 +656,11 @@ public actor NativeNVSTStreamingPath {
         guard let activeSession else { return }
         terminalTask = nil
         if automaticRecovery == .singleAttempt,
-           NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration,
-           await recover(session: activeSession, configuration: launchConfiguration) {
-            return
+           !recoveryAttempted, NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration {
+            recoveryAttempted = true
+            if await recover(session: activeSession, configuration: launchConfiguration) {
+                return
+            }
         }
         guard self.activeSession?.id == activeSession.id else { return }
         let durationSeconds = streamDurationSeconds()
@@ -589,6 +668,7 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
+        recoveryAttempted = false
         let reason: StreamEndReason
         let message: String
         switch termination {

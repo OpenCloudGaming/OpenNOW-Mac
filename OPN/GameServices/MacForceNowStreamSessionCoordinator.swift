@@ -1,5 +1,23 @@
 import Foundation
 
+private final class MacForceNowSessionStopCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Error?, Never>?
+
+    init(continuation: CheckedContinuation<Error?, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ error: Error?) {
+        let continuation = lock.withLock {
+            let continuation = self.continuation
+            self.continuation = nil
+            return continuation
+        }
+        continuation?.resume(returning: error)
+    }
+}
+
 public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     public let session: StreamSessionDescriptor
     public let isResume: Bool
@@ -286,7 +304,13 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         }
 
         let created = try await createSession(configuration: configuration, settings: launch.settings)
-        return try await waitForReadySession(created, configuration: configuration)
+        do {
+            return try await waitForReadySession(created, configuration: configuration)
+        } catch {
+            let descriptor = streamDescriptor(sessionInfo: created, configuration: configuration)
+            try? await finishSession(descriptor, reason: Task.isCancelled ? .userRequested : .failed)
+            throw error
+        }
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
@@ -634,11 +658,20 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
         await withCheckedContinuation { continuation in
-            OPNActiveSessionService.stopSession(accessToken: session.metadata["accessToken"] ?? "", sessionId: session.id, serverIp: session.serverAddress) { success, error in
+            let completion = MacForceNowSessionStopCompletion(continuation: continuation)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 10) {
+                completion.resume(MacForceNowStreamSessionError.sessionStopFailed("Cloud session stop timed out."))
+            }
+            OPNActiveSessionService.stopSession(
+                accessToken: session.metadata["accessToken"] ?? "",
+                sessionId: session.id,
+                serverIp: session.serverAddress,
+                streamingBaseUrl: session.metadata["streamingBaseUrl"] ?? OPNStreamPreferences.loadSelectedStreamingBaseUrl()
+            ) { success, error in
                 if success || (session.metadata["accessToken"] ?? "").isEmpty {
-                    continuation.resume(returning: nil)
+                    completion.resume(nil)
                 } else {
-                    continuation.resume(returning: MacForceNowStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
+                    completion.resume(MacForceNowStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
                 }
             }
         }

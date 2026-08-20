@@ -23,14 +23,16 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
     private(set) var recoveryCount = 0
     let allocation: NativeNVSTSessionAllocation
     let recoveryError: NativeNVSTError?
+    let finishError: NativeNVSTError?
     let suspendsRecovery: Bool
     let blockingConflict: StreamSessionConflict?
     private(set) var lookupExclusions: [String] = []
     private var recoveryContinuation: CheckedContinuation<NativeNVSTSessionAllocation, Error>?
 
-    init(allocation: NativeNVSTSessionAllocation = nativeAllocation(), recoveryError: NativeNVSTError? = nil, suspendsRecovery: Bool = false, blockingConflict: StreamSessionConflict? = nil) {
+    init(allocation: NativeNVSTSessionAllocation = nativeAllocation(), recoveryError: NativeNVSTError? = nil, finishError: NativeNVSTError? = nil, suspendsRecovery: Bool = false, blockingConflict: StreamSessionConflict? = nil) {
         self.allocation = allocation
         self.recoveryError = recoveryError
+        self.finishError = finishError
         self.suspendsRecovery = suspendsRecovery
         self.blockingConflict = blockingConflict
     }
@@ -47,6 +49,7 @@ private actor RecordingNativeNVSTSessionProvider: NativeNVSTSessionProvider, Str
 
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
         finished.append(RecordedNativeNVSTFinish(session: session, reason: reason))
+        if let finishError { throw finishError }
     }
 
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
@@ -229,7 +232,33 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.disconnectCount == 1)
 }
 
+@Test func nativeNVSTPathRejectsActorReentrantConcurrentStart() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .suspendedConnect)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    let firstStart = Task { try await path.start(configuration: nativeConfiguration()) }
+    await transport.waitForConnect()
+
+    do {
+        _ = try await path.start(configuration: nativeConfiguration())
+        Issue.record("Expected concurrent start rejection")
+    } catch let error as NativeNVSTError {
+        #expect(error == .alreadyRunning)
+    }
+
+    #expect(await provider.startCount == 1)
+    #expect(await transport.connectCount == 1)
+    firstStart.cancel()
+    do {
+        _ = try await firstStart.value
+        Issue.record("Expected first start cancellation")
+    } catch {
+        #expect(error is CancellationError)
+    }
+}
+
 @Test func nativeNVSTPathSessionLimitWithoutBlockerSurfacesPlainLimitError() async throws {
+
     let allocation = nativeAllocation()
     let provider = RecordingNativeNVSTSessionProvider(allocation: allocation)
     let transport = RecordingNativeNVSTTransport(mode: .sessionLimitFailure)
@@ -328,6 +357,55 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.performanceOverlayToggleCount == 1)
     #expect(await provider.finished == [nativeFinish(.userRequested)])
     #expect(report.metadata["transport"] == "nvst")
+}
+
+@Test func nativeNVSTPathStopFinalizesLocallyAndReportsCloudFinishFailure() async throws {
+    let finishError = NativeNVSTError.transportFailed("cloud stop failed")
+    let provider = RecordingNativeNVSTSessionProvider(finishError: finishError)
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+    var audioFrames = await path.audioFrames().makeAsyncIterator()
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    let report = try await path.stop(reason: .userRequested, message: "Stopped locally")
+
+    #expect(await audioFrames.next() == nil)
+    #expect(await provider.finished == [nativeFinish(.userRequested)])
+    #expect(!report.success)
+    #expect(report.metadata["cloudFinishError"] == "cloud stop failed")
+    if case .ended(let report) = await path.currentState() {
+        #expect(report.reason == .userRequested)
+        #expect(report.message == "Stopped locally")
+        #expect(report.metadata["cloudFinishError"] == "cloud stop failed")
+    } else {
+        Issue.record("Expected terminal local state after cloud finish failure")
+    }
+}
+
+@Test func nativeNVSTMediaSessionIgnoresTerminationFromReplacedSubscriber() async {
+    let mediaSession = NativeNVSTMediaSession()
+    let oldStream = await mediaSession.videoFrames()
+    let oldConsumer = Task {
+        for await _ in oldStream {}
+    }
+    let newStream = await mediaSession.videoFrames()
+    oldConsumer.cancel()
+    await oldConsumer.value
+
+    let frame = NativeNVSTVideoFrame(
+        streamID: 1,
+        codec: .h265,
+        timestamp: MediaTimestamp(nanoseconds: 1),
+        durationNanoseconds: 16_666_667,
+        width: 1920,
+        height: 1080,
+        isKeyFrame: true,
+        payload: Data([1])
+    )
+    await mediaSession.receiveVideoFrame(frame)
+    var iterator = newStream.makeAsyncIterator()
+    #expect(await iterator.next() == frame)
+    await mediaSession.finish()
 }
 
 @Test func nativeNVSTPathRejectsPerformanceOverlayToggleWhenStopped() async throws {
@@ -444,8 +522,8 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(await transport.connectCount == 1)
 }
 
-@Test func nativeNVSTGeronimoPumpRunsInCommonRunLoopModes() {
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
+@Test func nativeNVSTGeronimoPumpYieldsDuringAppKitEventTracking() {
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
 }
 
 @Test func nativeNVSTSessionRecoveryRequiresBothFlags() {
@@ -490,7 +568,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: -1)))
     #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationValue(code: 0)))
     #expect(!NativeNVSTRecoveryPolicy.isTransient(NativeNVSTTerminationReason(rawValue: 0)))
-    #expect(NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
+    #expect(!NativeNVSTRecoveryPolicy.permitsRecovery(.transportFailed(NativeNVSTTransportFailure(
         message: "network interrupted",
         recoveryClassification: .transientNetwork
     ))))
@@ -583,6 +661,42 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     }
 }
 
+@Test func nativeNVSTPathConsumesSingleSameSessionRecoveryAttempt() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport, automaticRecovery: .singleAttempt)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination()))
+    for _ in 0..<200 {
+        if await transport.connectCount == 2 { break }
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+    await transport.sendTermination(.sessionTerminated(nativeSessionTermination(message: "second interruption")))
+    await waitForNativeNVSTFinish(provider)
+
+    #expect(await provider.recoveryCount == 1)
+    #expect(await provider.finished == [nativeFinish(.remoteEnded)])
+    #expect(await transport.connectCount == 2)
+}
+
+@Test func nativeNVSTPathDoesNotRecoverUnmarkedTransportFailure() async throws {
+    let provider = RecordingNativeNVSTSessionProvider()
+    let transport = RecordingNativeNVSTTransport(mode: .success)
+    let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport, automaticRecovery: .singleAttempt)
+    _ = try await path.start(configuration: nativeConfiguration())
+
+    await transport.sendTermination(.transportFailed(NativeNVSTTransportFailure(
+        message: "network interrupted",
+        recoveryClassification: .transientNetwork
+    )))
+    await waitForNativeNVSTFinish(provider)
+
+    #expect(await provider.recoveryCount == 0)
+    #expect(await provider.finished == [nativeFinish(.failed)])
+    #expect(await transport.connectCount == 1)
+}
+
 @Test func nativeNVSTPathCancelsSuspendedConnectAndCloudAllocation() async throws {
     let provider = RecordingNativeNVSTSessionProvider()
     let transport = RecordingNativeNVSTTransport(mode: .suspendedConnect)
@@ -648,6 +762,19 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(Array(gamepad.payload[64..<72]) == [0xd2, 0x04, 0, 0, 0, 0, 0, 0])
     #expect(text.nativePayload == .text(Data([0x68, 0xc3, 0xa9])))
     #expect([keyboard, capsLock, mouseMove, mouseButton, mouseWheel, gamepad, text].allSatisfy { !$0.partiallyReliable })
+}
+
+@Test func nativeNVSTInputEncoderMapsEveryMouseButtonAndEdge() throws {
+    let encoder = NativeNVSTInputEncoder()
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let mappings: [(MouseButton, UInt8)] = [(.left, 1), (.middle, 2), (.right, 3), (.back, 4), (.forward, 5)]
+
+    for (button, identifier) in mappings {
+        let press = try #require(encoder.encode(.mouse(.button(deviceID: "mouse", button: button, isPressed: true, timestamp: timestamp))))
+        let release = try #require(encoder.encode(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp))))
+        #expect(Array(press.payload[24..<29]) == [identifier, 0, 0, 0, 2])
+        #expect(Array(release.payload[24..<29]) == [identifier, 0, 0, 0, 1])
+    }
 }
 
 @Test func nativeNVSTSessionPayloadExtractsVerifiedStartFieldsWithoutLoggingToken() throws {
@@ -717,11 +844,11 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(error == .sessionLimitReached)
 }
 
-@Test @MainActor func nativeNVSTGeronimoPumpRunsDuringAppKitEventTracking() {
+@Test @MainActor func nativeNVSTGeronimoPumpPreservesAppKitEventTracking() {
     #expect(NativeNVSTBifrostTransport.geronimoPumpFramesPerSecond == 60)
     #expect(abs(NativeNVSTBifrostTransport.geronimoPumpInterval - (1.0 / 60.0)) < 0.000_001)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .common)
-    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .default)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode == .default)
+    #expect(NativeNVSTBifrostTransport.geronimoPumpRunLoopMode != .common)
 }
 
 @Test func nativeNVSTGeronimoPumpYieldsSDLEventProcessingToLocalInputConsumers() {

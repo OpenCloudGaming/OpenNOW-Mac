@@ -314,7 +314,7 @@ struct GameplaySettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Prevent Display Sleep", subtitle: "Keeps the monitor awake while a stream is active.", isOn: viewModel.streamProfile.preventDisplaySleepWhileStreaming, uiScale: uiScale, action: viewModel.setPreventDisplaySleepWhileStreaming)
                 SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Direct Mouse Input", subtitle: "Send mouse input directly to the stream.", isOn: viewModel.streamProfile.directMouseInput, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
+                SettingsToggleRow(title: "Direct Mouse Input", subtitle: "Capture relative input and keep absolute game cursors inside the stream window. Use Command-G or Command-Q to release the pointer.", isOn: viewModel.streamProfile.directMouseInput, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
                 SettingsDivider(uiScale: uiScale)
