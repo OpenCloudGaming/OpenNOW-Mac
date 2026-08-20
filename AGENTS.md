@@ -52,6 +52,18 @@ When a `upstream-sync` PR conflicts on any of these paths, the upstream change a
 | `RemoteCoOp/panel/auth/opennow-remote-coop.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.pam.example` |
 | `RemoteCoOp/panel/auth/opennow-remote-coop.macos.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.macos.pam.example` |
 
+### App Shell Extraction
+
+`MacForceNowApp.swift` contains only the `@main` App struct. Upstream changes to `OpenNOWApp.swift` resolve onto three fork files depending on what they touch:
+
+| Content | Fork path |
+|---|---|
+| `@main` App struct, SwiftData container setup | `MacForceNowApp.swift` |
+| Update preferences (`automaticUpdateChecksEnabled`, remind-later, debugger detection) | `OPN/Services/MacForceNowUpdatePreferences.swift` |
+| `NSApplicationDelegate` (open-file handling, stream shortcuts, updater UI/scheduling) | `App/MacForceNowAppDelegate.swift` |
+
+`App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed.
+
 ## Identifier Re-Application
 
 Upstream commits may reintroduce `OpenNOW`/`opennow`/`OPENNOW_` identifiers on merged lines. After resolving file-level conflicts, run this sweep on the merge result to re-apply the fork's rename.
@@ -120,6 +132,7 @@ Review each hit; not every unscaled value is wrong (stroke widths, 1pt dividers,
 
 - **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In the 1.51 sync, `--theirs` wiped the fork's quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` with the fork version as `ours` and review every conflict.
 - **Upstream feature deletions are decisions, not defaults.** When upstream deletes a subsystem the fork integrated (e.g. Twitch removal in `e688e8a`), surface it to the user before accepting the deletion — the fork may have built UI, settings, and tests around it that must be removed consistently.
+- **Upstream UI code must now compile under SPM strict concurrency.** The SPM target compiles `App/`, `View/`, and `ViewModel/` (Swift 6 mode), which is stricter than the Xcode target: `@MainActor`-isolated types with `Equatable`/`Identifiable` conformances error under SPM but only warn in Xcode. If a merged view trips `#ConformanceIsolation`, fix it during the merge — for value-type enums drop the `@MainActor` annotation, for views comparing only `Sendable` properties use `nonisolated static func ==`, for views comparing non-Sendable model objects use `@preconcurrency Equatable`.
 - **Fork features live inside shared files.** Fork-only code (Steam Controller hooks, Discord presence, pillarbox fill UI, Show All grid, uiScale) is inlined in files upstream also edits. After resolving, diff the result against fork `main` and grep for those feature keywords to confirm nothing was dropped.
 - **Upstream UI code bypasses uiScale and the design system.** Merged-in views come with hardcoded dimensions, system fonts, and raw colors that silently break at non-default UI scales and drift from `DESIGN.md`. Always run the UI Scaling & Design System Re-Application pass (above) on upstream-touched views; partially scaled expressions (some constants scaled, some not) are worse than none because they only fail at `uiScale != 1`.
 - **Modifying vendored dylibs breaks macOS code signing.** `install_name_tool` invalidates signatures; every process that stats the file afterwards (including `git status`) gets SIGKILL'd with `CODESIGNING: Invalid Page`. Re-sign immediately: `codesign --force --sign - <dylib>` (and `codesign --force --deep --sign -` for frameworks).

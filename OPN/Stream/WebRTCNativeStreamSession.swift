@@ -322,7 +322,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             if Thread.isMainThread {
                 MainActor.assumeIsolated { remoteVideoView?.removeFromSuperview() }
             } else {
-                DispatchQueue.main.async { remoteVideoView?.removeFromSuperview() }
+                Task { @MainActor in remoteVideoView?.removeFromSuperview() }
             }
             impl.reliableInputChannel?.close()
             impl.partialInputChannel?.close()

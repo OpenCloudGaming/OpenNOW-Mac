@@ -36,7 +36,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
         WebRTCMediaTelemetry.capture("webrtc.native.ice_state", level: .debug, message: "ICE connection state changed.", attributes: ["state": String(newState.rawValue)])
         let owner = owner
-        DispatchQueue.main.async { [weak owner] in
+        Task { @MainActor [weak owner] in
             switch newState {
             case .connected, .completed:
                 owner?.cancelDisconnectGraceTimer()
@@ -69,7 +69,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         WebRTCMediaTelemetry.capture("webrtc.native.peer_state", level: .debug, message: "Peer connection state changed.", attributes: ["state": String(newState.rawValue)])
         let owner = owner
-        DispatchQueue.main.async { [weak owner] in
+        Task { @MainActor [weak owner] in
             switch newState {
             case .connected:
                 owner?.cancelDisconnectGraceTimer()
@@ -90,7 +90,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
         if track.kind == kRTCMediaStreamTrackKindVideo {
             guard let videoTrack = track as? RTCVideoTrack else { return }
             WebRTCMediaTelemetry.capture("webrtc.native.remote_video", level: .debug, message: "Remote video receiver added.", attributes: ["trackId": track.trackId])
-            DispatchQueue.main.async { @MainActor [weak self] in
+            Task { @MainActor [weak self] in
                 self?.attachRemoteVideoTrack(videoTrack)
             }
         } else if track.kind == kRTCMediaStreamTrackKindAudio, let audioTrack = track as? RTCAudioTrack {

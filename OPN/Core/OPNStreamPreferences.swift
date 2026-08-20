@@ -798,11 +798,11 @@ public enum OPNStreamPreferences {
         let cached = loadCachedCloudVariables()
         let cachedAt = storage.double(forKey: k.cachedCloudVariablesTimestamp)
         if cached.fetched, cachedAt > 0, Date().timeIntervalSince1970 - cachedAt < Double(cached.refreshIntervalSeconds) {
-            DispatchQueue.main.async { completion(cached) }
+            Task { @MainActor in completion(cached) }
             return
         }
         guard var request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale(), userId: userId, idpId: idpId) else {
-            DispatchQueue.main.async { completion(cached) }
+            Task { @MainActor in completion(cached) }
             return
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "stream.cloudVariables")
@@ -819,7 +819,7 @@ public enum OPNStreamPreferences {
                     saveCachedCloudVariables(result, rawJSON: json)
                 }
             }
-            DispatchQueue.main.async { completion(result) }
+            Task { @MainActor in completion(result) }
         }.resume()
     }
 
@@ -890,7 +890,7 @@ public enum OPNStreamPreferences {
             OPNNetworkLog.finish(tracedRequest, operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                DispatchQueue.main.async { completion(loadCachedRegions()) }
+                Task { @MainActor in completion(loadCachedRegions()) }
                 return
             }
             let serverInfo = CloudMatchServerInfoParser.parse(json)
@@ -902,7 +902,7 @@ public enum OPNStreamPreferences {
                     return OPNStreamRegionOption(name: zone.name, url: url)
                 }
             if regions.isEmpty {
-                DispatchQueue.main.async { completion(loadCachedRegions()) }
+                Task { @MainActor in completion(loadCachedRegions()) }
                 return
             }
             measureRegions(regions, token: token, completion: completion)
@@ -1425,7 +1425,7 @@ public enum OPNStreamPreferences {
 
     private static func measureRegions(_ regions: [OPNStreamRegionOption], token: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
         if regions.isEmpty {
-            DispatchQueue.main.async { completion([]) }
+            Task { @MainActor in completion([]) }
             return
         }
         let state = RegionMeasurementState(regions)

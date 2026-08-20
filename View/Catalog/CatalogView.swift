@@ -609,7 +609,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         }
 
         private func finishFullScreenTransition() {
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 Task { @MainActor in
                     self?.isFullScreenTransitioning = false
                     self?.apply()
@@ -811,7 +811,7 @@ private struct VendorEmbeddedSessionAdPlayer: View {
         item = nextItem
         player = nextPlayer
         statusObservation = nextItem.observe(\.status, options: [.new]) { observedItem, _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if observedItem.status == .failed {
                     fail(observedItem.error?.localizedDescription ?? "Required ad failed to load.")
                 }
@@ -2326,7 +2326,7 @@ private struct CatalogContentView: View {
     }
 
     private func scrollToSelectedRail(_ anchor: String, proxy: ScrollViewProxy, remainingDeferredPasses: Int) {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             withAnimation(.easeInOut(duration: 0.24)) {
                 proxy.scrollTo(anchor, anchor: .top)
             }
@@ -2790,7 +2790,7 @@ private struct CatalogRailView: View {
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
         guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
         guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
-        DispatchQueue.main.async {
+        Task { @MainActor in
             guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
             withAnimation(.easeInOut(duration: 0.24)) {
                 proxy.scrollTo(request.gameIdentity, anchor: .center)

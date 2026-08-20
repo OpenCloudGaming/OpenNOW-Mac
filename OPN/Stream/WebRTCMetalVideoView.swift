@@ -128,7 +128,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         objc_sync_enter(self)
         sourceFrameSize = size
         objc_sync_exit(self)
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             self.drawableSizeDirty = true
             self.resetDrawCadence()

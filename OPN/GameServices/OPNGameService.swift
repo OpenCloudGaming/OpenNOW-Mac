@@ -846,7 +846,7 @@ final class OPNGameService: @unchecked Sendable {
                 return
             }
             listener.wait(timeout: Self.accountLinkingCallbackTimeoutSeconds, completion: completion)
-            DispatchQueue.main.async { NSWorkspace.shared.open(loginURL) }
+            Task { @MainActor in NSWorkspace.shared.open(loginURL) }
         }.resume()
     }
 
@@ -2258,51 +2258,51 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func dispatchPanel(_ completion: @escaping OPNPanelCallback, _ success: Bool, _ panels: [OPNPanelResult], _ error: String) {
-        DispatchQueue.main.async { completion(success, panels, error) }
+        Task { @MainActor in completion(success, panels, error) }
     }
 
     private func dispatchCatalog(_ completion: @escaping OPNCatalogCallback, _ success: Bool, _ games: [OPNGameInfo], _ error: String) {
-        DispatchQueue.main.async { completion(success, games, error) }
+        Task { @MainActor in completion(success, games, error) }
     }
 
     private func dispatchCatalogBrowse(_ completion: @escaping OPNCatalogBrowseCallback, _ success: Bool, _ result: OPNCatalogBrowseResult, _ error: String) {
-        DispatchQueue.main.async { completion(success, result, error) }
+        Task { @MainActor in completion(success, result, error) }
     }
 
     private func dispatchSubscription(_ completion: @escaping OPNSubscriptionCallback, _ success: Bool, _ subscription: OPNSubscriptionInfo, _ error: String) {
-        DispatchQueue.main.async { completion(success, subscription, error) }
+        Task { @MainActor in completion(success, subscription, error) }
     }
 
     private func dispatchStoreURL(_ completion: @escaping OPNStoreURLCallback, _ success: Bool, _ storeURL: String, _ error: String) {
-        DispatchQueue.main.async { completion(success, storeURL, error) }
+        Task { @MainActor in completion(success, storeURL, error) }
     }
 
     private func dispatchProviderInfo(_ completion: @escaping OPNProviderInfoCallback, _ success: Bool, _ providerInfo: OPNGameProviderInfo, _ selectedEndpoint: OPNGameProviderEndpoint, _ error: String) {
-        DispatchQueue.main.async { completion(success, providerInfo, selectedEndpoint, error) }
+        Task { @MainActor in completion(success, providerInfo, selectedEndpoint, error) }
     }
 
     fileprivate func dispatchOwnership(_ completion: @escaping OPNOwnershipActionCallback, _ success: Bool, _ error: String) {
-        DispatchQueue.main.async { completion(success, error) }
+        Task { @MainActor in completion(success, error) }
     }
 
     fileprivate func dispatchFavorite(_ completion: @escaping OPNFavoriteActionCallback, _ success: Bool, _ error: String) {
-        DispatchQueue.main.async { completion(success, error) }
+        Task { @MainActor in completion(success, error) }
     }
 
     private func dispatchUserAccount(_ completion: @escaping OPNUserAccountCallback, _ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) {
-        DispatchQueue.main.async { completion(success, accountInfo, error) }
+        Task { @MainActor in completion(success, accountInfo, error) }
     }
 
     private func dispatchStoreDefinitions(_ completion: @escaping OPNStoreDefinitionsCallback, _ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) {
-        DispatchQueue.main.async { completion(success, definitions, error) }
+        Task { @MainActor in completion(success, definitions, error) }
     }
 
     private func dispatchSubscriptionDefinitions(_ completion: @escaping OPNSubscriptionDefinitionsCallback, _ success: Bool, _ definitions: [OPNSubscriptionDefinition], _ error: String) {
-        DispatchQueue.main.async { completion(success, definitions, error) }
+        Task { @MainActor in completion(success, definitions, error) }
     }
 
     private func dispatchAppPatchStatuses(_ completion: @escaping OPNAppPatchStatusesCallback, _ success: Bool, _ statuses: [String: OPNAppPatchStatus], _ error: String) {
-        DispatchQueue.main.async { completion(success, statuses, error) }
+        Task { @MainActor in completion(success, statuses, error) }
     }
 }
 

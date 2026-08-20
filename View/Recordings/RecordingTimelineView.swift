@@ -293,7 +293,7 @@ private struct RecordingTimelineDropDelegate: DropDelegate {
         guard let provider = info.itemProviders(for: [.text]).first else { return false }
         provider.loadObject(ofClass: NSString.self) { object, _ in
             guard let payload = object as? String else { return }
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 _ = onPayloadDropped(payload, insertionIndex)
             }
         }

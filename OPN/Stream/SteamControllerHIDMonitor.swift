@@ -276,7 +276,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     )
     guard thenRelaunch else { return }
     let appURL = Bundle.main.bundleURL
-    DispatchQueue.main.async {
+    Task { @MainActor in
         let relaunch = Process()
         relaunch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         relaunch.arguments = ["-n", appURL.path]

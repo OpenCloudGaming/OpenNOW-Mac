@@ -62,11 +62,9 @@ final class StreamWindowAspectCoordinator {
     private func scheduleApply() {
         applyGeneration &+= 1
         let generation = applyGeneration
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated { [weak self] in
-                guard let self, self.applyGeneration == generation else { return }
-                self.applyNow()
-            }
+        Task { @MainActor [weak self] in
+            guard let self, self.applyGeneration == generation else { return }
+            self.applyNow()
         }
     }
 
@@ -275,7 +273,7 @@ final class StreamWindowAspectCoordinator {
     }
 
     private func finishFullScreenTransition() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             Task { @MainActor in
                 self?.isFullScreenTransitioning = false
                 self?.scheduleApply()

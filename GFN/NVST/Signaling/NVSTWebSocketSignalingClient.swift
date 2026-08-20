@@ -103,7 +103,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     }
 
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
             self.didOpen = true
@@ -118,7 +118,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.webSocketTask === task else { return }
             if self.didOpen {
@@ -142,7 +142,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
 
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
             OPNNetworkLog.webSocketEvent("close", url: self.activeURL, detail: "code=\(closeCode.rawValue) reasonLength=\(reasonText.count)")
@@ -188,7 +188,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         guard let task = webSocketTask else { return }
         let generation = connectionGeneration
         task.receive { [weak self] result in
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self, self.connectionGeneration == generation else { return }
                 switch result {
                 case .success(let message):

@@ -87,7 +87,7 @@ public final class OPNAuthService: @unchecked Sendable {
     public func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
         let port = findAvailablePort()
         guard port > 0 else {
-            DispatchQueue.main.async { completion(false, OPNAuthSession(), "No available port for OAuth callback") }
+            Task { @MainActor in completion(false, OPNAuthSession(), "No available port for OAuth callback") }
             return
         }
 
@@ -127,7 +127,7 @@ public final class OPNAuthService: @unchecked Sendable {
                             } catch {
                                 _ = await self.jarvisAuthService.finishLogin(success: false)
                                 self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
-                                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
                             }
                         }
                     case .failure(let error):
@@ -135,11 +135,11 @@ public final class OPNAuthService: @unchecked Sendable {
                             guard let self else { return }
                             _ = await self.jarvisAuthService.finishLogin(success: false)
                             self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
-                            DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                            Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
                         }
                     }
                 } readyHandler: {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
                         NSWorkspace.shared.open(loginRequest.url)
                     }
@@ -147,7 +147,7 @@ public final class OPNAuthService: @unchecked Sendable {
             } catch {
                 _ = await self.jarvisAuthService.finishLogin(success: false)
                 self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "authorization_url"])
-                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
     }
@@ -172,11 +172,11 @@ public final class OPNAuthService: @unchecked Sendable {
                 await self.jarvisAuthService.setSession(session)
                 self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
-                DispatchQueue.main.async { completion(true, session, "") }
+                Task { @MainActor in completion(true, session, "") }
             } catch {
                 _ = await self.jarvisAuthService.finishLogin(success: false)
                 await self.handleStarfleetFailure(error)
-                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
     }
@@ -195,10 +195,10 @@ public final class OPNAuthService: @unchecked Sendable {
                 let refreshed = Self.opnSession(from: try await self.starfleetService.refreshSession(force: forceRefresh || !session.isIdTokenValid))
                 await self.jarvisAuthService.setSession(refreshed)
                 self.saveSession(refreshed)
-                DispatchQueue.main.async { completion(true, refreshed, "") }
+                Task { @MainActor in completion(true, refreshed, "") }
             } catch {
                 await self.handleStarfleetFailure(error)
-                DispatchQueue.main.async { completion(false, session, error.localizedDescription) }
+                Task { @MainActor in completion(false, session, error.localizedDescription) }
             }
         }
     }
@@ -229,10 +229,10 @@ public final class OPNAuthService: @unchecked Sendable {
             do {
                 let userInfo = try await self.starfleetService.fetchUserInfo(accessToken: accessToken)
                 let dictionary = self.dictionary(from: userInfo)
-                DispatchQueue.main.async { completion(true, dictionary, "") }
+                Task { @MainActor in completion(true, dictionary, "") }
             } catch {
                 await self.handleStarfleetFailure(error)
-                DispatchQueue.main.async { completion(false, nil, error.localizedDescription) }
+                Task { @MainActor in completion(false, nil, error.localizedDescription) }
             }
         }
     }
@@ -242,10 +242,10 @@ public final class OPNAuthService: @unchecked Sendable {
             guard let self else { return }
             do {
                 let result = try await self.starfleetService.fetchClientToken(accessToken: accessToken)
-                DispatchQueue.main.async { completion(true, result.clientToken, result.expiresIn) }
+                Task { @MainActor in completion(true, result.clientToken, result.expiresIn) }
             } catch {
                 await self.handleStarfleetFailure(error)
-                DispatchQueue.main.async { completion(false, "", error.localizedDescription) }
+                Task { @MainActor in completion(false, "", error.localizedDescription) }
             }
         }
     }
@@ -267,7 +267,7 @@ public final class OPNAuthService: @unchecked Sendable {
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "auth.serverLogout", startedAt: networkStart, data: data, response: response, error: error)
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.clearSession()
                 if let error {
                     completion(false, error.localizedDescription)
@@ -501,10 +501,10 @@ public final class OPNAuthService: @unchecked Sendable {
                 await self.jarvisAuthService.setSession(session)
                 self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
-                DispatchQueue.main.async { completion(true, session, "") }
+                Task { @MainActor in completion(true, session, "") }
             } catch {
                 _ = await self.jarvisAuthService.finishLogin(success: false)
-                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
     }
