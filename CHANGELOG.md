@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.1](https://github.com/anderson-oki/macforce-now/compare/v0.16.0...v0.16.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* restore app-relative install names on vendored NVST dylibs ([364e08f](https://github.com/anderson-oki/macforce-now/commit/364e08f26147e06675ee4262b11988e39f03b82a))
+* revamp store picker ownership flow to match design system ([c68c21c](https://github.com/anderson-oki/macforce-now/commit/c68c21c88ea0810e2a20ef3b543f14c31a677617))
+* stabilize dispatcher and gamepad navigator tests ([237b9f6](https://github.com/anderson-oki/macforce-now/commit/237b9f6e9dca07f6f35008ceaf476e3a4699d9c8))
+
 ## [0.16.0](https://github.com/anderson-oki/macforce-now/compare/v0.15.0...v0.16.0) (2026-08-20)
 
 
