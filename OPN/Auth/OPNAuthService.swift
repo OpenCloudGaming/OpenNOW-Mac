@@ -203,7 +203,7 @@ public final class OPNAuthService: @unchecked Sendable {
         }
     }
 
-    func refreshSession(forceRefresh: Bool) async throws -> OPNAuthSession {
+    public func refreshSession(forceRefresh: Bool) async throws -> OPNAuthSession {
         try await withCheckedThrowingContinuation { continuation in
             refreshSession(completion: { success, session, message in
                 if success {
@@ -842,11 +842,4 @@ public final class OPNAuthService: @unchecked Sendable {
         var errorDescription: String? { message }
     }
 
-    func logKeychainError(_ operation: String, identity: String, error: Error) {
-        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
-    }
-
-    func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
-        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
-    }
 }

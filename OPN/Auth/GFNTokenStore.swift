@@ -30,7 +30,7 @@ public enum GFNTokenStore {
             let data = try JSONEncoder().encode(tokens)
             upsert(data: data, account: account)
         } catch {
-            OPNAuthService.shared.logKeychainError("save", identity: identity, error: error)
+            logKeychainError("save", identity: identity, error: error)
         }
     }
 
@@ -41,7 +41,7 @@ public enum GFNTokenStore {
         do {
             return try JSONDecoder().decode(Tokens.self, from: data)
         } catch {
-            OPNAuthService.shared.logKeychainError("load", identity: identity, error: error)
+            logKeychainError("load", identity: identity, error: error)
             return nil
         }
     }
@@ -78,14 +78,14 @@ public enum GFNTokenStore {
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {
-            OPNAuthService.shared.logKeychainStatus("update", account: account, status: updateStatus)
+            logKeychainStatus("update", account: account, status: updateStatus)
             return
         }
         var add = query
         attributes.forEach { add[$0.key] = $0.value }
         let addStatus = SecItemAdd(add as CFDictionary, nil)
         if addStatus != errSecSuccess {
-            OPNAuthService.shared.logKeychainStatus("add", account: account, status: addStatus)
+            logKeychainStatus("add", account: account, status: addStatus)
         }
     }
 
@@ -101,10 +101,18 @@ public enum GFNTokenStore {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess else {
             if status != errSecItemNotFound {
-                OPNAuthService.shared.logKeychainStatus("load", account: account, status: status)
+                logKeychainStatus("load", account: account, status: status)
             }
             return nil
         }
         return item as? Data
+    }
+
+    private static func logKeychainError(_ operation: String, identity: String, error: Error) {
+        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
+    }
+
+    private static func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
+        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
     }
 }

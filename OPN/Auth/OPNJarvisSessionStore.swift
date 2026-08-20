@@ -2,22 +2,26 @@
 final class OPNJarvisSessionStore: JarvisSessionStore, @unchecked Sendable {
     static let shared = OPNJarvisSessionStore()
 
-    private init() {}
+    private let authServiceProvider: () -> any AuthSessionPersisting
+
+    init(authServiceProvider: @escaping () -> any AuthSessionPersisting = { OPNAuthService.shared }) {
+        self.authServiceProvider = authServiceProvider
+    }
 
     func loadSession() async throws -> JarvisSession {
-        OPNAuthService.shared.loadSavedSession()
+        authServiceProvider().loadSavedSession()
     }
 
     func saveSession(_ session: JarvisSession) async throws {
-        OPNAuthService.shared.saveSession(session)
+        authServiceProvider().saveSession(session)
     }
 
     func clearSession() async throws {
-        OPNAuthService.shared.clearSession()
+        authServiceProvider().clearSession()
     }
 
     func loadUserInfo() async throws -> JarvisUserInfo {
-        let session = OPNAuthService.shared.loadSavedSession()
+        let session = authServiceProvider().loadSavedSession()
         guard session.isAuthenticated else { return JarvisUserInfo() }
         return JarvisUserInfo(
             userId: session.userId,
@@ -30,10 +34,10 @@ final class OPNJarvisSessionStore: JarvisSessionStore, @unchecked Sendable {
     }
 
     func saveUserInfo(_ userInfo: JarvisUserInfo) async throws {
-        OPNAuthService.shared.saveUserInfo(userInfo)
+        authServiceProvider().saveUserInfo(userInfo)
     }
 
     func clearUserInfo() async throws {
-        OPNAuthService.shared.clearUserInfo()
+        authServiceProvider().clearUserInfo()
     }
 }

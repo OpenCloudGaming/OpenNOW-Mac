@@ -73,7 +73,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 hapticHandler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)? = nil,
                 hapticResetHandler: (@MainActor @Sendable () -> Void)? = nil,
                 localInputCaptureHandler: (@MainActor @Sendable () -> Bool)? = nil,
-                authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String = NativeNVSTAuthRefreshCoordinator.productionToken) {
+                authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String = { authType in
+                    try await NativeNVSTAuthRefreshCoordinator.productionToken(authType: authType, sessionRefresher: OPNAuthService.shared)
+                }) {
         self.bridgeConfiguration = bridgeConfiguration
         self.inputEncoder = inputEncoder
         self.nativeVideoSurfaceHandle = nativeVideoSurfaceHandle
@@ -1992,8 +1994,8 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
         }
     }
 
-    public static func productionToken(authType: UInt32) async throws -> String {
-        let session = try await OPNAuthService.shared.refreshSession(forceRefresh: true)
+    public static func productionToken(authType: UInt32, sessionRefresher: any SessionTokenRefreshing) async throws -> String {
+        let session = try await sessionRefresher.refreshSession(forceRefresh: true)
         let token = token(from: session, authType: authType)
         guard (7...9).contains(authType), !token.isEmpty else {
             throw NativeNVSTError.invalidSession("Forced session refresh did not return the required authentication token.")
