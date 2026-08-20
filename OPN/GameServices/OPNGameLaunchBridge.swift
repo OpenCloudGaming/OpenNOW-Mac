@@ -3,14 +3,6 @@ import Foundation
 public typealias OPNGameLaunchPlanCompletion = @MainActor @Sendable (_ success: Bool, _ message: String, _ plan: OPNGameLaunchPlan?) -> Void
 public typealias OPNGameLaunchSessionStopCompletion = @MainActor @Sendable (_ success: Bool, _ message: String) -> Void
 
-private final class OPNGameLaunchBridgeSendableValue<T>: @unchecked Sendable {
-    let value: T
-
-    init(_ value: T) {
-        self.value = value
-    }
-}
-
 public struct OPNStreamLaunchConfiguration: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let title: String
@@ -60,7 +52,11 @@ public enum OPNGameLaunchPlan: Equatable, Sendable {
 public final class OPNGameLaunchBridge {
     public static let shared = OPNGameLaunchBridge()
 
-    private init() {}
+    private let gameService: any GameLaunchServiceConfiguring
+
+    init(gameService: any GameLaunchServiceConfiguring = OPNGameService.shared) {
+        self.gameService = gameService
+    }
 
     public func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, idpId: String = "", variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion) {
         let token = idToken.isEmpty ? accessToken : idToken
@@ -78,14 +74,10 @@ public final class OPNGameLaunchBridge {
         }
         configureServices(token: token, userId: userId)
         let gameValue = game.swiftValue
-        let gameBox = OPNGameLaunchBridgeSendableValue(game)
-        OPNGameService.shared.resolveLaunchAppId(game: gameValue, variantIndex: selectedVariantIndex) { [weak self] appId in
-            Task { @MainActor in
-                guard let self else { return }
-                let game = gameBox.value
-                let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
-                self.prepareResolvedLaunchPlan(game: game, selectedVariant: selectedVariant, appId: appId, token: token, userId: userId, idpId: idpId, completion: completion)
-            }
+        gameService.resolveLaunchAppId(game: gameValue, variantIndex: selectedVariantIndex) { [weak self] appId in
+            guard let self else { return }
+            let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
+            self.prepareResolvedLaunchPlan(game: game, selectedVariant: selectedVariant, appId: appId, token: token, userId: userId, idpId: idpId, completion: completion)
         }
     }
 
@@ -108,28 +100,22 @@ public final class OPNGameLaunchBridge {
             metadata: launchMetadata
         )
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
-        let gameBox = OPNGameLaunchBridgeSendableValue(game)
         OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, _ in
-            let sessionsBox = OPNGameLaunchBridgeSendableValue(sessions)
-            Task { @MainActor in
-                guard let self else { return }
-                let game = gameBox.value
-                let sessions = sessionsBox.value
-                if ok {
-                    let matchingSessions = sessions.filter { self.activeSession($0, matches: game, appId: appId) }
-                    if let requestedSession = matchingSessions.first(where: \.isResumable) ?? matchingSessions.first {
-                        completion(true, "A GeForce NOW session is already active for \(title).", self.activeSessionPlan(activeSession: requestedSession, activeTitle: title, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
-                        return
-                    }
-                    if let activeSession = sessions.first(where: \.isResumable) ?? sessions.first {
-                        let activeTitle = activeSession.appId > 0 ? "App ID \(activeSession.appId)" : "Current Stream"
-                        completion(true, "Another GeForce NOW session is already active.", self.activeSessionPlan(activeSession: activeSession, activeTitle: activeTitle, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
-                        return
-                    }
+            guard let self else { return }
+            if ok {
+                let matchingSessions = sessions.filter { self.activeSession($0, matches: game, appId: appId) }
+                if let requestedSession = matchingSessions.first(where: \.isResumable) ?? matchingSessions.first {
+                    completion(true, "A GeForce NOW session is already active for \(title).", self.activeSessionPlan(activeSession: requestedSession, activeTitle: title, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
+                    return
                 }
-
-                completion(true, "Launching \(title)...", .ready(replacement))
+                if let activeSession = sessions.first(where: \.isResumable) ?? sessions.first {
+                    let activeTitle = activeSession.appId > 0 ? "App ID \(activeSession.appId)" : "Current Stream"
+                    completion(true, "Another GeForce NOW session is already active.", self.activeSessionPlan(activeSession: activeSession, activeTitle: activeTitle, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
+                    return
+                }
             }
+
+            completion(true, "Launching \(title)...", .ready(replacement))
         }
     }
 
@@ -155,17 +141,15 @@ public final class OPNGameLaunchBridge {
             return
         }
         OPNActiveSessionService.stopSession(accessToken: accessToken, sessionId: session.id, serverIp: session.serverIp, streamingBaseUrl: session.streamingBaseUrl) { success, error in
-            Task { @MainActor in
-                completion(success, success ? "Session ended." : (error.isEmpty ? "Unable to end the active session." : error))
-            }
+            completion(success, success ? "Session ended." : (error.isEmpty ? "Unable to end the active session." : error))
         }
     }
 
     private func configureServices(token: String, userId: String) {
-        OPNGameService.shared.setAccessToken(token)
-        OPNGameService.shared.setAccountLinkingToken(token)
-        OPNGameService.shared.setUserId(userId)
-        OPNGameService.shared.setVpcId("GFN-PC")
+        gameService.setAccessToken(token)
+        gameService.setAccountLinkingToken(token)
+        gameService.setUserId(userId)
+        gameService.setVpcId("GFN-PC")
     }
 
     private func resolvedVariantIndex(for game: OPNCatalogGameObject, requestedIndex: Int) -> Int {

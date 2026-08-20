@@ -1,9 +1,7 @@
 import Foundation
 
 
-@objc(OPNActiveSessionObject)
-@objcMembers
-final class OPNActiveSessionObject: NSObject {
+final class OPNActiveSessionObject {
     let sessionId: String
     let appId: Int
     let status: Int
@@ -22,7 +20,6 @@ final class OPNActiveSessionObject: NSObject {
         self.serverIp = serverIp
         self.streamingBaseUrl = streamingBaseUrl
         self.signalingUrl = signalingUrl
-        super.init()
     }
 }
 
@@ -41,20 +38,21 @@ enum OPNActiveSessionService {
         UserDefaults.standard.removeObject(forKey: persistedSessionIdKey)
     }
 
-    static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
+    static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @MainActor @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
         guard !accessToken.isEmpty else {
-            completion(false, [], "No access token")
+            Task { @MainActor in completion(false, [], "No access token") }
             return
         }
         let base = normalizedBaseURL(streamingBaseUrl)
         guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            completion(false, [], "Invalid sessions URL")
+            Task { @MainActor in completion(false, [], "Invalid sessions URL") }
             return
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.fetch")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
+            Task { @MainActor in
             if let error {
                 completion(false, [], error.localizedDescription)
                 return
@@ -77,28 +75,30 @@ enum OPNActiveSessionService {
             }
             let sessions = (json["sessions"] as? [[String: Any]] ?? []).compactMap { activeSession(from: $0, streamingBaseUrl: base) }
             completion(true, sessions, "")
+            }
         }.resume()
     }
 
-    static func stopSession(accessToken: String, sessionId: String, serverIp: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @Sendable (Bool, String) -> Void) {
+    static func stopSession(accessToken: String, sessionId: String, serverIp: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         guard !accessToken.isEmpty else {
-            completion(false, "No access token")
+            Task { @MainActor in completion(false, "No access token") }
             return
         }
         guard !sessionId.isEmpty else {
-            completion(false, "No session id")
+            Task { @MainActor in completion(false, "No session id") }
             return
         }
         clearPersistedActiveSessionId(sessionId)
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: streamingBaseUrl, serverIP: serverIp)
         guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            completion(false, "Invalid stop session URL")
+            Task { @MainActor in completion(false, "Invalid stop session URL") }
             return
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.stop")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
+            Task { @MainActor in
             if let error {
                 completion(false, error.localizedDescription)
                 return
@@ -116,10 +116,11 @@ enum OPNActiveSessionService {
                 return
             }
             waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: 0, completion: completion)
+            }
         }.resume()
     }
 
-    private static func waitForTermination(accessToken: String, sessionId: String, streamingBaseUrl: String, attempt: Int, completion: @escaping @Sendable (Bool, String) -> Void) {
+    private static func waitForTermination(accessToken: String, sessionId: String, streamingBaseUrl: String, attempt: Int, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         fetchActiveSessions(accessToken: accessToken, streamingBaseUrl: streamingBaseUrl) { success, sessions, error in
             guard success else {
                 completion(false, error.isEmpty ? "Unable to confirm that the active session ended." : error)
@@ -133,7 +134,8 @@ enum OPNActiveSessionService {
                 completion(false, "GeForce NOW is still ending the active session. Try again in a moment.")
                 return
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + terminationPollDelay) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(Int(terminationPollDelay * 1000)))
                 waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: attempt + 1, completion: completion)
             }
         }

@@ -114,26 +114,27 @@ extension OPNGameService {
 
     func resolveLaunchAppId(game: OPNGameInfo, variantIndex: Int, completion: @escaping OPNLaunchAppIdCallback) {
         if let appId = launchableAppId(for: game, variantIndex: variantIndex) {
-            completion(appId)
+            Task { @MainActor in completion(appId) }
             return
         }
         let metadataAppId = game.uuid.isEmpty ? game.id : game.uuid
         guard !metadataAppId.isEmpty, !accessToken.isEmpty else {
-            completion("")
+            Task { @MainActor in completion("") }
             return
         }
         let selectedVariant = game.variants.indices.contains(variantIndex) ? game.variants[variantIndex] : nil
         getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.fetchAppMetadata(appIds: [metadataAppId], vpcId: resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId) { data, error in
-                guard error.isEmpty,
-                      let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] else {
-                    completion("")
-                    return
+                let resolvedAppId: String
+                if error.isEmpty, let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] {
+                    let metadataApp = items.first { self.safeString($0["id"]) == metadataAppId } ?? items.first
+                    let metadataGame = self.parseGameItem(metadataApp)
+                    resolvedAppId = self.launchableAppId(for: metadataGame, preferredStore: selectedVariant?.appStore ?? "") ?? ""
+                } else {
+                    resolvedAppId = ""
                 }
-                let metadataApp = items.first { self.safeString($0["id"]) == metadataAppId } ?? items.first
-                let metadataGame = self.parseGameItem(metadataApp)
-                completion(self.launchableAppId(for: metadataGame, preferredStore: selectedVariant?.appStore ?? "") ?? "")
+                Task { @MainActor in completion(resolvedAppId) }
             }
         }
     }

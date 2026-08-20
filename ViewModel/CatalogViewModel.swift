@@ -238,14 +238,16 @@ final class CatalogViewModel {
     private var queuedPatchingLaunchIdentity = ""
     private var queuedPatchingLaunchVariantIndex = -1
     private let gameService: any CatalogGameServing
+    private let launchBridge: any GameLaunchBridging
     private let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
+        self.launchBridge = launchBridge
         self.onRefreshAuth = onRefreshAuth
     }
 
@@ -880,7 +882,7 @@ final class CatalogViewModel {
         launchFlowMessage = "Checking for active GeForce NOW sessions..."
         launchFlowError = ""
         let userId = session.userId.isEmpty ? account.userId : session.userId
-        OPNGameLaunchBridge.shared.prepareLaunchPlan(
+        launchBridge.prepareLaunchPlan(
             game: game,
             accessToken: session.accessToken,
             idToken: session.idToken,
@@ -928,7 +930,7 @@ final class CatalogViewModel {
         launchFlowState = .stoppingSession
         launchFlowMessage = "Ending the current GeForce NOW session..."
         launchFlowError = ""
-        OPNGameLaunchBridge.shared.stopActiveSession(activeLaunchSession, accessToken: launchToken) { [weak self] success, message in
+        launchBridge.stopActiveSession(activeLaunchSession, accessToken: launchToken) { [weak self] success, message in
             guard let self else { return }
             guard success else {
                 self.launchFlowState = .activeSessionPrompt
