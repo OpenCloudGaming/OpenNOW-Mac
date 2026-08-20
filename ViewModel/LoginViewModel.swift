@@ -547,7 +547,7 @@ final class LoginViewModel: ObservableObject {
         isLoadingProviders = true
         let requestedProviderIdpId = selectedProvider.idpId
         let selfBox = LoginWeakObject(self)
-        OPNGameServiceSwiftAdapter.fetchGameProviderInfo(idpId: requestedProviderIdpId) { success, info, _, error in
+        OPNGameService.shared.fetchProviderInfo(idpId: requestedProviderIdpId) { success, info, _, error in
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 self.isLoadingProviders = false

@@ -20,7 +20,7 @@ import Foundation
 
 @Test func providerInfoParsesAndSelectsDigevoEndpoint() {
     let digevoIdpId = "IsvVBA3Aj8KZ7gwwuRUhB6-tOF2o2F1wncD-XjYv100"
-    let providerInfo = OPNGameServiceSwiftAdapter.parseProviderInfo(from: [
+    let providerInfo = OPNGameService.shared.parseGameProviderInfo([
         "gfnServiceInfo": [
             "defaultProvider": "NVIDIA",
             "loggedInProvider": "NVIDIA",
@@ -48,7 +48,7 @@ import Foundation
             ],
         ],
     ])
-    let selected = OPNGameServiceSwiftAdapter.selectProviderEndpoint(from: providerInfo, idpId: digevoIdpId)
+    let selected = OPNGameService.shared.selectGameProviderEndpoint(providerInfo, idpId: digevoIdpId)
 
     #expect(providerInfo.endpoints.count == 2)
     #expect(selected.loginProviderDisplayName == "Digevo")
@@ -510,8 +510,8 @@ import Foundation
         let host = "*"
         let token = "catalog-vendor-metadata-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("catalog-vendor-metadata-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("catalog-vendor-metadata-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -539,7 +539,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 24, forceRefresh: true) { success, browseResult, error in
+            OPNGameService.shared.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 24, forceRefresh: true) { success, browseResult, error in
                 continuation.resume(returning: (success, browseResult.games.first?.swiftValue, error))
             }
         }
@@ -577,8 +577,8 @@ import Foundation
         let host = "*"
         let token = "panel-see-more-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("panel-see-more-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("panel-see-more-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -615,7 +615,7 @@ import Foundation
         // into the next test's stricter handler and fail its expectations.
         let result = await withCheckedContinuation { continuation in
             nonisolated(unsafe) var deliveryCount = 0
-            OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
+            OPNGameService.shared.fetchMainPanelObjects { success, panels, error in
                 dispatchPrecondition(condition: .onQueue(.main))
                 deliveryCount += 1
                 guard deliveryCount == 2 else { return }
@@ -639,8 +639,8 @@ import Foundation
 @Test func libraryPatchStatusFetchUsesVendorOwnedFilterAndClearsEndedPatch() async {
     await networkTestIsolationLock.withLock {
         let host = "*"
-        OPNGameServiceSwiftAdapter.setAccessToken("library-patch-token-\(UUID().uuidString)")
-        OPNGameServiceSwiftAdapter.setUserId("library-patch-user")
+        OPNGameService.shared.setAccessToken("library-patch-token-\(UUID().uuidString)")
+        OPNGameService.shared.setUserId("library-patch-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -663,7 +663,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.fetchLibraryPatchStatuses { success, statuses, error in
+            OPNGameService.shared.fetchLibraryPatchStatuses { success, statuses, error in
                 continuation.resume(returning: (success, statuses["ended-patch-game"], error))
             }
         }
@@ -678,8 +678,8 @@ import Foundation
 @Test func cmsMetadataLookupUsesVendorVariantIdsQuery() async {
     await networkTestIsolationLock.withLock {
         let host = "*"
-        OPNGameServiceSwiftAdapter.setAccessToken("cms-metadata-token-\(UUID().uuidString)")
-        OPNGameServiceSwiftAdapter.setUserId("cms-metadata-user")
+        OPNGameService.shared.setAccessToken("cms-metadata-token-\(UUID().uuidString)")
+        OPNGameService.shared.setUserId("cms-metadata-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -700,7 +700,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.fetchGameObjectByCMSId("145491") { success, game, error in
+            OPNGameService.shared.fetchGameObjectByCMSId("145491") { success, game, error in
                 continuation.resume(returning: (success, game?.title ?? "", game?.variants.first?.id ?? "", game?.isFavorited ?? false, error))
             }
         }
@@ -716,8 +716,8 @@ import Foundation
 @Test func subscriptionDefinitionsFetchParsesVendorFields() async {
     await networkTestIsolationLock.withLock {
         let host = "*"
-        OPNGameServiceSwiftAdapter.setAccessToken("subscription-definitions-token-\(UUID().uuidString)")
-        OPNGameServiceSwiftAdapter.setUserId("subscription-definitions-user")
+        OPNGameService.shared.setAccessToken("subscription-definitions-token-\(UUID().uuidString)")
+        OPNGameService.shared.setUserId("subscription-definitions-user")
         SessionManagerURLProtocol.install(host: host) { request in
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let query = body["query"] as? String ?? ""
@@ -734,14 +734,14 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.fetchSubscriptionDefinitionDictionaries { success, definitions, error in
+            OPNGameService.shared.fetchSubscriptionDefinitions { success, definitions, error in
                 let definition = definitions.first
                 continuation.resume(returning: (
                     success,
-                    definition?["subscription"] as? String ?? "",
-                    definition?["label"] as? String ?? "",
-                    definition?["logoURL"] as? String ?? "",
-                    definition?["primaryStore"] as? String ?? "",
+                    definition?.subscription ?? "",
+                    definition?.label ?? "",
+                    definition?.logoURL ?? "",
+                    definition?.primaryStore ?? "",
                     error
                 ))
             }
@@ -759,8 +759,8 @@ import Foundation
 @Test func vendorRemoveMutationsTreatNotFoundAsSuccess() async {
         await networkTestIsolationLock.withLock {
         let host = "*"
-        OPNGameServiceSwiftAdapter.setAccessToken("remove-mutation-404-token-\(UUID().uuidString)")
-        OPNGameServiceSwiftAdapter.setUserId("remove-mutation-404-user")
+        OPNGameService.shared.setAccessToken("remove-mutation-404-token-\(UUID().uuidString)")
+        OPNGameService.shared.setUserId("remove-mutation-404-user")
         SessionManagerURLProtocol.install(host: host) { request in
             #expect(request.url?.host == "games.geforce.com")
             #expect(request.httpMethod == "POST")
@@ -769,12 +769,12 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let favoriteResult: (Bool, String) = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.removeFavoriteApp("favorite-game-id") { success, error in
+            OPNGameService.shared.removeFavoriteApp("favorite-game-id") { success, error in
                 continuation.resume(returning: (success, error))
             }
         }
         let ownedResult: (Bool, String) = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.removeOwnedVariant("123456") { success, error in
+            OPNGameService.shared.removeOwnedVariant("123456") { success, error in
                 continuation.resume(returning: (success, error))
             }
         }
@@ -794,8 +794,8 @@ import Foundation
         let host = "*"
         let token = "catalog-collections-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("catalog-collections-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("catalog-collections-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -819,7 +819,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: ["my_favorites"], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+            OPNGameService.shared.browseCatalogObject(searchQuery: "", sortId: "", filterIds: ["my_favorites"], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
                 continuation.resume(returning: (
                     success,
                     browseResult.selectedFilterIds,
@@ -848,8 +848,8 @@ import Foundation
         let host = "*"
         let token = "catalog-pagination-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("catalog-pagination-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("catalog-pagination-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -879,7 +879,7 @@ import Foundation
 
         // Browse fetches a single page; the caller drives further pages via endCursor.
         let firstPage = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+            OPNGameService.shared.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
                 continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, browseResult.hasNextPage, browseResult.endCursor, error))
             }
         }
@@ -893,7 +893,7 @@ import Foundation
         #expect(firstPage.5 == "cursor-40")
 
         let nextPage = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true, cursor: firstPage.5) { success, browseResult, error in
+            OPNGameService.shared.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true, cursor: firstPage.5) { success, browseResult, error in
                 continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, browseResult.hasNextPage, error))
             }
         }
@@ -917,8 +917,8 @@ import Foundation
         let host = "*"
         let token = "library-pagination-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("library-pagination-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("library-pagination-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -947,7 +947,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
+            OPNGameService.shared.fetchLibraryGameObjects { success, games, error in
                 continuation.resume(returning: (
                     success,
                     games.count,
@@ -983,8 +983,8 @@ import Foundation
         let host = "*"
         let token = "library-direct-gfn-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
-        OPNGameServiceSwiftAdapter.setAccessToken(token)
-        OPNGameServiceSwiftAdapter.setUserId("library-direct-gfn-user")
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setUserId("library-direct-gfn-user")
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
@@ -1008,7 +1008,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
+            OPNGameService.shared.fetchLibraryGameObjects { success, games, error in
                 let game = games.first
                 continuation.resume(returning: (
                     success,
