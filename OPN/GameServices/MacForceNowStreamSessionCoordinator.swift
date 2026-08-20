@@ -777,13 +777,13 @@ private enum StreamSessionLimitStartStore {
     }
 
     private static func storedStarts(nowEpoch: TimeInterval) -> [String: TimeInterval] {
-        let raw = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+        let raw = OPNAppPreferenceStorage.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
         return raw.filter { nowEpoch - $0.value <= maxStoredAgeSeconds }
     }
 
     private static func persist(_ starts: [String: TimeInterval]) {
-        UserDefaults.standard.set(starts, forKey: key)
-        UserDefaults.standard.synchronize()
+        OPNAppPreferenceStorage.standard.set(starts, forKey: key)
+        OPNAppPreferenceStorage.standard.synchronize()
     }
 }
 

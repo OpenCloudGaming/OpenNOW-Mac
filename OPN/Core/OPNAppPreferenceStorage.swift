@@ -15,6 +15,14 @@ public struct OPNAppPreferenceStorage: @unchecked Sendable {
         defaults.string(forKey: key)
     }
 
+    public func bool(forKey key: String) -> Bool {
+        defaults.bool(forKey: key)
+    }
+
+    public func data(forKey key: String) -> Data? {
+        defaults.data(forKey: key)
+    }
+
     public func array(forKey key: String) -> [Any]? {
         defaults.array(forKey: key)
     }

@@ -95,7 +95,7 @@ final class LoginViewModel: ObservableObject {
         ensureDeviceRegistration()
         prefillLastAccount()
         refreshLoginProviders()
-        acceptedTerms = UserDefaults.standard.bool(forKey: Self.termsAcceptedKey)
+        acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
         MacForceNowLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
@@ -108,14 +108,14 @@ final class LoginViewModel: ObservableObject {
 
     func acceptTermsOfUse() {
         acceptedTerms = true
-        UserDefaults.standard.set(true, forKey: Self.termsAcceptedKey)
+        OPNAppPreferenceStorage.standard.set(true, forKey: Self.termsAcceptedKey)
         isShowingTermsOfUse = false
         launchOAuth()
     }
 
     func declineTermsOfUse() {
         acceptedTerms = false
-        UserDefaults.standard.removeObject(forKey: Self.termsAcceptedKey)
+        OPNAppPreferenceStorage.standard.removeObject(forKey: Self.termsAcceptedKey)
         isShowingTermsOfUse = false
         validationMessage = "You must accept the GeForce NOW Terms of Use to continue."
     }

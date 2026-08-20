@@ -15,15 +15,15 @@ enum CatalogShowAllWindowPreferences {
     private static let heightKey = "MacForceNow.catalog.showAllWindow.height"
 
     static func loadSize() -> CGSize? {
-        let width = UserDefaults.standard.double(forKey: widthKey)
-        let height = UserDefaults.standard.double(forKey: heightKey)
+        let width = OPNAppPreferenceStorage.standard.double(forKey: widthKey)
+        let height = OPNAppPreferenceStorage.standard.double(forKey: heightKey)
         guard width > 0, height > 0 else { return nil }
         return CGSize(width: width, height: height)
     }
 
     static func saveSize(_ size: CGSize) {
-        UserDefaults.standard.set(Double(size.width), forKey: widthKey)
-        UserDefaults.standard.set(Double(size.height), forKey: heightKey)
+        OPNAppPreferenceStorage.standard.set(Double(size.width), forKey: widthKey)
+        OPNAppPreferenceStorage.standard.set(Double(size.height), forKey: heightKey)
     }
 }
 

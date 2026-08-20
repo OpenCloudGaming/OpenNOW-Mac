@@ -9,7 +9,7 @@ public enum SteamControllerPreference {
     public static let key = "MacForceNow.Input.SteamControllerSupportEnabled"
 
     public static var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: key)
+        OPNAppPreferenceStorage.standard.bool(forKey: key)
     }
 }
 

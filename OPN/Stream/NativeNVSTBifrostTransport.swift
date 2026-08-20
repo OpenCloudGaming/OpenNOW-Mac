@@ -1052,7 +1052,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private static func openNOWStreamingProfileGuid(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) -> String {
         let signature = "\(allocation.session.applicationID)|\(streamingProfileJSON)"
         let key = "MacForceNow.NativeNVST.StreamingProfileGuid.\(stableProfileHash(signature))"
-        let defaults = UserDefaults.standard
+        let defaults = OPNAppPreferenceStorage.standard
         if let existing = defaults.string(forKey: key), UUID(uuidString: existing) != nil { return existing.lowercased() }
         let generated = UUID().uuidString.lowercased()
         defaults.set(generated, forKey: key)

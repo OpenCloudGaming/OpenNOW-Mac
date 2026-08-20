@@ -9,13 +9,13 @@ enum MacForceNowUpdatePreferences {
 
     static var automaticUpdateChecksEnabled: Bool {
         get {
-            guard UserDefaults.standard.object(forKey: automaticUpdateChecksEnabledKey) != nil else {
+            guard OPNAppPreferenceStorage.standard.object(forKey: automaticUpdateChecksEnabledKey) != nil else {
                 return defaultAutomaticUpdateChecksEnabled
             }
-            return UserDefaults.standard.bool(forKey: automaticUpdateChecksEnabledKey)
+            return OPNAppPreferenceStorage.standard.bool(forKey: automaticUpdateChecksEnabledKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: automaticUpdateChecksEnabledKey)
+            OPNAppPreferenceStorage.standard.set(newValue, forKey: automaticUpdateChecksEnabledKey)
         }
     }
 
@@ -43,18 +43,18 @@ enum MacForceNowUpdatePreferences {
 
     static func remindTomorrow(from date: Date = Date()) {
         let reminderDate = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(24 * 60 * 60)
-        UserDefaults.standard.set(reminderDate.timeIntervalSince1970, forKey: remindAfterKey)
+        OPNAppPreferenceStorage.standard.set(reminderDate.timeIntervalSince1970, forKey: remindAfterKey)
     }
 
     private static var remindAfterDate: Date? {
-        guard UserDefaults.standard.object(forKey: remindAfterKey) != nil else { return nil }
-        let timestamp = UserDefaults.standard.double(forKey: remindAfterKey)
+        guard OPNAppPreferenceStorage.standard.object(forKey: remindAfterKey) != nil else { return nil }
+        let timestamp = OPNAppPreferenceStorage.standard.double(forKey: remindAfterKey)
         guard timestamp > 0 else { return nil }
         return Date(timeIntervalSince1970: timestamp)
     }
 
     private static func clearReminder() {
-        UserDefaults.standard.removeObject(forKey: remindAfterKey)
+        OPNAppPreferenceStorage.standard.removeObject(forKey: remindAfterKey)
     }
 
     private static var isDebuggerAttached: Bool {

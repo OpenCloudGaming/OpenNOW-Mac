@@ -13,16 +13,16 @@ enum MacForceNowInterfacePreferences {
     static let uiScaleRange: ClosedRange<Double> = 0.75...2.0
 
     static var controllerModeEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: controllerModeEnabledKey) }
-        set { UserDefaults.standard.set(newValue, forKey: controllerModeEnabledKey) }
+        get { OPNAppPreferenceStorage.standard.bool(forKey: controllerModeEnabledKey) }
+        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: controllerModeEnabledKey) }
     }
 
     static var uiScale: Double {
         get {
-            let stored = UserDefaults.standard.object(forKey: uiScaleKey) as? Double
+            let stored = OPNAppPreferenceStorage.standard.object(forKey: uiScaleKey) as? Double
             return clampedUIScale(stored ?? defaultUIScale)
         }
-        set { UserDefaults.standard.set(clampedUIScale(newValue), forKey: uiScaleKey) }
+        set { OPNAppPreferenceStorage.standard.set(clampedUIScale(newValue), forKey: uiScaleKey) }
     }
 
     static func clampedUIScale(_ value: Double) -> Double {

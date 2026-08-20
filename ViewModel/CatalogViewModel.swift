@@ -2709,7 +2709,7 @@ struct CatalogPlaytimeStatistics: Codable, Equatable {
     }
 
     static func load(accountIdentifier: String) -> CatalogPlaytimeStatistics {
-        guard let data = UserDefaults.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
+        guard let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
               let statistics = try? JSONDecoder().decode(CatalogPlaytimeStatistics.self, from: data) else {
             return .empty
         }
@@ -2718,7 +2718,7 @@ struct CatalogPlaytimeStatistics: Codable, Equatable {
 
     func save(accountIdentifier: String) {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
+        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
     }
 
     private static func storageKey(accountIdentifier: String) -> String {
@@ -2807,13 +2807,13 @@ struct CatalogPreviousGameSession: Codable, Equatable {
     }
 
     static func load() -> CatalogPreviousGameSession? {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return nil }
+        guard let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey) else { return nil }
         return try? JSONDecoder().decode(CatalogPreviousGameSession.self, from: data)
     }
 
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey)
+        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey)
     }
 }
 

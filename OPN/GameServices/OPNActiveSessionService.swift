@@ -29,13 +29,13 @@ enum OPNActiveSessionService {
     private static let terminationPollDelay: TimeInterval = 0.25
 
     static func loadPersistedActiveSessionId() -> String {
-        UserDefaults.standard.string(forKey: persistedSessionIdKey) ?? ""
+        OPNAppPreferenceStorage.standard.string(forKey: persistedSessionIdKey) ?? ""
     }
 
     static func clearPersistedActiveSessionId(_ sessionId: String = "") {
         let current = loadPersistedActiveSessionId()
         guard sessionId.isEmpty || current == sessionId else { return }
-        UserDefaults.standard.removeObject(forKey: persistedSessionIdKey)
+        OPNAppPreferenceStorage.standard.removeObject(forKey: persistedSessionIdKey)
     }
 
     static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @MainActor @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {

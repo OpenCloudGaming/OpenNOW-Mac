@@ -825,18 +825,18 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     private func storePersistedActiveSessionId(_ sessionId: String) {
         guard !sessionId.isEmpty else { return }
-        let current = UserDefaults.standard.string(forKey: Self.persistedActiveSessionIdKey) ?? ""
+        let current = OPNAppPreferenceStorage.standard.string(forKey: Self.persistedActiveSessionIdKey) ?? ""
         guard current != sessionId else { return }
-        UserDefaults.standard.set(sessionId, forKey: Self.persistedActiveSessionIdKey)
-        UserDefaults.standard.synchronize()
+        OPNAppPreferenceStorage.standard.set(sessionId, forKey: Self.persistedActiveSessionIdKey)
+        OPNAppPreferenceStorage.standard.synchronize()
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Persisted active sessionId=\(sessionId)"))
     }
 
     private func clearPersistedActiveSessionId(_ sessionId: String) {
-        let current = UserDefaults.standard.string(forKey: Self.persistedActiveSessionIdKey) ?? ""
+        let current = OPNAppPreferenceStorage.standard.string(forKey: Self.persistedActiveSessionIdKey) ?? ""
         guard !current.isEmpty, sessionId.isEmpty || current == sessionId else { return }
-        UserDefaults.standard.removeObject(forKey: Self.persistedActiveSessionIdKey)
-        UserDefaults.standard.synchronize()
+        OPNAppPreferenceStorage.standard.removeObject(forKey: Self.persistedActiveSessionIdKey)
+        OPNAppPreferenceStorage.standard.synchronize()
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Cleared persisted active sessionId=\(current)"))
     }
 }
