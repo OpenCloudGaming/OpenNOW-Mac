@@ -24,12 +24,13 @@ Browse your library, launch in seconds, stream at up to 5K, record your best run
 
 ## Why MacForce Now
 
-Not a wrapped web page. A real Mac app — SwiftUI front to back, native WebRTC streaming underneath, and the hardware support the official client never shipped.
+Not a wrapped web page. A real Mac app — SwiftUI front to back, native WebRTC *or* NVIDIA's own NVST streaming underneath, and the hardware support the official client never shipped.
 
 | | |
 |---|---|
 | 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and 2.4 GHz dongle. Full HID parsing, haptics, back grips, trackpads, custom mappings — no Steam required. |
 | 🖥️ **Built for ultrawide** | 21:9 and 32:9 up to 5120×2160, HEVC, MetalFX upscaling, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
+| ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, plus persistent Library and Favorites. |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session — signed invites, host-approved, native input path. |
@@ -69,6 +70,19 @@ GeForce NOW bakes pillarbox columns into 16:9-only titles — real black pixels,
 | **Crop** | Scales to fill and trims top and bottom. No bars, no warping — costs vertical view. |
 
 Blur modes take an adjustable dim. Everything but **Black** runs through the custom Metal render path.
+
+## Native NVST Transport
+
+WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - NVIDIA's native streaming protocol - on its own native stack, reproducing the exact pipeline the official client establishes, with no NVIDIA libraries in the bundle.
+
+- **OpenNOW's own implementation, no vendor runtime** - an RTSPS-over-WSS control channel (OPTIONS → DESCRIBE → SETUP → ANNOUNCE → PLAY), a client-generated SRTP master key, and a video handoff derived from the seat's answers the same way the native client derives it.
+- **Native video and input** - Mjolnir video access units (H.264, HEVC, and AV1) decode through VideoToolbox, while keyboard, mouse, text, and gamepad input plus audio ride the SCTP data channels of the seat's ICE/DTLS bundle.
+- **Live native telemetry** - latency, jitter, bitrate, packet and frame loss in the in-stream stats HUD, plus a network governor that adapts bitrate to path conditions.
+- **Scope limits** - microphone capture is accepted but not yet enabled on this path, and session recording is not yet available - use WebRTC if you want ⌘R captures.
+
+Enable it in **Settings → Stream Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
+
+The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md).
 
 ## Steam Controller, Unlocked
 
