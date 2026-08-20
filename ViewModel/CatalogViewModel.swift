@@ -82,6 +82,7 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
     case streaming
+    case network
     case connections
     case controller
     case general
@@ -93,6 +94,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "Account"
         case .streaming: return "Streaming"
+        case .network: return "Network"
         case .connections: return "Connections"
         case .controller: return "Controller"
         case .general: return "General"
@@ -104,6 +106,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "Membership, profile, and current NVIDIA session details."
         case .streaming: return "Tune streaming quality, server location, and MetalFX upscaling."
+        case .network: return "Route GeForce NOW requests through a proxy. Stream traffic always connects directly."
         case .connections: return "Manage store accounts and Twitch broadcast settings."
         case .controller: return "Steam Controller support, permissions, input testing, and mapping."
         case .general: return "Interface mode, display scale, and experimental features."
@@ -115,6 +118,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "person.crop.circle.fill"
         case .streaming: return "play.tv.fill"
+        case .network: return "network"
         case .connections: return "link"
         case .controller: return "gamecontroller.fill"
         case .general: return "gearshape.2.fill"

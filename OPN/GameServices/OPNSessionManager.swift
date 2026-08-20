@@ -112,7 +112,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -170,7 +170,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -207,7 +207,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data?
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -234,7 +234,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -278,7 +278,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -335,7 +335,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         nonisolated(unsafe) let claimSettings = settings
         let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
         let tracedValidationRequest = validationRequest
-        URLSession.shared.dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             var preClaimStatus = 0
@@ -466,7 +466,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
@@ -876,7 +876,7 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollClaimSession")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
             manager.pollClaimSessionRequestFinished(context: self, attempt: attempt, data: data, error: error)
         }.resume()

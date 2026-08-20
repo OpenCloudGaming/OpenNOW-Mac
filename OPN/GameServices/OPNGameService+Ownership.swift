@@ -49,7 +49,7 @@ extension OPNGameService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let networkStart = OPNNetworkLog.start(&request, operation: "als.sync")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "als.sync", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
@@ -99,7 +99,7 @@ extension OPNGameService {
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         let networkStart = OPNNetworkLog.start(&request, operation: "als.loginUrl")
         let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "als.loginUrl", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0

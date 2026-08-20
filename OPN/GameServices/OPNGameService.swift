@@ -122,7 +122,7 @@ final class OPNGameService: @unchecked Sendable {
         var requestWithTrace = request
         let networkStart = OPNNetworkLog.graphQLStart(&requestWithTrace, operationName: operationName, queryHash: queryHash, variables: variables)
         let tracedRequest = requestWithTrace
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
             var payload: NSDictionary?
             var message = ""
             if let error {

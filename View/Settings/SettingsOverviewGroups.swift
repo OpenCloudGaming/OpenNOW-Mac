@@ -32,6 +32,17 @@ struct ConnectionsSettingsGroup: View {
     }
 }
 
+struct NetworkSettingsGroup: View {
+    let viewModel: CatalogViewModel
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            SessionProxySettingsPage(viewModel: viewModel)
+        }
+    }
+}
+
 struct DiscordSettingsPage: View {
     let discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared
     let uiScale: CGFloat

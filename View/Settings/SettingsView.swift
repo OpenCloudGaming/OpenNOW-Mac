@@ -262,6 +262,8 @@ struct SettingsContent: View {
             AccountSettingsPage(viewModel: viewModel)
         case .streaming:
             StreamingSettingsGroup(viewModel: viewModel)
+        case .network:
+            NetworkSettingsGroup(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsGroup(viewModel: viewModel)
         case .controller:

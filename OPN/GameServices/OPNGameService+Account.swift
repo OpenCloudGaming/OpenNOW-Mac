@@ -37,7 +37,7 @@ extension OPNGameService {
             Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
             let networkStart = OPNNetworkLog.start(&request, operation: "mes.subscriptions")
             let tracedRequest = request
-            URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
                 OPNNetworkLog.finish(tracedRequest, operation: "mes.subscriptions", startedAt: networkStart, data: data, response: response, error: error)
                 Self.workQueue.async {
                     if let error {

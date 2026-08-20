@@ -219,6 +219,23 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public init() {}
 }
 
+private struct OPNStreamScreenSnapshot: Sendable {
+    let backingScaleFactor: CGFloat
+    let screenNumber: UInt32?
+    let frameSize: CGSize
+    let maximumFramesPerSecond: Int
+    let maximumPotentialExtendedDynamicRangeColorComponentValue: CGFloat
+
+    @MainActor init?(screen: NSScreen?) {
+        guard let screen else { return nil }
+        backingScaleFactor = screen.backingScaleFactor
+        screenNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        frameSize = screen.frame.size
+        maximumFramesPerSecond = screen.maximumFramesPerSecond
+        maximumPotentialExtendedDynamicRangeColorComponentValue = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+    }
+}
+
 public struct OPNStreamPresentationCapability: Equatable, Sendable {
     public let supportsTenBit: Bool
     public let supportsHDR: Bool
@@ -487,7 +504,7 @@ public enum OPNStreamPreferences {
         return devices
     }
 
-    public static func loadDeviceCapabilities(screen: NSScreen? = NSScreen.main) -> OPNStreamDeviceCapabilities {
+    public static func loadDeviceCapabilities(screen: NSScreen? = nil) -> OPNStreamDeviceCapabilities {
         var capabilities = OPNStreamDeviceCapabilities()
         capabilities.h264HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
         capabilities.h265HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
@@ -495,11 +512,11 @@ public enum OPNStreamPreferences {
             capabilities.av1HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
         }
 
-        guard let screen else { return capabilities }
-        let scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0
+        guard let snapshot = mainThreadScreenSnapshot(screen: screen) else { return capabilities }
+        let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0
         capabilities.displayDpi = max(100, Int((100.0 * scale).rounded()))
-        if let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
-            let displayId = CGDirectDisplayID(screenNumber.uint32Value)
+        if let screenNumber = snapshot.screenNumber {
+            let displayId = CGDirectDisplayID(screenNumber)
             let width = CGDisplayPixelsWide(displayId)
             let height = CGDisplayPixelsHigh(displayId)
             if width > 0, height > 0 {
@@ -512,12 +529,26 @@ public enum OPNStreamPreferences {
             }
         }
         if capabilities.maxDisplayWidth == 0 || capabilities.maxDisplayHeight == 0 {
-            capabilities.maxDisplayWidth = Int((screen.frame.width * scale).rounded())
-            capabilities.maxDisplayHeight = Int((screen.frame.height * scale).rounded())
+            capabilities.maxDisplayWidth = Int((snapshot.frameSize.width * scale).rounded())
+            capabilities.maxDisplayHeight = Int((snapshot.frameSize.height * scale).rounded())
         }
-        capabilities.maxDisplayRefreshRate = max(capabilities.maxDisplayRefreshRate, screen.maximumFramesPerSecond)
-        capabilities.hdrDisplaySupported = screen.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
+        capabilities.maxDisplayRefreshRate = max(capabilities.maxDisplayRefreshRate, snapshot.maximumFramesPerSecond)
+        capabilities.hdrDisplaySupported = snapshot.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
         return capabilities
+    }
+
+    private static func mainThreadScreenSnapshot(screen: NSScreen?) -> OPNStreamScreenSnapshot? {
+        nonisolated(unsafe) let requestedScreen = screen
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                OPNStreamScreenSnapshot(screen: requestedScreen ?? NSScreen.main)
+            }
+        }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated {
+                OPNStreamScreenSnapshot(screen: requestedScreen ?? NSScreen.main)
+            }
+        }
     }
 
     public static func codecSupported(_ codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {

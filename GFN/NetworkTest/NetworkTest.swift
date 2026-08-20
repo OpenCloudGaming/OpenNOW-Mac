@@ -345,7 +345,7 @@ public struct NetworkTestURLSessionTransport: NetworkTestHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        try await OPNURLSessionHTTPTransport.send(request, operation: "networkTest.transport", invalidHTTPResponseError: NetworkTestServiceError.invalidHTTPResponse)
+        try await OPNURLSessionHTTPTransport.send(request, operation: "networkTest.transport", invalidHTTPResponseError: NetworkTestServiceError.invalidHTTPResponse, allowsSessionProxy: false)
     }
 }
 
