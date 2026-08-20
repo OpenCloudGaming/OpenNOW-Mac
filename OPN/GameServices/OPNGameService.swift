@@ -722,7 +722,7 @@ final class OPNGameService: @unchecked Sendable {
                         return
                     }
                     let apps = data?["apps"] as? NSDictionary
-                    state.items.append(contentsOf: apps?["items"] as? [NSDictionary] ?? [])
+                    state.append(contentsOf: apps?["items"] as? [NSDictionary] ?? [])
                     let pageInfo = apps?["pageInfo"] as? NSDictionary
                     let hasNextPage = self.safeBool(pageInfo?["hasNextPage"])
                     let endCursor = self.safeString(pageInfo?["endCursor"]) ?? ""
@@ -983,28 +983,26 @@ final class OPNGameService: @unchecked Sendable {
                         return
                     }
                     let pageItems = apps["items"] as? [NSDictionary] ?? []
-                    state.collectedApps.append(contentsOf: pageItems)
-                    state.result.numberReturned += self.safeInt(apps["numberReturned"])
-                    state.result.numberSupported = self.safeInt(apps["numberSupported"])
                     let pageInfo = apps["pageInfo"] as? NSDictionary
                     let hasNextPage = self.safeBool(pageInfo?["hasNextPage"])
                     let endCursor = self.safeString(pageInfo?["endCursor"]) ?? ""
-                    state.result.totalCount = self.safeInt(pageInfo?["totalCount"])
-                    state.result.hasNextPage = hasNextPage
-                    if !endCursor.isEmpty { state.result.endCursor = endCursor }
+                    state.applyPage(items: pageItems) { result in
+                        result.numberReturned += self.safeInt(apps["numberReturned"])
+                        result.numberSupported = self.safeInt(apps["numberSupported"])
+                        result.totalCount = self.safeInt(pageInfo?["totalCount"])
+                        result.hasNextPage = hasNextPage
+                        if !endCursor.isEmpty { result.endCursor = endCursor }
+                    }
 
                     let pageGames = pageItems.map { self.parseGameItem($0) }.filter { !$0.id.isEmpty && !$0.title.isEmpty && !$0.variants.isEmpty }
                     self.enrichGames(pageGames, vpcId: vpcId) { enriched in
-                        state.enrichedGames.append(contentsOf: enriched)
-                        state.result.numberSupported = max(state.result.numberSupported, state.enrichedGames.count)
-                        state.result.totalCount = max(state.result.totalCount, state.enrichedGames.count)
+                        state.applyEnrichedGames(enriched)
 
                         let isCatalogFirstPage = page == 0 && startCursor.isEmpty
                         let isFinalPage = !hasNextPage || endCursor.isEmpty || page + 1 >= maxPages
                         let shouldDeliver = callerDrivenPaging || isFinalPage
                         if shouldDeliver, !(callerDrivenPaging && isCatalogFirstPage && deliveredCachedResult.value) {
-                            var snapshot = state.result
-                            snapshot.games = state.enrichedGames
+                            let snapshot = state.snapshot()
                             if isCatalogFirstPage {
                                 deliveredFirstPage.setTrue()
                             }
@@ -1040,7 +1038,7 @@ final class OPNGameService: @unchecked Sendable {
                     let itemsBox = NSDictionaryArrayBox(items)
                     Self.workQueue.async { [itemsBox] in
                         for item in itemsBox.values {
-                            if let appId = self.safeString(item["id"]) { metadataState.metadataById[appId] = item }
+                            if let appId = self.safeString(item["id"]) { metadataState[appId] = item }
                         }
                         group.leave()
                     }
@@ -1051,7 +1049,7 @@ final class OPNGameService: @unchecked Sendable {
         }
         group.notify(queue: Self.workQueue) {
             let enriched = games.map { game in
-                guard let metadata = metadataState.metadataById[game.uuid] else { return game }
+                guard let metadata = metadataState[game.uuid] else { return game }
                 var merged = game
                 let metadataGame = self.parseGameItem(metadata)
                 self.mergeMissingStoreMetadata(target: &merged, metadata: metadataGame)
@@ -2684,12 +2682,36 @@ private final class AtomicFlag: @unchecked Sendable {
 }
 
 private final class CatalogPageState: @unchecked Sendable {
-    var collectedApps: [NSDictionary] = []
-    var enrichedGames: [OPNGameInfo] = []
-    var result: OPNCatalogBrowseResult
+    private let lock = NSLock()
+    private var collectedApps: [NSDictionary] = []
+    private var enrichedGames: [OPNGameInfo] = []
+    private var result: OPNCatalogBrowseResult
 
     init(result: OPNCatalogBrowseResult) {
         self.result = result
+    }
+
+    func applyPage(items: [NSDictionary], update: (inout OPNCatalogBrowseResult) -> Void) {
+        lock.withLock {
+            collectedApps.append(contentsOf: items)
+            update(&result)
+        }
+    }
+
+    func applyEnrichedGames(_ games: [OPNGameInfo]) {
+        lock.withLock {
+            enrichedGames.append(contentsOf: games)
+            result.numberSupported = max(result.numberSupported, enrichedGames.count)
+            result.totalCount = max(result.totalCount, enrichedGames.count)
+        }
+    }
+
+    func snapshot() -> OPNCatalogBrowseResult {
+        lock.withLock {
+            var snapshot = result
+            snapshot.games = enrichedGames
+            return snapshot
+        }
     }
 }
 
@@ -2698,11 +2720,26 @@ private final class RecursiveCatalogPageFetcher: @unchecked Sendable {
 }
 
 private final class PatchStatusPageState: @unchecked Sendable {
-    var items: [NSDictionary] = []
+    private let lock = NSLock()
+    private var storage: [NSDictionary] = []
+
+    var items: [NSDictionary] {
+        lock.withLock { storage }
+    }
+
+    func append(contentsOf newItems: [NSDictionary]) {
+        lock.withLock { storage.append(contentsOf: newItems) }
+    }
 }
 
 private final class MetadataState: @unchecked Sendable {
-    var metadataById: [String: NSDictionary] = [:]
+    private let lock = NSLock()
+    private var metadataById: [String: NSDictionary] = [:]
+
+    subscript(appId: String) -> NSDictionary? {
+        get { lock.withLock { metadataById[appId] } }
+        set { lock.withLock { metadataById[appId] = newValue } }
+    }
 }
 
 private struct RatingCategoryMetadata: Sendable {
