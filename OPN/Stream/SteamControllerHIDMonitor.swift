@@ -197,6 +197,10 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         updateInputCaptureState()
     }
 
+    func isInputCaptureLeased(by requester: AnyObject) -> Bool {
+        captureRequesters.contains(ObjectIdentifier(requester))
+    }
+
     private func updateInputCaptureState() {
         let shouldCapture = !captureRequesters.isEmpty
         guard shouldCapture != isInputCaptureActive else { return }

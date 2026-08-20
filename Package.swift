@@ -25,6 +25,7 @@ let package = Package(
             ],
             path: ".",
             exclude: [
+                "DerivedData",
                 "AGENTS.md",
                 "CHANGELOG.md",
                 "DESIGN.md",

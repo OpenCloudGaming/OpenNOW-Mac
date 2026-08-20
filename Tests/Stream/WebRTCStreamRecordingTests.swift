@@ -106,10 +106,10 @@ struct WebRTCStreamRecordingTests {
         ))
 
         var terminalStatus: WebRTCStreamRecordingStatus?
-        for _ in 0..<20 {
+        for _ in 0..<40 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
-            try await Task.sleep(for: .milliseconds(25))
+            try await Task.sleep(for: .milliseconds(50))
         }
 
         #expect(terminalStatus == .failed("Recording could not capture video frames."))

@@ -168,16 +168,16 @@ import Testing
         let navigator = GamepadUINavigator()
         defer { navigator.stop() }
         navigator.start(capturingInput: true)
-        #expect(SteamControllerHIDMonitor.shared.isInputCaptureActive)
+        #expect(SteamControllerHIDMonitor.shared.isInputCaptureLeased(by: navigator))
         navigator.stop()
-        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureActive)
+        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureLeased(by: navigator))
     }
 
     @Test func startWithoutCapturingInputDoesNotLeaseCapture() {
         let navigator = GamepadUINavigator()
         defer { navigator.stop() }
         navigator.start()
-        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureActive)
+        #expect(!SteamControllerHIDMonitor.shared.isInputCaptureLeased(by: navigator))
     }
 
     @Test func capturingNavigatorEmitsCommandsWithoutExternalCaptureLease() {

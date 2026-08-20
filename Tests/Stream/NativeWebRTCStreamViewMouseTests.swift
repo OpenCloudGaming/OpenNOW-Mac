@@ -4,13 +4,24 @@ import Testing
 
 private actor MouseInputRecorder {
     private var events: [NativeNVSTInput] = []
+    private var countWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     func append(_ event: NativeNVSTInput) {
         events.append(event)
+        let readyWaiters = countWaiters.filter { events.count >= $0.0 }
+        countWaiters.removeAll { events.count >= $0.0 }
+        readyWaiters.forEach { $0.1.resume() }
     }
 
     func snapshot() -> [NativeNVSTInput] {
         events
+    }
+
+    func waitForCount(_ count: Int) async {
+        guard events.count < count else { return }
+        await withCheckedContinuation { continuation in
+            countWaiters.append((count, continuation))
+        }
     }
 }
 
@@ -269,6 +280,7 @@ private struct MouseButtonTransition: Equatable {
     dispatcher.enqueue(events[0])
     dispatcher.enqueueAbsoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp))
     events.dropFirst().forEach { dispatcher.enqueue($0) }
+    await recorder.waitForCount(events.count + 1)
     await dispatcher.finish()
 
     #expect(await recorder.snapshot() == [
