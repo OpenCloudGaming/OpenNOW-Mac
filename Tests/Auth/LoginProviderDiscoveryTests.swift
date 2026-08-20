@@ -74,7 +74,10 @@ private final class FakeGameProviderInfoService: GameProviderInfoServing, @unche
     viewModel.acceptedTerms = true
 
     viewModel.launchOAuth()
-    try await Task.sleep(for: .milliseconds(100))
+    for _ in 0..<200 {
+        if viewModel.validationMessage == "Injected auth failure" { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
 
     #expect(viewModel.validationMessage == "Injected auth failure")
     #expect(viewModel.isLaunchingOAuth == false)

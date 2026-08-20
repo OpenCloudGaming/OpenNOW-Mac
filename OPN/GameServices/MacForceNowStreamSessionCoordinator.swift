@@ -61,10 +61,12 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     private var remoteEndContinuation: AsyncStream<String>.Continuation?
     private var pendingRemoteEndMessage: String?
     private var offerContinuation: CheckedContinuation<StreamOffer, Error>?
+    private let sessionManager: any StreamSessionManaging
     private let adPresenter: (any StreamSessionAdPresenter)?
     private let progressHandler: (@Sendable (StreamProgress) -> Void)?
 
-    public init(adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil) {
+    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared, adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil) {
+        self.sessionManager = sessionManager
         self.adPresenter = adPresenter
         self.progressHandler = progressHandler
     }
@@ -185,10 +187,10 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         // The server response ([[String: Any]]) is not Sendable, so resolve the blocker and
         // build the (Sendable) conflict inside the completion and only hand that back.
         await withCheckedContinuation { continuation in
-            OPNSessionManager.shared.getActiveSessions { [self] _, sessions, _ in
+            sessionManager.getActiveSessions { [self] _, sessions, _ in
                 let candidates = sessions.filter { string($0["sessionId"]) != sessionID }
                 guard !candidates.isEmpty,
-                      let blocker = OPNSessionManager.shared.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
+                      let blocker = sessionManager.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
                     continuation.resume(returning: nil)
                     return
                 }
@@ -280,8 +282,8 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func allocateSession(configuration: StreamLaunchConfiguration, launch: PreparedStreamLaunch) async throws -> AllocatedStreamSession {
-        OPNSessionManager.shared.setAccessToken(configuration.accessToken)
-        OPNSessionManager.shared.setStreamingBaseUrl(launch.streamingBaseUrl)
+        sessionManager.setAccessToken(configuration.accessToken)
+        sessionManager.setStreamingBaseUrl(launch.streamingBaseUrl)
 
         if configuration.resumesExistingSession {
             let claimed = try await claimSession(configuration: configuration, settings: launch.settings)
@@ -294,7 +296,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
         return try await withCheckedThrowingContinuation { continuation in
-            OPNSessionManager.shared.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings) { success, info, error in
+            sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else if info["isSessionLimitConflict"] as? Bool == true {
@@ -314,7 +316,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func claimSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
         try await withCheckedThrowingContinuation { continuation in
-            OPNSessionManager.shared.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: false) { success, info, error in
+            sessionManager.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: false) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {
@@ -408,7 +410,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
         try await withCheckedThrowingContinuation { continuation in
-            OPNSessionManager.shared.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason) { success, info, error in
+            sessionManager.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {
@@ -420,7 +422,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
         try await withCheckedThrowingContinuation { continuation in
-            OPNSessionManager.shared.pollSession(sessionId: sessionId, serverIp: serverIp) { success, info, error in
+            sessionManager.pollSession(sessionId: sessionId, serverIp: serverIp) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {

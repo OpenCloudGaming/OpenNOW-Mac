@@ -29,6 +29,8 @@ public struct OPNAppPatchStatus: Equatable, Sendable {
 final class OPNGameService: @unchecked Sendable {
     static let shared = OPNGameService()
 
+    private let sessionManager: any StreamSessionManaging
+
     static let panelsHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     static let favoritesPanelHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     static let marqueeHash = "dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f"
@@ -72,7 +74,9 @@ final class OPNGameService: @unchecked Sendable {
     var streamingBaseUrl = ""
     var providerStreamingBaseUrl = OPNGameService.defaultStreamingBaseUrl
 
-    private init() {}
+    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared) {
+        self.sessionManager = sessionManager
+    }
 
     func setAccessToken(_ token: String) { accessToken = token }
     func setAccountLinkingToken(_ token: String) { accountLinkingToken = token }
@@ -80,7 +84,7 @@ final class OPNGameService: @unchecked Sendable {
     func setUserId(_ id: String) { userId = id }
     func setStreamingBaseUrl(_ url: String) {
         streamingBaseUrl = url
-        OPNSessionManager.shared.setStreamingBaseUrl(url)
+        sessionManager.setStreamingBaseUrl(url)
     }
     func providerStreamingBaseURL() -> String { providerStreamingBaseUrl.isEmpty ? Self.defaultStreamingBaseUrl : providerStreamingBaseUrl }
 
