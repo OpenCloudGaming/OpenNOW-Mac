@@ -27,8 +27,8 @@ enum CatalogVendorLayout {
     private static let baseTileHorizontalMargin: CGFloat = 8
     private static let baseTileTopMargin: CGFloat = 16
     private static let baseCardTrayHeight: CGFloat = 40
-    private static let baseWideTileWidth: CGFloat = 272
-    private static let baseWideTileHeight: CGFloat = 153
+    private static let baseWideTileWidth: CGFloat = 352
+    private static let baseWideTileHeight: CGFloat = 198
     private static let baseHeroFallbackHeight: CGFloat = 500
     private static let baseHeroMaxHeight: CGFloat = 760
     private static let baseDetailPanelMinHeight: CGFloat = 500

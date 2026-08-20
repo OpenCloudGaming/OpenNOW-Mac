@@ -57,6 +57,7 @@ jobs:
       - name: Run package unit tests
         run: |
           set -euo pipefail
+          unset ENABLE_NVST_HARDWARE_TESTS
           swift test --scratch-path .build/shared || {
             echo "swift test failed; clearing scratch path and retrying with a clean build graph"
             rm -rf .build/shared

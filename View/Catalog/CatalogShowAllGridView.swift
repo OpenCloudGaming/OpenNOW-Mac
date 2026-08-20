@@ -68,8 +68,8 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         let scaleChanged = context.coordinator.scale != scale
         context.coordinator.scale = scale
 
-        layout.minTileWidth = 230
-        layout.spacing = 12
+        layout.minTileWidth = CatalogVendorLayout.wideTileWidth(scale: scale)
+        layout.spacing = CatalogVendorLayout.tileHorizontalMargin(scale: scale) * 2
         context.coordinator.lastViewportHeight = nsView.contentView.bounds.height
         layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height, scale: scale)
 
@@ -362,7 +362,7 @@ struct CatalogShowAllGridTile: View {
     private var tileContent: some View {
         ZStack(alignment: .topLeading) {
             let isActive = isHovering || isSelected
-            CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 620)
+            CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                 .clipped()
             if isActive {
                 Color.black.opacity(0.50)
@@ -404,8 +404,8 @@ struct CatalogShowAllGridTile: View {
 final class CatalogShowAllGridLayout: NSCollectionViewLayout {
     static let detailRowKind = "CatalogShowAllGridDetailRow"
 
-    var minTileWidth: CGFloat = 230
-    var spacing: CGFloat = 12
+    var minTileWidth: CGFloat = CatalogVendorLayout.wideTileWidth(scale: 1.0)
+    var spacing: CGFloat = CatalogVendorLayout.tileHorizontalMargin(scale: 1.0) * 2
     var detailRowHeight: CGFloat = CatalogVendorLayout.detailPanelMinHeight(scale: 1.0)
     var selectedItemIndex: Int?
 

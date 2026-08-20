@@ -559,7 +559,7 @@ struct CatalogRailView: View {
                             ForEach(games, id: \.catalogIdentity) { game in
                                 EquatableView(content: CatalogGameTile(
                                     game: game,
-                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
@@ -577,7 +577,7 @@ struct CatalogRailView: View {
                             ForEach(Array(section.tiles.enumerated()), id: \.offset) { _, tile in
                                 CatalogPanelActionTile(
                                     tile: tile,
-                                    imageURL: viewModel.optimizedImageURL(tile.imageUrl, width: 620),
+                                    imageURL: viewModel.optimizedImageURL(tile.imageUrl, width: 768),
                                     action: { viewModel.openPanelTile(tile) }
                                 )
                             }
@@ -628,12 +628,12 @@ struct CatalogRailView: View {
         var urls: [URL] = []
         var seen = Set<String>()
         for game in games.prefix(8) {
-            appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
         }
         for tile in section.tiles.prefix(4) {
-            appendPrefetchURL(tile.imageUrl, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(tile.imageUrl, width: 768, urls: &urls, seen: &seen)
         }
         imageCache.prefetch(urls)
     }
@@ -688,7 +688,7 @@ struct CatalogDestinationGridView: View {
                 ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
                     CatalogGameTile(
                         game: game,
-                        imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                        imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
                         isSelected: isSelected(game),
                         isSelectionActive: viewModel.selectedGame != nil,
                         isQueuedForPatching: viewModel.isQueuedForPatching(game),
@@ -719,8 +719,8 @@ struct CatalogDestinationGridView: View {
         var urls: [URL] = []
         var seen = Set<String>()
         for game in section.games.prefix(18) {
-            appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
         }
         imageCache.prefetch(urls)
@@ -793,7 +793,7 @@ struct CatalogPanelActionTile: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
-                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 620)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)

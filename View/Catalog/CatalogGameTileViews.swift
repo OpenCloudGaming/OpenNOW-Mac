@@ -139,7 +139,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 let isActive = isHovering || isSelected
-                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 620)
+                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .clipped()
                 if isActive {

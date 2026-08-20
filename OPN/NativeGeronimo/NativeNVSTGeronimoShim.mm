@@ -2288,17 +2288,34 @@ extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath,
             setError(errorBuffer, errorBufferLength, "Native Geronimo NVST frameworks path is empty.");
             return nullptr;
         }
-        std::string libraryPath = directory + "/libGeronimo.dylib";
-        handle = dlopen(libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
-        if (handle == nullptr) {
-            setDLError(errorBuffer, errorBufferLength, "dlopen libGeronimo.dylib failed");
-            return nullptr;
-        }
         std::string bifrostPath = directory + "/libBifrost2.dylib";
         bifrostHandle = dlopen(bifrostPath.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (bifrostHandle == nullptr) {
             setDLError(errorBuffer, errorBufferLength, "dlopen libBifrost2.dylib failed");
-            dlclose(handle);
+            return nullptr;
+        }
+        std::string sdlPath = directory + "/SDL2.framework/Versions/A/SDL2";
+        void *sdlHandle = dlopen(sdlPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (sdlHandle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen SDL2 failed");
+            dlclose(bifrostHandle);
+            return nullptr;
+        }
+        std::string audioPath = directory + "/libGsAudioWebRTC.dylib";
+        void *audioHandle = dlopen(audioPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (audioHandle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen libGsAudioWebRTC.dylib failed");
+            dlclose(sdlHandle);
+            dlclose(bifrostHandle);
+            return nullptr;
+        }
+        std::string libraryPath = directory + "/libGeronimo.dylib";
+        handle = dlopen(libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (handle == nullptr) {
+            setDLError(errorBuffer, errorBufferLength, "dlopen libGeronimo.dylib failed");
+            dlclose(audioHandle);
+            dlclose(sdlHandle);
+            dlclose(bifrostHandle);
             return nullptr;
         }
 

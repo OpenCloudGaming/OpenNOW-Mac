@@ -117,7 +117,7 @@ actor CatalogImageCache {
             while let url = await self.nextPrefetchURL() {
                 guard !Task.isCancelled else { return }
                 if self.hasCachedImage(for: url) { continue }
-                _ = await self.image(for: url, maxPixelSize: 620)
+                _ = await self.image(for: url, maxPixelSize: 768)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
             await self.prefetchDidFinish()
