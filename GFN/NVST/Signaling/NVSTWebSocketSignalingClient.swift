@@ -14,7 +14,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     private var peerName = ""
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
-    private var heartbeatSource: DispatchSourceTimer?
+    private var heartbeatTask: Task<Void, Never>?
     private var connectionGeneration = 0
     private var didOpen = false
     private var connectCompletion: ((Bool, String) -> Void)?
@@ -64,7 +64,8 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         OPNNetworkLog.webSocketEvent("connect", url: url)
         task.resume()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(15))
             guard let self, self.connectionGeneration == generation else { return }
             if self.webSocketTask != nil && !self.didOpen {
                 OPNNetworkLog.webSocketEvent("timeout", url: self.activeURL)
@@ -165,23 +166,18 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         clearHeartbeat()
         rearmReceiveHandler()
         let generation = connectionGeneration
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
-        timer.schedule(deadline: .now() + 5.0, repeating: 5.0)
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            if self.connectionGeneration != generation {
-                timer.cancel()
-                return
+        heartbeatTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self, self.connectionGeneration == generation else { return }
+                self.sendJson("{\"hb\":1}")
             }
-            self.sendJson("{\"hb\":1}")
         }
-        heartbeatSource = timer
-        timer.resume()
     }
 
     private func clearHeartbeat() {
-        heartbeatSource?.cancel()
-        heartbeatSource = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
     }
 
     private func rearmReceiveHandler() {

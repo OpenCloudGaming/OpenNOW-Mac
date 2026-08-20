@@ -447,7 +447,8 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         setRTCAudioSessionEnabled(false)
         WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_scheduled", level: .debug, message: "Audio device refresh scheduled.", attributes: ["inputDevice": String(defaultInputDevice), "outputDevice": String(defaultOutputDevice)])
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(200)) { [weak self, weak sessionImpl] in
+        Task { @MainActor [weak self, weak sessionImpl] in
+            try? await Task.sleep(for: .milliseconds(200))
             guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == refreshGeneration else { return }
             self.setRTCAudioSessionEnabled(true)
             sessionImpl?.remoteAudioTrack?.isEnabled = true
@@ -492,7 +493,8 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     }
 
     func scheduleAudioDeviceChange() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
             guard let self, self.audioMonitoringActive else { return }
             self.handleAudioDeviceChange(sessionImpl: self.sessionImpl)
         }
@@ -510,7 +512,8 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
             if audioDeviceUnavailableRetryCount < 10 {
                 audioDeviceUnavailableRetryCount += 1
                 WebRTCMediaTelemetry.capture("webrtc.native.audio.output_unavailable", level: .debug, message: "Default output device unavailable during hotplug; retrying.", attributes: ["inputDevice": String(inputDevice), "outputDevice": String(outputDevice), "retry": String(audioDeviceUnavailableRetryCount)])
-                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self] in
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(500))
                     guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == generation else { return }
                     self.handleAudioDeviceChange(sessionImpl: self.sessionImpl)
                 }
@@ -533,7 +536,8 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         let generation = audioDeviceChangeGeneration
         let customAudioDeviceActive = sessionImpl?.audioDevice != nil
         if !customAudioDeviceActive, Self.envFlagEnabled("OPN_ENABLE_WEBRTC_AUDIO_HOTSWAP_RECOVERY", defaultValue: true) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(700)) { [weak self] in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(700))
                 guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == generation else { return }
                 WebRTCMediaTelemetry.capture("webrtc.native.audio.recovery", level: .warning, message: "Forcing stream recovery after audio device change.", attributes: ["inputDevice": String(self.defaultInputDevice), "outputDevice": String(self.defaultOutputDevice)])
                 self.owner?.handleConnectionState(false, error: "webrtc audio device changed")

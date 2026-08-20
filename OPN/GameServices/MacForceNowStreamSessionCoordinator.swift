@@ -550,7 +550,8 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func startOfferTimeout(client: NVSTWebSocketSignalingClient, descriptor: StreamSessionDescriptor) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) { [weak self, weak client] in
+        Task { @MainActor [weak self, weak client] in
+            try? await Task.sleep(for: .seconds(20))
             guard let self, let client else { return }
             let shouldFail = self.lock.withLock { self.signaling === client && self.offerContinuation != nil }
             guard shouldFail else { return }

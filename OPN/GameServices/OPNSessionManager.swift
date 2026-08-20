@@ -916,7 +916,10 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
     }
 
     func retry(after delay: TimeInterval, attempt: Int) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in poll(attempt: attempt) }
+        Task { @MainActor [self] in
+            try? await Task.sleep(for: .seconds(delay))
+            poll(attempt: attempt)
+        }
     }
 
     func complete(_ success: Bool, _ session: [String: Any], _ error: String) {
