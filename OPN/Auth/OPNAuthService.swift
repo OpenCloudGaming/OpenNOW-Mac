@@ -3,9 +3,9 @@ import CryptoKit
 import Darwin
 import Foundation
 
-public typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
-typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
-public typealias OPNDeviceCodeChallengeCallback = @Sendable (_ challenge: OPNDeviceCodeLoginChallenge) -> Void
+public typealias OPNAuthCallback = @MainActor @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
+typealias OPNSimpleCallback = @MainActor @Sendable (_ success: Bool, _ error: String) -> Void
+public typealias OPNDeviceCodeChallengeCallback = @MainActor @Sendable (_ challenge: OPNDeviceCodeLoginChallenge) -> Void
 
 public struct OPNDeviceCodeLoginChallenge: Equatable, Sendable {
     public let userCode: String
@@ -184,7 +184,7 @@ public final class OPNAuthService: @unchecked Sendable {
     func refreshSession(completion: @escaping OPNAuthCallback, forceRefresh: Bool = false) {
         let session = loadSavedSession()
         guard session.isAuthenticated else {
-            completion(false, OPNAuthSession(), "No saved session available")
+            Task { @MainActor in completion(false, OPNAuthSession(), "No saved session available") }
             return
         }
 
@@ -253,13 +253,13 @@ public final class OPNAuthService: @unchecked Sendable {
     func serverLogout(idToken: String, locale: String, completion: @escaping OPNSimpleCallback) {
         guard !idToken.isEmpty else {
             clearSession()
-            completion(true, "")
+            Task { @MainActor in completion(true, "") }
             return
         }
         let resolvedLocale = locale.isEmpty ? Locale.current.identifier.replacingOccurrences(of: "-", with: "_") : locale
         guard let url = StarfleetOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, postLogoutRedirectURI: Self.oAuthRedirectURI, configuration: .gfnPC) else {
             clearSession()
-            completion(false, "Invalid logout URL")
+            Task { @MainActor in completion(false, "Invalid logout URL") }
             return
         }
         var request = URLRequest(url: url, timeoutInterval: 10)
@@ -848,176 +848,5 @@ public final class OPNAuthService: @unchecked Sendable {
 
     func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
         MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
-    }
-}
-
-@objcMembers
-@objc(OPNAuthSessionObject)
-final class OPNAuthSessionObject: NSObject {
-    var accessToken: String
-    var idToken: String
-    var refreshToken: String
-    var userId: String
-    var displayName: String
-    var email: String
-    var membershipTier: String
-    var idpId: String
-    var expiresAt: Int64
-    var isAuthenticated: Bool
-    var clientToken: String
-    var clientTokenExpiry: Int64
-    var clientTokenExpiryLength: Int64
-    var idTokenExpiry: Int64
-    var accessTokenExpiry: Int64
-
-    override init() {
-        accessToken = ""
-        idToken = ""
-        refreshToken = ""
-        userId = ""
-        displayName = ""
-        email = ""
-        membershipTier = ""
-        idpId = ""
-        expiresAt = 0
-        isAuthenticated = false
-        clientToken = ""
-        clientTokenExpiry = 0
-        clientTokenExpiryLength = 0
-        idTokenExpiry = 0
-        accessTokenExpiry = 0
-    }
-
-    init(session: OPNAuthSession) {
-        accessToken = session.accessToken
-        idToken = session.idToken
-        refreshToken = session.refreshToken
-        userId = session.userId
-        displayName = session.displayName
-        email = session.email
-        membershipTier = session.membershipTier
-        idpId = session.idpId
-        expiresAt = session.expiresAt
-        isAuthenticated = session.isAuthenticated
-        clientToken = session.clientToken
-        clientTokenExpiry = session.clientTokenExpiry
-        clientTokenExpiryLength = session.clientTokenExpiryLength
-        idTokenExpiry = session.idTokenExpiry
-        accessTokenExpiry = session.accessTokenExpiry
-    }
-
-    var swiftValue: OPNAuthSession {
-        var session = OPNAuthSession()
-        session.accessToken = accessToken
-        session.idToken = idToken
-        session.refreshToken = refreshToken
-        session.userId = userId
-        session.displayName = displayName
-        session.email = email
-        session.membershipTier = membershipTier
-        session.idpId = idpId
-        session.expiresAt = expiresAt
-        session.isAuthenticated = isAuthenticated
-        session.clientToken = clientToken
-        session.clientTokenExpiry = clientTokenExpiry
-        session.clientTokenExpiryLength = clientTokenExpiryLength
-        session.idTokenExpiry = idTokenExpiry
-        session.accessTokenExpiry = accessTokenExpiry
-        return session
-    }
-}
-
-@objc(OPNAuthServiceDirect)
-public final class OPNAuthServiceDirect: NSObject, @unchecked Sendable {
-    @objc(shared)
-    public static let shared = OPNAuthServiceDirect()
-
-    @objc(startOAuthLoginWithProviderIdpId:completion:)
-    func startOAuthLogin(providerIdpId: String, completion: @escaping @Sendable (Bool, OPNAuthSessionObject, String) -> Void) {
-        OPNAuthService.shared.startOAuthLogin(providerIdpId: providerIdpId) { success, session, error in
-            completion(success, OPNAuthSessionObject(session: session), error)
-        }
-    }
-
-    @objc(refreshSessionForce:completion:)
-    func refreshSession(force: Bool, completion: @escaping @Sendable (Bool, OPNAuthSessionObject, String) -> Void) {
-        OPNAuthService.shared.refreshSession(completion: { success, session, error in
-            completion(success, OPNAuthSessionObject(session: session), error)
-        }, forceRefresh: force)
-    }
-
-    @objc(fetchStarFleetUserInfoWithAccessToken:completion:)
-    func fetchStarFleetUserInfo(accessToken: String, completion: @escaping @Sendable (Bool, NSDictionary?, String) -> Void) {
-        OPNAuthService.shared.fetchStarFleetUserInfo(accessToken: accessToken, completion: completion)
-    }
-
-    @objc(fetchClientTokenWithAccessToken:completion:)
-    func fetchClientToken(accessToken: String, completion: @escaping @Sendable (Bool, String, String) -> Void) {
-        OPNAuthService.shared.fetchClientToken(accessToken: accessToken, completion: completion)
-    }
-
-    @objc(serverLogoutWithIdToken:locale:completion:)
-    func serverLogout(idToken: String, locale: String, completion: @escaping @Sendable (Bool, String) -> Void) {
-        OPNAuthService.shared.serverLogout(idToken: idToken, locale: locale, completion: completion)
-    }
-
-    @objc(saveSession:)
-    func saveSession(_ session: OPNAuthSessionObject) {
-        OPNAuthService.shared.saveSession(session.swiftValue)
-    }
-
-    @objc(loadSavedSession)
-    func loadSavedSession() -> OPNAuthSessionObject {
-        OPNAuthSessionObject(session: OPNAuthService.shared.loadSavedSession())
-    }
-
-    @objc(loadSavedSessions)
-    func loadSavedSessions() -> [OPNAuthSessionObject] {
-        OPNAuthService.shared.loadSavedSessions().map(OPNAuthSessionObject.init(session:))
-    }
-
-    @objc(loadSavedSessionForUserId:)
-    func loadSavedSession(userId: String) -> OPNAuthSessionObject {
-        OPNAuthSessionObject(session: OPNAuthService.shared.loadSavedSession(forUserId: userId))
-    }
-
-    @objc(setActiveSessionUserId:)
-    func setActiveSessionUserId(_ userId: String) {
-        OPNAuthService.shared.setActiveSessionUserId(userId)
-    }
-
-    @objc(removeSavedSessionForUserId:)
-    func removeSavedSession(userId: String) {
-        OPNAuthService.shared.removeSavedSession(userId: userId)
-    }
-
-    @objc(clearSession)
-    func clearSession() {
-        OPNAuthService.shared.clearSession()
-    }
-
-    @objc(getStayLoggedIn)
-    public func getStayLoggedIn() -> Bool {
-        OPNAuthService.shared.getStayLoggedIn()
-    }
-
-    @objc(setStayLoggedIn:)
-    public func setStayLoggedIn(_ value: Bool) {
-        OPNAuthService.shared.setStayLoggedIn(value)
-    }
-
-    @objc(parseOAuthSession:)
-    static func parseOAuthSession(_ json: NSDictionary) -> OPNAuthSessionObject {
-        OPNAuthSessionObject(session: OPNAuthService.parseOAuthSession(json: json))
-    }
-
-    @objc(parseQueryString:)
-    static func parseQueryString(_ query: String?) -> NSDictionary {
-        OPNAuthService.parseQueryString(query)
-    }
-
-    @objc(getPersistentDeviceUUID)
-    static func getPersistentDeviceUUID() -> String {
-        OPNAuthService.getPersistentDeviceUUID()
     }
 }

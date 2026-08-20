@@ -32,11 +32,12 @@ final class LoginViewModel: ObservableObject {
     @Published var deviceCodeUserCode = ""
     @Published var deviceCodeVerificationURI = ""
 
-    private let authService = OPNAuthService.shared
+    private let authService: any LoginAuthServing
     private let providerInfoService: any GameProviderInfoServing
     private let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
 
-    init(providerInfoService: any GameProviderInfoServing = OPNGameService.shared) {
+    init(authService: any LoginAuthServing = OPNAuthService.shared, providerInfoService: any GameProviderInfoServing = OPNGameService.shared) {
+        self.authService = authService
         self.providerInfoService = providerInfoService
     }
     private var modelContext: ModelContext?
@@ -213,20 +214,20 @@ final class LoginViewModel: ObservableObject {
         validationMessage = "Finish \(loginProvider.title) sign-in in the browser. MacForce Now will continue automatically."
 
         authService.startOAuthLogin(providerIdpId: loginProvider.idpId) { [weak self] success, session, error in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.selectedProvider = loginProvider
-                self.isLaunchingOAuth = false
-                self.currentAuthorizationURL = ""
-                self.clearPendingOAuthState()
-                self.oauthCallbackText = ""
+            guard let self else { return }
+            self.selectedProvider = loginProvider
+            self.isLaunchingOAuth = false
+            self.currentAuthorizationURL = ""
+            self.clearPendingOAuthState()
+            self.oauthCallbackText = ""
 
-                guard success else {
-                    self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : error
-                    MacForceNowLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
-                    return
-                }
+            guard success else {
+                self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : error
+                MacForceNowLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                return
+            }
 
+            Task { @MainActor in
                 await self.jarvisAuthService.setSession(session)
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
                 self.validationMessage = ""
@@ -254,27 +255,25 @@ final class LoginViewModel: ObservableObject {
         validationMessage = "Enter the device code in your browser to connect \(loginProvider.title)."
 
         authService.startStarfleetDeviceCodeLogin(providerIdpId: loginProvider.idpId) { [weak self] challenge in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.deviceCodeUserCode = challenge.userCode
-                self.deviceCodeVerificationURI = challenge.verificationURIComplete.isEmpty ? challenge.verificationURI : challenge.verificationURIComplete
-                self.validationMessage = "Enter code \(challenge.userCode) at \(self.deviceCodeVerificationURI)."
-            }
+            guard let self else { return }
+            self.deviceCodeUserCode = challenge.userCode
+            self.deviceCodeVerificationURI = challenge.verificationURIComplete.isEmpty ? challenge.verificationURI : challenge.verificationURIComplete
+            self.validationMessage = "Enter code \(challenge.userCode) at \(self.deviceCodeVerificationURI)."
         } completion: { [weak self] success, session, error in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.selectedProvider = loginProvider
-                self.isLaunchingOAuth = false
-                self.currentAuthorizationURL = ""
-                self.clearPendingOAuthState()
-                self.oauthCallbackText = ""
+            guard let self else { return }
+            self.selectedProvider = loginProvider
+            self.isLaunchingOAuth = false
+            self.currentAuthorizationURL = ""
+            self.clearPendingOAuthState()
+            self.oauthCallbackText = ""
 
-                guard success else {
-                    self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : error
-                    MacForceNowLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
-                    return
-                }
+            guard success else {
+                self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : error
+                MacForceNowLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                return
+            }
 
+            Task { @MainActor in
                 await self.jarvisAuthService.setSession(session)
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: "Starfleet_Device_Code")
                 self.validationMessage = ""

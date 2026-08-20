@@ -2,6 +2,24 @@ import Foundation
 import Testing
 @testable import MacForceNow
 
+private final class FakeLoginAuthService: LoginAuthServing, @unchecked Sendable {
+    let outcome: (Bool, String)
+
+    init(outcome: (Bool, String)) {
+        self.outcome = outcome
+    }
+
+    func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
+        let outcome = self.outcome
+        Task { @MainActor in completion(outcome.0, OPNAuthSession(), outcome.1) }
+    }
+
+    func startStarfleetDeviceCodeLogin(providerIdpId: String, challengeHandler: @escaping OPNDeviceCodeChallengeCallback, completion: @escaping OPNAuthCallback) {
+        let outcome = self.outcome
+        Task { @MainActor in completion(outcome.0, OPNAuthSession(), outcome.1) }
+    }
+}
+
 private final class FakeGameProviderInfoService: GameProviderInfoServing, @unchecked Sendable {
     let info: OPNGameProviderInfo
 
@@ -48,4 +66,16 @@ private final class FakeGameProviderInfoService: GameProviderInfoServing, @unche
     #expect(viewModel.providers.count == 2)
     #expect(viewModel.providers.contains { $0.idpId == "digevo-idp" && $0.title == "Digevo" })
     #expect(viewModel.isLoadingProviders == false)
+}
+
+@MainActor
+@Test func oauthFailureSurfacesInjectedServiceError() async throws {
+    let viewModel = LoginViewModel(authService: FakeLoginAuthService(outcome: (false, "Injected auth failure")))
+    viewModel.acceptedTerms = true
+
+    viewModel.launchOAuth()
+    try await Task.sleep(for: .milliseconds(100))
+
+    #expect(viewModel.validationMessage == "Injected auth failure")
+    #expect(viewModel.isLaunchingOAuth == false)
 }
