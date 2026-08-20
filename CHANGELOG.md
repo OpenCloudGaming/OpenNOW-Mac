@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.0](https://github.com/anderson-oki/macforce-now/compare/v0.15.0...v0.16.0) (2026-08-20)
+
+
+### Features
+
+* add catalog proxy ([337df3a](https://github.com/anderson-oki/macforce-now/commit/337df3accebe128d3f49cbb15915e2a188c4d259))
+* increase catalog view thumbnail size ([f2378a9](https://github.com/anderson-oki/macforce-now/commit/f2378a990bf90f1fcbd84e7cd25577e48a1545c7))
+
+
+### Bug Fixes
+
+* remove production crash paths in app launch, NVST runtime, and stream recording ([7a59c79](https://github.com/anderson-oki/macforce-now/commit/7a59c79c79b9390aeb0319bba426dcacdabf87d2))
+
 ## [0.15.0](https://github.com/anderson-oki/macforce-now/compare/v0.14.1...v0.15.0) (2026-08-19)
 
 
