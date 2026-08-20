@@ -179,6 +179,7 @@ struct StoreIcon: View {
 }
 
 struct StoreRemoteIconImage: View {
+    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL
     let asset: StoreIconAsset?
     let connected: Bool
@@ -209,7 +210,7 @@ struct StoreRemoteIconImage: View {
     private func loadImage() async {
         image = nil
         hasFailed = false
-        guard let cached = await CatalogImageCache.shared.image(for: url), !Task.isCancelled else {
+        guard let cached = await imageCache.image(for: url), !Task.isCancelled else {
             hasFailed = !Task.isCancelled
             return
         }

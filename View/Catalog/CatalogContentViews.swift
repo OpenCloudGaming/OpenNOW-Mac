@@ -516,6 +516,7 @@ struct CatalogEmptyDestinationView: View {
 }
 
 struct CatalogRailView: View {
+    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     let onShowAll: () -> Void
@@ -634,7 +635,7 @@ struct CatalogRailView: View {
         for tile in section.tiles.prefix(4) {
             appendPrefetchURL(tile.imageUrl, width: 620, urls: &urls, seen: &seen)
         }
-        CatalogImageCache.shared.prefetch(urls)
+        imageCache.prefetch(urls)
     }
 
     private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
@@ -658,6 +659,7 @@ struct CatalogRailView: View {
 }
 
 struct CatalogDestinationGridView: View {
+    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     @Environment(\.opnUIScale) private var uiScale
@@ -721,7 +723,7 @@ struct CatalogDestinationGridView: View {
             appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
         }
-        CatalogImageCache.shared.prefetch(urls)
+        imageCache.prefetch(urls)
     }
 
     private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {

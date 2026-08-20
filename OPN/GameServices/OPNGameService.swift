@@ -29,7 +29,8 @@ public struct OPNAppPatchStatus: Equatable, Sendable {
 final class OPNGameService: @unchecked Sendable {
     static let shared = OPNGameService()
 
-    private let sessionManager: any StreamSessionManaging
+    let sessionManager: any StreamSessionManaging
+    let dataCache: any CatalogDataCaching
 
     static let panelsHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     static let favoritesPanelHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
@@ -74,8 +75,9 @@ final class OPNGameService: @unchecked Sendable {
     var streamingBaseUrl = ""
     var providerStreamingBaseUrl = OPNGameService.defaultStreamingBaseUrl
 
-    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared) {
+    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared, dataCache: any CatalogDataCaching = OPNGameDataCache.shared) {
         self.sessionManager = sessionManager
+        self.dataCache = dataCache
     }
 
     func setAccessToken(_ token: String) { accessToken = token }

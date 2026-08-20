@@ -50,7 +50,7 @@ extension OPNGameService {
     ) {
         let requestedSortId = sortId.isEmpty ? Self.defaultSortId(searchQuery: searchQuery) : sortId
         let requestedFetchCount = max(24, min(fetchCount > 0 ? fetchCount : Self.defaultCatalogFetchCount, 200))
-        let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
+        let catalogCacheKey = self.dataCache.catalogKey(
             accountIdentifier: accountIdentifier,
             searchQuery: searchQuery,
             sortId: requestedSortId,
@@ -77,7 +77,7 @@ extension OPNGameService {
             return
         }
 
-        OPNGameDataCache.shared.loadFreshCatalogAndDefinitions(
+        self.dataCache.loadFreshCatalogAndDefinitions(
             key: catalogCacheKey,
             locale: locale,
             catalogMaxAgeSeconds: Self.catalogCacheFreshSeconds,
@@ -98,7 +98,7 @@ extension OPNGameService {
         let deliveredCachedResult = AtomicFlag()
         let loadDefinitions: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
-            OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: parameters.locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
+            self.dataCache.loadCatalogDefinitionsAsync(locale: parameters.locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
                 guard let self else { return }
                 if let cachedDefinitions, self.hasValidFilterGroups(cachedDefinitions) {
                     self.handleCatalogDefinitions(cachedDefinitions, "", parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
@@ -113,7 +113,7 @@ extension OPNGameService {
                 """
                 self.postGraphQlJson(query: definitionsQuery, variables: ["locale": parameters.locale] as NSDictionary) { [weak self] data, error in
                     guard let self else { return }
-                    if error.isEmpty, let data { OPNGameDataCache.shared.saveCatalogDefinitionsAsync(locale: parameters.locale, definitions: data) }
+                    if error.isEmpty, let data { self.dataCache.saveCatalogDefinitionsAsync(locale: parameters.locale, definitions: data) }
                     self.handleCatalogDefinitions(data, error, parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
                 }
             }
@@ -122,7 +122,7 @@ extension OPNGameService {
             loadDefinitions()
             return
         }
-        OPNGameDataCache.shared.loadCatalogAsync(key: parameters.catalogCacheKey) { [weak self] cached in
+        self.dataCache.loadCatalogAsync(key: parameters.catalogCacheKey) { [weak self] cached in
             guard let self else { return }
             if let cached {
                 deliveredCachedResult.setTrue()
@@ -270,7 +270,7 @@ extension OPNGameService {
                                 deliveredFirstPage.setTrue()
                             }
                             if startCursor.isEmpty, isCatalogFirstPage || isFinalPage {
-                                OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: snapshot)
+                                self.dataCache.saveCatalogAsync(key: catalogCacheKey, result: snapshot)
                             }
                             self.dispatchCatalogBrowse(completion, true, snapshot, "")
                         }

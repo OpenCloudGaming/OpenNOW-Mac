@@ -11,6 +11,7 @@ import ImageIO
 import SwiftUI
 
 struct CatalogHeroRemoteImage: View {
+    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
     let onScrimColorChange: (CatalogMarqueeScrimColor) -> Void
@@ -45,7 +46,7 @@ struct CatalogHeroRemoteImage: View {
 
         onScrimColorChange(.black)
         isLoading = true
-        if let cached = await CatalogImageCache.shared.image(for: url) {
+        if let cached = await imageCache.image(for: url) {
             guard !Task.isCancelled else { return }
             image = cached.image
             hasFailed = false

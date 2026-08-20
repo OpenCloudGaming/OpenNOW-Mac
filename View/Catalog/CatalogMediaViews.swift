@@ -22,6 +22,7 @@ struct CatalogRemoteImage: View {
 }
 
 struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
+    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
     var maxPixelSize: CGFloat = 1920 * 2
@@ -54,7 +55,7 @@ struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
             hasFailed = true
             return
         }
-        guard let cached = await CatalogImageCache.shared.image(for: url, maxPixelSize: maxPixelSize), !Task.isCancelled else {
+        guard let cached = await imageCache.image(for: url, maxPixelSize: maxPixelSize), !Task.isCancelled else {
             hasFailed = !Task.isCancelled
             return
         }

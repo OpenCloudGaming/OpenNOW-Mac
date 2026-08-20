@@ -1,9 +1,7 @@
 import CryptoKit
 import Foundation
 
-@objc(OPNGameDataCache)
-final class OPNGameDataCache: NSObject, @unchecked Sendable {
-    @objc(shared)
+final class OPNGameDataCache: @unchecked Sendable {
     static let shared = OPNGameDataCache()
 
     private static let catalogCacheVersion = 13
@@ -20,14 +18,13 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     private let imagePath: String
     private let ioQueue = DispatchQueue(label: "com.macforce-now.game-data-cache.io", qos: .utility)
 
-    private override init() {
+    private init() {
         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         rootPath = baseURL.appendingPathComponent("MacForceNow/GameData", isDirectory: true).path
         catalogPath = (rootPath as NSString).appendingPathComponent("catalog")
         catalogDefinitionsPath = (rootPath as NSString).appendingPathComponent("catalog-definitions")
         imagePath = (rootPath as NSString).appendingPathComponent("images")
-        super.init()
         createCacheDirectory(catalogPath)
         createCacheDirectory(catalogDefinitionsPath)
         createCacheDirectory(imagePath)
@@ -91,28 +88,6 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         return sha256String(string)
     }
 
-    @objc(catalogKeyWithAccountIdentifier:searchQuery:sortId:filterIds:fetchCount:locale:providerStreamingBaseUrl:vpcId:)
-    func catalogKeyObjC(
-        accountIdentifier: String,
-        searchQuery: String,
-        sortId: String,
-        filterIds: [String],
-        fetchCount: Int,
-        locale: String,
-        providerStreamingBaseUrl: String,
-        vpcId: String
-    ) -> String {
-        catalogKey(
-            accountIdentifier: accountIdentifier,
-            searchQuery: searchQuery,
-            sortId: sortId,
-            filterIds: filterIds,
-            fetchCount: fetchCount,
-            locale: locale,
-            providerStreamingBaseUrl: providerStreamingBaseUrl,
-            vpcId: vpcId
-        )
-    }
 
     func loadCatalog(key: String) -> OPNCatalogBrowseResult? {
         loadCatalog(key: key, requireFreshness: false, maxAgeSeconds: 0)
@@ -165,22 +140,8 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         writeCacheDictionary(path: catalogFilePath(key: key), dictionary: dictionary)
     }
 
-    @objc(loadCatalogDictionaryWithKey:)
-    func loadCatalogDictionary(key: String) -> NSDictionary? {
-        readCacheDictionary(path: catalogFilePath(key: key), requireFreshness: false, maxAgeSeconds: 0)
-    }
 
-    @objc(loadFreshCatalogDictionaryWithKey:maxAgeSeconds:)
-    func loadFreshCatalogDictionary(key: String, maxAgeSeconds: TimeInterval) -> NSDictionary? {
-        readCacheDictionary(path: catalogFilePath(key: key), requireFreshness: true, maxAgeSeconds: maxAgeSeconds)
-    }
 
-    @objc(saveCatalogDictionaryWithKey:dictionary:)
-    func saveCatalogDictionary(key: String, dictionary: NSDictionary) {
-        guard var payload = dictionary as? [String: Any] else { return }
-        payload["ts"] = Date().timeIntervalSince1970
-        writeCacheDictionary(path: catalogFilePath(key: key), dictionary: payload)
-    }
 
     func loadCatalogDefinitions(locale: String, maxAgeSeconds: TimeInterval) -> NSDictionary? {
         let cacheKey = catalogDefinitionsCacheKey(locale: locale)
@@ -213,29 +174,16 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         }
     }
 
-    @objc(loadCatalogDefinitionsWithLocale:maxAgeSeconds:)
     func loadCatalogDefinitionsObjC(locale: String, maxAgeSeconds: TimeInterval) -> NSDictionary? {
         loadCatalogDefinitions(locale: locale, maxAgeSeconds: maxAgeSeconds)
     }
 
-    @objc(saveCatalogDefinitionsWithLocale:definitions:)
     func saveCatalogDefinitionsObjC(locale: String, definitions: NSDictionary) {
         saveCatalogDefinitions(locale: locale, definitions: definitions)
     }
 
-    @objc(loadImageWithURLString:)
-    func loadImage(urlString: String) -> Data? {
-        guard !urlString.isEmpty else { return nil }
-        return try? Data(contentsOf: URL(fileURLWithPath: imageFilePath(urlString: urlString)))
-    }
 
-    @objc(saveImageWithURLString:data:)
-    func saveImage(urlString: String, data: Data) {
-        guard !urlString.isEmpty, !data.isEmpty else { return }
-        try? data.write(to: URL(fileURLWithPath: imageFilePath(urlString: urlString)), options: .atomic)
-    }
 
-    @objc(clearAllCaches)
     func clearAllCaches() -> Bool {
         let existed = FileManager.default.fileExists(atPath: rootPath)
         let removed: Bool

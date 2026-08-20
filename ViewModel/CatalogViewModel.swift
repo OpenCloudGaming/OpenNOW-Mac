@@ -239,15 +239,19 @@ final class CatalogViewModel {
     private var queuedPatchingLaunchVariantIndex = -1
     private let gameService: any CatalogGameServing
     private let launchBridge: any GameLaunchBridging
+    private let imageCache: any CatalogImageServing
+    private let discordPresence: any DiscordPresenceServing
     private let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
         self.launchBridge = launchBridge
+        self.imageCache = imageCache
+        self.discordPresence = discordPresence
         self.onRefreshAuth = onRefreshAuth
     }
 
@@ -841,7 +845,7 @@ final class CatalogViewModel {
         launchFlowState = .checkingSession
         let presence = discordPresence(for: game)
         activeDiscordPresence = presence
-        DiscordRichPresence.shared.update(.launching(presence))
+        discordPresence.update(.launching(presence))
         continueVendorLaunch()
     }
 
@@ -970,7 +974,7 @@ final class CatalogViewModel {
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         activeDiscordPresence = nil
-        DiscordRichPresence.shared.update(.idle)
+        discordPresence.update(.idle)
         isActiveStreamLaunchOverlayVisible = false
         streamProgressGeneration += 1
         clearLaunchFlow()
@@ -1000,7 +1004,7 @@ final class CatalogViewModel {
         isActiveStreamLaunchOverlayVisible = true
         guard progress.isReady else { return }
         if let presence = activeDiscordPresence {
-            DiscordRichPresence.shared.update(.streaming(presence))
+            discordPresence.update(.streaming(presence))
         }
         let generation = streamProgressGeneration
         Task { @MainActor in
@@ -1908,14 +1912,14 @@ final class CatalogViewModel {
 
     func refreshCatalogImageCacheSummary() {
         Task { @MainActor in
-            let statistics = await CatalogImageCache.shared.statistics()
+            let statistics = await imageCache.statistics()
             catalogImageCacheSummary = Self.formattedCacheSummary(statistics)
         }
     }
 
     func clearCatalogImageCache() {
         Task { @MainActor in
-            let cleared = await CatalogImageCache.shared.clear()
+            let cleared = await imageCache.clear()
             actionMessage = cleared ? "Catalog image cache cleared." : "Unable to clear catalog image cache."
             refreshCatalogImageCacheSummary()
         }

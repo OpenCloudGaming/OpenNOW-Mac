@@ -18,7 +18,7 @@ extension OPNGameService {
                 result.selectedSortId = selectedSort.id
                 result.sortOptions = [selectedSort]
                 result.selectedFilterIds = [Self.libraryCatalogFilterId]
-                let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
+                let catalogCacheKey = self.dataCache.catalogKey(
                     accountIdentifier: accountIdentifier,
                     searchQuery: "",
                     sortId: selectedSort.id,
@@ -49,7 +49,7 @@ extension OPNGameService {
 
     func fetchDefaultLibrarySort(locale: String, completion: @escaping @Sendable (OPNCatalogSortOption) -> Void) {
         let fallback = Self.defaultSortOption(searchQuery: "")
-        OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
+        self.dataCache.loadCatalogDefinitionsAsync(locale: locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
             guard let self else { return }
             if let cachedDefinitions {
                 completion(self.defaultLibrarySort(from: cachedDefinitions, fallback: fallback))
@@ -65,7 +65,7 @@ extension OPNGameService {
             self.postGraphQlJson(query: query, variables: ["locale": locale] as NSDictionary) { [weak self] data, error in
                 guard let self else { return }
                 if error.isEmpty, let data {
-                    OPNGameDataCache.shared.saveCatalogDefinitionsAsync(locale: locale, definitions: data)
+                    self.dataCache.saveCatalogDefinitionsAsync(locale: locale, definitions: data)
                     completion(self.defaultLibrarySort(from: data, fallback: fallback))
                 } else {
                     completion(fallback)

@@ -33,6 +33,7 @@ struct ConnectionsSettingsGroup: View {
 }
 
 struct DiscordSettingsPage: View {
+    let discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared
     let uiScale: CGFloat
     @State private var richPresenceEnabled = true
 
@@ -46,11 +47,11 @@ struct DiscordSettingsPage: View {
                     uiScale: uiScale
                 ) { newValue in
                     richPresenceEnabled = newValue
-                    DiscordRichPresence.shared.isEnabled = newValue
+                    discordPresence.isEnabled = newValue
                 }
             }
         }
-        .onAppear { richPresenceEnabled = DiscordRichPresence.shared.isEnabled }
+        .onAppear { richPresenceEnabled = discordPresence.isEnabled }
     }
 }
 
