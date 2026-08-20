@@ -7,7 +7,11 @@ import SwiftUI
 /// continuous-motion "Behavior" (mouse / scroll wheel / joystick / disabled).
 struct SteamControllerMappingView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var store = SteamControllerMappingStore.shared
+    @ObservedObject private var store: SteamControllerMappingStore
+
+    init(store: SteamControllerMappingStore = .shared) {
+        _store = ObservedObject(wrappedValue: store)
+    }
     @StateObject private var liveModel = SteamControllerTestModel()
     @State private var draft: SteamControllerMappingProfile?
     @State private var selectedControl: SteamControllerControl = .leftGrip

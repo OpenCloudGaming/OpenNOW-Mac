@@ -118,7 +118,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     private var permissionRetryObserver: NSObjectProtocol?
     nonisolated(unsafe) private var heartbeatTimer: Timer?
 
-    private init() {}
+    private let mappingProvider: any SteamControllerMappingProviding
+
+    init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
+        self.mappingProvider = mappingProvider
+    }
 
     public struct DeviceInfo: Identifiable {
         public let id: String
@@ -143,7 +147,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     /// editing trackpad behavior mid-stream takes effect immediately.
     public func refreshCaptureConfiguration() {
         guard isInputCaptureActive else { return }
-        let wantsRawTrackpadCapture = SteamControllerMappingStore.shared.activeProfile?.wantsRawTrackpadCapture ?? false
+        let wantsRawTrackpadCapture = mappingProvider.activeProfile?.wantsRawTrackpadCapture ?? false
         for context in devices.values {
             if wantsRawTrackpadCapture {
                 guard !context.isSeized else { continue }
@@ -729,7 +733,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     /// native haptics and the raw reports drive the stream. When seizing fails
     /// (or no trackpad wants raw capture) the firmware emulation is disabled instead.
     private func configureCapture(for context: DeviceContext) {
-        let wantsRawTrackpadCapture = SteamControllerMappingStore.shared.activeProfile?.wantsRawTrackpadCapture ?? false
+        let wantsRawTrackpadCapture = mappingProvider.activeProfile?.wantsRawTrackpadCapture ?? false
         if wantsRawTrackpadCapture, reopenVendorDevice(context, seize: true) {
             context.isSeized = true
             enableLizardMode(for: context)

@@ -45,7 +45,12 @@ struct SteamControllerSettingsPage: View {
     let uiScale: CGFloat
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
-    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
+    @ObservedObject private var mappingStore: SteamControllerMappingStore
+
+    init(uiScale: CGFloat, mappingStore: SteamControllerMappingStore = .shared) {
+        self.uiScale = uiScale
+        _mappingStore = ObservedObject(wrappedValue: mappingStore)
+    }
     @State private var showingControllerTest = false
     @State private var showingControllerMapping = false
     @State private var permissionResetInFlight = false

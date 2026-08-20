@@ -155,7 +155,10 @@ public final class NativeWebRTCGamepadMonitor {
     private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     private var accessibilityPromptShown = false
 
-    public init() {
+    private let mappingProvider: any SteamControllerMappingProviding
+
+    init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
+        self.mappingProvider = mappingProvider
         observerTokens = [
             NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refreshControllerSlots() }
@@ -350,7 +353,7 @@ public final class NativeWebRTCGamepadMonitor {
     /// keep forwarding normally either way.
     private func applyBindingEngine(deviceID: InputDeviceID, playerIndex: Int, snapshot: SteamControllerInputSnapshot, includePointerMotion: Bool) {
         reapplyTasks.removeValue(forKey: deviceID)?.cancel()
-        let profile = SteamControllerMappingStore.shared.activeProfile ?? SteamControllerMappingProfile(name: "Default")
+        let profile = mappingProvider.activeProfile ?? SteamControllerMappingProfile(name: "Default")
         let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
         var engine = bindingEngines[deviceID] ?? SteamControllerBindingEngine()
         var result = engine.applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: bindingClock.now, timestamp: timestamp)
