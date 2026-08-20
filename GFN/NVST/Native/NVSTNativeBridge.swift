@@ -69,6 +69,7 @@ public enum NVSTNativeBridgeError: LocalizedError, Equatable, Sendable {
     case runtimeUnavailable(NVSTNativeRuntimeLoadError)
     case invalidEndpoint(String)
     case nativeCallFailed(function: String, code: Int32, message: String)
+    case missingSymbol(String)
 
     public var errorDescription: String? {
         switch self {
@@ -78,6 +79,8 @@ public enum NVSTNativeBridgeError: LocalizedError, Equatable, Sendable {
             message
         case .nativeCallFailed(let function, let code, let message):
             "\(function) failed with NVST result \(code): \(message)"
+        case .missingSymbol(let symbol):
+            "Native NVST symbol \(symbol) is unavailable."
         }
     }
 }
@@ -118,14 +121,16 @@ public final class NVSTNativeBridge: @unchecked Sendable {
     }
 
     public func resultDescription(code: Int32) -> String {
-        let function = unsafeBitCast(runtime.rawSymbol(.resultToString), to: NvstResultToStringFunction.self)
+        guard let pointer = runtime.rawSymbol(.resultToString) else { return "NVST result \(code)" }
+        let function = unsafeBitCast(pointer, to: NvstResultToStringFunction.self)
         guard let text = function(code) else { return "NVST result \(code)" }
         let message = String(cString: text)
         return message.isEmpty ? "NVST result \(code)" : message
     }
 
     public func runtimeVersion() -> String {
-        let function = unsafeBitCast(runtime.rawSymbol(.getVersion), to: NvstGetVersionFunction.self)
+        guard let pointer = runtime.rawSymbol(.getVersion) else { return "" }
+        let function = unsafeBitCast(pointer, to: NvstGetVersionFunction.self)
         guard let version = function() else { return "" }
         return String(cString: version)
     }
@@ -136,7 +141,10 @@ public final class NVSTNativeBridge: @unchecked Sendable {
             throw NVSTNativeBridgeError.invalidEndpoint("Native NVST signaling endpoint is missing a host.")
         }
 
-        let function = unsafeBitCast(runtime.rawSymbol(.prepareSignalingServerEndpoint), to: NvstPrepareSignalingServerEndpointFunction.self)
+        guard let pointer = runtime.rawSymbol(.prepareSignalingServerEndpoint) else {
+            throw NVSTNativeBridgeError.missingSymbol(NVSTNativeSymbol.prepareSignalingServerEndpoint.rawValue)
+        }
+        let function = unsafeBitCast(pointer, to: NvstPrepareSignalingServerEndpointFunction.self)
         return try normalizedHost.withCString { hostPointer in
             let endpoint = UnsafeMutableRawPointer.allocate(byteCount: Self.serverEndpointByteCount, alignment: MemoryLayout<UInt64>.alignment)
             defer { endpoint.deallocate() }
@@ -158,7 +166,10 @@ public final class NVSTNativeBridge: @unchecked Sendable {
     }
 
     public func initializeStreamConfig(mediaType: NVSTNativeStreamMediaType, direction: NVSTNativeStreamDirection) throws -> NVSTInitializedStreamConfig {
-        let function = unsafeBitCast(runtime.rawSymbol(.initializeStreamConfig), to: NvstInitializeStreamConfigFunction.self)
+        guard let pointer = runtime.rawSymbol(.initializeStreamConfig) else {
+            throw NVSTNativeBridgeError.missingSymbol(NVSTNativeSymbol.initializeStreamConfig.rawValue)
+        }
+        let function = unsafeBitCast(pointer, to: NvstInitializeStreamConfigFunction.self)
         let streamConfig = UnsafeMutableRawPointer.allocate(byteCount: Self.streamConfigProbeByteCount, alignment: MemoryLayout<UInt64>.alignment)
         defer { streamConfig.deallocate() }
         streamConfig.initializeMemory(as: UInt8.self, repeating: 0, count: Self.streamConfigProbeByteCount)

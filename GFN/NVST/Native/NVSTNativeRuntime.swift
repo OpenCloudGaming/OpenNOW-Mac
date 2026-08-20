@@ -142,9 +142,8 @@ public final class NVSTNativeRuntime: @unchecked Sendable {
         return UInt(bitPattern: address)
     }
 
-    public func rawSymbol(_ symbol: NVSTNativeSymbol) -> UnsafeMutableRawPointer {
-        guard let address = symbols[symbol] else { preconditionFailure("NVST symbol was not resolved: \(symbol.rawValue)") }
-        return address
+    public func rawSymbol(_ symbol: NVSTNativeSymbol) -> UnsafeMutableRawPointer? {
+        symbols[symbol]
     }
 
     private static func validatedFrameworksDirectory(_ directory: URL?) throws -> URL {

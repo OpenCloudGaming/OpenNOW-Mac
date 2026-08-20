@@ -108,8 +108,38 @@ struct MacForceNowApp: App {
             MacForceNowLog.info(.app, "SwiftData model container created")
             return container
         } catch {
-            MacForceNowLog.fatal(.app, "Could not create SwiftData model container: \(error.localizedDescription)")
-            fatalError("Could not create ModelContainer: \(error)")
+            MacForceNowLog.error(.app, "Could not create SwiftData model container, attempting store recovery: \(error.localizedDescription)")
+        }
+
+        Self.removePersistentStoreFiles(at: modelConfiguration.url)
+        do {
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            MacForceNowLog.warning(.app, "SwiftData model container recreated after removing unreadable store")
+            return container
+        } catch {
+            MacForceNowLog.error(.app, "SwiftData store recovery failed, falling back to in-memory store: \(error.localizedDescription)")
+        }
+
+        do {
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+            MacForceNowLog.warning(.app, "SwiftData running with an in-memory store; sessions will not persist across launches")
+            return container
+        } catch {
+            MacForceNowLog.fatal(.app, "Could not create an in-memory SwiftData model container: \(error.localizedDescription)")
+            preconditionFailure("SwiftData model container could not be created in any configuration: \(error)")
+        }
+    }
+
+    private static func removePersistentStoreFiles(at storeURL: URL) {
+        let fileManager = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            let candidate = URL(fileURLWithPath: storeURL.path + suffix)
+            guard fileManager.fileExists(atPath: candidate.path) else { continue }
+            do {
+                try fileManager.removeItem(at: candidate)
+            } catch {
+                MacForceNowLog.warning(.app, "Could not remove SwiftData store file \(candidate.lastPathComponent): \(error.localizedDescription)")
+            }
         }
     }
 

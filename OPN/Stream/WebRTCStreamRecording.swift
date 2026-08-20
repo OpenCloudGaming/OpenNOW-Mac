@@ -255,7 +255,11 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
         conversionQueue.async {
-            let frame = Unmanaged<RTCVideoFrame>.fromOpaque(UnsafeRawPointer(bitPattern: retainedFrame)!).takeRetainedValue()
+            guard let framePointer = UnsafeRawPointer(bitPattern: retainedFrame) else {
+                self.finishVideoFrameAppend(recordingId: recordingId, source: .native)
+                return
+            }
+            let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeRetainedValue()
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
                   let pixelBuffer = self.newBGRAFramebuffer(from: i420) else {
@@ -265,7 +269,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
             self.queue.async {
                 defer { self.finishVideoFrameAppend(recordingId: recordingId, source: .native) }
-                let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
+                guard let pixelBufferPointer = UnsafeRawPointer(bitPattern: retainedPixelBuffer) else { return }
+                let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeRetainedValue()
                 guard self.isActiveRecording(recordingId) else { return }
                 self.appendPixelBufferOnQueue(pixelBuffer, source: .native, captureHostTime: captureHostTime)
             }
@@ -297,7 +302,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
             defer { self.finishVideoFrameAppend(recordingId: recordingId, source: source) }
-            let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
+            guard let pixelBufferPointer = UnsafeRawPointer(bitPattern: retainedPixelBuffer) else { return }
+            let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeRetainedValue()
             guard self.isActiveRecording(recordingId) else { return }
             self.appendPixelBufferOnQueue(pixelBuffer, source: source, captureHostTime: captureHostTime)
         }
@@ -631,8 +637,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         var blockBuffer: CMBlockBuffer?
         let status = data.withUnsafeBytes { pointer in
             CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: data.count, blockAllocator: nil, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0, blockBufferOut: &blockBuffer).flatMapStatus {
-                guard let baseAddress = pointer.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
-                return CMBlockBufferReplaceDataBytes(with: baseAddress, blockBuffer: blockBuffer!, offsetIntoDestination: 0, dataLength: data.count)
+                guard let baseAddress = pointer.baseAddress, let blockBuffer else { return kCMBlockBufferBadPointerParameterErr }
+                return CMBlockBufferReplaceDataBytes(with: baseAddress, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: data.count)
             }
         }
         guard status == noErr, let blockBuffer else { return nil }
