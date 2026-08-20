@@ -3233,7 +3233,7 @@ private enum CatalogSearchQueryParser {
     }
 }
 
-private struct CatalogGameTile: View, Equatable {
+private struct CatalogGameTile: View, @preconcurrency Equatable {
     let game: OPNCatalogGameObject
     let imageURL: URL?
     let isSelected: Bool

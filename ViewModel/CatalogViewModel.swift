@@ -70,7 +70,6 @@ enum CatalogOwnershipFlowStage: Equatable {
     case success
 }
 
-@MainActor
 enum CatalogMainPage: String, CaseIterable, Identifiable {
     case games
     case recordings
@@ -79,7 +78,6 @@ enum CatalogMainPage: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-@MainActor
 enum CatalogDestination: String, CaseIterable, Identifiable {
     case home
     case library
@@ -96,7 +94,6 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
     }
 }
 
-@MainActor
 enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
     case streaming

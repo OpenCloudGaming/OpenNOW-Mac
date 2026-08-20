@@ -26,16 +26,22 @@ let package = Package(
             path: ".",
             exclude: [
                 "AGENTS.md",
+                "CHANGELOG.md",
+                "DESIGN.md",
                 "LICENSE",
                 "README.md",
+                "release-please-config.json",
+                "MacForceNow-Info.plist",
+                "MacForceNow.entitlements",
                 "MacForceNowApp.swift",
-                "OPN/Stream/WebRTCMediaStreamSurface.swift",
                 "MacForceNow.xcodeproj",
                 "OPN/NativeGeronimo",
+                "RemoteCoOp",
                 "Resources",
                 "Tests",
-                "View",
-                "ViewModel",
+                "docs",
+                "View/.DS_Store",
+                "View/Assets.xcassets",
                 "WebRTC.framework",
                 "build",
                 "scripts",
@@ -43,9 +49,15 @@ let package = Package(
                 "vendor"
             ],
             sources: [
+                "App",
                 "Model",
                 "OPN",
-                "GFN"
+                "GFN",
+                "View",
+                "ViewModel"
+            ],
+            resources: [
+                .process("View/Assets.xcassets")
             ],
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])

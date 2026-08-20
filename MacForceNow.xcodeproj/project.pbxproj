@@ -62,6 +62,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B00000000000000000000120 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
 		7729CE782FDEDAB300D5C9D5 /* OPN */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = OPN;
@@ -120,6 +125,7 @@
 			isa = PBXGroup;
 			children = (
 				C00000000000000000000003 /* Tests */,
+				B00000000000000000000120 /* App */,
 				B00000000000000000000101 /* Model */,
 				B00000000000000000000102 /* View */,
 				B00000000000000000000110 /* ViewModel */,
@@ -164,6 +170,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				B00000000000000000000120 /* App */,
 				7729CE782FDEDAB300D5C9D5 /* OPN */,
 				B00000000000000000000101 /* Model */,
 				B00000000000000000000102 /* View */,
@@ -264,8 +271,9 @@
 /* Begin PBXShellScriptBuildPhase section */
 		7729CE9B2FE3000000D5C9D5 /* Sign NVIDIA dylibs */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 0;
 			buildActionMask = 2147483647;
+			files = (
+			);
 			inputFileListPaths = (
 			);
 			inputPaths = (

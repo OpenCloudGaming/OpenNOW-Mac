@@ -1557,7 +1557,7 @@ private struct ControllerCompactGameCard: View, Equatable {
     // The action closure is deliberately excluded: it is recreated on every parent
     // render but always targets the same game, and comparing it would defeat the
     // .equatable() body-skip that keeps d-pad moves from re-evaluating every card.
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.imageURL == rhs.imageURL && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.badge == rhs.badge && lhs.isFocused == rhs.isFocused
     }
 
