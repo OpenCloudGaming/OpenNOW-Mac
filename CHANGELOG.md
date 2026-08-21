@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/anderson-oki/macforce-now/compare/v0.17.0...v0.18.0) (2026-08-21)
+
+
+### Features
+
+* add current session on home banner ([13653b9](https://github.com/anderson-oki/macforce-now/commit/13653b912eed60b56973613f1abc084777817526))
+
+
+### Bug Fixes
+
+* nvst max bitrate ([33a86f8](https://github.com/anderson-oki/macforce-now/commit/33a86f8b39c6633d7781644110f92b2a48e88ad6))
+
 ## [0.17.0](https://github.com/anderson-oki/macforce-now/compare/v0.16.1...v0.17.0) (2026-08-21)
 
 
