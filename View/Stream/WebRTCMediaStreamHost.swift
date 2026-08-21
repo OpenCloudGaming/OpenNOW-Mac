@@ -1200,7 +1200,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         let streamFramesPerSecond = latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
         let resolution = nonEmptyNativeStat(latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
-        let codec = nonEmptyNativeStat(latestNativeStats?.codec, fallback: profile.codec.value.uppercased())
+        let codec = nonEmptyNativeStat(latestNativeStats?.codec, fallback: "--")
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 0) {
                 nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(latestNativeStats?.gameFramesPerSecond), label: "GAME FPS", color: nativeGameFPSColor(target: streamFramesPerSecond))

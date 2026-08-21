@@ -898,8 +898,7 @@ private func settingsByApplyingCloudVariables(_ settings: [String: Any], capabil
     let resolved = WebRTCMediaStreamSettingsResolver.resolve(
         profile: webRTCMediaProfile(from: settings),
         capabilities: webRTCMediaCapabilities(from: capabilities),
-        cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables()),
-        libWebRTCAvailable: true
+        cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
     )
     var result = settings
     result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"]), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }

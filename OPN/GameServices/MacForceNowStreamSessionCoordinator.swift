@@ -496,8 +496,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         let resolved = WebRTCMediaStreamSettingsResolver.resolve(
             profile: webRTCMediaProfile(from: settings),
             capabilities: webRTCMediaCapabilities(from: capabilities),
-            cloudVariables: webRTCMediaCloudVariables(from: variables),
-            libWebRTCAvailable: true
+            cloudVariables: webRTCMediaCloudVariables(from: variables)
         )
         var result = settings
         result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"], fallback: OPNLocale.currentGFNLocale()), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
@@ -709,8 +708,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         let resolved = WebRTCMediaStreamSettingsResolver.resolve(
             profile: webRTCMediaProfile(from: profile),
             capabilities: webRTCMediaCapabilities(from: capabilities),
-            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables()),
-            libWebRTCAvailable: true
+            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
         return resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
     }

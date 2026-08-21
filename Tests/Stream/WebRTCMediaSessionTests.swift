@@ -292,6 +292,44 @@ struct WebRTCStreamingPathTests {
         }
     }
 
+    @Test("auto codec prefers AV1 when bitrate is the binding constraint")
+    func autoCodecPrefersAV1WhenBitrateIsTheBindingConstraint() {
+        let capabilities = WebRTCMediaDeviceCapabilities(
+            h265HardwareDecodeSupported: true,
+            av1HardwareDecodeSupported: true
+        )
+        let profile = WebRTCMediaStreamProfile(
+            resolution: WebRTCMediaResolution(width: 1920, height: 1080),
+            fps: 60,
+            codec: "auto",
+            maxBitrateMbps: 25
+        )
+
+        #expect(WebRTCMediaStreamSettingsResolver.resolve(profile: profile, capabilities: capabilities).codec == "AV1")
+
+        // Without AV1 hardware decode the constrained-bitrate branch must not fire.
+        let withoutAV1 = WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true)
+        #expect(WebRTCMediaStreamSettingsResolver.resolve(profile: profile, capabilities: withoutAV1).codec != "AV1")
+    }
+
+    @Test("auto codec keeps H265 for HDR and for unconstrained bitrates")
+    func autoCodecKeepsH265ForHDRAndForUnconstrainedBitrates() {
+        let capabilities = WebRTCMediaDeviceCapabilities(
+            h265HardwareDecodeSupported: true,
+            av1HardwareDecodeSupported: true,
+            hdrDisplaySupported: true
+        )
+        let resolution = WebRTCMediaResolution(width: 2560, height: 1440)
+
+        // HDR outranks the constrained-bitrate AV1 branch because AV1 cannot carry HDR.
+        let hdr = WebRTCMediaStreamProfile(resolution: resolution, fps: 60, codec: "auto", maxBitrateMbps: 20, enableHdr: true)
+        #expect(WebRTCMediaStreamSettingsResolver.resolve(profile: hdr, capabilities: capabilities).codec == "H265")
+
+        // Above the constrained-bitrate threshold the quality branch keeps H265.
+        let unconstrained = WebRTCMediaStreamProfile(resolution: resolution, fps: 60, codec: "auto", maxBitrateMbps: 80)
+        #expect(WebRTCMediaStreamSettingsResolver.resolve(profile: unconstrained, capabilities: capabilities).codec == "H265")
+    }
+
     @Test("preserves high resolution and bitrate")
     func preservesHighResolutionAndBitrate() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
@@ -382,8 +420,7 @@ struct WebRTCStreamingPathTests {
     func keepsH265ForNativeWebRTC() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
             profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "10bit_420"),
-            capabilities: WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true),
-            libWebRTCAvailable: true
+            capabilities: WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true)
         )
 
         #expect(settings.codec == "H265")
@@ -394,8 +431,7 @@ struct WebRTCStreamingPathTests {
     func keepsAV1TenBitColorWhenAvailable() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
             profile: WebRTCMediaStreamProfile(codec: "AV1", colorQuality: "10bit_420"),
-            capabilities: WebRTCMediaDeviceCapabilities(av1HardwareDecodeSupported: true),
-            libWebRTCAvailable: true
+            capabilities: WebRTCMediaDeviceCapabilities(av1HardwareDecodeSupported: true)
         )
 
         #expect(settings.codec == "AV1")

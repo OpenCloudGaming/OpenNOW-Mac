@@ -614,24 +614,9 @@ public enum OPNStreamPreferences {
             result.colorQuality = colorQualityOptions[0]
         }
         // HDR is intentionally not clamped here: enableHdr is a stored preference, and the
-        // stream-time gates (resolveCodec, session settings) already no-op it on displays
+        // stream-time gates (codec resolution, session settings) already no-op it on displays
         // without HDR support. Clamping at load silently discards the user's setting.
         return result
-    }
-
-    public static func resolveCodec(profile: OPNStreamPreferenceProfile, resolution: OPNStreamResolutionOption, capabilities: OPNStreamDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
-        let requested = (profile.codec.value.isEmpty ? "H264" : profile.codec.value).uppercased()
-        if requested != "AUTO" { return codecSupported(profile.codec, capabilities: capabilities) ? requested : "H264" }
-        if !libWebRTCAvailable { return "H264" }
-        let pixels = max(1, resolution.width) * max(1, resolution.height)
-        let prefersTenBit = profile.colorQuality.value.hasPrefix("10bit")
-        let prefersHighResolution = pixels >= 2560 * 1440
-        let prefersVeryHighResolution = pixels >= 3840 * 2160
-        let highFps = profile.fps >= 144
-        if profile.enableHdr, !highFps, capabilities.hdrDisplaySupported, capabilities.h265HardwareDecodeSupported { return "H265" }
-        if !highFps, prefersVeryHighResolution, capabilities.av1HardwareDecodeSupported { return "AV1" }
-        if !highFps, (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75), capabilities.h265HardwareDecodeSupported { return "H265" }
-        return "H264"
     }
 
     public static func loadProfile() -> OPNStreamPreferenceProfile {

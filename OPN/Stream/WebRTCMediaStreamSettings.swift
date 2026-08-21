@@ -296,9 +296,8 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
 public enum WebRTCMediaStreamSettingsResolver {
     public static func resolve(profile: WebRTCMediaStreamProfile,
                                capabilities: WebRTCMediaDeviceCapabilities,
-                               cloudVariables: WebRTCMediaCloudVariables = WebRTCMediaCloudVariables(),
-                               libWebRTCAvailable: Bool = true) -> WebRTCMediaResolvedStreamSettings {
-        var codec = resolvedCodec(profile: profile, capabilities: capabilities, libWebRTCAvailable: libWebRTCAvailable)
+                               cloudVariables: WebRTCMediaCloudVariables = WebRTCMediaCloudVariables()) -> WebRTCMediaResolvedStreamSettings {
+        var codec = resolvedCodec(profile: profile, capabilities: capabilities)
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
         let colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
@@ -371,10 +370,12 @@ public enum WebRTCMediaStreamSettingsResolver {
         mode.caseInsensitiveCompare("nvst") == .orderedSame ? "nvst" : "webrtc"
     }
 
-    private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
+    /// Bitrate at or below which AV1 is preferred over H265 for its coding efficiency.
+    static let bitrateConstrainedMbps = 30
+
+    private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities) -> String {
         let requested = normalizedCodec(profile.codec)
         if requested != "AUTO" { return codecSupported(requested, capabilities: capabilities) ? requested : "H264" }
-        if !libWebRTCAvailable { return "H264" }
         let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
         let prefersTenBit = profile.colorQuality.hasPrefix("10bit")
         let prefersHighResolution = pixels >= 2560 * 1440
@@ -385,6 +386,10 @@ public enum WebRTCMediaStreamSettingsResolver {
         // AV1 HDR decode is newer and less reliable. For HDR we prefer H265's reliability over
         // AV1's efficiency, so this ordering is deliberate — do not move it after the AV1 branch.
         if profile.enableHdr, !highFps, capabilities.hdrDisplaySupported, capabilities.h265HardwareDecodeSupported { return "H265" }
+        // AV1's advantage is bitrate efficiency, so it takes priority whenever bandwidth is the
+        // binding constraint, ahead of the resolution-driven branches below. HDR still pins H265
+        // above this, and the 10-bit/high-resolution H265 branch still wins at higher bitrates.
+        if !highFps, profile.maxBitrateMbps > 0, profile.maxBitrateMbps <= bitrateConstrainedMbps, capabilities.av1HardwareDecodeSupported { return "AV1" }
         if !highFps, prefersVeryHighResolution, capabilities.av1HardwareDecodeSupported { return "AV1" }
         if !highFps, (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75), capabilities.h265HardwareDecodeSupported { return "H265" }
         return "H264"
