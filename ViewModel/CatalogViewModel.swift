@@ -188,6 +188,11 @@ final class CatalogViewModel {
     var launchFlowMessage = ""
     var launchFlowError = ""
     var activeLaunchSession: OPNActiveStreamSessionDescriptor?
+    var activeHomeSession: OPNActiveSessionObject?
+    var activeHomeSessionTitle: String {
+        guard let session = activeHomeSession else { return "" }
+        return resolveActiveHomeSessionTitle(for: session)
+    }
     var streamProfile = OPNStreamPreferenceProfile()
     var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     var streamCapabilities = OPNStreamDeviceCapabilities()
@@ -233,6 +238,7 @@ final class CatalogViewModel {
     private var activeDiscordPresence: DiscordGamePresence?
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
+    private var isCheckingHomeSession = false
     private var streamProgressGeneration = 0
     private var activeStreamAdContinuation: CheckedContinuation<Int, Error>?
     private var settingsPreferencesGeneration = 0
@@ -435,6 +441,7 @@ final class CatalogViewModel {
         loadFavorites()
         loadAccountAndStores()
         loadSettingsPreferences()
+        checkActiveHomeSession()
         if forceCatalogRefresh { browseCatalog(forceRefresh: true) }
     }
 
@@ -834,6 +841,10 @@ final class CatalogViewModel {
         activeSessionResumeConfiguration?.resumesExistingSession == true
     }
 
+    var isActiveHomeSessionVisible: Bool {
+        activeHomeSession != nil && launchFlowState == .idle && activeStreamConfiguration == nil
+    }
+
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         MacForceNowLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
@@ -949,6 +960,68 @@ final class CatalogViewModel {
         }
     }
 
+    func checkActiveHomeSession() {
+        guard launchFlowState == .idle, activeStreamConfiguration == nil, !isCheckingHomeSession else { return }
+        isCheckingHomeSession = true
+        let token = launchToken
+        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl()
+        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, _ in
+            guard let self else { return }
+            self.isCheckingHomeSession = false
+            guard ok, let session = sessions.first(where: \.isResumable) ?? sessions.first else {
+                self.activeHomeSession = nil
+                return
+            }
+            self.activeHomeSession = session
+        }
+    }
+
+    func resumeActiveHomeSession() {
+        guard let session = activeHomeSession, session.isResumable else { return }
+        let applicationID = session.appId > 0 ? String(session.appId) : ""
+        let title = activeHomeSessionTitle.isEmpty ? "Current Stream" : activeHomeSessionTitle
+        let configuration = StreamLaunchConfiguration(
+            title: title,
+            applicationID: applicationID,
+            accessToken: launchToken,
+            accountLinked: true,
+            selectedStore: "",
+            resumeSessionID: session.sessionId,
+            resumeServer: session.serverIp,
+            metadata: [:]
+        )
+        activeHomeSession = nil
+        startPreparedStream(configuration, message: "Resuming \(title)...")
+    }
+
+    func endActiveHomeSession() {
+        guard let session = activeHomeSession else { return }
+        let token = launchToken
+        activeHomeSession = nil
+        OPNActiveSessionService.stopSession(
+            accessToken: token,
+            sessionId: session.sessionId,
+            serverIp: session.serverIp,
+            streamingBaseUrl: session.streamingBaseUrl
+        ) { [weak self] success, message in
+            guard let self else { return }
+            if !success {
+                self.errorMessage = message.isEmpty ? "Unable to end the active session." : message
+            }
+            self.checkActiveHomeSession()
+        }
+    }
+
+    private func resolveActiveHomeSessionTitle(for session: OPNActiveSessionObject) -> String {
+        guard session.appId > 0 else { return "Current Stream" }
+        let applicationID = String(session.appId)
+        if let game = allKnownGames.first(where: { Self.game($0, matchesApplicationID: applicationID) }) {
+            let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        return "Current Stream"
+    }
+
     func cancelVendorLaunch() {
         clearLaunchFlow()
         launchMessage = ""
@@ -1001,6 +1074,7 @@ final class CatalogViewModel {
         if let report, !report.message.isEmpty {
             actionMessage = report.message
         }
+        checkActiveHomeSession()
     }
 
     func updateActiveStreamProgress(_ progress: StreamProgress) {

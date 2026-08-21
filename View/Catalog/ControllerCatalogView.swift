@@ -837,6 +837,16 @@ private struct ControllerGamesPage: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: layout.compactHeight ? 20 : 24) {
+                        if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
+                            VendorActiveSessionHomeBanner(
+                                title: viewModel.activeHomeSessionTitle,
+                                isResumable: session.isResumable,
+                                serverIp: session.serverIp,
+                                onResume: { viewModel.resumeActiveHomeSession() },
+                                onEnd: { viewModel.endActiveHomeSession() }
+                            )
+                        }
+
                         ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: layout.heroHeight)
                             .frame(width: layout.contentWidth)
                             .padding(.top, layout.compactHeight ? 10 : 14)

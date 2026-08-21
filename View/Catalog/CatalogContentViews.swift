@@ -32,6 +32,16 @@ struct CatalogContentView: View {
                     ZStack {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 26) {
+                                if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
+                                    VendorActiveSessionHomeBanner(
+                                        title: viewModel.activeHomeSessionTitle,
+                                        isResumable: session.isResumable,
+                                        serverIp: session.serverIp,
+                                        onResume: { viewModel.resumeActiveHomeSession() },
+                                        onEnd: { viewModel.endActiveHomeSession() }
+                                    )
+                                }
+
                                 if hero != nil && !isGridDestination {
                                     CatalogHeroView(
                                         viewModel: viewModel,
@@ -835,5 +845,76 @@ struct CatalogPanelActionTile: View {
     private var actionLabel: String {
         if !tile.actionLabel.isEmpty { return tile.actionLabel.uppercased() }
         return tile.kind == "filter" ? "BROWSE" : "OPEN"
+    }
+}
+
+struct VendorActiveSessionHomeBanner: View {
+    let title: String
+    let isResumable: Bool
+    let serverIp: String
+    let onResume: () -> Void
+    let onEnd: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Circle()
+                .fill(MacForceNowDesign.accent)
+                .frame(width: 8 * uiScale, height: 8 * uiScale)
+                .shadow(color: MacForceNowDesign.accent, radius: 4)
+                .padding(.trailing, 10 * uiScale)
+
+            VStack(alignment: .leading, spacing: 2 * uiScale) {
+                Text("SESSION ACTIVE")
+                    .nvidiaFont(size: 10, weight: .bold)
+                    .foregroundStyle(MacForceNowDesign.accent)
+                    .tracking(1.2)
+                Text(title)
+                    .nvidiaFont(size: 14, weight: .bold)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 16 * uiScale)
+
+            HStack(spacing: 8 * uiScale) {
+                if isResumable {
+                    Button("RESUME") { onResume() }
+                        .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: true))
+                }
+                Button("END") { onEnd() }
+                    .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: false))
+            }
+        }
+        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+        .padding(.vertical, 10 * uiScale)
+        .background(MacForceNowDesign.Surface.chrome)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
+    let primary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .nvidiaFont(size: 11, weight: .bold)
+            .foregroundStyle(primary ? .black : .white.opacity(0.86))
+            .tracking(0.8)
+            .padding(.horizontal, 14)
+            .frame(height: 28)
+            .background(primary
+                ? MacForceNowDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
+                : Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
+            .overlay {
+                if !primary {
+                    Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1)
+                }
+            }
     }
 }
