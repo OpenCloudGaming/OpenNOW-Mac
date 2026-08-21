@@ -2137,6 +2137,12 @@ bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x1c, windowWidth);
     storeUnaligned<uint32_t>(windowParameters.bytes, 0x20, windowHeight);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x38, SDLWindowHighDPIEnabled);
+    // Geronimo retains this NSWindow and its MetalAsyncVideoFrameRenderer probes it for
+    // VRR support (isVRRCapable -> -[NSWindow screen]) on its com.nvidia.geronimo.rendersetup
+    // queue. That is vendor code we cannot patch (re-signing the dylib breaks Gatekeeper),
+    // so the resulting Main Thread Checker report in debug builds is expected noise;
+    // app-side window access is all main-thread and any MTC frame inside MacForceNow
+    // code is a real bug.
     storeUnaligned<void *>(windowParameters.bytes, 0x70, videoSurfaceHandle);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x78, 1);
     if (!session->functions.windowInitialize(session->window, session->ioInterface, windowParameters)) {

@@ -1,5 +1,6 @@
 import AppKit
 import CoreVideo
+import Darwin
 import Metal
 import MetalKit
 
@@ -32,8 +33,20 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
     private var textureCache: CVMetalTextureCache?
     private let detector = OPNPillarboxDetector()
 
-    private var fillMode: OPNPillarboxFillMode = .black
-    private var fillDim: Float = 0.55
+    // MTKView's internal display link invokes `draw(in:)` on a background render
+    // thread, so everything it reads that `setFill` mutates on the main thread lives
+    // in this lock-guarded snapshot. AppKit state (isHidden) must never be touched
+    // from the draw callback.
+    private struct RenderState {
+        var active = false
+        var geometryOnly = false
+        var fillMode: OPNPillarboxFillMode = .black
+        var fillDim: Float = 0.55
+        var detectorResetPending = false
+    }
+
+    nonisolated(unsafe) private var renderStateLock = os_unfair_lock_s()
+    nonisolated(unsafe) private var renderState = RenderState()
     // Fixed softening that reads clean without showing the history's texel grid.
     private static let fillSoftness: Float = 0.12
 
@@ -71,26 +84,36 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
     /// can drive the crop/stretch layer geometry. Fired only in geometry modes.
     var onContentRect: ((Double, Double) -> Void)?
 
-    private var geometryOnly = false
-
     /// Selects the fill. Blur modes paint the bars here; crop/stretch run the detector
     /// only (the host scales the video layer); other modes hide the overlay entirely.
     func setFill(mode: OPNPillarboxFillMode, dim: Int) {
-        fillMode = mode
-        fillDim = Float(max(0, min(100, dim))) / 100.0
         let blur = mode == .blurredMirror || mode == .blurredZoom
         let geometry = mode == .cropFill || mode == .stretchEdges
-        geometryOnly = geometry
         let active = blur || geometry
+        os_unfair_lock_lock(&renderStateLock)
+        renderState = RenderState(
+            active: active,
+            geometryOnly: geometry,
+            fillMode: mode,
+            fillDim: Float(max(0, min(100, dim))) / 100.0,
+            detectorResetPending: active
+        )
+        os_unfair_lock_unlock(&renderStateLock)
         isHidden = !active
         isPaused = !active
-        if active { detector.reset() }
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func draw(in view: MTKView) {
-        guard !isHidden,
+        os_unfair_lock_lock(&renderStateLock)
+        let state = renderState
+        let detectorResetPending = renderState.detectorResetPending
+        renderState.detectorResetPending = false
+        os_unfair_lock_unlock(&renderStateLock)
+        if detectorResetPending { detector.reset() }
+
+        guard state.active,
               let downsamplePipeline,
               let fillPipeline,
               let commandQueue,
@@ -106,8 +129,12 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
 
         // Crop/stretch: only measure the content rect and hand it to the host, which
         // scales the video layer. Present a cleared (transparent) frame ourselves.
-        if geometryOnly {
-            onContentRect?(rect.left, rect.right)
+        if state.geometryOnly {
+            // The host applies AppKit/layer geometry; deliver on the main actor.
+            let contentLeft = rect.left, contentRight = rect.right
+            Task { @MainActor [weak self] in
+                self?.onContentRect?(contentLeft, contentRight)
+            }
             if let commandBuffer = commandQueue.makeCommandBuffer(),
                let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDescriptor) {
                 encoder.endEncoding()
@@ -127,8 +154,8 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
         var uniforms = OverlayUniforms(
             contentLeft: Float(rect.left),
             contentRight: Float(rect.right),
-            mode: Float(fillMode.rawValue),
-            dim: fillDim,
+            mode: Float(state.fillMode.rawValue),
+            dim: state.fillDim,
             softness: Self.fillSoftness
         )
 

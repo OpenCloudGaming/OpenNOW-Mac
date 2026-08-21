@@ -62,7 +62,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var enhancementDroppedFrameCount: UInt64 = 0
     private var lastEnhancementFrameTimeMs = -1.0
     private var lastDiagnosticsUpdateTime: CFTimeInterval = 0
-    private var drawableSizeDirty = true
+    nonisolated(unsafe) private var drawableSizeDirty = true
     private var enhancementSettings = OPNVideoEnhancementSettings()
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
@@ -117,15 +117,33 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     override func layout() {
         super.layout()
         metalView.frame = bounds
-        drawableSizeDirty = true
+        markDrawableSizeDirty(true)
         updateDrawableSizeForCurrentBackingScale()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         resetDrawCadence()
-        drawableSizeDirty = true
+        markDrawableSizeDirty(true)
         updateDrawableSizeForCurrentBackingScale()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        markDrawableSizeDirty(true)
+        updateDrawableSizeForCurrentBackingScale()
+    }
+
+    nonisolated private func drawableSizeNeedsUpdate() -> Bool {
+        os_unfair_lock_lock(&frameLock)
+        defer { os_unfair_lock_unlock(&frameLock) }
+        return drawableSizeDirty
+    }
+
+    nonisolated private func markDrawableSizeDirty(_ dirty: Bool) {
+        os_unfair_lock_lock(&frameLock)
+        drawableSizeDirty = dirty
+        os_unfair_lock_unlock(&frameLock)
     }
 
     nonisolated func setSize(_ size: CGSize) {
@@ -136,7 +154,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         os_unfair_lock_unlock(&frameLock)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.drawableSizeDirty = true
+            self.markDrawableSizeDirty(true)
             self.resetDrawCadence()
             self.updateDrawableSizeForCurrentBackingScale()
         }
@@ -159,7 +177,20 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
     func draw(in view: MTKView) {
         guard view == metalView else { return }
-        if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
+        // MTKView's internal display link invokes this on a background render thread,
+        // where querying window/backingScaleFactor trips AppKit's main-thread checker.
+        // Defer the drawable-size recompute to the main actor; rendering proceeds into
+        // the current drawable and catches up a frame later.
+        if drawableSizeNeedsUpdate() {
+            if Thread.isMainThread {
+                updateDrawableSizeForCurrentBackingScale()
+            } else {
+                Task { @MainActor [weak self] in
+                    guard let self, self.drawableSizeNeedsUpdate() else { return }
+                    self.updateDrawableSizeForCurrentBackingScale()
+                }
+            }
+        }
 
         os_unfair_lock_lock(&frameLock)
         let snapshot = (videoFrame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar)
@@ -233,7 +264,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             metalView.drawableSize = drawableSize
             resetDrawCadence()
         }
-        drawableSizeDirty = false
+        markDrawableSizeDirty(false)
     }
 
     private func enhancementDrawableSize(for boundsSize: CGSize, scale: CGFloat) -> CGSize {

@@ -86,7 +86,6 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
     private var lastDiagnosticMetadata: [String: String] = [:]
     private var inputErrorBuffer = [CChar](repeating: 0, count: 1024)
-    private var absoluteMouseErrorBuffer = [CChar](repeating: 0, count: 1024)
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
@@ -236,7 +235,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
-        try sendGeronimoAbsoluteMouse(sessionAddress: sessionAddress, event: event)
+        try await Self.sendGeronimoAbsoluteMouseOnMainActor(sessionAddress: sessionAddress, event: event)
     }
 
     public func togglePerformanceOverlay() async throws {
@@ -825,26 +824,25 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
-    private func sendGeronimoAbsoluteMouse(sessionAddress: UInt, event: NativeNVSTAbsoluteMouseEvent) throws {
-        let result: Int32 = absoluteMouseErrorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
-            guard let baseAddress = buffer.baseAddress else { return -1 }
-            baseAddress.pointee = 0
-            return MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(
-                UnsafeMutableRawPointer(bitPattern: sessionAddress),
-                event.x,
-                event.y,
-                event.timestamp.nanoseconds,
-                baseAddress,
-                buffer.count
-            )
-        }
-        if result != 0 {
-            let message = absoluteMouseErrorBuffer.withUnsafeBufferPointer { buffer in
-                guard let baseAddress = buffer.baseAddress else { return "Native Geronimo absolute mouse input failed with result \(result)." }
-                let value = String(cString: baseAddress)
-                return value.isEmpty ? "Native Geronimo absolute mouse input failed with result \(result)." : value
-            }
-            throw NativeNVSTError.privateABIUnavailable(message)
+    // Geronimo's SDLWindow::convertPointToVideoFrame resolves the window's screen and
+    // content-view geometry through AppKit, which is main-thread-only. Route through the
+    // main actor like every other Geronimo call that touches the video window; the plain
+    // input path (sendGeronimoInput) stays on the transport actor since GridApp::sendInput
+    // never touches AppKit.
+    @MainActor private static func sendGeronimoAbsoluteMouseOnMainActor(sessionAddress: UInt, event: NativeNVSTAbsoluteMouseEvent) throws {
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
+        defer { errorBuffer.deallocate() }
+        errorBuffer.initialize(repeating: 0, count: 1024)
+        let result = MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(
+            UnsafeMutableRawPointer(bitPattern: sessionAddress),
+            event.x,
+            event.y,
+            event.timestamp.nanoseconds,
+            errorBuffer,
+            1024
+        )
+        guard result == 0 else {
+            throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo absolute mouse input failed with result \(result)."))
         }
     }
 
