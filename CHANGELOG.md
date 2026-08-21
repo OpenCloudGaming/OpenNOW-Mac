@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/anderson-oki/macforce-now/compare/v0.16.1...v0.17.0) (2026-08-21)
+
+
+### Features
+
+* add nvst av1 ([#60](https://github.com/anderson-oki/macforce-now/issues/60)) ([737b2bd](https://github.com/anderson-oki/macforce-now/commit/737b2bdf5d4a28e6112644ecd3b7f0f71a2daed7))
+* add on screen keyboard ([6767b5b](https://github.com/anderson-oki/macforce-now/commit/6767b5b2dd9e10b4a93a3accb3c4f8560a3dad86))
+
 ## [0.16.1](https://github.com/anderson-oki/macforce-now/compare/v0.16.0...v0.16.1) (2026-08-20)
 
 
