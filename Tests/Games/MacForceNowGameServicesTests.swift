@@ -1113,6 +1113,7 @@ import Foundation
     #expect(streamingFeatures["sdrColorSpace"] as? Int == 1)
     #expect(streamingFeatures["hdrColorSpace"] as? Int == 2)
     #expect(streamingFeatures["prefilterSharpness"] as? Int == 0)
+    #expect(streamingFeatures["maxBitrateKbps"] as? Int == 50_000)
     #expect(metadataKeys.contains("store") == true)
     #expect(metadataKeys.contains("networkLatencyMs") == true)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })

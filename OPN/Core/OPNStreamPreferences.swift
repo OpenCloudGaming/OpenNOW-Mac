@@ -681,13 +681,11 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
-    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int, vendorRecommendedMbps: Int = 0) -> Int {
-        let requested = max(1, requestedMaxBitrateMbps)
-        var recommended = requested
-        if measuredBandwidthMbps > 1.0, measuredBandwidthMbps.isFinite {
-            recommended = min(recommended, max(1, Int((measuredBandwidthMbps * 0.75).rounded(.down))))
-        }
-        if vendorRecommendedMbps > 0 { recommended = min(recommended, vendorRecommendedMbps) }
+    /// Throughput estimates from the network test are intentionally not clamped here: the probe
+    /// under-reports fast lines, and the streamer's congestion control already adapts bitrate
+    /// downward on real congestion. Only measured impairment (loss, jitter, latency) caps the rate.
+    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, packetLossPercent: Double, jitterMs: Int) -> Int {
+        var recommended = max(1, requestedMaxBitrateMbps)
         if packetLossPercent >= 5.0 { recommended = min(recommended, 15) }
         else if packetLossPercent >= 2.0 { recommended = min(recommended, 25) }
         else if packetLossPercent >= 1.0 { recommended = min(recommended, 50) }
@@ -754,7 +752,7 @@ public enum OPNStreamPreferences {
     public static func networkPreflightResult(from jsonText: String, seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
         guard let json = jsonValue(from: jsonText) else {
             var result = seed
-            result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: seed.latencyMs, measuredBandwidthMbps: seed.measuredBandwidthMbps, packetLossPercent: seed.packetLossPercent, jitterMs: seed.jitterMs)
+            result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: seed.latencyMs, packetLossPercent: seed.packetLossPercent, jitterMs: seed.jitterMs)
             return result
         }
         var result = seed
@@ -772,9 +770,7 @@ public enum OPNStreamPreferences {
         result.continueRecommended = firstRecursiveBool(json, keys: ["continueRecommended", "shouldContinue", "continueAllowed"], fallback: result.continueRecommended)
         if firstRecursiveBool(json, keys: ["blockLaunch", "stopLaunch", "failLaunch"], fallback: false) { result.continueRecommended = false }
         if let warning = firstRecursiveString(json, keys: ["warningMessage", "warningDescription", "message", "statusDescription"]) { result.warningMessage = warning }
-        let serverRecommended = bitrateMbps(from: json, mbpsKeys: ["recommendedMaxBitrateMbps", "recommendedBitrateMbps", "maxRecommendedBitrateMbps"], kbpsKeys: ["recommendedMaxBitrateKbps", "recommendedBitrateKbps", "maxRecommendedBitrateKbps"])
-        let measuredRecommended = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
-        result.recommendedMaxBitrateMbps = serverRecommended > 0 ? min(measuredRecommended, serverRecommended) : measuredRecommended
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
         return result
     }
 
@@ -952,7 +948,7 @@ public enum OPNStreamPreferences {
             if !selectedRegionUrl.isEmpty { cached.streamingBaseUrl = normalizedBaseUrl(cachedChoice.url) }
             cached.latencyMs = cachedChoice.latencyMs
             cached.usedAutomaticRegion = selectedRegionUrl.isEmpty
-            cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, measuredBandwidthMbps: cached.measuredBandwidthMbps, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
+            cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
             fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { _ in }
             finishNetworkPreflight(cached, token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
             return
@@ -964,7 +960,7 @@ public enum OPNStreamPreferences {
                 result.latencyMs = chosen.latencyMs
                 result.usedAutomaticRegion = selectedRegionUrl.isEmpty
             }
-            result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
+            result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
             finishNetworkPreflight(result, token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
         }
     }
@@ -1430,8 +1426,7 @@ public enum OPNStreamPreferences {
                 ? "Network test returned status \(networkTest.rawStatus). Launch will continue."
                 : "Network test was provisioned; no completed measurement was returned. Launch will continue."
         }
-        let vendorRecommendedMbps = networkTest.isCompleted ? networkTest.threshold.bandwidthRecommended : 0
-        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs, vendorRecommendedMbps: vendorRecommendedMbps)
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
         return result
     }
 

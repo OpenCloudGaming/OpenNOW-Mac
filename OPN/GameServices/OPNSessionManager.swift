@@ -939,7 +939,9 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
     let colorQuality = string(settings["colorQuality"])
     let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0
     let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 2 : 0
+    let requestedMaxBitrateKbps = min(max(int(settings["maxBitrateMbps"], fallback: 50), 1), 1_000) * 1_000
     return [
+        "maxBitrateKbps": requestedMaxBitrateKbps,
         "reflex": bool(settings["enableReflex"], fallback: true),
         "bitDepth": bitDepth,
         "cloudGsync": bool(settings["enableCloudGsync"]),

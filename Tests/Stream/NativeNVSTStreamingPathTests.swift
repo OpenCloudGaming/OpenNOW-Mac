@@ -1480,6 +1480,20 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(selectedFeatures["maxBitrateKbps"] as? Int == 24_000)
 }
 
+@Test func nativeNVSTBitrateCorrectionTargetsRequestedCapWhenServerUnderFinalizes() {
+    #expect(NativeNVSTBifrostTransport.bitrateCorrectionTargetKbps(requestedKbps: 100_000, appliedKbps: 35_000) == 100_000)
+}
+
+@Test func nativeNVSTBitrateCorrectionLeavesEqualOrHigherNegotiatedCapUntouched() {
+    #expect(NativeNVSTBifrostTransport.bitrateCorrectionTargetKbps(requestedKbps: 50_000, appliedKbps: 50_000) == nil)
+    #expect(NativeNVSTBifrostTransport.bitrateCorrectionTargetKbps(requestedKbps: 24_000, appliedKbps: 35_000) == nil)
+}
+
+@Test func nativeNVSTBitrateCorrectionRequiresPositiveRequestedAndAppliedCaps() {
+    #expect(NativeNVSTBifrostTransport.bitrateCorrectionTargetKbps(requestedKbps: 0, appliedKbps: 35_000) == nil)
+    #expect(NativeNVSTBifrostTransport.bitrateCorrectionTargetKbps(requestedKbps: 100_000, appliedKbps: 0) == nil)
+}
+
 @Test func nativeNVSTNormalizesVerifiedRemoteControllersBitmap() throws {
     #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(0) == 0)
     #expect(NativeNVSTBifrostTransport.normalizedRemoteControllersBitmap(UInt32.max) == UInt64(UInt32.max))

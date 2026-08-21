@@ -22,6 +22,19 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
     static let geronimoStopTimeoutMessage = "Native NVST stop callback timed out."
 
+    static let bitrateCorrectionInitialDelayNanoseconds: UInt64 = 5_000_000_000
+    static let bitrateCorrectionRetryDelayNanoseconds: UInt64 = 5_000_000_000
+    static let bitrateCorrectionMaxAttempts = 5
+
+    /// GFN under-finalizes `maxBitrateKbps` when the session negotiation does not advertise the
+    /// desired bitrate, leaving Geronimo on its 35000 Kbps default cap. When the negotiated mode
+    /// selection came back below the user's requested bitrate, the cap is raised at runtime via
+    /// feature control `0x10` once the session is stable.
+    static func bitrateCorrectionTargetKbps(requestedKbps: Int, appliedKbps: Int) -> UInt32? {
+        guard requestedKbps > 0, appliedKbps > 0, appliedKbps < requestedKbps else { return nil }
+        return UInt32(requestedKbps)
+    }
+
     static func geronimoCallbackFailureMessage(resultCode: Int32, resultName: String?) -> String {
         if resultName == "NVB_R_SESSION_LIMIT_REACHED" {
             return "GeForce NOW refused the stream because the active session limit was reached. End another session and try again."
@@ -68,6 +81,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var runtimeHandlers: NativeNVSTRuntimeHandlers?
     private var nativeLifecycleOperationInProgress = false
     private var nativeLifecycleWaiters: [CheckedContinuation<Void, Never>] = []
+    private var bitrateCorrectionTask: Task<Void, Never>?
     private var videoSurfaceNeedsRecovery = false
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
     private var lastDiagnosticMetadata: [String: String] = [:]
@@ -114,6 +128,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     public func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {
         guard activeConnection == nil, connectingAttemptID == nil, !nativeLifecycleOperationInProgress else { throw NativeNVSTError.alreadyRunning }
+        bitrateCorrectionTask?.cancel()
+        bitrateCorrectionTask = nil
         let attemptID = UUID()
         connectingAttemptID = attemptID
         lastDiagnosticMetadata = [
@@ -168,7 +184,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             terminationHandler: { [terminationChannel] termination in terminationChannel.send(termination) }
         )
         connectingEventSink = eventSink
-        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers)
+        let started: (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers, requestedMaxBitrateKbps: Int, appliedMaxBitrateKbps: Int)
         do {
             started = try await withTaskCancellationHandler {
                 try await Self.startGeronimoOnMainActor(
@@ -202,6 +218,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         geronimoPump = started.pump
         runtimeHandlers = started.runtimeHandlers
         activeConnection = connection
+        scheduleBitrateCorrectionIfNeeded(requestedKbps: started.requestedMaxBitrateKbps, appliedKbps: started.appliedMaxBitrateKbps, sessionId: allocation.session.id)
         if videoSurfaceNeedsRecovery {
             await restoreVideoSurfaceAfterRecovery?()
             videoSurfaceNeedsRecovery = false
@@ -252,6 +269,30 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
+    private func scheduleBitrateCorrectionIfNeeded(requestedKbps: Int, appliedKbps: Int, sessionId: String) {
+        bitrateCorrectionTask?.cancel()
+        bitrateCorrectionTask = nil
+        guard let targetKbps = Self.bitrateCorrectionTargetKbps(requestedKbps: requestedKbps, appliedKbps: appliedKbps) else { return }
+        WebRTCMediaTelemetry.capture("nvst.network.bitrate_correction.scheduled", level: .info, message: "Native NVST negotiated bitrate is below the requested cap; scheduling a runtime correction.", attributes: ["sessionId": sessionId, "requestedKbps": String(requestedKbps), "appliedKbps": String(appliedKbps), "targetKbps": String(targetKbps)])
+        bitrateCorrectionTask = Task { [weak self] in
+            for attempt in 1...Self.bitrateCorrectionMaxAttempts {
+                let delayNanoseconds = attempt == 1 ? Self.bitrateCorrectionInitialDelayNanoseconds : Self.bitrateCorrectionRetryDelayNanoseconds
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+                guard !Task.isCancelled, let self else { return }
+                do {
+                    try await self.setMaximumBitrateKbps(targetKbps)
+                    WebRTCMediaTelemetry.capture("nvst.network.bitrate_correction.applied", level: .info, message: "Native NVST runtime bitrate cap raised to the requested value.", attributes: ["sessionId": sessionId, "targetKbps": String(targetKbps), "attempt": String(attempt)])
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    WebRTCMediaTelemetry.capture("nvst.network.bitrate_correction.retry", level: .warning, message: Self.message(for: error), attributes: ["sessionId": sessionId, "targetKbps": String(targetKbps), "attempt": String(attempt)])
+                }
+            }
+            WebRTCMediaTelemetry.capture("nvst.network.bitrate_correction.exhausted", level: .warning, message: "Native NVST runtime bitrate correction was rejected; keeping the negotiated cap.", attributes: ["sessionId": sessionId, "targetKbps": String(targetKbps)])
+        }
+    }
+
     public func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST dynamic streaming update failed.") { session, errorBuffer, length in
@@ -274,6 +315,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func disconnect() async {
+        bitrateCorrectionTask?.cancel()
+        bitrateCorrectionTask = nil
         await beginNativeLifecycleOperation()
         defer {
             geronimoPump = nil
@@ -320,6 +363,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func resetForRecovery() async {
+        bitrateCorrectionTask?.cancel()
+        bitrateCorrectionTask = nil
         await beginNativeLifecycleOperation()
         defer {
             geronimoPump = nil
@@ -345,6 +390,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     public func pause() async throws {
+        bitrateCorrectionTask?.cancel()
+        bitrateCorrectionTask = nil
         await beginNativeLifecycleOperation()
         defer { endNativeLifecycleOperation() }
         guard let sessionAddress = geronimoSessionAddress,
@@ -439,7 +486,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                                             hapticResetHandler: (@MainActor @Sendable () -> Void)?,
                                                             localInputCaptureHandler: (@MainActor @Sendable () -> Bool)?,
                                                             authRefreshHandler: @escaping @Sendable (UInt32) async throws -> String,
-                                                            microphoneConfiguration: NativeNVSTMicrophoneConfiguration) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers) {
+                                                            microphoneConfiguration: NativeNVSTMicrophoneConfiguration) async throws -> (connection: NativeNVSTTransportConnection, sessionAddress: UInt, pump: NativeNVSTGeronimoPumpDriver, runtimeHandlers: NativeNVSTRuntimeHandlers, requestedMaxBitrateKbps: Int, appliedMaxBitrateKbps: Int) {
         guard let frameworksPath = status.libraryURL.deletingLastPathComponent().path.cString(using: .utf8) else {
             throw NativeNVSTError.runtimeUnavailable("Native Geronimo frameworks path could not be encoded.")
         }
@@ -603,7 +650,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 throw error
             }
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
-            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump, runtimeHandlers)
+            let requestedMaxBitrateKbps = min(max(0, Self.int(settings["maxBitrateMbps"])), 1_000) * 1_000
+            let appliedMaxBitrateKbps = Self.int(selectedFeatures["maxBitrateKbps"])
+            return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump, runtimeHandlers, requestedMaxBitrateKbps, appliedMaxBitrateKbps)
         } catch {
             pump?.stop()
             await runtimeHandlers.cancel()

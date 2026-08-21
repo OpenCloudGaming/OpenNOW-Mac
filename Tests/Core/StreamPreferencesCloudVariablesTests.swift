@@ -167,11 +167,15 @@ import Testing
     #expect(result.maxPacketSize == 1400)
 }
 
-@Test func recommendedBitrateHonorsVendorNetworkThreshold() {
-    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 75, latencyMs: 20, measuredBandwidthMbps: 100, packetLossPercent: 0, jitterMs: 0, vendorRecommendedMbps: 50) == 50)
+@Test func recommendedBitrateIgnoresThroughputEstimates() {
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 75, latencyMs: 20, packetLossPercent: 0, jitterMs: 0) == 75)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 15, latencyMs: 20, packetLossPercent: 0, jitterMs: 0) == 15)
 }
 
-@Test func recommendedBitrateReservesNetworkHeadroomWithoutExceedingLowCapacity() {
-    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 75, latencyMs: 20, measuredBandwidthMbps: 60, packetLossPercent: 0, jitterMs: 0) == 45)
-    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 15, latencyMs: 20, measuredBandwidthMbps: 2, packetLossPercent: 0, jitterMs: 0) == 1)
+@Test func recommendedBitrateClampsOnlyOnMeasuredImpairment() {
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 100, latencyMs: 20, packetLossPercent: 1.5, jitterMs: 0) == 50)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 100, latencyMs: 20, packetLossPercent: 6, jitterMs: 0) == 15)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 100, latencyMs: 20, packetLossPercent: 0, jitterMs: 35) == 50)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 100, latencyMs: 90, packetLossPercent: 0, jitterMs: 0) == 50)
+    #expect(OPNStreamPreferences.recommendedBitrate(requestedMaxBitrateMbps: 100, latencyMs: 130, packetLossPercent: 0, jitterMs: 0) == 25)
 }
