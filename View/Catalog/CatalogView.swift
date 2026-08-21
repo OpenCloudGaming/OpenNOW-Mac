@@ -173,27 +173,22 @@ struct CatalogView: View {
                     let contentHeight = max(proxy.size.height - topInset, 0)
                     let streamSize = streamContentSize(availableWidth: proxy.size.width, availableHeight: contentHeight, topInset: topInset)
                     VStack(spacing: 0) {
-                        Color.black
-                            .frame(height: topInset)
-                        ZStack {
-                            Color.black
-                            WebRTCMediaStreamView(
-                                configuration: streamConfiguration,
-                                onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
-                                onRequiredSessionAd: { ad in
-                                    try await viewModel.presentRequiredStreamAd(ad)
-                                },
-                                onEnd: { success, message, report in
-                                    viewModel.finishActiveStream(success: success, message: message, report: report)
-                                }
-                            )
-                            .id(streamConfiguration.id)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-                        }
+                        WebRTCMediaStreamView(
+                            configuration: streamConfiguration,
+                            onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                            onRequiredSessionAd: { ad in
+                                try await viewModel.presentRequiredStreamAd(ad)
+                            },
+                            onEnd: { success, message, report in
+                                viewModel.finishActiveStream(success: success, message: message, report: report)
+                            }
+                        )
+                        .id(streamConfiguration.id)
                         .frame(width: streamSize.width, height: streamSize.height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .background(Color.black)
                 }
                 .background(WindowTopInsetReader { streamWindowTopInset = $0 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -230,10 +225,6 @@ struct CatalogView: View {
                                 .zIndex(13)
                         }
                     }
-                    if controllerModeEnabled == false {
-                        EmptyView()
-                    }
-
                     if viewModel.isLaunchFlowVisible {
                         VendorLaunchFlowOverlay(viewModel: viewModel)
                             .transition(.opacity)

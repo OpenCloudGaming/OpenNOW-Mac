@@ -149,7 +149,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         let format = streamFormat(sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
         let requiredSamples = Int(frameCount) * Int(format.mChannelsPerFrame)
         let requiredBytes = requiredSamples * MemoryLayout<Int16>.size
-        if recordingScratch.count < requiredSamples { recordingScratch = [Int16](repeating: 0, count: requiredSamples) }
+        if recordingScratch.count < requiredSamples { recordingScratch = [Int16](unsafeUninitializedCapacity: requiredSamples) { buffer, initializedCount in initializedCount = requiredSamples } }
         return recordingScratch.withUnsafeMutableBufferPointer { scratchBuffer in
             guard let baseAddress = scratchBuffer.baseAddress else { return noErr }
             var inputData = AudioBufferList(

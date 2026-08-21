@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Darwin
 import Foundation
 
 public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
@@ -70,6 +71,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     private var videoSurfaceNeedsRecovery = false
     private var microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: 1, mode: "disabled")
     private var lastDiagnosticMetadata: [String: String] = [:]
+    private var inputErrorBuffer = [CChar](repeating: 0, count: 1024)
+    private var absoluteMouseErrorBuffer = [CChar](repeating: 0, count: 1024)
 
     public init(bridgeConfiguration: NVSTNativeBridgeConfiguration = NVSTNativeBridgeConfiguration(),
                 inputEncoder: NativeNVSTInputEncoder = NativeNVSTInputEncoder(),
@@ -211,12 +214,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress else { throw NativeNVSTError.notRunning }
         guard let encoded = inputEncoder.encode(event) else { return }
         guard let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
-        try Self.sendGeronimoInput(sessionAddress: sessionAddress, encoded: encoded)
+        try sendGeronimoInput(sessionAddress: sessionAddress, encoded: encoded)
     }
 
     public func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
-        try Self.sendGeronimoAbsoluteMouse(sessionAddress: sessionAddress, event: event)
+        try sendGeronimoAbsoluteMouse(sessionAddress: sessionAddress, event: event)
     }
 
     public func togglePerformanceOverlay() async throws {
@@ -748,40 +751,51 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return (result, result == 0 ? nil : errorMessage(errorBuffer, fallback: "Native NVST stop request failed with result \(result)."))
     }
 
-    private static func sendGeronimoInput(sessionAddress: UInt, encoded: NativeNVSTEncodedInputEvent) throws {
-        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
-        defer { errorBuffer.deallocate() }
-        errorBuffer.initialize(repeating: 0, count: 1024)
-        let result: Int32
-        switch encoded.nativePayload {
-        case .event(let payload):
-            result = payload.withUnsafeBytes { buffer in
-                MacForceNowNativeNVSTGeronimoSendInput(UnsafeMutableRawPointer(bitPattern: sessionAddress), buffer.bindMemory(to: UInt8.self).baseAddress, payload.count, errorBuffer, 1024)
-            }
-        case .text(let payload):
-            result = payload.withUnsafeBytes { buffer in
-                MacForceNowNativeNVSTGeronimoSendText(UnsafeMutableRawPointer(bitPattern: sessionAddress), buffer.bindMemory(to: UInt8.self).baseAddress, payload.count, errorBuffer, 1024)
+    private func sendGeronimoInput(sessionAddress: UInt, encoded: NativeNVSTEncodedInputEvent) throws {
+        let result: Int32 = inputErrorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else { return -1 }
+            baseAddress.pointee = 0
+            switch encoded.nativePayload {
+            case .event(let payload):
+                return payload.withUnsafeBytes { bytes in
+                    MacForceNowNativeNVSTGeronimoSendInput(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
+                }
+            case .text(let payload):
+                return payload.withUnsafeBytes { bytes in
+                    MacForceNowNativeNVSTGeronimoSendText(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
+                }
             }
         }
         guard result == 0 else {
-            throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo input send failed with result \(result)."))
+            let message = inputErrorBuffer.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return "Native Geronimo input send failed with result \(result)." }
+                let value = String(cString: baseAddress)
+                return value.isEmpty ? "Native Geronimo input send failed with result \(result)." : value
+            }
+            throw NativeNVSTError.privateABIUnavailable(message)
         }
     }
 
-    private static func sendGeronimoAbsoluteMouse(sessionAddress: UInt, event: NativeNVSTAbsoluteMouseEvent) throws {
-        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
-        defer { errorBuffer.deallocate() }
-        errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(
-            UnsafeMutableRawPointer(bitPattern: sessionAddress),
-            event.x,
-            event.y,
-            event.timestamp.nanoseconds,
-            errorBuffer,
-            1024
-        )
+    private func sendGeronimoAbsoluteMouse(sessionAddress: UInt, event: NativeNVSTAbsoluteMouseEvent) throws {
+        let result: Int32 = absoluteMouseErrorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else { return -1 }
+            baseAddress.pointee = 0
+            return MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(
+                UnsafeMutableRawPointer(bitPattern: sessionAddress),
+                event.x,
+                event.y,
+                event.timestamp.nanoseconds,
+                baseAddress,
+                buffer.count
+            )
+        }
         if result != 0 {
-            throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo absolute mouse input failed with result \(result)."))
+            let message = absoluteMouseErrorBuffer.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return "Native Geronimo absolute mouse input failed with result \(result)." }
+                let value = String(cString: baseAddress)
+                return value.isEmpty ? "Native Geronimo absolute mouse input failed with result \(result)." : value
+            }
+            throw NativeNVSTError.privateABIUnavailable(message)
         }
     }
 
@@ -1573,7 +1587,7 @@ private final class NativeNVSTGeronimoPumpDriver {
 }
 
 private final class NativeNVSTTerminationChannel: @unchecked Sendable {
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private var continuations: [UUID: AsyncStream<NativeNVSTTransportTermination>.Continuation] = [:]
     private var pending: NativeNVSTTransportTermination?
 
@@ -1581,10 +1595,10 @@ private final class NativeNVSTTerminationChannel: @unchecked Sendable {
         let id = UUID()
         let pair = AsyncStream<NativeNVSTTransportTermination>.makeStream(bufferingPolicy: .bufferingNewest(1))
         let pending: NativeNVSTTransportTermination?
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         continuations[id] = pair.continuation
         pending = self.pending
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         if let pending { pair.continuation.yield(pending) }
         pair.continuation.onTermination = { [weak self] _ in
             self?.remove(id)
@@ -1594,30 +1608,30 @@ private final class NativeNVSTTerminationChannel: @unchecked Sendable {
 
     func send(_ termination: NativeNVSTTransportTermination) {
         let continuations: [AsyncStream<NativeNVSTTransportTermination>.Continuation]
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         pending = termination
         continuations = Array(self.continuations.values)
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         for continuation in continuations {
             continuation.yield(termination)
         }
     }
 
     func reset() {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         pending = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     private func remove(_ id: UUID) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         continuations[id] = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 }
 
 final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private let cursorDeliveryLock = NSRecursiveLock()
     private let sessionId: String
     private let terminationHandler: @Sendable (NativeNVSTTransportTermination) -> Void
@@ -1655,9 +1669,9 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func updateTelemetryAttributes(_ attributes: [String: String]) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         telemetryAttributes.merge(attributes) { _, new in new }
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     func handle(phase: Int32,
@@ -1669,7 +1683,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
                 resumable: Bool,
                 sessionAlive: Bool,
                 reasonName: String?) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         observedPhases.insert(phase)
         if observedPhaseSequence.count == 128 { observedPhaseSequence.removeFirst() }
         observedPhaseSequence.append(phase)
@@ -1687,7 +1701,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         }
         var attributes = telemetryAttributes
         let pausePending = self.pausePending
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         attributes["sessionId"] = sessionId
         attributes["phase"] = String(phase)
         attributes["callbackType"] = String(callbackType)
@@ -1815,26 +1829,26 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
                                                 handler: (@MainActor @Sendable (Bool) -> Void)?) {
         cursorDeliveryLock.lock()
         defer { cursorDeliveryLock.unlock() }
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard acceptsCursorUpdates, cursorUpdateGeneration == generation else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         handler?(visible)
     }
 
     private func invalidateCursorUpdates() {
         cursorDeliveryLock.lock()
         defer { cursorDeliveryLock.unlock() }
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         acceptsCursorUpdates = false
         cursorUpdateGeneration &+= 1
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     func readinessDiagnosticAttributes() -> [String: String] {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         let phases = observedPhases.sorted()
         let phaseSequence = observedPhaseSequence
         let lastPhase = self.lastPhase
@@ -1842,7 +1856,7 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
         let lastClientEvent = self.lastClientEvent
         let lastNotification = self.lastNotification
         let lastResultCode = self.lastResultCode
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
 
         var attributes = [
             "observedPhases": phases.map(String.init).joined(separator: ","),
@@ -1863,14 +1877,14 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     func waitForStreamerConnected(timeoutNanoseconds: UInt64) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                lock.lock()
+                os_unfair_lock_lock(&lock)
                 if let readinessResult {
-                    lock.unlock()
+                    os_unfair_lock_unlock(&lock)
                     continuation.resume(with: readinessResult)
                     return
                 }
                 readinessCompletion = continuation
-                lock.unlock()
+                os_unfair_lock_unlock(&lock)
 
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeoutNanoseconds)
@@ -1885,14 +1899,14 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     func waitForStartDelivered(timeoutNanoseconds: UInt64) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                lock.lock()
+                os_unfair_lock_lock(&lock)
                 if let startResult {
-                    lock.unlock()
+                    os_unfair_lock_unlock(&lock)
                     continuation.resume(with: startResult)
                     return
                 }
                 startCompletion = continuation
-                lock.unlock()
+                os_unfair_lock_unlock(&lock)
 
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeoutNanoseconds)
@@ -1928,24 +1942,24 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func beginPause() {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         pausePending = true
         pauseResult = nil
         pauseCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     func waitForPause(timeoutNanoseconds: UInt64) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                lock.lock()
+                os_unfair_lock_lock(&lock)
                 if let pauseResult {
-                    lock.unlock()
+                    os_unfair_lock_unlock(&lock)
                     continuation.resume(with: pauseResult)
                     return
                 }
                 pauseCompletion = continuation
-                lock.unlock()
+                os_unfair_lock_unlock(&lock)
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeoutNanoseconds)
                     self?.resolvePause(.failure(NativeNVSTError.transportFailed("Native NVST pause callback timed out.")))
@@ -1961,24 +1975,24 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     func beginStop() {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         stopPending = true
         stopResult = nil
         stopCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     func waitForStop(timeoutNanoseconds: UInt64) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                lock.lock()
+                os_unfair_lock_lock(&lock)
                 if let stopResult {
-                    lock.unlock()
+                    os_unfair_lock_unlock(&lock)
                     continuation.resume(with: stopResult)
                     return
                 }
                 stopCompletion = continuation
-                lock.unlock()
+                os_unfair_lock_unlock(&lock)
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: timeoutNanoseconds)
                     self?.resolveStop(.failure(NativeNVSTError.transportFailed(NativeNVSTBifrostTransport.geronimoStopTimeoutMessage)))
@@ -1998,86 +2012,86 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
     }
 
     private var hasReachedReadiness: Bool {
-        lock.lock()
-        defer { lock.unlock() }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
         guard let readinessResult else { return false }
         if case .success = readinessResult { return true }
         return false
     }
 
     var hasDeliveredTerminal: Bool {
-        lock.lock()
-        defer { lock.unlock() }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
         return terminalDelivered
     }
 
     private func resolveReadiness(_ result: Result<Void, Error>) {
         let continuation: CheckedContinuation<Void, Error>?
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         if readinessResult != nil {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         readinessResult = result
         continuation = readinessCompletion
         readinessCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         continuation?.resume(with: result)
     }
 
     private func resolveStart(_ result: Result<Void, Error>) {
         let continuation: CheckedContinuation<Void, Error>?
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         if startResult != nil {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         startResult = result
         continuation = startCompletion
         startCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         continuation?.resume(with: result)
     }
 
     private func resolvePause(_ result: Result<Void, Error>) {
         let continuation: CheckedContinuation<Void, Error>?
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard pausePending else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         pausePending = false
         pauseResult = result
         continuation = pauseCompletion
         pauseCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         continuation?.resume(with: result)
     }
 
     private func resolveStop(_ result: Result<Void, Error>) {
         let continuation: CheckedContinuation<Void, Error>?
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard stopPending else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         stopPending = false
         stopResult = result
         continuation = stopCompletion
         stopCompletion = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         continuation?.resume(with: result)
     }
 
     private func deliverTerminal(_ termination: NativeNVSTTransportTermination) {
         invalidateCursorUpdates()
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard !terminalDelivered else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         terminalDelivered = true
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         terminationHandler(termination)
     }
 
@@ -2093,7 +2107,7 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
     private let expectedAuthType: UInt32?
     private let timeout: DispatchTimeInterval
     private let handler: Handler
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private var requests: [UUID: NativeNVSTAuthRefreshRequest] = [:]
     private var cancelled = false
 
@@ -2132,13 +2146,13 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
         guard expectedAuthType == nil || expectedAuthType == authType else { return }
         let id = UUID()
         let request = NativeNVSTAuthRefreshRequest()
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard !cancelled else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         requests[id] = request
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         let handler = self.handler
         request.setTask(Task.detached(priority: .userInitiated) {
             do {
@@ -2148,9 +2162,9 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
             }
         })
         let data = request.wait(timeout: timeout)
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         requests.removeValue(forKey: id)
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         guard let data else {
             request.cancel()
             return
@@ -2161,71 +2175,71 @@ public final class NativeNVSTAuthRefreshCoordinator: @unchecked Sendable {
     }
 
     public func cancel() {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         cancelled = true
         let activeRequests = Array(requests.values)
         requests.removeAll()
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         activeRequests.forEach { $0.cancel() }
     }
 }
 
 private final class NativeNVSTAuthRefreshRequest: @unchecked Sendable {
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private let semaphore = DispatchSemaphore(value: 0)
     private var task: Task<Void, Never>?
     private var result: Data?
     private var completed = false
 
     func setTask(_ task: Task<Void, Never>) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         if completed {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             task.cancel()
             return
         }
         self.task = task
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
     }
 
     func complete(with result: Data?) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard !completed else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         completed = true
         self.result = result
         task = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         semaphore.signal()
     }
 
     func wait(timeout: DispatchTimeInterval) -> Data? {
         guard semaphore.wait(timeout: .now() + timeout) == .success else { return nil }
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         let result = self.result
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         return result
     }
 
     func cancel() {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         guard !completed else {
-            lock.unlock()
+            os_unfair_lock_unlock(&lock)
             return
         }
         completed = true
         let task = self.task
         self.task = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         task?.cancel()
         semaphore.signal()
     }
 }
 
 private final class NativeNVSTHapticSink: @unchecked Sendable {
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private var handler: (@MainActor @Sendable (NativeNVSTHapticCommand) -> Void)?
     private var resetHandler: (@MainActor @Sendable () -> Void)?
 
@@ -2235,9 +2249,9 @@ private final class NativeNVSTHapticSink: @unchecked Sendable {
     }
 
     func receive(_ command: NativeNVSTHapticCommand) {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         let handler = self.handler
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         guard let handler else { return }
         Task { @MainActor in handler(command) }
     }
@@ -2248,11 +2262,11 @@ private final class NativeNVSTHapticSink: @unchecked Sendable {
     }
 
     private func detach() -> (@MainActor @Sendable () -> Void)? {
-        lock.lock()
+        os_unfair_lock_lock(&lock)
         let resetHandler = self.resetHandler
         handler = nil
         self.resetHandler = nil
-        lock.unlock()
+        os_unfair_lock_unlock(&lock)
         return resetHandler
     }
 }

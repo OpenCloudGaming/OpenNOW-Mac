@@ -1,5 +1,6 @@
 import AppKit
 import CoreVideo
+import Darwin
 import Foundation
 import Metal
 import MetalKit
@@ -68,6 +69,10 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var adaptiveEnhancementPenalty = 0
     private var customDrawableRenderingEnabled = false
     nonisolated(unsafe) private weak var owner: OPNLibWebRTCStreamSession?
+    nonisolated(unsafe) private var frameLock = os_unfair_lock_s()
+    nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
+    nonisolated(unsafe) private var cachedIsTenBitBiPlanar = false
+    nonisolated(unsafe) private var pixelFormatCached = false
 
     init(frame frameRect: NSRect, targetFps: Int32, owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
@@ -94,7 +99,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             metalLayer.presentsWithTransaction = false
             metalLayer.allowsNextDrawableTimeout = false
             if #available(macOS 10.13, *) {
-                metalLayer.maximumDrawableCount = 3
+                metalLayer.maximumDrawableCount = 2
             }
         }
         addSubview(metalView)
@@ -125,9 +130,10 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
     nonisolated func setSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        objc_sync_enter(self)
+        os_unfair_lock_lock(&frameLock)
         sourceFrameSize = size
-        objc_sync_exit(self)
+        pixelFormatCached = false
+        os_unfair_lock_unlock(&frameLock)
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.drawableSizeDirty = true
@@ -139,19 +145,25 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
-        objc_sync_enter(self)
+        os_unfair_lock_lock(&frameLock)
+        if !pixelFormatCached, let buffer = frame.buffer as? RTCCVPixelBuffer {
+            let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
+            cachedPixelFormat = format
+            cachedIsTenBitBiPlanar = format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            pixelFormatCached = true
+        }
         videoFrame = frame
         frameSerial += 1
-        objc_sync_exit(self)
+        os_unfair_lock_unlock(&frameLock)
     }
 
     func draw(in view: MTKView) {
         guard view == metalView else { return }
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
-        let snapshot = synchronized { () -> (RTCVideoFrame?, UInt64, CGSize) in
-            return (videoFrame, frameSerial, sourceFrameSize)
-        }
+        os_unfair_lock_lock(&frameLock)
+        let snapshot = (videoFrame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar)
+        os_unfair_lock_unlock(&frameLock)
         guard let frame = snapshot.0,
               frame.width > 0,
               frame.height > 0,
@@ -172,9 +184,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
-        // Pillarbox fill is drawn by the custom shader path. WebRTC's own Metal
-        // renderers aspect-fit and clear to black inside the framework, so a frame
-        // that needs fill has to be routed away from them even with upscaling off.
         let needsCustomPath = enhancement.mode > 0 || enhancement.fillMode.needsCustomRenderPath
         if needsCustomPath {
             setCustomDrawableRenderingEnabled(true)
@@ -184,7 +193,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             return
         }
 
-        let tenBitFrame = isTenBitBiPlanarFrame(frame)
+        let tenBitFrame = snapshot.3
         if tenBitFrame {
             setCustomDrawableRenderingEnabled(true)
         }
@@ -387,12 +396,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return i420Renderer(fallback: &diagnostics.fallback)
     }
 
-    private func isTenBitBiPlanarFrame(_ frame: RTCVideoFrame) -> Bool {
-        guard let buffer = frame.buffer as? RTCCVPixelBuffer else { return false }
-        let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
-        return format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
-    }
-
     private func newRenderer(named className: String, fallback: inout String) -> OPNRTCMetalRenderer? {
         guard let rendererClass = NSClassFromString(className) as? NSObject.Type else {
             fallback = "\(className) unavailable"
@@ -478,11 +481,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         drawIntervalCount = 0
     }
 
-    private func synchronized<T>(_ body: () -> T) -> T {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-        return body()
-    }
 }
 
 private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {

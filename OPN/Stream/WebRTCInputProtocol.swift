@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @objcMembers
@@ -5,7 +6,7 @@ import Foundation
 public final class OPNInputProtocolEncoder: NSObject {
     private var protocolVersion: UInt16 = 2
     private var gamepadSequences: [UInt16] = [1, 1, 1, 1]
-    private static let timestampLock = NSLock()
+    nonisolated(unsafe) private static var timestampLock = os_unfair_lock_s()
     nonisolated(unsafe) private static var startNanoseconds: UInt64 = 0
     nonisolated(unsafe) private static var lastTimestampUs: UInt64 = 0
 
@@ -114,17 +115,17 @@ public final class OPNInputProtocolEncoder: NSObject {
 
     public class func timestampUs() -> UInt64 {
         let now = DispatchTime.now().uptimeNanoseconds
-        return timestampLock.withLock {
-            if startNanoseconds == 0 || now < startNanoseconds {
-                startNanoseconds = now
-                lastTimestampUs = 0
-                return 0
-            }
-            let timestamp = (now - startNanoseconds) / 1_000
-            if timestamp < lastTimestampUs { return lastTimestampUs }
-            lastTimestampUs = timestamp
-            return timestamp
+        os_unfair_lock_lock(&timestampLock)
+        defer { os_unfair_lock_unlock(&timestampLock) }
+        if startNanoseconds == 0 || now < startNanoseconds {
+            startNanoseconds = now
+            lastTimestampUs = 0
+            return 0
         }
+        let timestamp = (now - startNanoseconds) / 1_000
+        if timestamp < lastTimestampUs { return lastTimestampUs }
+        lastTimestampUs = timestamp
+        return timestamp
     }
 
     private func wrapSingleEvent(_ payload: Data) -> Data {
@@ -209,10 +210,3 @@ private extension Data {
     }
 }
 
-private extension NSLock {
-    func withLock<T>(_ body: () -> T) -> T {
-        lock()
-        defer { unlock() }
-        return body()
-    }
-}

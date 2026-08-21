@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @preconcurrency import WebRTC
 
@@ -6,8 +7,10 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
     private weak var owner: OPNLibWebRTCStreamSession?
     private var timer: DispatchSourceTimer?
     private var requestInFlight = false
+    private var requestLock = os_unfair_lock_s()
     private var lastRequestMs: UInt64 = 0
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
+    private var cachedParsedResult: [String: Any]? = nil
 
     @objc(initWithOwner:)
     init(owner: OPNLibWebRTCStreamSession?) {
@@ -21,17 +24,22 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         guard let peerConnection = sessionImpl?.peerConnection else { return }
         let now = Self.monotonicMs()
         guard lastRequestMs == 0 || now - lastRequestMs >= 900 else { return }
-        guard !requestInFlight else { return }
-        lastRequestMs = now
+        os_unfair_lock_lock(&requestLock)
+        guard !requestInFlight else { os_unfair_lock_unlock(&requestLock); return }
         requestInFlight = true
+        os_unfair_lock_unlock(&requestLock)
+        lastRequestMs = now
         peerConnection.statistics { [weak self] report in
             queue.async { [weak self] in
                 guard let self else { return }
+                os_unfair_lock_lock(&self.requestLock)
                 self.requestInFlight = false
-                guard let parsed = Self.parse(report) else {
+                os_unfair_lock_unlock(&self.requestLock)
+                guard let parsed = Self.parse(report, reuseResult: self.cachedParsedResult) else {
                     self.owner?.handleStatsReport(["available": false])
                     return
                 }
+                self.cachedParsedResult = parsed
                 self.owner?.handleStatsReport(parsed)
             }
         }
@@ -69,10 +77,10 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         WebRTCMediaTelemetry.capture("webrtc.native.bitrate_limit", level: applied ? .info : .warning, message: applied ? "Runtime bitrate limit applied." : "Runtime bitrate limit was not applied.", attributes: ["mbps": String(clampedMbps), "reason": reason])
     }
 
-    private static func parse(_ report: RTCStatisticsReport?) -> [String: Any]? {
+    private static func parse(_ report: RTCStatisticsReport?, reuseResult: [String: Any]?) -> [String: Any]? {
         guard let report else { return nil }
         var codecs: [String: String] = [:]
-        var parsed: [String: Any] = [
+        var parsed = reuseResult ?? [
             "available": false,
             "latencyMs": -1.0,
             "jitterMs": -1.0,
@@ -91,6 +99,8 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
             "videoSink": "OPNMetalVideoView",
             "videoPipelineMode": "libwebrtc Metal display",
         ]
+        parsed["available"] = false
+        parsed["timestampMs"] = monotonicMs()
         var inboundCodecId = ""
         var selectedVideoScore: UInt64 = 0
 

@@ -2,6 +2,7 @@ import AppKit
 import CoreVideo
 import Darwin
 import Foundation
+import os
 @preconcurrency import WebRTC
 
 typealias OPNLibWebRTCAnswerHandler = @convention(block) (NSString, NSString) -> Void
@@ -15,7 +16,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var inputController: OPNLibWebRTCInput!
     private var audioController: OPNLibWebRTCAudio!
     private var statsController: OPNLibWebRTCStats!
-    private let statsLock = NSLock()
+    private var statsLock = os_unfair_lock_s()
     private let remoteIceLock = NSLock()
 
     private var impl: OPNLibWebRTCSessionImpl?
@@ -252,7 +253,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                             self.handleConnectionState(false, error: "setLocalDescription failed: \(localError.localizedDescription)")
                             return
                         }
-                        self.statsLock.withLock { self.latestStats.videoPipelineMode = "libwebrtc answer sent" }
+                        os_unfair_lock_lock(&self.statsLock)
+                        self.latestStats.videoPipelineMode = "libwebrtc answer sent"
+                        os_unfair_lock_unlock(&self.statsLock)
                         self.onAnswer?(answerSdp, NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: self.settings, credentials: NVSTSessionDescriptionBuilder.iceCredentials(from: answerSdp), remoteNVSTSdp: remoteNVSTSdp, serverOverrides: remoteNVSTServerOverrides))
                     }
                 }
@@ -413,7 +416,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     }
 
     func latestStatsSnapshot() -> OPNStreamStatsSnapshot {
-        let stats = statsLock.withLock { latestStats }
+        os_unfair_lock_lock(&statsLock)
+        let stats = latestStats
+        os_unfair_lock_unlock(&statsLock)
         return OPNStreamStatsSnapshot(available: stats.available,
                                       transport: stats.transport,
                                       latencyMs: stats.latencyMs,
@@ -464,10 +469,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     func handleConnectionState(_ connected: Bool, error: String) {
         if connected {
-            statsLock.withLock {
-                latestStats.available = true
-                latestStats.videoPipelineMode = "libwebrtc connected"
-            }
+            os_unfair_lock_lock(&statsLock)
+            latestStats.available = true
+            latestStats.videoPipelineMode = "libwebrtc connected"
+            os_unfair_lock_unlock(&statsLock)
             statsController.startPolling(sessionImpl: impl, queue: statsQueue)
         } else {
             statsController.stopPolling()
@@ -502,67 +507,70 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     }
 
     func setVideoRendererState(sink: String, pipelineMode: String) {
-        statsLock.withLock { latestStats.videoSink = sink; latestStats.videoPipelineMode = pipelineMode }
+        os_unfair_lock_lock(&statsLock)
+        latestStats.videoSink = sink
+        latestStats.videoPipelineMode = pipelineMode
+        os_unfair_lock_unlock(&statsLock)
     }
 
     func setVideoRenderDiagnostics(pixelFormat: String, renderMode: String, frameSource: String, renderPath: String, fallback: String, enhancementConfiguredTier: String, enhancementActiveTier: String, enhancementFallbackReason: String, enhancementSourceResolution: String, enhancementDrawableResolution: String, enhancementDiagnostics: String, enhancementFrameTimeMs: Double, enhancementDroppedFrames: UInt64, frameIntervalMs: Double, maxFrameIntervalMs: Double) {
-        statsLock.withLock {
-            latestStats.videoPixelFormat = pixelFormat
-            latestStats.videoRenderMode = renderMode
-            latestStats.videoFrameSource = frameSource
-            latestStats.videoRenderPath = renderPath
-            latestStats.videoRendererFallback = fallback
-            latestStats.videoEnhancementConfiguredTier = enhancementConfiguredTier
-            latestStats.videoEnhancementActiveTier = enhancementActiveTier
-            latestStats.videoEnhancementFallbackReason = enhancementFallbackReason
-            latestStats.videoEnhancementSourceResolution = enhancementSourceResolution
-            latestStats.videoEnhancementDrawableResolution = enhancementDrawableResolution
-            latestStats.videoEnhancementDiagnostics = enhancementDiagnostics
-            latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs
-            latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames
-            latestStats.videoFrameIntervalMs = frameIntervalMs
-            latestStats.videoMaxFrameIntervalMs = maxFrameIntervalMs
-        }
+        os_unfair_lock_lock(&statsLock)
+        latestStats.videoPixelFormat = pixelFormat
+        latestStats.videoRenderMode = renderMode
+        latestStats.videoFrameSource = frameSource
+        latestStats.videoRenderPath = renderPath
+        latestStats.videoRendererFallback = fallback
+        latestStats.videoEnhancementConfiguredTier = enhancementConfiguredTier
+        latestStats.videoEnhancementActiveTier = enhancementActiveTier
+        latestStats.videoEnhancementFallbackReason = enhancementFallbackReason
+        latestStats.videoEnhancementSourceResolution = enhancementSourceResolution
+        latestStats.videoEnhancementDrawableResolution = enhancementDrawableResolution
+        latestStats.videoEnhancementDiagnostics = enhancementDiagnostics
+        latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs
+        latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames
+        latestStats.videoFrameIntervalMs = frameIntervalMs
+        latestStats.videoMaxFrameIntervalMs = maxFrameIntervalMs
+        os_unfair_lock_unlock(&statsLock)
     }
 
     func handleStatsReport(_ report: [String: Any]) {
-        statsLock.withLock {
-            latestStats.available = bool(report["available"])
-            latestStats.latencyMs = double(report["latencyMs"], fallback: latestStats.latencyMs)
-            latestStats.jitterMs = double(report["jitterMs"], fallback: latestStats.jitterMs)
-            latestStats.inboundBitrateMbps = double(report["inboundBitrateMbps"], fallback: latestStats.inboundBitrateMbps)
-            latestStats.packetLossPercent = double(report["packetLossPercent"], fallback: latestStats.packetLossPercent)
-            latestStats.decodeTimeMs = double(report["decodeTimeMs"], fallback: latestStats.decodeTimeMs)
-            latestStats.renderFps = double(report["renderFps"], fallback: latestStats.renderFps)
-            latestStats.framesReceived = uint64(report["framesReceived"])
-            latestStats.framesDropped = uint64(report["framesDropped"])
-            latestStats.packetsLost = int64(report["packetsLost"])
-            let decodedResolution = string(report["resolution"])
-            if !decodedResolution.isEmpty {
-                if latestStats.resolution.isEmpty { latestStats.resolution = decodedResolution }
-                latestStats.videoEnhancementSourceResolution = decodedResolution
-            }
-            latestStats.codec = string(report["codec"]).isEmpty ? latestStats.codec : string(report["codec"])
-            latestStats.videoDecoder = string(report["videoDecoder"]).isEmpty ? latestStats.videoDecoder : string(report["videoDecoder"])
-            latestStats.videoSink = string(report["videoSink"]).isEmpty ? latestStats.videoSink : string(report["videoSink"])
-            latestStats.videoPipelineMode = string(report["videoPipelineMode"]).isEmpty ? latestStats.videoPipelineMode : string(report["videoPipelineMode"])
+        os_unfair_lock_lock(&statsLock)
+        latestStats.available = bool(report["available"])
+        latestStats.latencyMs = double(report["latencyMs"], fallback: latestStats.latencyMs)
+        latestStats.jitterMs = double(report["jitterMs"], fallback: latestStats.jitterMs)
+        latestStats.inboundBitrateMbps = double(report["inboundBitrateMbps"], fallback: latestStats.inboundBitrateMbps)
+        latestStats.packetLossPercent = double(report["packetLossPercent"], fallback: latestStats.packetLossPercent)
+        latestStats.decodeTimeMs = double(report["decodeTimeMs"], fallback: latestStats.decodeTimeMs)
+        latestStats.renderFps = double(report["renderFps"], fallback: latestStats.renderFps)
+        latestStats.framesReceived = uint64(report["framesReceived"])
+        latestStats.framesDropped = uint64(report["framesDropped"])
+        latestStats.packetsLost = int64(report["packetsLost"])
+        let decodedResolution = string(report["resolution"])
+        if !decodedResolution.isEmpty {
+            if latestStats.resolution.isEmpty { latestStats.resolution = decodedResolution }
+            latestStats.videoEnhancementSourceResolution = decodedResolution
         }
+        latestStats.codec = string(report["codec"]).isEmpty ? latestStats.codec : string(report["codec"])
+        latestStats.videoDecoder = string(report["videoDecoder"]).isEmpty ? latestStats.videoDecoder : string(report["videoDecoder"])
+        latestStats.videoSink = string(report["videoSink"]).isEmpty ? latestStats.videoSink : string(report["videoSink"])
+        latestStats.videoPipelineMode = string(report["videoPipelineMode"]).isEmpty ? latestStats.videoPipelineMode : string(report["videoPipelineMode"])
+        os_unfair_lock_unlock(&statsLock)
         updateAdaptiveBitrate(report)
     }
 
     private func resetStats(sessionInfo: [String: Any], settings: [String: Any]) {
-        statsLock.withLock {
-            latestStats = OPNStreamStatsState()
-            latestStats.transport = string(sessionInfo["transport"], fallback: "WebRTC")
-            latestStats.gpuType = string(sessionInfo["gpuType"])
-            latestStats.zone = string(sessionInfo["zone"])
-            latestStats.resolution = string(settings["resolution"])
-            latestStats.codec = string(settings["codec"])
-            latestStats.fps = int(settings["fps"], fallback: 60)
-            latestStats.videoDecoder = "libwebrtc"
-            latestStats.videoSink = "OPNMetalVideoView"
-            latestStats.videoPipelineMode = "libwebrtc Metal display"
-        }
+        os_unfair_lock_lock(&statsLock)
+        latestStats = OPNStreamStatsState()
+        latestStats.transport = string(sessionInfo["transport"], fallback: "WebRTC")
+        latestStats.gpuType = string(sessionInfo["gpuType"])
+        latestStats.zone = string(sessionInfo["zone"])
+        latestStats.resolution = string(settings["resolution"])
+        latestStats.codec = string(settings["codec"])
+        latestStats.fps = int(settings["fps"], fallback: 60)
+        latestStats.videoDecoder = "libwebrtc"
+        latestStats.videoSink = "OPNMetalVideoView"
+        latestStats.videoPipelineMode = "libwebrtc Metal display"
+        os_unfair_lock_unlock(&statsLock)
         previousStatsTimestampMs = 0
         previousBytesReceived = 0
         previousPacketsReceived = 0
@@ -593,11 +601,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let bitrateMbps = Double(byteDelta) * 8.0 / Double(dtMs) / 1000.0
         let framesDelta = framesDecoded >= previousFramesDecoded ? framesDecoded - previousFramesDecoded : 0
         let fps = Double(framesDelta) * 1000.0 / Double(dtMs)
-        statsLock.withLock {
-            latestStats.inboundBitrateMbps = bitrateMbps
-            latestStats.packetLossPercent = lossPercent
-            if fps > 0 { latestStats.fps = Int(fps.rounded()) }
-        }
+        os_unfair_lock_lock(&statsLock)
+        latestStats.inboundBitrateMbps = bitrateMbps
+        latestStats.packetLossPercent = lossPercent
+        if fps > 0 { latestStats.fps = Int(fps.rounded()) }
+        os_unfair_lock_unlock(&statsLock)
         previousStatsTimestampMs = timestampMs
         previousBytesReceived = bytesReceived
         previousPacketsReceived = packetsReceived

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 enum NativeNVSTInput: Equatable, Sendable {
@@ -83,7 +84,7 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
     private let capacity: Int
     private let protectedCapacity: Int
     private let ordinaryCapacity: Int
-    private let lock = NSLock()
+    private var lock = os_unfair_lock_s()
     private var inputs: [NativeNVSTInput] = []
     private var finished = false
 
@@ -95,57 +96,61 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
     }
 
     var isFinished: Bool {
-        lock.withLock { finished && inputs.isEmpty }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        return finished && inputs.isEmpty
     }
 
     var count: Int {
-        lock.withLock { inputs.count }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        return inputs.count
     }
 
     func append(_ input: NativeNVSTInput) -> Bool {
-        lock.withLock {
-            guard !finished else { return false }
-            if coalesce(input) { return true }
-            makeReservedCapacityIfNeeded(for: input)
-            if inputs.count >= capacity {
-                if let staleIndex = inputs.indices.first(where: {
-                    Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) && !isProspectiveAbsoluteButtonPair(at: $0, incoming: input)
-                }) {
-                    inputs.remove(at: staleIndex)
-                } else if Self.isNeutralizing(input), let pressIndex = inputs.firstIndex(where: Self.isNonNeutralButtonOrKeyPress) {
-                    inputs.remove(at: pressIndex)
-                } else if Self.isNeutralizing(input) {
-                    inputs.removeFirst()
-                } else if (!Self.isLossy(input) || Self.isAbsoluteMove(input)),
-                          inputs.count < capacityLimit(for: input) {
-                    inputs.append(input)
-                    return true
-                } else {
-                    return false
-                }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        guard !finished else { return false }
+        if coalesce(input) { return true }
+        makeReservedCapacityIfNeeded(for: input)
+        if inputs.count >= capacity {
+            if let staleIndex = inputs.indices.first(where: {
+                Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) && !isProspectiveAbsoluteButtonPair(at: $0, incoming: input)
+            }) {
+                inputs.remove(at: staleIndex)
+            } else if Self.isNeutralizing(input), let pressIndex = inputs.firstIndex(where: Self.isNonNeutralButtonOrKeyPress) {
+                inputs.remove(at: pressIndex)
+            } else if Self.isNeutralizing(input) {
+                inputs.removeFirst()
+            } else if (!Self.isLossy(input) || Self.isAbsoluteMove(input)),
+                      inputs.count < capacityLimit(for: input) {
+                inputs.append(input)
+                return true
+            } else {
+                return false
             }
-            inputs.append(input)
-            return true
         }
+        inputs.append(input)
+        return true
     }
 
     func removeFirst() -> NativeNVSTInput? {
-        lock.withLock {
-            guard !inputs.isEmpty else { return nil }
-            return inputs.removeFirst()
-        }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        guard !inputs.isEmpty else { return nil }
+        return inputs.removeFirst()
     }
 
     func finish(discardingStaleInput: Bool) {
-        lock.withLock {
-            guard !finished else { return }
-            finished = true
-            if discardingStaleInput {
-                let staleIndices = inputs.indices.filter { Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) }
-                for index in staleIndices.reversed() { inputs.remove(at: index) }
-            } else {
-                inputs.removeAll(keepingCapacity: false)
-            }
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        guard !finished else { return }
+        finished = true
+        if discardingStaleInput {
+            let staleIndices = inputs.indices.filter { Self.isLossy(inputs[$0]) && !isProtectedAbsoluteMove(at: $0) }
+            for index in staleIndices.reversed() { inputs.remove(at: index) }
+        } else {
+            inputs.removeAll(keepingCapacity: false)
         }
     }
 

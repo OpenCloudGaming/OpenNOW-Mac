@@ -67,8 +67,6 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         GeometryReader { proxy in
             let compact = min(proxy.size.width, proxy.size.height) < 620
             ZStack {
-                Color.black
-
                 if let artworkURL {
                     AsyncImage(url: artworkURL) { phase in
                         if case .success(let image) = phase {
@@ -167,8 +165,8 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
+            .background(Color.black)
         }
-        .background(.black)
     }
 }
 
@@ -326,7 +324,6 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             NativeNVSTStreamHostView { view in
                 nativeView = view
                 configureNativeView(view)
@@ -342,6 +339,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 ) { EmptyView() }
             }
         }
+        .background(Color.black)
         .onAppear {
             WebRTCMediaTelemetry.configure(sink: MacForceNowWebRTCMediaTelemetrySink())
             startIfNeeded()

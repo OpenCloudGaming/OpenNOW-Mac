@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @preconcurrency import WebRTC
@@ -6,8 +7,8 @@ import Foundation
 final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     private weak var owner: OPNLibWebRTCStreamSession?
     private let encoder = OPNInputProtocolEncoder()
-    private let encoderLock = NSLock()
-    private let stateLock = NSLock()
+    private var encoderLock = os_unfair_lock_s()
+    private var stateLock = os_unfair_lock_s()
     private var inputReady = false
     private var reliableOpen = false
     private var partialOpen = false
@@ -35,7 +36,9 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     }
 
     func configureInput(_ configuration: NVSTInputTransportConfiguration) {
-        stateLock.withLock { inputConfiguration = configuration }
+        os_unfair_lock_lock(&stateLock)
+        inputConfiguration = configuration
+        os_unfair_lock_unlock(&stateLock)
     }
 
     @objc(createInputChannelWithSessionImpl:)
@@ -51,7 +54,9 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         sessionImpl.reliableInputChannel = peerConnection.dataChannel(forLabel: GeronimoInputChannel.reliableLabel, configuration: reliableConfig)
         sessionImpl.reliableInputChannel?.delegate = sessionImpl
 
-        let configuration = stateLock.withLock { inputConfiguration }
+        os_unfair_lock_lock(&stateLock)
+        let configuration = inputConfiguration
+        os_unfair_lock_unlock(&stateLock)
         guard configuration.partialReliableEnabled else { return }
         let partialConfig = RTCDataChannelConfiguration()
         partialConfig.isOrdered = false
@@ -61,11 +66,17 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         sessionImpl.partialInputChannel?.delegate = sessionImpl
     }
 
-    @objc var isInputReady: Bool { stateLock.withLock { inputReady } }
+    @objc var isInputReady: Bool {
+        os_unfair_lock_lock(&stateLock)
+        defer { os_unfair_lock_unlock(&stateLock) }
+        return inputReady
+    }
 
     @objc(sendKeyWithKeycode:scancode:modifiers:down:sessionImpl:)
     func sendKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, down: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
-        let encoded = encoderLock.withLock { encoder.encodeKey(keycode: keycode, scancode: scancode, modifiers: modifiers, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeKey(keycode: keycode, scancode: scancode, modifiers: modifiers, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down)
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
@@ -77,25 +88,33 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                   channel.readyState == .open,
                   channel.bufferedAmount <= GeronimoInputChannel.mouseInputBacklogLimitBytes else { return }
         }
-        let encoded = encoderLock.withLock { encoder.encodeMouseMove(dx: dx, dy: dy, timestampUs: OPNInputProtocolEncoder.timestampUs()) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeMouseMove(dx: dx, dy: dy, timestampUs: OPNInputProtocolEncoder.timestampUs())
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: usePartial, sessionImpl: sessionImpl)
     }
 
     @objc(sendMouseButtonWithButton:down:sessionImpl:)
     func sendMouseButton(button: UInt8, down: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
-        let encoded = encoderLock.withLock { encoder.encodeMouseButton(button: button, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeMouseButton(button: button, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down)
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
     @objc(sendMouseWheelWithDelta:sessionImpl:)
     func sendMouseWheel(delta: Int16, sessionImpl: OPNLibWebRTCSessionImpl?) {
-        let encoded = encoderLock.withLock { encoder.encodeMouseWheel(delta: delta, timestampUs: OPNInputProtocolEncoder.timestampUs()) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeMouseWheel(delta: delta, timestampUs: OPNInputProtocolEncoder.timestampUs())
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
     @objc(sendUtf8Text:sessionImpl:)
     func sendUtf8Text(_ text: String, sessionImpl: OPNLibWebRTCSessionImpl?) {
-        let encoded = encoderLock.withLock { encoder.encodeUtf8Text(text) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeUtf8Text(text)
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
@@ -117,36 +136,36 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                   channel.readyState == .open,
                   channel.bufferedAmount <= GeronimoInputChannel.gamepadInputBacklogLimitBytes else { return }
         }
-        let encoded = encoderLock.withLock { encoder.encodeGamepadState(controllerId: controllerId,
-                                                                        buttons: buttons,
-                                                                        leftTrigger: leftTrigger,
-                                                                        rightTrigger: rightTrigger,
-                                                                        leftStickX: leftStickX,
-                                                                        leftStickY: leftStickY,
-                                                                        rightStickX: rightStickX,
-                                                                        rightStickY: rightStickY,
-                                                                        timestampUs: timestampUs,
-                                                                        bitmap: bitmap,
-                                                                        partiallyReliable: usePartial) }
+        os_unfair_lock_lock(&encoderLock)
+        let encoded = encoder.encodeGamepadState(controllerId: controllerId,
+                                                 buttons: buttons,
+                                                 leftTrigger: leftTrigger,
+                                                 rightTrigger: rightTrigger,
+                                                 leftStickX: leftStickX,
+                                                 leftStickY: leftStickY,
+                                                 rightStickX: rightStickX,
+                                                 rightStickY: rightStickY,
+                                                 timestampUs: timestampUs,
+                                                 bitmap: bitmap,
+                                                 partiallyReliable: usePartial)
+        os_unfair_lock_unlock(&encoderLock)
         sendInput(data: encoded, partiallyReliable: usePartial, sessionImpl: sessionImpl)
     }
 
     @objc(handleDataChannelStateWithLabel:open:)
     func handleDataChannelState(label: String, open: Bool) {
-        let shouldStopHeartbeat = stateLock.withLock { () -> Bool in
-            if label == GeronimoInputChannel.reliableLabel {
-                reliableOpen = open
-            } else if label == GeronimoInputChannel.partiallyReliableLabel {
-                partialOpen = open
-            }
-            inputReady = handshakeComplete && reliableOpen && (!inputConfiguration.partialReliableEnabled || partialOpen)
-            if !open {
-                inputReady = false
-                return true
-            }
-            return false
+        os_unfair_lock_lock(&stateLock)
+        if label == GeronimoInputChannel.reliableLabel {
+            reliableOpen = open
+        } else if label == GeronimoInputChannel.partiallyReliableLabel {
+            partialOpen = open
         }
-        if shouldStopHeartbeat {
+        inputReady = handshakeComplete && reliableOpen && (!inputConfiguration.partialReliableEnabled || partialOpen)
+        if !open {
+            inputReady = false
+        }
+        os_unfair_lock_unlock(&stateLock)
+        if !open {
             stopHeartbeat()
         }
     }
@@ -173,11 +192,13 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             return
         }
 
-        encoderLock.withLock { encoder.setProtocolVersion(version) }
-        stateLock.withLock {
-            handshakeComplete = true
-            inputReady = handshakeComplete && reliableOpen && (!inputConfiguration.partialReliableEnabled || partialOpen)
-        }
+        os_unfair_lock_lock(&encoderLock)
+        encoder.setProtocolVersion(version)
+        os_unfair_lock_unlock(&encoderLock)
+        os_unfair_lock_lock(&stateLock)
+        handshakeComplete = true
+        inputReady = handshakeComplete && reliableOpen && (!inputConfiguration.partialReliableEnabled || partialOpen)
+        os_unfair_lock_unlock(&stateLock)
         sendInput(data: data, partiallyReliable: false, sessionImpl: sessionImpl)
         startHeartbeat(sessionImpl: sessionImpl)
         WebRTCMediaTelemetry.capture("webrtc.native.input.ready", level: .debug, message: "Input handshake complete.", attributes: ["version": String(version), "inputReady": String(isInputReady)])
@@ -186,23 +207,29 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     @objc(stop)
     func stop() {
         stopHeartbeat()
-        stateLock.withLock {
-            inputReady = false
-            reliableOpen = false
-            partialOpen = false
-            handshakeComplete = false
-            inputConfiguration = .fallback
-        }
+        os_unfair_lock_lock(&stateLock)
+        inputReady = false
+        reliableOpen = false
+        partialOpen = false
+        handshakeComplete = false
+        inputConfiguration = .fallback
+        os_unfair_lock_unlock(&stateLock)
         sessionImpl = nil
     }
 
     private func shouldSendHIDPartiallyReliable() -> Bool {
-        stateLock.withLock { inputConfiguration.partialReliableEnabled && inputConfiguration.partiallyReliableHIDMask != 0 }
+        os_unfair_lock_lock(&stateLock)
+        let result = inputConfiguration.partialReliableEnabled && inputConfiguration.partiallyReliableHIDMask != 0
+        os_unfair_lock_unlock(&stateLock)
+        return result
     }
 
     private func shouldSendGamepadPartiallyReliable(controllerId: UInt16) -> Bool {
         let index = min(Int(controllerId & 0x03), 31)
-        return stateLock.withLock { inputConfiguration.partialReliableEnabled && (inputConfiguration.partiallyReliableGamepadMask & UInt32(1 << index)) != 0 }
+        os_unfair_lock_lock(&stateLock)
+        let result = inputConfiguration.partialReliableEnabled && (inputConfiguration.partiallyReliableGamepadMask & UInt32(1 << index)) != 0
+        os_unfair_lock_unlock(&stateLock)
+        return result
     }
 
     private func handleReadyMessage(_ data: Data) {
@@ -264,7 +291,9 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         timer.schedule(deadline: .now() + 2, repeating: 2, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in
             guard let self, self.isInputReady else { return }
-            let heartbeat = self.encoderLock.withLock { self.encoder.encodeHeartbeat() }
+            os_unfair_lock_lock(&self.encoderLock)
+            let heartbeat = self.encoder.encodeHeartbeat()
+            os_unfair_lock_unlock(&self.encoderLock)
             self.sendInput(data: heartbeat, partiallyReliable: false, sessionImpl: self.sessionImpl)
         }
         heartbeat = timer
@@ -274,14 +303,6 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     private func stopHeartbeat() {
         heartbeat?.cancel()
         heartbeat = nil
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ body: () -> T) -> T {
-        lock()
-        defer { unlock() }
-        return body()
     }
 }
 
