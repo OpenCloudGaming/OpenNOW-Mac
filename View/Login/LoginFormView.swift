@@ -12,6 +12,8 @@ struct LoginFormView: View {
     let accounts: [LoginAccount]
     var focusedField: FocusState<LoginField?>.Binding
 
+    @State private var isShowingSignIn = false
+
     var body: some View {
         GeometryReader { proxy in
             let metrics = VendorLoginWallMetrics(size: proxy.size)
@@ -20,15 +22,33 @@ struct LoginFormView: View {
                 leftPanel(metrics: metrics)
                     .frame(width: metrics.panelWidth, height: proxy.size.height)
 
-                if viewModel.isShowingTermsOfUse {
-                    TermsOfUseDialog(viewModel: viewModel)
+                if isShowingSignIn {
+                    SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: { isShowingSignIn = false })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black.opacity(0.70))
+                        .background {
+                            MacForceNowDesign.Surface.scrim
+                                .contentShape(Rectangle())
+                                .onTapGesture { isShowingSignIn = false }
+                        }
                         .transition(.opacity)
+                }
+
+                if viewModel.isShowingTermsOfUse {
+                    TermsOfUseDialog(
+                        viewModel: viewModel,
+                        onAccept: {
+                            viewModel.acceptTermsOfUse()
+                            isShowingSignIn = true
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacForceNowDesign.Surface.scrim)
+                    .transition(.opacity)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
+        .animation(.snappy, value: isShowingSignIn)
         .animation(.snappy, value: viewModel.isShowingTermsOfUse)
     }
 
@@ -51,93 +71,12 @@ struct LoginFormView: View {
                 endPoint: .trailing
             )
 
-            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
-                .scaledToFit()
-                .frame(width: 156, height: 88)
-                .position(x: metrics.contentLeft + 78, y: 68)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Spacer()
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Get In. Game On.")
-                        .font(.nvidiaSans(size: 34, weight: .bold))
-                        .foregroundStyle(.white)
-                        .tracking(0)
-                        .lineLimit(1)
-                        .frame(height: 48, alignment: .leading)
-                        .padding(.bottom, 24)
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        VendorContentString(text: "GeForce RTX performance on any device")
-                        VendorContentString(text: "Connect to top PC game stores")
-                        VendorContentString(text: "Stream thousands of supported titles")
-                        VendorContentString(text: "Play hundreds of free-to-play favorites instantly")
-                    }
-                }
-                .padding(.bottom, 34)
-
-                providerPicker
-                    .padding(.bottom, 18)
-
-                Button(action: startVendorLogin) {
-                    Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
-                }
-                .buttonStyle(VendorGetInButtonStyle())
-                .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
-                .accessibilityHint("Opens \(viewModel.selectedProvider.title) authentication in your browser")
-                .padding(.bottom, 12)
-
-                Button(action: startDeviceCodeLogin) {
-                    Text("BROWSER SIGN-IN")
-                        .font(.nvidiaSans(size: 12, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
-                        .tracking(0.8)
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
-                .accessibilityHint("Opens NVIDIA browser authentication")
-                .padding(.bottom, viewModel.deviceCodeUserCode.isEmpty ? 32 : 12)
-
-                if !viewModel.deviceCodeUserCode.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(viewModel.deviceCodeUserCode)
-                            .font(.system(size: 24, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white)
-                        Text(viewModel.deviceCodeVerificationURI)
-                            .font(.nvidiaSans(size: 12, weight: .regular))
-                            .foregroundStyle(MacForceNowDesign.Text.secondary)
-                            .lineLimit(2)
-                    }
-                    .padding(.bottom, 20)
-                }
-
-                if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
-                    Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
-                        .font(.nvidiaSans(size: 13, weight: .regular))
-                        .foregroundStyle(viewModel.validationMessage.isEmpty ? MacForceNowDesign.accent : .orange)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                        .padding(.bottom, 14)
-                }
-
-                Spacer()
+            ViewThatFits(in: .vertical) {
+                marketingColumn(metrics: metrics, headlineSize: 34, logoWidth: 156, logoHeight: 88, showsBullets: true)
+                marketingColumn(metrics: metrics, headlineSize: 30, logoWidth: 140, logoHeight: 79, showsBullets: false)
+                marketingColumn(metrics: metrics, headlineSize: 26, logoWidth: 124, logoHeight: 70, showsBullets: false)
             }
-            .padding(.top, 88)
-            .padding(.leading, metrics.contentLeft)
-            .padding(.trailing, metrics.contentRight)
-            .padding(.bottom, metrics.contentBottom)
-            .frame(width: metrics.panelWidth, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text(appVersionText)
-                    .font(.nvidiaSans(size: 14, weight: .regular))
-                    .foregroundStyle(MacForceNowDesign.Text.secondary)
-                    .lineLimit(1)
-            }
-            .frame(width: max(metrics.panelWidth - metrics.contentLeft - metrics.contentRight, 0), alignment: .leading)
-            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 36)
+            .frame(width: metrics.panelWidth, height: metrics.height)
 
             Rectangle()
                 .fill(MacForceNowDesign.accent)
@@ -148,83 +87,58 @@ struct LoginFormView: View {
         .background(.black)
     }
 
-    private var providerPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SERVICE PROVIDER")
-                .font(.nvidiaSans(size: 11, weight: .bold))
-                .foregroundStyle(MacForceNowDesign.Text.tertiary)
-                .tracking(0.8)
+    private func marketingColumn(metrics: VendorLoginWallMetrics, headlineSize: CGFloat, logoWidth: CGFloat, logoHeight: CGFloat, showsBullets: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: logoWidth, height: logoHeight)
+                .padding(.bottom, MacForceNowDesign.Spacing.large)
 
-            MacForceNowDropdownMenu(
-                items: viewModel.providers.map { provider in
-                    MacForceNowDropdownItem(
-                        id: provider.id,
-                        title: provider.title,
-                        isSelected: provider.id == viewModel.selectedProvider.id
-                    ) { viewModel.selectProvider(provider) }
-                },
-                isDisabled: viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating
-            ) {
-                HStack(spacing: MacForceNowDesign.Spacing.small) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(viewModel.selectedProvider.title)
-                            .font(.nvidiaSans(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        if !viewModel.selectedProvider.loginProviderCode.isEmpty {
-                            Text(viewModel.selectedProvider.loginProviderCode)
-                                .font(.nvidiaSans(size: 11, weight: .regular))
-                                .foregroundStyle(MacForceNowDesign.Text.tertiary)
-                                .lineLimit(1)
-                        }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("MACFORCE NOW")
+                    .font(.nvidiaSans(size: 11, weight: .bold))
+                    .foregroundStyle(MacForceNowDesign.accent)
+                    .tracking(1.4)
+                    .padding(.bottom, MacForceNowDesign.Spacing.xxSmall)
+
+                Text("Get In. Game On.")
+                    .font(.nvidiaSans(size: headlineSize, weight: .bold))
+                    .foregroundStyle(MacForceNowDesign.Text.primary)
+                    .lineLimit(1)
+                    .padding(.bottom, MacForceNowDesign.Spacing.medium)
+
+                if showsBullets {
+                    VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.small) {
+                        VendorContentString(text: "GeForce RTX performance on any device")
+                        VendorContentString(text: "Connect to top PC game stores")
+                        VendorContentString(text: "Stream thousands of supported titles")
+                        VendorContentString(text: "Play hundreds of free-to-play favorites instantly")
                     }
-
-                    Spacer(minLength: 12)
-
-                    Image(systemName: "chevron.down")
-                        .font(.nvidiaSans(size: 11, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
-                }
-                .padding(.horizontal, 14)
-                .frame(maxWidth: 260, minHeight: 50, alignment: .leading)
-                .background(Color.white.opacity(0.08))
-                .overlay {
-                    Rectangle()
-                        .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
                 }
             }
+            .padding(.bottom, MacForceNowDesign.Spacing.xxxLarge)
 
-            if viewModel.isLoadingProviders {
-                Text("Loading provider list...")
-                    .font(.nvidiaSans(size: 12, weight: .regular))
-                    .foregroundStyle(MacForceNowDesign.Text.tertiary)
+            Button(action: openSignIn) {
+                Text("GET IN")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(VendorGetInButtonStyle(size: .large))
+            .frame(maxWidth: 260)
+            .accessibilityHint("Opens the GeForce NOW sign-in window")
         }
+        .padding(.vertical, MacForceNowDesign.Spacing.medium)
+        .padding(.leading, metrics.contentLeft)
+        .padding(.trailing, metrics.contentRight)
+        .frame(width: metrics.panelWidth, alignment: .leading)
     }
 
-    private func startVendorLogin() {
+    private func openSignIn() {
         viewModel.rememberSession = true
         if viewModel.acceptedTerms {
-            viewModel.launchOAuth()
+            isShowingSignIn = true
         } else {
             viewModel.presentTermsOfUseIfNeeded()
         }
-    }
-
-    private func startDeviceCodeLogin() {
-        viewModel.rememberSession = true
-        viewModel.acceptedTerms = true
-        viewModel.launchDeviceCodeOAuth()
-    }
-
-    private var appVersionText: String {
-        let dictionary = Bundle.main.infoDictionary ?? [:]
-        let version = (dictionary["CFBundleShortVersionString"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let build = (dictionary["CFBundleVersion"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !version.isEmpty, !build.isEmpty { return "\(version).\(build)" }
-        if !version.isEmpty { return version }
-        if !build.isEmpty { return build }
-        return "Unknown"
     }
 }
 
@@ -233,7 +147,6 @@ private struct VendorLoginWallMetrics {
     let panelWidth: CGFloat
     let contentLeft: CGFloat
     let contentRight: CGFloat
-    let contentBottom: CGFloat
 
     init(size: CGSize) {
         height = size.height
@@ -265,7 +178,52 @@ private struct VendorLoginWallMetrics {
         panelWidth = min(rawPanelWidth, max(size.width, 320))
         contentLeft = 24 + sideSpacing
         contentRight = 40
-        contentBottom = 48
+    }
+}
+
+private struct ProviderCard: View {
+    let provider: LoginProvider
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: MacForceNowDesign.Spacing.small) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.title)
+                        .font(.nvidiaSans(size: 14, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                        .lineLimit(1)
+                    if !provider.loginProviderCode.isEmpty {
+                        Text(provider.loginProviderCode)
+                            .font(.nvidiaSans(size: 11, weight: .regular))
+                            .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: MacForceNowDesign.Spacing.small)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.nvidiaSans(size: 12, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.accent)
+                }
+            }
+            .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .overlay {
+                Rectangle()
+                    .stroke(isSelected ? MacForceNowDesign.accent : (isHovering ? MacForceNowDesign.Stroke.strong : MacForceNowDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -273,11 +231,11 @@ private struct VendorContentString: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: MacForceNowDesign.Spacing.medium) {
             Circle()
                 .fill(MacForceNowDesign.accent)
                 .frame(width: 8, height: 8)
-                .padding(.top, 4)
+                .padding(.top, MacForceNowDesign.Spacing.xxSmall)
             Text(text)
                 .font(.nvidiaSans(size: 14, weight: .regular))
                 .foregroundStyle(MacForceNowDesign.Text.secondary)
@@ -287,51 +245,203 @@ private struct VendorContentString: View {
     }
 }
 
-private struct TermsOfUseDialog: View {
+private struct SignInModal: View {
     @ObservedObject var viewModel: LoginViewModel
+    let availableSize: CGSize
+    let onClose: () -> Void
+
+    private var panelWidth: CGFloat {
+        max(min(520, availableSize.width - MacForceNowDesign.Spacing.pageHorizontal * 2), 280)
+    }
+
+    private var panelMaxHeight: CGFloat {
+        max(availableSize.height - MacForceNowDesign.Spacing.pageHorizontal * 2, 320)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.nvidiaSans(size: 22, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent)
-                Text("GeForce NOW Terms of Use")
-                    .font(.nvidiaSans(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(MacForceNowDesign.accent)
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
+                HStack(alignment: .top) {
+                    Text("Sign in to GeForce NOW")
+                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                    Spacer(minLength: MacForceNowDesign.Spacing.small)
+                    ModalCloseButton(action: onClose)
+                }
+
+                ViewThatFits(in: .vertical) {
+                    formContent
+                    ScrollView(.vertical) { formContent }
+                }
             }
+            .padding(MacForceNowDesign.Spacing.xLarge)
+        }
+        .frame(width: panelWidth)
+        .frame(maxHeight: panelMaxHeight)
+        .background(MacForceNowDesign.Surface.panel)
+        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
+        .onExitCommand(perform: onClose)
+    }
 
-            Text("MacForce Now is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
-                .font(.nvidiaSans(size: 13, weight: .regular))
-                .foregroundStyle(.white.opacity(0.78))
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+    private var formContent: some View {
+        VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xSmall) {
+                Text("SERVICE PROVIDER")
+                    .font(.nvidiaSans(size: 11, weight: .bold))
+                    .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                    .tracking(0.8)
 
-            if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
-                HStack {
-                    Image(systemName: "link")
-                        .font(.nvidiaSans(size: 11, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
-                    Link("Read the full GeForce NOW Terms of Use", destination: touURL)
-                        .font(.nvidiaSans(size: 13, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
+                VStack(spacing: MacForceNowDesign.Spacing.xSmall) {
+                    ForEach(viewModel.providers) { provider in
+                        ProviderCard(
+                            provider: provider,
+                            isSelected: provider.id == viewModel.selectedProvider.id
+                        ) { viewModel.selectProvider(provider) }
+                        .disabled(viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                    }
+                }
+
+                if viewModel.isLoadingProviders {
+                    Text("Loading provider list...")
+                        .font(.nvidiaSans(size: 12, weight: .regular))
+                        .foregroundStyle(MacForceNowDesign.Text.tertiary)
                 }
             }
 
-            Spacer(minLength: 8)
+            Button {
+                viewModel.rememberSession = true
+                viewModel.launchOAuth()
+            } label: {
+                Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(VendorGetInButtonStyle())
+            .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+            .accessibilityHint("Opens \(viewModel.selectedProvider.title) authentication in your browser")
+
+            Button {
+                viewModel.rememberSession = true
+                viewModel.launchDeviceCodeOAuth()
+            } label: {
+                Text("BROWSER SIGN-IN")
+                    .font(.nvidiaSans(size: 12, weight: .bold))
+                    .foregroundStyle(MacForceNowDesign.accent)
+                    .tracking(0.8)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+            .accessibilityHint("Opens NVIDIA browser authentication")
+
+            if !viewModel.deviceCodeUserCode.isEmpty {
+                VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xSmall) {
+                    Text("ENTER THIS CODE IN YOUR BROWSER")
+                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                        .tracking(0.8)
+                    Text(viewModel.deviceCodeUserCode)
+                        .font(.nvidiaSans(size: 22, weight: .bold))
+                        .monospacedDigit()
+                        .tracking(1.6)
+                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                    Text(viewModel.deviceCodeVerificationURI)
+                        .font(.nvidiaSans(size: 12, weight: .regular))
+                        .foregroundStyle(MacForceNowDesign.Text.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
+                Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
+                    .font(.nvidiaSans(size: 13, weight: .regular))
+                    .foregroundStyle(viewModel.validationMessage.isEmpty ? MacForceNowDesign.accent : .orange)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct ModalCloseButton: View {
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.nvidiaSans(size: 11, weight: .bold))
+                .foregroundStyle(isHovering ? MacForceNowDesign.Text.primary : MacForceNowDesign.Text.secondary)
+                .frame(width: 28, height: 28)
+                .background(isHovering ? Color.white.opacity(0.08) : Color.clear)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("Close")
+    }
+}
+
+private struct TermsOfUseDialog: View {
+    @ObservedObject var viewModel: LoginViewModel
+    var onAccept: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(MacForceNowDesign.accent)
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
+                HStack(spacing: MacForceNowDesign.Spacing.small) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.accent)
+                    Text("GeForce NOW Terms of Use")
+                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                }
+
+                Text("MacForce Now is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
+                    .font(.nvidiaSans(size: 13, weight: .regular))
+                    .foregroundStyle(MacForceNowDesign.Text.secondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
+                    HStack(spacing: MacForceNowDesign.Spacing.xSmall) {
+                        Image(systemName: "link")
+                            .font(.nvidiaSans(size: 11, weight: .bold))
+                            .foregroundStyle(MacForceNowDesign.accent)
+                        Link("Read the full GeForce NOW Terms of Use", destination: touURL)
+                            .font(.nvidiaSans(size: 13, weight: .bold))
+                            .foregroundStyle(MacForceNowDesign.accent)
+                    }
+                }
+            }
+            .padding(MacForceNowDesign.Spacing.card)
 
             HStack {
                 Button("Decline", action: viewModel.declineTermsOfUse)
                     .buttonStyle(VendorTermsDeclineButtonStyle())
-                Spacer()
-                Button("Accept & Continue", action: viewModel.acceptTermsOfUse)
+                Spacer(minLength: MacForceNowDesign.Spacing.small)
+                Button("Accept & Continue", action: onAccept)
                     .buttonStyle(VendorGetInButtonStyle())
             }
+            .padding(.horizontal, MacForceNowDesign.Spacing.card)
+            .padding(.bottom, MacForceNowDesign.Spacing.card)
         }
-        .padding(28)
         .frame(width: 460)
-        .background(Color.black.opacity(0.92))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        .background(MacForceNowDesign.Surface.panel)
+        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
+        .onExitCommand(perform: viewModel.declineTermsOfUse)
     }
 }
 
@@ -339,10 +449,10 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.nvidiaSans(size: 13, weight: .bold))
-            .foregroundStyle(.white.opacity(0.72))
-            .padding(.horizontal, 22)
-            .frame(height: 46)
-            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.05))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1) }
+            .foregroundStyle(.white)
+            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
+            .frame(height: 36)
+            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
     }
 }

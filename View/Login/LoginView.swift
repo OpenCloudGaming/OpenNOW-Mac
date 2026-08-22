@@ -42,9 +42,10 @@ struct LoginView: View {
             }
 
             if viewModel.isLaunchingOAuth || viewModel.isAuthenticating {
-                VendorSplashLoadingView(message: "Connecting to GeForce NOW")
+                VendorSplashLoadingView(message: "Connecting to GeForce NOW", onCancel: viewModel.cancelPendingLogin)
                     .transition(.opacity)
                     .zIndex(10)
+                    .onExitCommand(perform: viewModel.cancelPendingLogin)
             }
         }
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }

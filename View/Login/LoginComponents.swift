@@ -71,6 +71,7 @@ struct VendorResourceImage: View {
 struct VendorSplashLoadingView: View {
     var message = "Loading GeForce NOW catalog"
     var showsMessage = true
+    var onCancel: (() -> Void)?
 
     var body: some View {
         GeometryReader { proxy in
@@ -118,6 +119,17 @@ struct VendorSplashLoadingView: View {
                                 .foregroundStyle(.white.opacity(0.72))
                         }
                     }
+
+                    if let onCancel {
+                        Button(action: onCancel) {
+                            Text("CANCEL")
+                                .font(.nvidiaSans(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .tracking(0.3)
+                        }
+                        .buttonStyle(VendorSplashCancelButtonStyle())
+                        .padding(.top, isCompact ? 8 : 12)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -125,6 +137,16 @@ struct VendorSplashLoadingView: View {
             .clipped()
         }
         .background(.black)
+    }
+}
+
+private struct VendorSplashCancelButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
+            .frame(height: 34)
+            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -326,7 +348,7 @@ struct AccountAvatar: View {
 
     var body: some View {
         Text(initials)
-            .font(.system(size: size * 0.34, weight: .bold, design: .rounded))
+            .nvidiaFont(size: size * 0.34, weight: .bold)
             .foregroundStyle(.black)
             .frame(width: size, height: size)
             .background(MacForceNowDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))

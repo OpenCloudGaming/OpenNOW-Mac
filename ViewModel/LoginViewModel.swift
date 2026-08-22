@@ -26,6 +26,7 @@ final class LoginViewModel: ObservableObject {
     @Published var isLoadingProviders = false
     @Published var isLaunchingOAuth = false
     @Published var isAuthenticating = false
+    private var loginLaunchGeneration = 0
     @Published var requestedFocus: LoginField?
     @Published var currentAuthorizationURL = ""
     @Published var pendingGameShortcut: GFNGameShortcut?
@@ -144,6 +145,17 @@ final class LoginViewModel: ObservableObject {
         Task { await beginDeviceCodeOAuth() }
     }
 
+    func cancelPendingLogin() {
+        guard isLaunchingOAuth || isAuthenticating else { return }
+        loginLaunchGeneration += 1
+        isLaunchingOAuth = false
+        isAuthenticating = false
+        deviceCodeUserCode = ""
+        deviceCodeVerificationURI = ""
+        validationMessage = "Sign-in cancelled. Choose GET IN to try again."
+        MacForceNowLog.info(.auth, "User cancelled pending sign-in")
+    }
+
     func completeOAuthWithCallbackText() {
         Task { await completeOAuth(callbackText: oauthCallbackText) }
     }
@@ -213,8 +225,9 @@ final class LoginViewModel: ObservableObject {
         isLaunchingOAuth = true
         validationMessage = "Finish \(loginProvider.title) sign-in in the browser. MacForce Now will continue automatically."
 
+        let generation = loginLaunchGeneration
         authService.startOAuthLogin(providerIdpId: loginProvider.idpId) { [weak self] success, session, error in
-            guard let self else { return }
+            guard let self, generation == self.loginLaunchGeneration else { return }
             self.selectedProvider = loginProvider
             self.isLaunchingOAuth = false
             self.currentAuthorizationURL = ""
@@ -254,13 +267,15 @@ final class LoginViewModel: ObservableObject {
         isLaunchingOAuth = true
         validationMessage = "Enter the device code in your browser to connect \(loginProvider.title)."
 
+        let generation = loginLaunchGeneration
         authService.startStarfleetDeviceCodeLogin(providerIdpId: loginProvider.idpId) { [weak self] challenge in
-            guard let self else { return }
+            guard let self, generation == self.loginLaunchGeneration else { return }
+            self.isLaunchingOAuth = false
             self.deviceCodeUserCode = challenge.userCode
             self.deviceCodeVerificationURI = challenge.verificationURIComplete.isEmpty ? challenge.verificationURI : challenge.verificationURIComplete
             self.validationMessage = "Enter code \(challenge.userCode) at \(self.deviceCodeVerificationURI)."
         } completion: { [weak self] success, session, error in
-            guard let self else { return }
+            guard let self, generation == self.loginLaunchGeneration else { return }
             self.selectedProvider = loginProvider
             self.isLaunchingOAuth = false
             self.currentAuthorizationURL = ""

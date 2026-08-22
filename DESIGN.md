@@ -218,8 +218,11 @@ Square dropdown replacing native `Menu` for every app-shell dropdown: game detai
 "⋮" actions, catalog sort and filter groups, recordings sort, login provider picker.
 Built from `MacForceNowDropdownPanel` + `MacForceNowDropdownRow`
 (`View/Components/MacForceNowDropdown.swift`). Panel: Panel Raised background, 1px
-Stroke Regular, 4 (Menu Panel Vertical) padding, width 208, leading-aligned to the
-trigger and anchored 4pt below it, no shadow. Rows: full width, height 30, 12
+Stroke Regular, 4 (Menu Panel Vertical) padding, minimum width 208 (expands to the
+trigger's width when the trigger is wider, e.g. the login provider picker),
+leading-aligned to the trigger and anchored 4pt below it, no shadow. When the panel would extend past the
+window's bottom edge it constrains to the available space below and scrolls.
+Rows: full width, height 30, 12
 (Control Row) horizontal padding, NVIDIA Sans 12pt bold — Text Secondary resting,
 Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
 checkmark. Dismisses on outside click, Escape, or selection, and closes when the
@@ -241,6 +244,44 @@ resting / 0.16 hover), 13 icon-to-text spacing, 14pt bold title over an 11pt med
 subtitle (white @ 0.52). Active row: accent @ 0.095 fill + 3px accent leading bar.
 Destructive rows tint icon and title #FF8A80. Sign Out is pinned below a divider
 with 10 (Section) horizontal / 12 (Small) vertical padding.
+
+### Login Wall Layout
+
+The login panel is marketing-only: logo, eyebrow, headline, marketing bullets, and a
+large GET IN CTA that opens the Sign-In Modal. The column never scrolls; it is built
+with `ViewThatFits(in: .vertical)` over full, no-bullets, and compact (smaller logo
+and headline) variants and renders the first that fits the window height, vertically
+centered in the panel.
+
+### Sign-In Modal (login)
+
+Centered dialog over the Scrim, up to 520 wide, following the modal spec: Surface
+Panel background, 1px Stroke Regular, 2px accent top bar, modal shadow (#000000 @
+0.58, radius 28, y 20), 24 (X-Large) body padding. Width shrinks to the window
+minus 40 (Page Horizontal) margins on narrow windows (floor 280); when the form
+exceeds the window height the title and close control stay pinned and the body
+scrolls. Holds the 20pt bold title with trailing
+close control, SERVICE PROVIDER cards stacked full-width, the GET IN primary (full
+width) over the BROWSER SIGN-IN text action, device-code block, and validation
+line. Closes via the square 28×28 close control
+(xmark, Text Secondary resting / Text Primary + #FFFFFF @ 0.08 hover) trailing in
+the title row, a click on the scrim, or Escape. The Terms of Use dialog stacks
+above it on first sign-in and opens the modal on accept.
+
+While an OAuth launch is pending, the full-cover connecting splash overlays the
+window with a square Cancel button (white @ 0.08 fill, 1px Stroke Regular, 13pt
+bold, height 34) that aborts the pending sign-in and returns to the modal. The
+device-code flow clears the splash as soon as the code is ready so the code stays
+visible.
+
+### Provider Card (login)
+
+Selectable square card for each service provider inside the Sign-In Modal, stacked
+vertically at full modal width. 14pt bold title over an 11pt Text Tertiary
+provider code, 12 (Control Row) horizontal padding, min height 50. Resting: #FFFFFF @ 0.08 fill, 1px Stroke
+Regular. Hover: #FFFFFF @ 0.16 fill, 1px Stroke Strong. Selected: 2px accent
+stroke, accent checkmark trailing, and the `.isSelected` accessibility trait.
+Square corners.
 
 ### Text Fields (login)
 

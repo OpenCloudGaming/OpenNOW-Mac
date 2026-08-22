@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MacForceNowDropdownItem: Identifiable {
@@ -42,8 +43,13 @@ struct MacForceNowDropdownRow: View {
 
 struct MacForceNowDropdownPanel: View {
     let items: [MacForceNowDropdownItem]
+    var width: CGFloat?
 
     @Environment(\.opnUIScale) private var uiScale
+
+    static func minimumWidth(scale: CGFloat) -> CGFloat {
+        208 * scale
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,7 +58,7 @@ struct MacForceNowDropdownPanel: View {
             }
         }
         .padding(.vertical, MacForceNowDesign.Spacing.menuPanelVertical(scale: uiScale))
-        .frame(width: 208 * uiScale)
+        .frame(width: width ?? Self.minimumWidth(scale: uiScale))
         .background(MacForceNowDesign.Surface.panelRaised)
         .overlay {
             Rectangle()
@@ -68,35 +74,73 @@ struct MacForceNowDropdownMenu<Label: View>: View {
 
     @Environment(\.opnUIScale) private var uiScale
     @State private var isPresented = false
-    @State private var triggerHeight: CGFloat = 0
+    @State private var triggerSize: CGSize = .zero
+    @State private var panelHeight: CGFloat = 0
+    @State private var spaceProbe = DropdownSpaceProbe()
 
     var body: some View {
-        Button { isPresented.toggle() } label: { label() }
-            .buttonStyle(.plain)
-            .disabled(isDisabled)
-            .background(
-                GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { triggerHeight = proxy.size.height }
-                        .onChange(of: proxy.size.height) { _, newHeight in triggerHeight = newHeight }
-                }
-            )
-            .overlay {
-                if isPresented {
-                    Color.black.opacity(0.001)
-                        .frame(width: 6000, height: 6000)
-                        .contentShape(Rectangle())
-                        .onTapGesture { isPresented = false }
-                }
+        Button {
+            spaceProbe.refresh()
+            isPresented.toggle()
+        } label: { label() }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { triggerSize = proxy.size }
+                    .onChange(of: proxy.size) { _, newSize in triggerSize = newSize }
             }
-            .overlay(alignment: .topLeading) {
-                if isPresented {
-                    MacForceNowDropdownPanel(items: dismissingItems)
-                        .offset(y: triggerHeight + MacForceNowDesign.Spacing.xxSmall(scale: uiScale))
-                }
+        )
+        .background(DropdownSpaceProbeView(probe: spaceProbe))
+        .overlay {
+            if isPresented {
+                Color.black.opacity(0.001)
+                    .frame(width: 6000, height: 6000)
+                    .contentShape(Rectangle())
+                    .onTapGesture { isPresented = false }
             }
-            .onExitCommand { isPresented = false }
-            .onChange(of: items.map(\.id)) { _, _ in isPresented = false }
+        }
+        .overlay(alignment: .topLeading) {
+            if isPresented {
+                panel
+            }
+        }
+        .onExitCommand { isPresented = false }
+        .onChange(of: items.map(\.id)) { _, _ in isPresented = false }
+    }
+
+    private var anchorSpacing: CGFloat {
+        MacForceNowDesign.Spacing.xxSmall(scale: uiScale)
+    }
+
+    private var panelWidth: CGFloat {
+        max(MacForceNowDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
+    }
+
+    @ViewBuilder
+    private var panel: some View {
+        let maximumHeight = spaceProbe.spaceBelow - anchorSpacing
+
+        if spaceProbe.isConstrained, maximumHeight > 0, panelHeight > maximumHeight {
+            ScrollView(.vertical) {
+                measuredPanel
+            }
+            .frame(width: panelWidth, height: maximumHeight)
+            .offset(y: triggerSize.height + anchorSpacing)
+        } else {
+            measuredPanel
+                .offset(y: triggerSize.height + anchorSpacing)
+        }
+    }
+
+    private var measuredPanel: some View {
+        MacForceNowDropdownPanel(items: dismissingItems, width: panelWidth)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { height in
+                panelHeight = height
+            }
     }
 
     private var dismissingItems: [MacForceNowDropdownItem] {
@@ -106,5 +150,36 @@ struct MacForceNowDropdownMenu<Label: View>: View {
                 item.action()
             }
         }
+    }
+}
+
+@MainActor
+private final class DropdownSpaceProbe {
+    weak var probeView: NSView?
+    private(set) var spaceBelow: CGFloat = 0
+    private(set) var isConstrained = false
+
+    func refresh() {
+        guard let probeView, let window = probeView.window else {
+            isConstrained = false
+            return
+        }
+        let frameInWindow = probeView.convert(probeView.bounds, to: nil)
+        spaceBelow = max(frameInWindow.minY, 0)
+        isConstrained = true
+    }
+}
+
+private struct DropdownSpaceProbeView: NSViewRepresentable {
+    let probe: DropdownSpaceProbe
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        probe.probeView = view
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        probe.probeView = nsView
     }
 }
