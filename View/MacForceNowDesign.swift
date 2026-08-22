@@ -84,8 +84,39 @@ enum MacForceNowDesign {
 
     enum Radius {
         private static let baseAvatar: CGFloat = 14
+        private static let baseChip: CGFloat = 0
+        private static let baseCard: CGFloat = 2
+        private static let basePanel: CGFloat = 3
+
+        static let chip: CGFloat = baseChip
+        static let card: CGFloat = baseCard
+        static let panel: CGFloat = basePanel
 
         static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
+        static func chip(scale: CGFloat) -> CGFloat { baseChip * scale }
+        static func card(scale: CGFloat) -> CGFloat { baseCard * scale }
+        static func panel(scale: CGFloat) -> CGFloat { basePanel * scale }
+    }
+
+    /// Type roles for the app. `label`/`body` use NVIDIA Sans (brand voice);
+    /// `mono` is reserved for machine readouts (telemetry, counters, codes) so
+    /// numerals stay column-aligned while they tick.
+    enum Typography {
+        static func display(size: CGFloat, scale: CGFloat = 1) -> Font {
+            .nvidiaSans(size: size * scale, weight: .black)
+        }
+
+        static func label(size: CGFloat, scale: CGFloat = 1, weight: MacForceNowNVIDIAFont.Weight = .bold) -> Font {
+            .nvidiaSans(size: size * scale, weight: weight)
+        }
+
+        static func body(size: CGFloat, scale: CGFloat = 1, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+            .nvidiaSans(size: size * scale, weight: weight)
+        }
+
+        static func mono(size: CGFloat, scale: CGFloat = 1, weight: Font.Weight = .bold) -> Font {
+            .system(size: size * scale, weight: weight, design: .monospaced)
+        }
     }
 
     enum Motion {
@@ -94,6 +125,11 @@ enum MacForceNowDesign {
         /// so throttling to 30 fps halves render work on 60 Hz panels and quarters it
         /// on 120 Hz panels with no perceptible change for slow, large-area motion.
         static let ambientFrameInterval: TimeInterval = 1.0 / 30.0
+
+        /// 60 fps clock for short, foreground-hero motion (the startup scan sweep).
+        /// Fast small-area travel reads as stepped at 30 fps, and these surfaces
+        /// live for under three seconds, so the extra frames are worth paying for.
+        static let heroFrameInterval: TimeInterval = 1.0 / 60.0
     }
 
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
