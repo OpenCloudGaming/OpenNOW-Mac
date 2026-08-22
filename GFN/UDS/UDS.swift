@@ -306,14 +306,16 @@ public struct UDSURLSessionTransport: UDSHTTPTransport {
 public enum UDSServiceError: LocalizedError, Equatable, Sendable {
     case invalidRequest(UDS.UseCase)
     case invalidHTTPResponse
-    case httpStatus(Int)
+    case httpStatus(Int, responseBody: String = "")
     case invalidJSONResponse
 
     public var errorDescription: String? {
         switch self {
         case .invalidRequest(let useCase): "Invalid UDS request for \(useCase.rawValue)"
         case .invalidHTTPResponse: "Invalid UDS HTTP response"
-        case .httpStatus(let status): "UDS HTTP status \(status)"
+        // The server explains rejected payloads in the body, so keep it on the error: a bare
+        // "status 400" says nothing about which field it disliked.
+        case .httpStatus(let status, let body): body.isEmpty ? "UDS HTTP status \(status)" : "UDS HTTP status \(status): \(body)"
         case .invalidJSONResponse: "Invalid UDS JSON response"
         }
     }
@@ -360,7 +362,7 @@ public actor UDSService<Transport: UDSHTTPTransport> {
                     return json
                 }
                 guard shouldRetry(statusCode: response.statusCode), attempt < configuration.retryConfiguration.defaultRetries else {
-                    throw UDSServiceError.httpStatus(response.statusCode)
+                    throw UDSServiceError.httpStatus(response.statusCode, responseBody: Self.responseBodySummary(data))
                 }
             } catch let error as UDSServiceError {
                 throw error
@@ -370,6 +372,14 @@ public actor UDSService<Transport: UDSHTTPTransport> {
             try await sleepBeforeRetry(attempt: attempt)
             attempt += 1
         }
+    }
+
+    private static func responseBodySummary(_ data: Data, limit: Int = 300) -> String {
+        let text = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "…"
     }
 
     private func shouldRetry(statusCode: Int) -> Bool {

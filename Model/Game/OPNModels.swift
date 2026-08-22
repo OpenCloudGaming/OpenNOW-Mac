@@ -1174,7 +1174,7 @@ public final class OPNSessionJSONParser: NSObject {
 
     private static func colorQuality(bitDepth: Int, chromaFormat: Int) -> String {
         let tenBit = bitDepth >= 10
-        let fourFourFour = chromaFormat == 2
+        let fourFourFour = chromaFormat == 1
         if tenBit && fourFourFour { return "10bit_444" }
         if tenBit { return "10bit_420" }
         if fourFourFour { return "8bit_444" }

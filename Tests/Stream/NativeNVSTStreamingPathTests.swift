@@ -1204,7 +1204,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
               "profile": 4,
               "fallbackToLogicalResolution": true,
               "bitDepth": 1,
-              "chromaFormat": 2,
+              "chromaFormat": 1,
               "prefilterMode": 2,
               "prefilterSharpness": 7,
               "prefilterNoiseReduction": 6,
@@ -1254,7 +1254,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(features["profile"] as? Int == 4)
     #expect(features["fallbackToLogicalResolution"] as? Bool == true)
     #expect(features["bitDepth"] as? Int == 8)
-    #expect(features["chromaFormat"] as? Int == 2)
+    #expect(features["chromaFormat"] as? Int == 1)
     #expect(features["dynamicStreamingMode"] as? Int == 2)
     #expect(prefilter["mode"] as? Int == 2)
     #expect(prefilter["sharpnessLevel"] as? Int == 3)

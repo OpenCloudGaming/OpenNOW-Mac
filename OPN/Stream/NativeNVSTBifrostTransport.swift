@@ -1535,7 +1535,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     private static func chromaFormat(from colorQuality: String) -> Int {
-        colorQuality.localizedCaseInsensitiveContains("444") ? 2 : 0
+        colorQuality.localizedCaseInsensitiveContains("444") ? 1 : 0
     }
 
     static func normalizedRemoteControllersBitmap(_ value: Any?) -> UInt64? {

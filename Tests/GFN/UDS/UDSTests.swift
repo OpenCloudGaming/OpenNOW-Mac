@@ -160,7 +160,7 @@ private struct MockUDSTransport: UDSHTTPTransport {
 
     let authState = MockUDSState(responses: [(401, ["error": "auth"])])
     let authService = UDSService(configuration: UDSConfiguration(serverURLString: "https://uds.example", retryConfiguration: retry), transport: MockUDSTransport(state: authState))
-    await #expect(throws: UDSServiceError.httpStatus(401)) {
+    await #expect(throws: UDSServiceError.httpStatus(401, responseBody: "{\"error\":\"auth\"}")) {
         _ = try await authService.fetchEndOfSessionReport(payload: UDSReportPayload(source: .endOfSession, deviceId: "device"), accessToken: "access")
     }
     #expect(await authState.requests.count == 1)

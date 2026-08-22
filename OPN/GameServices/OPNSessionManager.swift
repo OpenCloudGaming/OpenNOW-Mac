@@ -714,7 +714,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     private func colorQuality(bitDepth: Int, chromaFormat: Int) -> String {
         let tenBit = bitDepth >= 10
-        let fourFourFour = chromaFormat == 2
+        let fourFourFour = chromaFormat == 1
         if tenBit && fourFourFour { return "10bit_444" }
         if tenBit { return "10bit_420" }
         if fourFourFour { return "8bit_444" }
@@ -939,7 +939,7 @@ private func requestedResolution(_ settings: [String: Any]) -> (width: Int, heig
 private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: Bool) -> [String: Any] {
     let colorQuality = string(settings["colorQuality"])
     let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0
-    let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 2 : 0
+    let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 1 : 0
     let requestedMaxBitrateKbps = min(max(int(settings["maxBitrateMbps"], fallback: 50), 1), 1_000) * 1_000
     return [
         "maxBitrateKbps": requestedMaxBitrateKbps,
