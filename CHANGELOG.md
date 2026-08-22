@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.20.0](https://github.com/anderson-oki/macforce-now/compare/v0.19.0...v0.20.0) (2026-08-22)
+
+
+### Features
+
+* redesign splash screen ([45e8338](https://github.com/anderson-oki/macforce-now/commit/45e8338c3b80a176567f2e9fd1f0bb05d19ef3d8))
+
+
+### Bug Fixes
+
+* chroma 444 ([b52f08d](https://github.com/anderson-oki/macforce-now/commit/b52f08dbe8c502ab1e42d26f45e92c0370806697))
+* initial catalog cache ([b7944ed](https://github.com/anderson-oki/macforce-now/commit/b7944edc6ffee88b883fe2a40bc789909c420c6b))
+* pillarbox 444 ([47ea503](https://github.com/anderson-oki/macforce-now/commit/47ea503a71c7016c869f3542a5ac86c356a70564))
+* stream end crash ([6b94dee](https://github.com/anderson-oki/macforce-now/commit/6b94dee983f0eeec1b437c5cad7a52716f604784))
+
 ## [0.19.0](https://github.com/anderson-oki/macforce-now/compare/v0.18.1...v0.19.0) (2026-08-22)
 
 
