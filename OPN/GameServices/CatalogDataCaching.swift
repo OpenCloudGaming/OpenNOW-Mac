@@ -12,6 +12,8 @@ protocol CatalogDataCaching {
     func saveCatalogAsync(key: String, result: OPNCatalogBrowseResult)
     func loadCatalogDefinitionsAsync(locale: String, maxAgeSeconds: TimeInterval, completion: @escaping @Sendable (NSDictionary?) -> Void)
     func saveCatalogDefinitionsAsync(locale: String, definitions: NSDictionary)
+    func loadPanelsAsync(kind: String, accountIdentifier: String, vpcId: String, locale: String, maxAgeSeconds: TimeInterval, completion: @escaping @Sendable ([OPNPanelResult]?) -> Void)
+    func savePanelsAsync(kind: String, accountIdentifier: String, vpcId: String, locale: String, panels: [OPNPanelResult])
 }
 
 extension OPNGameDataCache: CatalogDataCaching {}

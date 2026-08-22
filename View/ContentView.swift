@@ -23,6 +23,7 @@ struct ContentView: View {
     @State private var windowTitle = Self.defaultWindowTitle
     @State private var didBootstrap = false
     @State private var isShowingStartupLoading = true
+    @State private var usesQuickStartupIntro = false
 
     var body: some View {
         ZStack {
@@ -32,9 +33,11 @@ struct ContentView: View {
             .accessibilityHidden(isShowingStartupLoading)
 
             if isShowingStartupLoading {
-                MacForceNowStartupLoadingView()
-                    .transition(.opacity)
-                    .zIndex(100)
+                MacForceNowStartupLoadingView(
+                    duration: usesQuickStartupIntro ? MacForceNowStartupAnimation.quickDuration : MacForceNowStartupAnimation.duration
+                )
+                .transition(.opacity)
+                .zIndex(100)
             }
         }
             // Keep the floor low enough for Split View tiles and forced frames:
@@ -66,12 +69,16 @@ struct ContentView: View {
         syncViewModel()
         viewModel.bootstrap()
         drainOpenedFiles()
+        usesQuickStartupIntro = viewModel.activeSession != nil
         await dismissStartupLoading()
     }
 
     private func dismissStartupLoading() async {
+        let delay = usesQuickStartupIntro
+            ? MacForceNowStartupAnimation.quickDismissalDelayNanoseconds
+            : MacForceNowStartupAnimation.dismissalDelayNanoseconds
         do {
-            try await Task.sleep(nanoseconds: MacForceNowStartupAnimation.dismissalDelayNanoseconds)
+            try await Task.sleep(nanoseconds: delay)
         } catch {
             isShowingStartupLoading = false
             return

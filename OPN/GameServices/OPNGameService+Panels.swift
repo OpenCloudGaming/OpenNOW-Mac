@@ -7,17 +7,34 @@ import Foundation
 
 extension OPNGameService {
     func fetchMarqueePanels(completion: @escaping OPNPanelCallback) {
-        fetchPanels(operationName: "panels/Marquee", hash: Self.marqueeHash, panelNames: ["MARQUEE"], missingMessage: "No panels in marquee response", completion: completion)
+        fetchPanels(operationName: "panels/Marquee", hash: Self.marqueeHash, panelNames: ["MARQUEE"], cacheKind: "marquee", missingMessage: "No panels in marquee response", completion: completion)
     }
 
     func fetchMainPanels(completion: @escaping OPNPanelCallback) {
-        fetchPanels(operationName: "panels/MainV2", hash: Self.panelsHash, panelNames: ["MAIN"], missingMessage: "No panels in response", completion: completion)
+        fetchPanels(operationName: "panels/MainV2", hash: Self.panelsHash, panelNames: ["MAIN"], cacheKind: "main", missingMessage: "No panels in response", completion: completion)
     }
 
-    func fetchPanels(operationName: String, hash: String, panelNames: [String], missingMessage: String, completion: @escaping OPNPanelCallback) {
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+    func fetchPanels(operationName: String, hash: String, panelNames: [String], cacheKind: String, missingMessage: String, completion: @escaping OPNPanelCallback) {
+        let accountIdentifier = userId
+        let providerBaseUrl = providerStreamingBaseURL()
+        let locale = Self.currentGFNCatalogLocale()
+        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
-            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": panelNames]
+
+            if !accountIdentifier.isEmpty {
+                self.dataCache.loadPanelsAsync(
+                    kind: cacheKind,
+                    accountIdentifier: accountIdentifier,
+                    vpcId: resolvedVpcId,
+                    locale: locale,
+                    maxAgeSeconds: Self.panelCacheFreshSeconds
+                ) { [weak self] cachedPanels in
+                    guard let self, let cachedPanels, !cachedPanels.isEmpty else { return }
+                    self.dispatchPanel(completion, true, cachedPanels, "")
+                }
+            }
+
+            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": locale, "panelNames": panelNames]
             self.postGraphQL(operationName: operationName, queryHash: hash, variables: variables) { data, error in
                 if !error.isEmpty {
                     self.dispatchPanel(completion, false, [], error)
@@ -32,7 +49,17 @@ extension OPNGameService {
                 // then redeliver once metadata enrichment completes so promo/sku
                 // badges (Free, -XX%) appear on panel games too.
                 self.dispatchPanel(completion, true, panels, "")
-                self.enrichPanelResults(panels, vpcId: resolvedVpcId) { enrichedPanels in
+                self.enrichPanelResults(panels, vpcId: resolvedVpcId) { [weak self] enrichedPanels in
+                    guard let self else { return }
+                    if !accountIdentifier.isEmpty {
+                        self.dataCache.savePanelsAsync(
+                            kind: cacheKind,
+                            accountIdentifier: accountIdentifier,
+                            vpcId: resolvedVpcId,
+                            locale: locale,
+                            panels: enrichedPanels
+                        )
+                    }
                     self.dispatchPanel(completion, true, enrichedPanels, "")
                 }
             }

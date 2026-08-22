@@ -16,11 +16,14 @@ struct LoginBackdrop: View {
 }
 
 struct VendorResourceImage: View {
-    let name: String
-    let fileExtension: String
+    private let image: NSImage?
+
+    init(name: String, fileExtension: String) {
+        image = Self.loadImage(name: name, fileExtension: fileExtension)
+    }
 
     var body: some View {
-        if let image = Self.loadImage(name: name, fileExtension: fileExtension) {
+        if let image {
             Image(nsImage: image)
                 .resizable()
         } else {
@@ -28,7 +31,25 @@ struct VendorResourceImage: View {
         }
     }
 
-    private static func loadImage(name: String, fileExtension: String) -> NSImage? {
+    /// Decodes every brand asset used by the first screens up front so the startup
+    /// scene and login window never pay a synchronous `NSImage(contentsOf:)` SVG/PNG
+    /// decode on a first-frame render.
+    nonisolated static func prewarm() {
+        let assets: [(name: String, fileExtension: String)] = [
+            ("logo-isolated", "svg"),
+            ("logo", "png"),
+            ("LoginWallContentBackground", "png"),
+            ("LoginWallFallbackTile", "png"),
+            ("Marquee_Hero_Image_Gradient", "svg"),
+            ("nv-gfn-logo_v3", "png"),
+            ("avatar_generic_118", "svg")
+        ]
+        for asset in assets {
+            _ = loadImage(name: asset.name, fileExtension: asset.fileExtension)
+        }
+    }
+
+    nonisolated private static func loadImage(name: String, fileExtension: String) -> NSImage? {
         let cacheKey = "\(name).\(fileExtension)" as NSString
         if let cachedImage = imageCache.object(forKey: cacheKey) {
             return cachedImage
@@ -44,7 +65,7 @@ struct VendorResourceImage: View {
         return nil
     }
 
-    private static let imageCache = NSCache<NSString, NSImage>()
+    nonisolated(unsafe) private static let imageCache = NSCache<NSString, NSImage>()
 }
 
 struct VendorSplashLoadingView: View {
@@ -113,7 +134,7 @@ struct VendorIndeterminateProgressBar: View {
             let width = proxy.size.width
             let indicatorWidth = max(width * 0.34, 72)
 
-            TimelineView(.animation) { timeline in
+            TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.ambientFrameInterval)) { timeline in
                 let cycleDuration = 1.15
                 let progress = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
                 let phase = -0.36 + (1.40 * progress)
@@ -140,7 +161,7 @@ struct GFNHeroArtwork: View {
             if reduceMotion {
                 artwork(proxy: proxy, motionTime: 0, isAnimated: false)
             } else {
-                TimelineView(.animation) { timeline in
+                TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.ambientFrameInterval)) { timeline in
                     artwork(proxy: proxy, motionTime: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
                 }
             }
@@ -262,21 +283,25 @@ struct GFNHeroArtwork: View {
 private struct LoginWallGridTile: View {
     let urlString: String?
 
+    @State private var image: NSImage?
+
     var body: some View {
-        if let urlString, let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .opacity(1)
-                default:
-                    fallbackTile
-                }
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(1)
+            } else {
+                fallbackTile
             }
-        } else {
-            fallbackTile
+        }
+        .task(id: urlString) {
+            image = nil
+            guard let urlString, let url = URL(string: urlString) else { return }
+            guard let cached = await CatalogImageCache.shared.image(for: url, maxPixelSize: 768) else { return }
+            guard !Task.isCancelled else { return }
+            image = cached.image
         }
     }
 

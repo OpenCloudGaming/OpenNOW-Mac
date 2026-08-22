@@ -49,6 +49,7 @@ final class OPNGameService: @unchecked Sendable {
     static let maxCatalogPages = 150
     static let patchInfoFetchCount = 749
     static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
+    static let panelCacheFreshSeconds: TimeInterval = 7 * 24 * 60 * 60
     static let collectionsFilterGroupId = "collections"
     static let libraryCatalogFilterId = "my_library"
     static let favoritesCatalogFilterId = "my_favorites"

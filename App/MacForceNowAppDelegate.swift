@@ -5,6 +5,7 @@ final class MacForceNowAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
+    private static let initialUpdateCheckDelaySeconds: TimeInterval = 5
 
     private let githubUpdater = MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")
     private var applicationUpdateCheckTimer: Timer?
@@ -113,8 +114,13 @@ final class MacForceNowAppDelegate: NSObject, NSApplicationDelegate {
     private func startApplicationUpdateChecks() {
         guard MacForceNowUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
         guard applicationUpdateCheckTimer == nil else { return }
-        checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
         applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
+        // Delay the first check so it doesn't contend with the launch-time
+        // catalog and login fetches; subsequent checks stay on the hourly timer.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
+            self?.checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
+        }
     }
 
     @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {

@@ -104,7 +104,10 @@ final class OPNSentry {
             options.tracesSampleRate = NSNumber(value: clampedSampleRate(environmentDouble("OPN_SENTRY_TRACES_SAMPLE_RATE") ?? 0.25))
             options.configureProfiling = {
                 $0.lifecycle = .trace
-                $0.sessionSampleRate = Float(clampedSampleRate(environmentDouble("OPN_SENTRY_PROFILES_SAMPLE_RATE") ?? 1.0))
+                // Continuous profiling is CPU-expensive during catalog/session
+                // transactions. Default to a conservative sample rate and keep the
+                // environment override for higher-fidelity diagnostics.
+                $0.sessionSampleRate = Float(clampedSampleRate(environmentDouble("OPN_SENTRY_PROFILES_SAMPLE_RATE") ?? 0.25))
             }
             options.enableAutoSessionTracking = true
             options.enableLogs = true

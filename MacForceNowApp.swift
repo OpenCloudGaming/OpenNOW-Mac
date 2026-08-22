@@ -18,14 +18,15 @@ struct MacForceNowApp: App {
     init() {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
-        Task.detached(priority: .userInitiated) { MacForceNowNVIDIAFont.prepare() }
+        Task.detached(priority: .userInitiated) {
+            MacForceNowNVIDIAFont.prepare()
+            VendorResourceImage.prewarm()
+        }
         MacForceNowLog.info(.app, "MacForce Now application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container
-        if let imageCacheContainer = Self.makeImageCacheContainer() {
-            CatalogImageCache.shared.configure(container: imageCacheContainer)
-        }
         MacForceNowLog.info(.app, "MacForce Now application initialization completed")
+        Self.preloadImageCacheContainerAsync()
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -76,9 +77,20 @@ struct MacForceNowApp: App {
         }
     }
 
+    // The catalog image cache is only needed once the catalog first renders an image.
+    // Opening its store off the launch path keeps a second SwiftData store open out of
+    // the critical path to first frame; until it is ready the cache serves decoded
+    // downloads without persisting them.
+    private static func preloadImageCacheContainerAsync() {
+        Task.detached(priority: .utility) {
+            guard let imageCacheContainer = Self.makeImageCacheContainer() else { return }
+            CatalogImageCache.shared.configure(container: imageCacheContainer)
+        }
+    }
+
     // The image cache writes access metadata continuously; it must live in its own
     // container so those saves never invalidate the auth @Query views (ContentView).
-    private static func makeImageCacheContainer() -> ModelContainer? {
+    nonisolated private static func makeImageCacheContainer() -> ModelContainer? {
         let schema = Schema([CatalogImageCacheEntry.self])
         let storeURL = URL.applicationSupportDirectory.appending(path: "CatalogImageCache.store")
         let configuration = ModelConfiguration(schema: schema, url: storeURL)

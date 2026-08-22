@@ -1,12 +1,16 @@
 import SwiftUI
 
 enum MacForceNowStartupAnimation {
-    static let duration: TimeInterval = 5.0
-    static let dismissalDelayNanoseconds: UInt64 = 5_300_000_000
-    static let fadeDuration: TimeInterval = 0.56
+    static let duration: TimeInterval = 2.4
+    static let quickDuration: TimeInterval = 0.9
+    static let dismissalDelayNanoseconds: UInt64 = 2_400_000_000
+    static let quickDismissalDelayNanoseconds: UInt64 = 1_000_000_000
+    static let fadeDuration: TimeInterval = 0.4
 }
 
 struct MacForceNowStartupLoadingView: View {
+    var duration: TimeInterval = MacForceNowStartupAnimation.duration
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.opnUIScale) private var uiScale
     @State private var startDate = Date()
@@ -15,9 +19,9 @@ struct MacForceNowStartupLoadingView: View {
         GeometryReader { proxy in
             let compact = min(proxy.size.width, proxy.size.height) < 620
 
-            TimelineView(.animation) { timeline in
+            TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.ambientFrameInterval)) { timeline in
                 let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
-                let progress = startupClamp(elapsed / MacForceNowStartupAnimation.duration)
+                let progress = startupClamp(elapsed / duration)
                 let loop = reduceMotion ? 0 : elapsed.truncatingRemainder(dividingBy: 3.2) / 3.2
 
                 ZStack {
@@ -153,9 +157,19 @@ private struct MacForceNowStartupCoreLogo: View {
 
         ZStack {
             Circle()
-                .fill(MacForceNowDesign.accent.opacity(0.14 + systemReveal * 0.08))
+                .fill(
+                    RadialGradient(
+                        stops: [
+                            .init(color: MacForceNowDesign.accent.opacity(0.24 + systemReveal * 0.08), location: 0.00),
+                            .init(color: MacForceNowDesign.accent.opacity(0.10 + systemReveal * 0.04), location: 0.42),
+                            .init(color: .clear, location: 1.00)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * (0.55 + completion * 0.10)
+                    )
+                )
                 .frame(width: size * (1.10 + completion * 0.20), height: size * (1.10 + completion * 0.20))
-                .blur(radius: (compact ? 26 : 42) * uiScale)
                 .opacity(logoReveal)
 
             ForEach(0..<3, id: \.self) { index in
@@ -178,7 +192,6 @@ private struct MacForceNowStartupCoreLogo: View {
                 .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), perspective: 0.74)
                 .scaleEffect(CGFloat(0.86 + logoReveal * 0.14 + completion * 0.05))
                 .shadow(color: MacForceNowDesign.accent.opacity(0.74), radius: (compact ? 24 : 38) * uiScale)
-                .shadow(color: .white.opacity(0.16 + completion * 0.12), radius: (compact ? 8 : 12) * uiScale)
                 .opacity(logoReveal)
         }
         .frame(width: size * 2.0, height: size * 1.55)

@@ -88,6 +88,14 @@ enum MacForceNowDesign {
         static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
     }
 
+    enum Motion {
+        /// 30 fps clock for decorative ambient `TimelineView` animations. The native
+        /// `.animation` schedule fires every display frame (up to 120 Hz on ProMotion),
+        /// so throttling to 30 fps halves render work on 60 Hz panels and quarters it
+        /// on 120 Hz panels with no perceptible change for slow, large-area motion.
+        static let ambientFrameInterval: TimeInterval = 1.0 / 30.0
+    }
+
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
 
     static func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
