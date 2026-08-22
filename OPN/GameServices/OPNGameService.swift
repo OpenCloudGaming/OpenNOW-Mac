@@ -68,6 +68,25 @@ final class OPNGameService: @unchecked Sendable {
     nonisolated(unsafe) static var vpcCache: [String: VpcCacheEntry] = [:]
     nonisolated(unsafe) static var pendingVpcCallbacks: [String: [(String) -> Void]] = [:]
 
+    struct ReferenceDataEntry<Value>: @unchecked Sendable {
+        let value: Value
+        let timestamp: Date
+    }
+
+    static let referenceDataFreshSeconds: TimeInterval = 10 * 60
+    static let referenceDataLock = NSLock()
+    nonisolated(unsafe) static var campaignPromoTagCache: [String: ReferenceDataEntry<[String: String]>] = [:]
+    nonisolated(unsafe) static var pendingCampaignPromoTagCallbacks: [String: [@Sendable ([String: String]) -> Void]] = [:]
+    nonisolated(unsafe) static var ratingDefinitionCache: [String: ReferenceDataEntry<[String: RatingMetadata]>] = [:]
+    nonisolated(unsafe) static var pendingRatingDefinitionCallbacks: [String: [@Sendable ([String: RatingMetadata]) -> Void]] = [:]
+    nonisolated(unsafe) static var providerInfoCache: [String: ReferenceDataEntry<(OPNGameProviderInfo, OPNGameProviderEndpoint)>] = [:]
+    nonisolated(unsafe) static var pendingProviderInfoCallbacks: [String: [OPNProviderInfoCallback]] = [:]
+
+    static let appMetadataLimiter = OPNRequestConcurrencyLimiter(limit: 4)
+
+    static let panelFetchLock = NSLock()
+    nonisolated(unsafe) static var pendingPanelFetches: [String: PanelFetchGroup] = [:]
+
     var accessToken = ""
     var accountLinkingToken = ""
     var vpcId = ""

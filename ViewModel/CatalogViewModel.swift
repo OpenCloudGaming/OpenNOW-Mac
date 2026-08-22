@@ -231,6 +231,9 @@ final class CatalogViewModel {
 
     private var hasLoaded = false
     private var browseGeneration = 0
+    private var appliedMarqueePanelsFingerprint = 0
+    private var appliedMainPanelsFingerprint = 0
+    private var secondaryCatalogLoadsTask: Task<Void, Never>?
     private var authRefreshInFlight = false
     private var searchDebounceTask: Task<Void, Never>?
     private var pendingLaunchGame: OPNCatalogGameObject?
@@ -430,6 +433,9 @@ final class CatalogViewModel {
     }
 
     func refresh() {
+        // An explicit refresh must hit the network, not re-adopt the panels the
+        // launch prefetch already handed over.
+        CatalogLaunchPrefetch.shared.invalidate()
         loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true)
     }
 
@@ -437,13 +443,40 @@ final class CatalogViewModel {
         configureCatalogService()
         Task { await configureCatalogProviderEndpoint() }
         loadPanels()
-        loadLibrary()
-        loadFavorites()
-        loadAccountAndStores()
         loadSettingsPreferences()
-        checkActiveHomeSession()
+        scheduleSecondaryCatalogLoads()
         if forceCatalogRefresh { browseCatalog(forceRefresh: true) }
     }
+
+    // Library, favorites, account and active-session lookups render nothing on the
+    // first frame, yet they share the control-plane session with the panel queries
+    // and delay them when the whole burst starts at once. They wait for the home
+    // rails to have data, or for a short grace period if the rails are slow.
+    private func scheduleSecondaryCatalogLoads() {
+        secondaryCatalogLoadsTask?.cancel()
+        secondaryCatalogLoadsTask = Task { [weak self] in
+            for _ in 0..<Self.secondaryCatalogLoadPollCount {
+                guard let self, !Task.isCancelled else { return }
+                if !self.mainPanels.isEmpty { break }
+                do {
+                    try await Task.sleep(for: .milliseconds(Self.secondaryCatalogLoadPollMilliseconds))
+                } catch {
+                    return
+                }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.loadLibrary()
+            self.loadFavorites()
+            self.loadAccountAndStores()
+            self.checkActiveHomeSession()
+        }
+    }
+
+    // Short: a cold panel fetch can take seconds, and holding the library and
+    // favorites rails that long is more visible to the user than the connection
+    // contention it avoids. Cached panels release it almost immediately.
+    private static let secondaryCatalogLoadPollCount = 10
+    private static let secondaryCatalogLoadPollMilliseconds = 50
 
     private func configureCatalogProviderEndpoint() async {
         let providerIdpId = session.idpId.isEmpty ? account.providerIdpId : session.idpId
@@ -2022,20 +2055,56 @@ final class CatalogViewModel {
         isLoadingPanels = true
         errorMessage = ""
         configureCatalogService()
+
+        // The launch prefetch may already own (or have finished) these queries;
+        // adopt whatever it has instead of asking for the same panels twice.
+        let attachment = CatalogLaunchPrefetch.shared.attach(accountIdentifier: catalogAccountIdentifier) { [weak self] event in
+            self?.handleLaunchPrefetchEvent(event)
+        }
+        if !attachment.marquee { loadMarqueePanels() }
+        if !attachment.main { loadMainPanels() }
+        if !attachment.isEmpty {
+            MacForceNowLog.info(.catalog, "Adopted launch panel prefetch marquee=\(attachment.marquee) main=\(attachment.main)")
+        }
+    }
+
+    private func handleLaunchPrefetchEvent(_ event: CatalogLaunchPrefetch.Event) {
+        switch event {
+        case .panels(.marquee, let panels):
+            applyMarqueePanels(panels)
+        case .panels(.main, let panels):
+            isLoadingPanels = false
+            applyMainPanels(panels)
+        case .failed(.marquee, _):
+            loadMarqueePanels()
+        case .failed(.main, let message):
+            if errorMessage.isEmpty { errorMessage = message }
+            loadMainPanels()
+        }
+    }
+
+    private var catalogAccountIdentifier: String {
+        session.userId.isEmpty ? account.userId : session.userId
+    }
+
+    private func loadMarqueePanels() {
         let panelStartTime = CFAbsoluteTimeGetCurrent()
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
             guard let self else { return }
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
                 MacForceNowLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
-                self.marqueePanels = panels
-                self.schedulePatchingPollIfNeeded()
+                self.applyMarqueePanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
             } else if self.errorMessage.isEmpty {
                 self.errorMessage = error
             }
         }
+    }
+
+    private func loadMainPanels() {
+        let panelStartTime = CFAbsoluteTimeGetCurrent()
         gameService.fetchMainPanelObjects { [weak self] success, panels, error in
             guard let self else { return }
             self.isLoadingPanels = false
@@ -2043,14 +2112,55 @@ final class CatalogViewModel {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
                 let gameCount = panels.flatMap(\.sections).flatMap(\.games).count
                 MacForceNowLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
-                self.mainPanels = panels
-                self.schedulePatchingPollIfNeeded()
+                self.applyMainPanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
             } else if self.errorMessage.isEmpty {
                 self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW home panels." : error
             }
         }
+    }
+
+    // Panels are delivered more than once per fetch (disk cache, parsed response,
+    // then metadata-enriched response). Assigning an identical set again rebuilds
+    // every rail for nothing, so identical redeliveries are dropped.
+    private func applyMarqueePanels(_ panels: [OPNCatalogPanelObject]) {
+        let fingerprint = Self.panelsFingerprint(panels)
+        guard fingerprint != appliedMarqueePanelsFingerprint else { return }
+        appliedMarqueePanelsFingerprint = fingerprint
+        marqueePanels = panels
+        schedulePatchingPollIfNeeded()
+    }
+
+    private func applyMainPanels(_ panels: [OPNCatalogPanelObject]) {
+        let fingerprint = Self.panelsFingerprint(panels)
+        guard fingerprint != appliedMainPanelsFingerprint else { return }
+        appliedMainPanelsFingerprint = fingerprint
+        mainPanels = panels
+        schedulePatchingPollIfNeeded()
+    }
+
+    private static func panelsFingerprint(_ panels: [OPNCatalogPanelObject]) -> Int {
+        var hasher = Hasher()
+        for panel in panels {
+            hasher.combine(panel.id)
+            hasher.combine(panel.sections.count)
+            for section in panel.sections {
+                hasher.combine(section.id)
+                hasher.combine(section.games.count)
+                hasher.combine(section.tiles.count)
+                for game in section.games {
+                    hasher.combine(game.id)
+                    hasher.combine(game.promoTag)
+                    hasher.combine(game.skuTags)
+                    hasher.combine(game.isFreeToPlay)
+                    hasher.combine(game.isInLibrary)
+                    hasher.combine(game.isFavorited)
+                    hasher.combine(game.isPatching)
+                }
+            }
+        }
+        return hasher.finalize()
     }
 
     private func loadLibrary() {

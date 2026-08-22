@@ -12,7 +12,7 @@ extension OPNGameService {
             dispatchAppPatchStatuses(completion, true, [:], "")
             return
         }
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             let query = """
             query GetAppsPatchInfoForAppIds($vpcId: String!, $locale: String!, $appIds: [String]!) {
@@ -49,7 +49,7 @@ extension OPNGameService {
     }
 
     func fetchLibraryPatchStatuses(completion: @escaping OPNAppPatchStatusesCallback) {
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             let query = """
             query GetAppsPatchInfoWithLibraryFilter($vpcId: String!, $locale: String!, $fetchCount: Int!, $cursor: String!, $filters: AppFilterFields!) {

@@ -17,7 +17,7 @@ extension OPNGameService {
             return
         }
 
-        getServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             var components = URLComponents(string: "https://mes.geforcenow.com/v4/subscriptions")
             components?.queryItems = [
@@ -71,7 +71,7 @@ extension OPNGameService {
             return
         }
         let selectedVariant = game.variants.indices.contains(variantIndex) ? game.variants[variantIndex] : nil
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.fetchAppMetadata(appIds: [appId], vpcId: resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId) { data, error in
                 if !error.isEmpty {

@@ -17,7 +17,7 @@ extension OPNGameService {
         let accountIdentifier = userId
         let providerBaseUrl = providerStreamingBaseURL()
         let locale = Self.currentGFNCatalogLocale()
-        getServerVpcId(token: token, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: token, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.continueBrowseCatalogGames(
                 accountIdentifier: accountIdentifier,
@@ -198,7 +198,36 @@ extension OPNGameService {
         postGraphQL(operationName: "appMetaData", queryHash: Self.appMetaDataHash, variables: variables, completion: completion)
     }
 
+    // Campaign tags and rating definitions are per (vpcId, locale) reference data that
+    // every enrichment pass needs, so an uncoalesced launch fetches each of them once
+    // per panel and per browse page (measured four times each). Memoized with in-flight
+    // coalescing so concurrent enrichments share one request.
     func fetchCampaignPromoTags(vpcId: String, locale: String, completion: @escaping @Sendable ([String: String]) -> Void) {
+        let key = "\(vpcId)|\(locale)"
+        Self.referenceDataLock.lock()
+        if let entry = Self.campaignPromoTagCache[key], Date().timeIntervalSince(entry.timestamp) <= Self.referenceDataFreshSeconds {
+            Self.referenceDataLock.unlock()
+            completion(entry.value)
+            return
+        }
+        if Self.pendingCampaignPromoTagCallbacks[key] != nil {
+            Self.pendingCampaignPromoTagCallbacks[key]?.append(completion)
+            Self.referenceDataLock.unlock()
+            return
+        }
+        Self.pendingCampaignPromoTagCallbacks[key] = [completion]
+        Self.referenceDataLock.unlock()
+
+        fetchCampaignPromoTagsUncached(vpcId: vpcId, locale: locale) { tagsByCampaignId in
+            Self.referenceDataLock.lock()
+            Self.campaignPromoTagCache[key] = ReferenceDataEntry(value: tagsByCampaignId, timestamp: Date())
+            let callbacks = Self.pendingCampaignPromoTagCallbacks.removeValue(forKey: key) ?? []
+            Self.referenceDataLock.unlock()
+            for callback in callbacks { callback(tagsByCampaignId) }
+        }
+    }
+
+    func fetchCampaignPromoTagsUncached(vpcId: String, locale: String, completion: @escaping @Sendable ([String: String]) -> Void) {
         let query = """
         query GetCampaignsInfo($locale: String!, $vpcId: String!) {
           campaigns(vpcId: $vpcId, language: $locale) {
@@ -294,19 +323,30 @@ extension OPNGameService {
         let metadataState = MetadataState()
         let chunks = stride(from: 0, to: appIds.count, by: 40).map { Array(appIds[$0..<min($0 + 40, appIds.count)]) }
         let group = DispatchGroup()
+        // A 20-section home panel enriches in ~15 chunks of ~300KB; firing them all at
+        // once starves the artwork downloads the first frame is waiting on.
         for chunk in chunks {
             group.enter()
-            fetchAppMetadata(appIds: chunk, vpcId: vpcId) { [weak self] data, _ in
-                if let self, let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] {
-                    let itemsBox = NSDictionaryArrayBox(items)
-                    Self.workQueue.async { [itemsBox] in
-                        for item in itemsBox.values {
-                            if let appId = self.safeString(item["id"]) { metadataState[appId] = item }
-                        }
-                        group.leave()
-                    }
-                } else {
+            Self.appMetadataLimiter.submit { [weak self] finished in
+                guard let self else {
                     group.leave()
+                    finished()
+                    return
+                }
+                self.fetchAppMetadata(appIds: chunk, vpcId: vpcId) { data, _ in
+                    if let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] {
+                        let itemsBox = NSDictionaryArrayBox(items)
+                        Self.workQueue.async { [itemsBox] in
+                            for item in itemsBox.values {
+                                if let appId = self.safeString(item["id"]) { metadataState[appId] = item }
+                            }
+                            group.leave()
+                            finished()
+                        }
+                    } else {
+                        group.leave()
+                        finished()
+                    }
                 }
             }
         }
@@ -382,6 +422,30 @@ extension OPNGameService {
     }
 
     func fetchRatingDefinitions(locale: String, completion: @escaping @Sendable ([String: RatingMetadata]) -> Void) {
+        Self.referenceDataLock.lock()
+        if let entry = Self.ratingDefinitionCache[locale], Date().timeIntervalSince(entry.timestamp) <= Self.referenceDataFreshSeconds {
+            Self.referenceDataLock.unlock()
+            completion(entry.value)
+            return
+        }
+        if Self.pendingRatingDefinitionCallbacks[locale] != nil {
+            Self.pendingRatingDefinitionCallbacks[locale]?.append(completion)
+            Self.referenceDataLock.unlock()
+            return
+        }
+        Self.pendingRatingDefinitionCallbacks[locale] = [completion]
+        Self.referenceDataLock.unlock()
+
+        fetchRatingDefinitionsUncached(locale: locale) { metadataByType in
+            Self.referenceDataLock.lock()
+            Self.ratingDefinitionCache[locale] = ReferenceDataEntry(value: metadataByType, timestamp: Date())
+            let callbacks = Self.pendingRatingDefinitionCallbacks.removeValue(forKey: locale) ?? []
+            Self.referenceDataLock.unlock()
+            for callback in callbacks { callback(metadataByType) }
+        }
+    }
+
+    func fetchRatingDefinitionsUncached(locale: String, completion: @escaping @Sendable ([String: RatingMetadata]) -> Void) {
         let query = """
         query GetRatingDefinitions($locale: String!) {
           ratingDefinitions(language: $locale) {

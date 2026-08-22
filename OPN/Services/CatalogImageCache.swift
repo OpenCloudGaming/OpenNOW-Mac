@@ -29,6 +29,9 @@ actor CatalogImageCache {
     private var prefetchTask: Task<Void, Never>?
     private var prefetchQueue: [URL] = []
     private var queuedPrefetchURLs: Set<URL> = []
+    private var priorityPrefetchQueue: [URL] = []
+    private var queuedPriorityPrefetchURLs: Set<URL> = []
+    private var priorityPrefetchWorkers = 0
     private var pendingAccessHits: [String: Int] = [:]
     private var metadataFlushTask: Task<Void, Never>?
 
@@ -38,6 +41,7 @@ actor CatalogImageCache {
     private let maximumStoredBytes = 512 * 1024 * 1024
     private let maximumStoredEntries = 2_000
     private let pruneStoreThreshold = 25
+    private let maximumPriorityPrefetchWorkers = 5
     private let pruneInterval: TimeInterval = 60
     nonisolated private let pruneThrottle = CatalogImageCachePruneThrottle()
 
@@ -45,6 +49,17 @@ actor CatalogImageCache {
 
     nonisolated func configure(container: ModelContainer) {
         containerStore.configure(container: container)
+    }
+
+    /// Fetches the images the first frame actually shows. The regular prefetch
+    /// deliberately trickles at background priority with a sleep between items,
+    /// which is right for scroll-ahead and far too slow for the hero and the
+    /// first rail during the splash screen.
+    nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat = 1024) {
+        guard !urls.isEmpty else { return }
+        Task(priority: .userInitiated) { [weak self] in
+            await self?.startPriorityPrefetch(urls, maxPixelSize: maxPixelSize)
+        }
     }
 
     nonisolated func prefetch(_ urls: [URL]) {
@@ -91,6 +106,8 @@ actor CatalogImageCache {
             memoryCache.removeAll()
             prefetchQueue.removeAll()
             queuedPrefetchURLs.removeAll()
+            priorityPrefetchQueue.removeAll()
+            queuedPriorityPrefetchURLs.removeAll()
             prefetchTask?.cancel()
             prefetchTask = nil
             pruneThrottle.reset()
@@ -98,6 +115,38 @@ actor CatalogImageCache {
         } catch {
             return false
         }
+    }
+
+    private func startPriorityPrefetch(_ urls: [URL], maxPixelSize: CGFloat) {
+        var didEnqueue = false
+        for url in urls where !queuedPriorityPrefetchURLs.contains(url) {
+            guard !hasCachedImage(for: url) else { continue }
+            queuedPriorityPrefetchURLs.insert(url)
+            priorityPrefetchQueue.append(url)
+            didEnqueue = true
+        }
+        guard didEnqueue else { return }
+        while priorityPrefetchWorkers < maximumPriorityPrefetchWorkers, priorityPrefetchWorkers < priorityPrefetchQueue.count {
+            priorityPrefetchWorkers += 1
+            Task(priority: .userInitiated) { [weak self] in
+                guard let self else { return }
+                while let url = await self.nextPriorityPrefetchURL() {
+                    _ = await self.image(for: url, maxPixelSize: maxPixelSize)
+                }
+                await self.priorityPrefetchWorkerDidFinish()
+            }
+        }
+    }
+
+    private func nextPriorityPrefetchURL() -> URL? {
+        guard !priorityPrefetchQueue.isEmpty else { return nil }
+        let url = priorityPrefetchQueue.removeFirst()
+        queuedPriorityPrefetchURLs.remove(url)
+        return url
+    }
+
+    private func priorityPrefetchWorkerDidFinish() {
+        priorityPrefetchWorkers = max(priorityPrefetchWorkers - 1, 0)
     }
 
     private func startPrefetch(_ urls: [URL]) {

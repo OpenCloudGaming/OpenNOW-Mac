@@ -10,7 +10,7 @@ extension OPNGameService {
         let accountIdentifier = userId
         let providerBaseUrl = providerStreamingBaseURL()
         let locale = Self.currentGFNCatalogLocale()
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.fetchDefaultLibrarySort(locale: locale) { [weak self] selectedSort in
                 guard let self else { return }
@@ -81,7 +81,7 @@ extension OPNGameService {
     }
 
     func fetchFavoriteGames(completion: @escaping OPNCatalogCallback) {
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": ["FAVORITES"]]
             let flatten: @Sendable (NSDictionary?, String) -> Void = { [weak self] data, error in
@@ -123,7 +123,7 @@ extension OPNGameService {
             return
         }
         let selectedVariant = game.variants.indices.contains(variantIndex) ? game.variants[variantIndex] : nil
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.fetchAppMetadata(appIds: [metadataAppId], vpcId: resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId) { data, error in
                 let resolvedAppId: String
@@ -144,7 +144,7 @@ extension OPNGameService {
             dispatchCatalog(completion, false, [], "Invalid CMS ID")
             return
         }
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
             let query = """
             query GetAppDataQueryForCmsId($vpcId: String!, $locale: String!, $cmsIds: [Int]!) {

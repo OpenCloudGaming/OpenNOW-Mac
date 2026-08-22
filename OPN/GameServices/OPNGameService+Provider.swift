@@ -6,7 +6,42 @@ import AppKit
 import Foundation
 
 extension OPNGameService {
+    // The service-urls document is global reference data, but it is looked up by both
+    // the login provider picker and the catalog session setup, so a single launch
+    // requested it twice (measured 1280ms + 1028ms). Memoized per idpId with in-flight
+    // coalescing; the streaming base URL side effect is replayed on every hit.
     func fetchProviderInfo(idpId: String, completion: @escaping OPNProviderInfoCallback) {
+        Self.referenceDataLock.lock()
+        if let entry = Self.providerInfoCache[idpId], Date().timeIntervalSince(entry.timestamp) <= Self.referenceDataFreshSeconds {
+            Self.referenceDataLock.unlock()
+            let (info, endpoint) = entry.value
+            providerStreamingBaseUrl = endpoint.streamingServiceUrl
+            dispatchProviderInfo(completion, true, info, endpoint, "")
+            return
+        }
+        if Self.pendingProviderInfoCallbacks[idpId] != nil {
+            Self.pendingProviderInfoCallbacks[idpId]?.append(completion)
+            Self.referenceDataLock.unlock()
+            return
+        }
+        Self.pendingProviderInfoCallbacks[idpId] = [completion]
+        Self.referenceDataLock.unlock()
+
+        fetchProviderInfoUncached(idpId: idpId) { [weak self] success, info, endpoint, error in
+            Self.referenceDataLock.lock()
+            if success {
+                Self.providerInfoCache[idpId] = ReferenceDataEntry(value: (info, endpoint), timestamp: Date())
+            }
+            let callbacks = Self.pendingProviderInfoCallbacks.removeValue(forKey: idpId) ?? []
+            Self.referenceDataLock.unlock()
+            guard let self else { return }
+            for callback in callbacks {
+                self.dispatchProviderInfo(callback, success, info, endpoint, error)
+            }
+        }
+    }
+
+    private func fetchProviderInfoUncached(idpId: String, completion: @escaping OPNProviderInfoCallback) {
         guard let url = URL(string: Self.providerServiceUrlsEndpoint) else {
             dispatchProviderInfo(completion, false, OPNGameProviderInfo(), OPNGameProviderEndpoint(), "Invalid provider info URL")
             return
@@ -85,9 +120,59 @@ extension OPNGameService {
         return fallback
     }
 
+    // The resolved vpcId only changes when the account moves region, so it is
+    // persisted across launches: the panel disk cache is keyed by vpcId, so
+    // without a stored value a cold launch cannot even read cached home rails
+    // until the cloudmatch serverInfo round trip completes.
+    static let persistedServerVpcIdKeyPrefix = "MacForceNow.Catalog.ServerVpcId."
+
+    func persistedServerVpcIdKey(providerStreamingBaseUrl: String) -> String {
+        Self.persistedServerVpcIdKeyPrefix + normalizeStreamingBaseUrl(providerStreamingBaseUrl)
+    }
+
+    func persistedServerVpcId(providerStreamingBaseUrl: String) -> String {
+        OPNAppPreferenceStorage.standard.string(forKey: persistedServerVpcIdKey(providerStreamingBaseUrl: providerStreamingBaseUrl)) ?? ""
+    }
+
+    /// A vpcId usable immediately, without waiting on the network: the fresh
+    /// in-memory entry when this process already resolved one, otherwise the
+    /// value persisted by a previous launch. Empty when nothing is known yet.
+    func optimisticServerVpcId(token: String, providerStreamingBaseUrl: String) -> String {
+        let normalized = normalizeStreamingBaseUrl(providerStreamingBaseUrl)
+        let cacheKey = "\(normalized)|\(token.hashValue)"
+        Self.vpcLock.lock()
+        let entry = Self.vpcCache[cacheKey]
+        Self.vpcLock.unlock()
+        if let entry, Date().timeIntervalSince(entry.timestamp) <= Self.serverVpcCacheFreshSeconds {
+            return entry.vpcId
+        }
+        return persistedServerVpcId(providerStreamingBaseUrl: normalized)
+    }
+
+    /// The vpcId to use for catalog reads (library, favorites, account, patch
+    /// status, browse). Answers immediately from the known value and refreshes it
+    /// in the background, so only a first-ever launch waits on the network. The
+    /// authoritative lookup still persists the correct value for the next launch,
+    /// and `fetchPanels` refetches the home rails itself when it disagrees.
+    func resolveCatalogVpcId(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable (String) -> Void) {
+        let optimistic = optimisticServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl)
+        guard !optimistic.isEmpty else {
+            getServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, completion: completion)
+            return
+        }
+        completion(optimistic)
+        getServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { resolved in
+            guard resolved != optimistic else { return }
+            Task { @MainActor in
+                MacForceNowLog.warning(.catalog, "Catalog vpcId changed optimistic=\(optimistic) resolved=\(resolved)")
+            }
+        }
+    }
+
     func getServerVpcId(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable (String) -> Void) {
         let normalized = normalizeStreamingBaseUrl(providerStreamingBaseUrl)
         let cacheKey = "\(normalized)|\(token.hashValue)"
+        let persistKey = persistedServerVpcIdKey(providerStreamingBaseUrl: normalized)
         Self.vpcLock.lock()
         if let entry = Self.vpcCache[cacheKey], Date().timeIntervalSince(entry.timestamp) <= Self.serverVpcCacheFreshSeconds {
             Self.vpcLock.unlock()
@@ -102,8 +187,13 @@ extension OPNGameService {
         Self.pendingVpcCallbacks[cacheKey] = [completion]
         Self.vpcLock.unlock()
 
-        let finish: @Sendable (String) -> Void = { vpcId in
+        // `persist` is false for the fallback path so a failed request never
+        // overwrites a good stored vpcId with the generic "GFN-PC" default.
+        let finish: @Sendable (String, Bool) -> Void = { vpcId, persist in
             let resolved = vpcId.isEmpty ? "GFN-PC" : vpcId
+            if persist {
+                OPNAppPreferenceStorage.standard.set(resolved, forKey: persistKey)
+            }
             Self.vpcLock.lock()
             Self.vpcCache[cacheKey] = VpcCacheEntry(vpcId: resolved, timestamp: Date())
             let callbacks = Self.pendingVpcCallbacks.removeValue(forKey: cacheKey) ?? []
@@ -112,7 +202,7 @@ extension OPNGameService {
         }
 
         guard let url = URL(string: normalized + String(CloudMatch.Endpoint.serverInfo.path.dropFirst())) else {
-            finish("GFN-PC")
+            finish("GFN-PC", false)
             return
         }
         var request = URLRequest(url: url)
@@ -125,14 +215,14 @@ extension OPNGameService {
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.serverInfo", startedAt: networkStart, data: data, response: response, error: error)
             guard error == nil, let data, (response as? HTTPURLResponse)?.statusCode == 200 else {
-                finish("GFN-PC")
+                finish("GFN-PC", false)
                 return
             }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let serverInfo = json.map(CloudMatchServerInfoParser.parse)
             let requestStatus = json?["requestStatus"] as? [String: Any]
             let serverId = requestStatus?["serverId"] as? String
-            finish(serverInfo?.vpcId.isEmpty == false ? serverInfo?.vpcId ?? "GFN-PC" : serverId ?? "GFN-PC")
+            finish(serverInfo?.vpcId.isEmpty == false ? serverInfo?.vpcId ?? "GFN-PC" : serverId ?? "GFN-PC", true)
         }.resume()
     }
 }

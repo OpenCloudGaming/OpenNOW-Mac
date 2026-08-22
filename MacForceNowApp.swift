@@ -27,6 +27,7 @@ struct MacForceNowApp: App {
         sharedModelContainer = container
         MacForceNowLog.info(.app, "MacForce Now application initialization completed")
         Self.preloadImageCacheContainerAsync()
+        Self.startCatalogLaunchPrefetch(container: container)
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -77,12 +78,38 @@ struct MacForceNowApp: App {
         }
     }
 
-    // The catalog image cache is only needed once the catalog first renders an image.
-    // Opening its store off the launch path keeps a second SwiftData store open out of
-    // the critical path to first frame; until it is ready the cache serves decoded
-    // downloads without persisting them.
+    // Kicks the home panel fetch off before SwiftUI has even built the scene, so the
+    // request runs underneath the splash screen instead of after it. An expired session
+    // cannot fetch until auth is refreshed (the catalog view model handles that), but it
+    // can still paint from the panel cache, which needs no token.
+    private static func startCatalogLaunchPrefetch(container: ModelContainer) {
+        Task { @MainActor in
+            let context = container.mainContext
+            var sessionDescriptor = FetchDescriptor<LoginSession>(sortBy: [SortDescriptor(\LoginSession.issuedAt, order: .reverse)])
+            sessionDescriptor.fetchLimit = 8
+            guard let sessions = try? context.fetch(sessionDescriptor),
+                  let session = sessions.first(where: \.isActive) else { return }
+            var userId = session.userId
+            if userId.isEmpty {
+                let email = session.accountEmail
+                var accountDescriptor = FetchDescriptor<LoginAccount>(predicate: #Predicate { $0.email == email })
+                accountDescriptor.fetchLimit = 1
+                userId = (try? context.fetch(accountDescriptor))?.first?.userId ?? ""
+            }
+            guard !userId.isEmpty else { return }
+            guard !session.isExpired else {
+                CatalogLaunchPrefetch.shared.primeFromCache(accountIdentifier: userId)
+                return
+            }
+            CatalogLaunchPrefetch.shared.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
+        }
+    }
+
+    // The catalog image cache store backs the first frame's artwork, so it is opened at
+    // user-initiated priority: until it is ready the cache cannot serve stored images and
+    // re-downloads them instead. It still lives in its own container (see below).
     private static func preloadImageCacheContainerAsync() {
-        Task.detached(priority: .utility) {
+        Task.detached(priority: .userInitiated) {
             guard let imageCacheContainer = Self.makeImageCacheContainer() else { return }
             CatalogImageCache.shared.configure(container: imageCacheContainer)
         }

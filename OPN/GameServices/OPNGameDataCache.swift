@@ -83,7 +83,11 @@ final class OPNGameDataCache: @unchecked Sendable {
             "vp": vpcId,
             "v": Self.catalogCacheVersion,
         ]
-        let data = (try? JSONSerialization.data(withJSONObject: key, options: [])) ?? Data()
+        // .sortedKeys is required, not cosmetic: Swift dictionary iteration order is
+        // randomized per instance, so serializing without it produces a different byte
+        // order (and therefore a different key) for identical inputs — every cache read
+        // missed, and each write landed in its own file.
+        let data = (try? JSONSerialization.data(withJSONObject: key, options: [.sortedKeys])) ?? Data()
         let string = String(data: data, encoding: .utf8) ?? ""
         return sha256String(string)
     }
@@ -222,7 +226,11 @@ final class OPNGameDataCache: @unchecked Sendable {
             "l": locale,
             "c": Self.catalogCacheVersion
         ]
-        let data = (try? JSONSerialization.data(withJSONObject: key, options: [])) ?? Data()
+        // .sortedKeys is required, not cosmetic: Swift dictionary iteration order is
+        // randomized per instance, so serializing without it produces a different byte
+        // order (and therefore a different key) for identical inputs — every cache read
+        // missed, and each write landed in its own file.
+        let data = (try? JSONSerialization.data(withJSONObject: key, options: [.sortedKeys])) ?? Data()
         let string = String(data: data, encoding: .utf8) ?? ""
         return sha256String(string)
     }
