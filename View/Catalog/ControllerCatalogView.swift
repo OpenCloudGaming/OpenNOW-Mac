@@ -927,6 +927,7 @@ private struct ControllerHeroBillboard: View {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
+                    .contentShape(Rectangle())
                 LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
                 LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 9) {

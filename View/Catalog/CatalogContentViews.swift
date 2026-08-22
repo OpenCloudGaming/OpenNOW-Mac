@@ -249,6 +249,10 @@ struct CatalogHeroView: View {
                     .mask(CatalogHeroVendorImageMask())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                     .clipped()
+                    // `clipped()` hides the aspect-fill overflow but does not clip hit
+                    // testing: on wide windows the image spills hundreds of points above
+                    // the hero and swallowed the active-session banner buttons.
+                    .contentShape(Rectangle())
                     .id(game.catalogIdentity)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
                     CatalogHeroVendorGradientOverlays(imageLeading: imageLeading)
