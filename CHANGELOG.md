@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.0](https://github.com/anderson-oki/macforce-now/compare/v0.18.1...v0.19.0) (2026-08-22)
+
+
+### Features
+
+* tune initialization time ([7a08229](https://github.com/anderson-oki/macforce-now/commit/7a08229adaf0e8cfc1fb804669c7c48554f1d3a6))
+
+
+### Bug Fixes
+
+* login provider picker ([a99e444](https://github.com/anderson-oki/macforce-now/commit/a99e444123b2fb6847d4c07595f3571fca417ebf))
+
 ## [0.18.1](https://github.com/anderson-oki/macforce-now/compare/v0.18.0...v0.18.1) (2026-08-22)
 
 
