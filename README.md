@@ -6,13 +6,11 @@
 
 **A native macOS client for GeForce NOW — built for Mac, built for controllers.**
 
-Browse your library, launch in seconds, stream at up to 5K, record your best runs, and play with a Steam Controller 2026 without ever opening Steam.
-
 [**⬇ Download the latest release**](../../releases) · [What's new](CHANGELOG.md) · [Build from source](#build-from-source)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)
-![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC-orange)
+![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC%20%2B%20NVST-orange)
 
 <br>
 
@@ -24,15 +22,17 @@ Browse your library, launch in seconds, stream at up to 5K, record your best run
 
 ## Why MacForce Now
 
-Not a wrapped web page. A real Mac app — SwiftUI front to back, native WebRTC *or* NVIDIA's own NVST streaming underneath, and the hardware support the official client never shipped.
+MacForce Now is written in SwiftUI from the ground up and driven by the same WebRTC and NVST streaming protocols the official desktop app uses — not a web view in a wrapper. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
+
+GeForce NOW works on a Mac, but the official client leaves a lot on the table — a mouse-and-keyboard web view, pillarbox bars baked into every ultrawide stream, and no love for the controllers people actually game with. MacForce Now fills those gaps with a real Mac app, and then keeps going.
 
 | | |
 |---|---|
-| 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and 2.4 GHz dongle. Full HID parsing, haptics, back grips, trackpads, custom mappings — no Steam required. |
-| 🖥️ **Built for ultrawide** | 21:9 and 32:9 up to 5120×2160, HEVC, MetalFX upscaling, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
+| 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and both 2.4 GHz dongles. Full HID parsing, haptics, back grips, trackpads, custom mappings — no Steam required. |
+| 🖥️ **Built for ultrawide** | 21:9 up to 5120×2160 and 32:9 up to 5120×1440, HEVC and AV1, MetalFX upscaling, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
-| 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, plus persistent Library and Favorites. |
+| 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites — plus a live banner that drops you straight back into an active session. |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session — signed invites, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game — dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
@@ -51,7 +51,7 @@ Requires macOS 15.6 or later and your own GeForce NOW account.
 
 ## Made for Ultrawide
 
-Pick your shape, then pick your resolution — 16:9, 16:10, 21:9, or 32:9, all the way up to **5120×2160** at 30/60/120/240 fps. HEVC keeps true 5K streams sharp where H.264 hardware decode gives out at 4K, and 10-bit 4:2:0/4:4:4 colour is there when the codec supports it. Unavailable hardware codecs grey themselves out instead of failing mid-session.
+Pick your shape, then your resolution — 16:9, 16:10, 21:9, or 32:9. The wide end tops out at **5120×2160** on 21:9 and **5120×1440** on 32:9, all at 30/60/120/240 fps. HEVC carries true 5K streams where H.264 hardware decode runs out of headroom, and **AV1** leans in whenever bandwidth is the bottleneck, decoded in hardware on M3-and-later Apple silicon. 10-bit 4:2:0/4:4:4 colour is there when the codec supports it, and any codec your Mac can't decode greys itself out instead of failing mid-session.
 
 ![Streaming quality settings: aspect ratio, resolution, frame rate, codec, bitrate, and colour precision](docs/screenshots/streaming-quality.png)
 
@@ -92,7 +92,7 @@ MacForce Now talks to Valve's controllers directly over HID, so you get the pad 
 - **Every 2026 variant** — wired, BLE, and both dongles — plus the original 2015 controller.
 - **Haptics, grips, trackpads** — rumble feedback, four back grips, and both pads parsed and bindable client-side.
 - **Visual mapping editor** — click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
-- **Combos on any control** — bind a back grip to `B + R2`; modifier lands first, press follows a beat later, so games read it as a real combo.
+- **Combos on any control** — bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** — save as many as you like and switch between them.
 - **Built-in tester** — Settings → Steam Controller Test shows every button, axis, and pad live.
 - **Lizard mode off** — the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
@@ -103,12 +103,12 @@ MacForce Now talks to Valve's controllers directly over HID, so you get the pad 
 
 ![On-screen keyboard over a game — 10×4 QWERTY grid with split-half trackpad cursors, accent highlights, and a bottom bar with layer toggle, space, position flip, and dismiss](docs/screenshots/on-screen-keyboard.png)
 
-A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NOW title. The keyboard works on **both the WebRTC and native NVST streaming paths** and sends keys exactly the way a physical keyboard does — UTF‑8 text for characters, macOS keycodes for Return/Backspace.
+A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NOW title. The keyboard works on **both the WebRTC and native NVST streaming paths** and sends keys exactly the way a physical keyboard does — UTF-8 text for characters, macOS keycodes for Return/Backspace.
 
 - **Dual trackpads** each own one half of the grid. Touch a pad to aim, click it (or pull L2/R2) to type the aimed key.
-- **No trackpads?** D‑pad or left stick moves the grid cursor; A types, B is Backspace, X is Space, Y toggles Shift, Start presses Enter.
+- **No trackpads?** D-pad or left stick moves the grid cursor; A types, B is Backspace, X is Space, Y toggles Shift, Start presses Enter.
 - **Overlapping game UI?** Tap the ⬍ position key in the bottom bar to flip the keyboard to the top of the screen.
-- **Steam alone** still works as the local‑cursor modifier — hold Steam to drive the Mac cursor with the right pad, same as before.
+- **Steam alone** still works as the local-cursor modifier — hold Steam to drive the Mac cursor with the right pad, same as before.
 
 > Steam grabs the controller exclusively while it's running. Quit Steam first.
 
@@ -188,8 +188,6 @@ Avoid package-local build directories during normal development. Use the root pa
 scripts/report-spm-build-size.sh   # audit generated SwiftPM disk usage
 scripts/clean-spm-builds.sh        # reclaim disk space
 ```
-
-Performance audit entry points are documented under `scripts/perf-audit/PERFORMANCE_AUDIT.md`.
 
 </details>
 
