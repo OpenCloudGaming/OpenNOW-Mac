@@ -496,7 +496,6 @@ private struct NativeNVSTMediaStreamSurface: View {
         nativeView?.remoteInputEnabled = false
         nativeView?.stopHaptics()
         nativeView?.setPointerLocked(false)
-        nativeView?.setNativeNVSTVideoVisible(false)
         inputDispatcher?.cancel()
         inputDispatcher = nil
         endStreamingPerformanceMode()
@@ -544,7 +543,8 @@ private struct NativeNVSTMediaStreamSurface: View {
         antiAFKMouseMovementEnabled = false
         batteryAlertTracker.reset()
         nativeView?.stopHaptics()
-        nativeView?.setNativeNVSTVideoVisible(false)
+        // Visibility is dropped by the transport's shutdown hook once the native session
+        // is gone; hiding the Metal layer before `path.stop` wedges Geronimo's render loop.
         guard !didEnd else {
             inputDispatcher?.cancel()
             return
@@ -570,9 +570,12 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func finish(reason: StreamEndReason, message: String) async -> Bool {
         guard !isEnding else { return false }
+        // The Geronimo-owned Metal layer stays visible until the native session is torn
+        // down. Hiding it here stalls the render loop's in-flight presents, and Geronimo's
+        // shutdown then deadlocks the main thread waiting on that render loop. Visibility
+        // is cleared in `finishOnce`, after `path.stop` has returned.
         let inputDispatcher = await MainActor.run {
             nativeView?.remoteInputEnabled = false
-            nativeView?.setNativeNVSTVideoVisible(false)
             let dispatcher = self.inputDispatcher
             self.inputDispatcher = nil
             isEnding = true

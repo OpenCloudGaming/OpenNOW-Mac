@@ -206,6 +206,101 @@ private func decodeNativeHapticCallbackData(_ bytes: UnsafePointer<UInt8>?, _ co
     }
 }
 
+private final class TerminationCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [NativeNVSTTransportTermination] = []
+
+    func append(_ event: NativeNVSTTransportTermination) {
+        lock.lock()
+        events.append(event)
+        lock.unlock()
+    }
+
+    func snapshot() -> [NativeNVSTTransportTermination] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
+    }
+}
+
+@Test func nativePauseNotificationResolvesPauseWithoutTerminating() async throws {
+    let terminations = TerminationCollector()
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "pause-notification-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: nil,
+        terminationHandler: { terminations.append($0) }
+    )
+    sink.handle(phase: 40, callbackType: 2, clientEvent: 14, notification: 1, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    sink.beginPause()
+    sink.handle(
+        phase: 0,
+        callbackType: 2,
+        clientEvent: 14,
+        notification: NativeNVSTTerminationReason.pausedByUser,
+        resultCode: -2_147_287_035,
+        resultName: nil,
+        resumable: false,
+        sessionAlive: false,
+        reasonName: "NVB_SN_PAUSED_BY_USER"
+    )
+
+    try await sink.waitForPause(timeoutNanoseconds: 1_000_000_000)
+    #expect(terminations.snapshot().isEmpty)
+}
+
+@Test func unrequestedPauseNotificationTerminatesAsPauseNotStreamEnd() async {
+    let terminations = TerminationCollector()
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "unrequested-pause-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: nil,
+        terminationHandler: { terminations.append($0) }
+    )
+    sink.handle(phase: 40, callbackType: 2, clientEvent: 14, notification: 1, resultCode: 0, resultName: nil, resumable: false, sessionAlive: false, reasonName: nil)
+    sink.handle(
+        phase: 0,
+        callbackType: 2,
+        clientEvent: 14,
+        notification: NativeNVSTTerminationReason.pausedByUser,
+        resultCode: 0,
+        resultName: nil,
+        resumable: false,
+        sessionAlive: false,
+        reasonName: "NVB_SN_PAUSED_BY_USER"
+    )
+
+    guard case .sessionTerminated(let info)? = terminations.snapshot().first else {
+        Issue.record("Expected a pause termination for a pause nobody requested")
+        return
+    }
+    #expect(info.isPause)
+    #expect(info.isSessionAlive)
+}
+
+@Test func nativeStopCallbackTreatsInactiveSessionAsStopped() async throws {
+    let sink = NativeNVSTGeronimoEventSink(
+        sessionId: "stop-session-inactive-test",
+        telemetryAttributes: [:],
+        cursorVisibilityHandler: nil,
+        terminationHandler: { _ in }
+    )
+    sink.beginStop()
+    sink.handle(
+        phase: 60,
+        callbackType: 0,
+        clientEvent: 0,
+        notification: 0,
+        resultCode: NativeNVSTBifrostTransport.geronimoSessionNotActiveResultCode,
+        resultName: "NVB_R_SESSION_NOT_ACTIVE",
+        resumable: false,
+        sessionAlive: false,
+        reasonName: nil
+    )
+
+    try await sink.waitForStop(timeoutNanoseconds: 1_000_000_000)
+}
+
 @Test @MainActor func nativeCursorCallbacksPreservePolarityAndLatestState() async {
     var visibility: [Bool] = []
     let sink = NativeNVSTGeronimoEventSink(

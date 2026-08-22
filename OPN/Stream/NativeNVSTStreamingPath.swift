@@ -143,6 +143,11 @@ public struct NativeNVSTTerminationValue: Equatable, Sendable {
 }
 
 public struct NativeNVSTTerminationReason: Equatable, Sendable {
+    /// `NVB_SN_PAUSED_BY_USER`. Geronimo reports a completed pause through the same
+    /// session-notification channel it uses for terminations, but the cloud session
+    /// stays alive and resumable, so it must never be reported as a stream end.
+    public static let pausedByUser: UInt32 = 59
+
     public let rawValue: UInt32
     public let resultName: String?
 
@@ -150,6 +155,8 @@ public struct NativeNVSTTerminationReason: Equatable, Sendable {
         self.rawValue = rawValue
         self.resultName = resultName
     }
+
+    public var isPause: Bool { rawValue == Self.pausedByUser }
 }
 
 public struct NativeNVSTSessionTermination: Equatable, Sendable {
@@ -174,6 +181,10 @@ public struct NativeNVSTSessionTermination: Equatable, Sendable {
     public var permitsSameSessionRecovery: Bool {
         isResumable && isSessionAlive && NativeNVSTRecoveryPolicy.isTransient(reason) && NativeNVSTRecoveryPolicy.isTransient(extendedResult)
     }
+
+    /// A paused session is not an ended session: the cloud session must survive so the
+    /// user can resume it.
+    public var isPause: Bool { reason.isPause }
 }
 
 public struct NativeNVSTTransportFailure: Equatable, Sendable {
@@ -673,8 +684,12 @@ public actor NativeNVSTStreamingPath {
         let message: String
         switch termination {
         case .sessionTerminated(let info):
-            reason = .remoteEnded
-            message = info.message.isEmpty ? "Native NVST stream ended remotely." : info.message
+            // `.paused` keeps the cloud session alive; `.remoteEnded` tells the session
+            // provider to stop it, which would quit the game.
+            reason = info.isPause ? .paused : .remoteEnded
+            message = info.message.isEmpty
+                ? (info.isPause ? "Native NVST stream paused." : "Native NVST stream ended remotely.")
+                : info.message
         case .transportFailed(let failure):
             reason = .failed
             message = failure.message.isEmpty ? "Native NVST transport failed." : failure.message

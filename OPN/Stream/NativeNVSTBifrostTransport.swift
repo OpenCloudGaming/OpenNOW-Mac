@@ -22,6 +22,15 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     static let geronimoStartFailureMessage = "Native NVST streaming did not reach Geronimo readiness. Open diagnostics for the native phase and sanitized error."
     static let geronimoStopTimeoutMessage = "Native NVST stop callback timed out."
 
+    /// `NVB_R_SESSION_NOT_ACTIVE`. Geronimo reports it when the session the stop
+    /// request names is already gone server-side, which is the state a stop asks
+    /// for, so the stop succeeded. Treating it as a failure poisoned teardown.
+    static let geronimoSessionNotActiveResultCode: Int32 = 301
+
+    /// Native destruction runs synchronously on the main thread because SDL and
+    /// GridApp both require it. Anything slower than this is worth a report.
+    static let geronimoDestroyWarningSeconds: Double = 3
+
     static let bitrateCorrectionInitialDelayNanoseconds: UInt64 = 5_000_000_000
     static let bitrateCorrectionRetryDelayNanoseconds: UInt64 = 5_000_000_000
     static let bitrateCorrectionMaxAttempts = 5
@@ -241,7 +250,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         guard connectingAttemptID == attemptID, !nativeLifecycleOperationInProgress, !Task.isCancelled else {
             await started.runtimeHandlers.cancel()
             await started.pump.stop()
-            await Self.destroyGeronimoOnMainActor(sessionAddress: started.sessionAddress)
+            await destroyGeronimo(sessionAddress: started.sessionAddress, operation: "connect-cancelled")
+            await prepareGeronimoVideoSurfaceForShutdown()
             throw CancellationError()
         }
         let connection = started.connection
@@ -365,10 +375,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let eventSink = geronimoEventSink
         let runtimeHandlers = self.runtimeHandlers
         await runtimeHandlers?.cancel()
-        if sessionAddress != nil {
-            videoSurfaceNeedsRecovery = true
-            await prepareGeronimoVideoSurfaceForShutdown()
-        }
+        if sessionAddress != nil { videoSurfaceNeedsRecovery = true }
         if let sessionAddress, let eventSink {
             if !eventSink.hasDeliveredTerminal {
                 eventSink.beginStop()
@@ -390,8 +397,29 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
         if let pump { await pump.stop() }
         if let sessionAddress {
-            await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
+            await destroyGeronimo(sessionAddress: sessionAddress, operation: "disconnect")
+            await prepareGeronimoVideoSurfaceForShutdown()
         }
+    }
+
+    /// Wraps native destruction with a watchdog: the call itself is synchronous on the
+    /// main thread, so if Geronimo ever stalls again the report lands while the app is
+    /// still stuck instead of having to be reconstructed from a sample afterwards.
+    private func destroyGeronimo(sessionAddress: UInt, operation: String) async {
+        var attributes = lastDiagnosticMetadata
+        attributes["destroyOperation"] = operation
+        let watchdog = Task.detached(priority: .utility) { [attributes] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.geronimoDestroyWarningSeconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            WebRTCMediaTelemetry.capture(
+                "nvst.geronimo.destroy.stalled",
+                level: .error,
+                message: "Native NVST teardown is still running on the main thread.",
+                attributes: attributes
+            )
+        }
+        await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress, attributes: attributes)
+        watchdog.cancel()
     }
 
     public func resetForRecovery() async {
@@ -413,12 +441,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let runtimeHandlers = self.runtimeHandlers
         geronimoEventSink?.cancel()
         await runtimeHandlers?.cancel()
-        if sessionAddress != nil {
-            videoSurfaceNeedsRecovery = true
+        if sessionAddress != nil { videoSurfaceNeedsRecovery = true }
+        if let pump { await pump.stop() }
+        if let sessionAddress {
+            await destroyGeronimo(sessionAddress: sessionAddress, operation: "recovery-reset")
             await prepareGeronimoVideoSurfaceForShutdown()
         }
-        if let pump { await pump.stop() }
-        if let sessionAddress { await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress) }
     }
 
     public func pause() async throws {
@@ -440,10 +468,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let pump = geronimoPump
         let runtimeHandlers = self.runtimeHandlers
         videoSurfaceNeedsRecovery = true
-        await prepareGeronimoVideoSurfaceForShutdown()
         if let pump { await pump.stop() }
         await runtimeHandlers?.cancel()
-        await Self.destroyGeronimoOnMainActor(sessionAddress: sessionAddress)
+        await destroyGeronimo(sessionAddress: sessionAddress, operation: "pause")
+        await prepareGeronimoVideoSurfaceForShutdown()
         geronimoPump = nil
         geronimoSessionAddress = nil
         geronimoEventSink = nil
@@ -465,6 +493,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         return metadata
     }
 
+    /// Detaches the Geronimo-owned Metal view from the stream window. This MUST run
+    /// after native destruction, never before it: hiding and reparenting the layer while
+    /// Geronimo still holds in-flight presents leaves `renderLoop` waiting on drawables
+    /// that an off-screen layer never completes, so `setRenderLoopMode`'s
+    /// `dispatch_group_wait` never returns and `SDLWindow::~SDLWindow` deadlocks the main
+    /// thread inside its `dispatch_sync` onto the render-setup queue.
     private func prepareGeronimoVideoSurfaceForShutdown() async {
         guard let prepareVideoSurfaceForShutdown else { return }
         await prepareVideoSurfaceForShutdown()
@@ -693,8 +727,36 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         }
     }
 
-    @MainActor private static func destroyGeronimoOnMainActor(sessionAddress: UInt) {
-        MacForceNowNativeNVSTGeronimoDestroy(UnsafeMutableRawPointer(bitPattern: sessionAddress))
+    /// Native destruction has to run on the main thread (SDL owns the video subsystem
+    /// and GridApp expects its own pump thread), so it is the one teardown step that can
+    /// still freeze the UI. The shim now abandons a session instead of joining wedged
+    /// Geronimo threads; this reports which outcome happened and how long it took.
+    @MainActor private static func destroyGeronimoOnMainActor(sessionAddress: UInt, attributes: [String: String] = [:]) {
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let outcome = MacForceNowNativeNVSTGeronimoDestroyWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress))
+        let elapsedSeconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000_000
+        var destroyAttributes = attributes
+        destroyAttributes["outcome"] = geronimoDestroyOutcomeName(outcome)
+        destroyAttributes["elapsedSeconds"] = String(format: "%.3f", elapsedSeconds)
+        let abandoned = outcome != 0
+        WebRTCMediaTelemetry.capture(
+            "nvst.geronimo.destroy.completed",
+            level: abandoned || elapsedSeconds >= geronimoDestroyWarningSeconds ? .error : .info,
+            message: abandoned
+                ? "Native NVST session abandoned during teardown; the native session was leaked to keep the app responsive."
+                : "Native NVST session destroyed.",
+            attributes: destroyAttributes
+        )
+    }
+
+    private static func geronimoDestroyOutcomeName(_ outcome: Int32) -> String {
+        switch outcome {
+        case 0: "destroyed"
+        case 1: "abandoned-callbacks-in-flight"
+        case 2: "abandoned-audio-capturer"
+        case 3: "abandoned-microphone-route"
+        default: "abandoned-\(outcome)"
+        }
     }
 
     @MainActor private static func resolveMicrophoneCaptureAccess(requested: Bool) async -> Bool {
@@ -1837,6 +1899,24 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             resolveReadiness(.success(()))
             return
         }
+        if callbackType == 2, clientEvent == 14, notification == NativeNVSTTerminationReason.pausedByUser {
+            // NVB_SN_PAUSED_BY_USER: the pause completed. Geronimo delivers it on the same
+            // notification channel as terminations, but the cloud session stays alive, so
+            // reporting a termination here would make the client stop the session and quit
+            // the game. Resolve the pending pause instead; a pause nobody asked for (paused
+            // from another client) is surfaced as a pause termination, never a stream end.
+            resolvePause(.success(()))
+            if !pausePending {
+                deliverTerminal(.sessionTerminated(NativeNVSTSessionTermination(
+                    reason: NativeNVSTTerminationReason(rawValue: notification, resultName: reasonName),
+                    extendedResult: NativeNVSTTerminationValue(code: resultCode, name: resultName),
+                    isResumable: true,
+                    isSessionAlive: true,
+                    message: "Native NVST stream paused."
+                )))
+            }
+            return
+        }
         if callbackType == 2, clientEvent == 14, (50...200).contains(notification) {
             let message = "Native NVST streaming ended with notification \(notification)."
             let error = NativeNVSTError.transportFailed(message)
@@ -1869,7 +1949,16 @@ final class NativeNVSTGeronimoEventSink: @unchecked Sendable {
             return
         }
         if phase == 60 {
-            resolveStop(resultCode == 0 ? .success(()) : .failure(NativeNVSTError.transportFailed("Native NVST stop failed with result \(resultCode).")))
+            let sessionAlreadyInactive = resultCode == NativeNVSTBifrostTransport.geronimoSessionNotActiveResultCode
+            if sessionAlreadyInactive {
+                WebRTCMediaTelemetry.capture(
+                    "nvst.geronimo.stop.session_inactive",
+                    level: .info,
+                    message: "Native NVST stop reported the session was already inactive.",
+                    attributes: attributes
+                )
+            }
+            resolveStop(resultCode == 0 || sessionAlreadyInactive ? .success(()) : .failure(NativeNVSTError.transportFailed("Native NVST stop failed with result \(resultCode).")))
             resolveStart(.failure(NativeNVSTError.transportFailed("Native NVST stopped before Geronimo delivered start.")))
             resolveReadiness(.failure(NativeNVSTError.transportFailed("Native NVST stopped before Geronimo reported readiness.")))
             return
@@ -2581,3 +2670,6 @@ private func MacForceNowNativeNVSTGeronimoStopWithResult(_ session: UnsafeMutabl
 
 @_silgen_name("MacForceNowNativeNVSTGeronimoDestroy")
 private func MacForceNowNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
+
+@_silgen_name("MacForceNowNativeNVSTGeronimoDestroyWithResult")
+private func MacForceNowNativeNVSTGeronimoDestroyWithResult(_ session: UnsafeMutableRawPointer?) -> Int32

@@ -17,8 +17,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -228,6 +230,15 @@ static_assert(offsetof(MacForceNowNativeNVSTPerformanceStats, gameFramesPerSecon
 static_assert(sizeof(MacForceNowNativeNVSTPerformanceStats) == 0x50, "Native performance stats ABI changed");
 
 namespace {
+// Teardown never blocks the main thread forever: every in-flight-callback drain
+// gets a bounded wait, and a timeout downgrades destruction to "abandon" (leak the
+// native session) instead of wedging the app in an unbounded condition-variable wait.
+constexpr std::chrono::milliseconds NativeTeardownDrainTimeout{2000};
+
+// NVB_R_SESSION_NOT_ACTIVE. A stop that reports it already reached the state stop
+// asks for, so it is a successful stop, not a failure.
+constexpr int32_t NVbResultSessionNotActive = 301;
+
 constexpr size_t GridAppStorageSize = 0x2000;
 constexpr size_t GridAppVTableSize = 0x220;
 constexpr size_t GridAppPrepareResultSlotOffset = 0x90;
@@ -710,17 +721,23 @@ MicrophoneRouteSlot *registerMicrophoneRoute(void *client) {
     return nullptr;
 }
 
-void unregisterMicrophoneRoute(MicrophoneRouteSlot *slot) {
-    if (slot == nullptr) { return; }
+// Returns false when microphone frames were still in flight after the bounded wait.
+// The caller must then treat the native session as unsafe to destroy.
+bool unregisterMicrophoneRoute(MicrophoneRouteSlot *slot) {
+    if (slot == nullptr) { return true; }
     std::unique_lock<std::mutex> routesLock(gMicrophoneRoutesMutex);
     slot->client.store(nullptr, std::memory_order_release);
-    slot->drained.wait(routesLock, [slot] { return slot->inFlight.load(std::memory_order_acquire) == 0; });
+    const bool drained = slot->drained.wait_for(routesLock, NativeTeardownDrainTimeout, [slot] {
+        return slot->inFlight.load(std::memory_order_acquire) == 0;
+    });
+    if (!drained) { fprintf(stderr, "MacForce Now microphone route drain timed out during teardown.\n"); }
     {
         std::lock_guard<std::mutex> stateLock(slot->stateMutex);
         resetVoiceActivity(slot->vad);
     }
     slot->volume.store(1.0f, std::memory_order_release);
     slot->vadEnabled.store(false, std::memory_order_release);
+    return drained;
 }
 
 bool boundedRange(uint64_t offset, uint64_t size, uint64_t limit) {
@@ -1495,8 +1512,14 @@ void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
     {
         std::lock_guard<std::mutex> stateLock(session->stateMutex);
         locallyRequested = session->stopIssued;
-        session->state = resultCode == 0 ? NativeSessionState::stopped : NativeSessionState::failed;
-        if (resultCode != 0) { session->lastError = "GridApp stop callback reported failure."; }
+        // A stop result always ends the session, including when the server reports a
+        // failure: leaving the session in `failed` made the next pump return -4, which
+        // killed the event pump before teardown could finish. The result code still
+        // travels to the client through the emitted event.
+        session->state = NativeSessionState::stopped;
+        if (resultCode != 0 && resultCode != NVbResultSessionNotActive) {
+            session->lastError = "GridApp stop callback reported failure.";
+        }
     }
     emitEvent(session, locallyRequested ? 60 : 61, 0, 0, 0, resultCode, failureInfo == nullptr ? nullptr : nvbResultName(session, resultCode));
 }
@@ -1989,17 +2012,22 @@ bool installGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session, char
     return true;
 }
 
-void detachGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session) {
-    if (session == nullptr) { return; }
+// Returns false when Geronimo callbacks were still running after the bounded wait.
+// Detaching always happens; only the drain is best-effort, because a wedged Bifrost
+// worker thread must never freeze the main thread that is tearing the session down.
+bool detachGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session) {
+    if (session == nullptr) { return true; }
     {
         std::lock_guard<std::mutex> lock(gGridAppSessionsMutex);
         session->acceptsCallbacks.store(false, std::memory_order_release);
         gGridAppSessions.erase(session->gridApp);
     }
     std::unique_lock<std::mutex> lock(session->callbackMutex);
-    session->callbacksDrained.wait(lock, [session] {
+    const bool drained = session->callbacksDrained.wait_for(lock, NativeTeardownDrainTimeout, [session] {
         return session->callbacksInFlight.load(std::memory_order_acquire) == 0;
     });
+    if (!drained) { fprintf(stderr, "MacForce Now Geronimo callback drain timed out during teardown.\n"); }
+    return drained;
 }
 
 void setSessionFailure(MacForceNowNativeNVSTGeronimoSession *session, const char *message) {
@@ -2178,8 +2206,11 @@ bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     return true;
 }
 
-void teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
+// Returns false when the audio capturer refused to shut down inside the bounded
+// wait; the capturer is then leaked on purpose so teardown can keep going.
+bool teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
+    bool completed = true;
     callVoidVirtual(session->videoDecoder, 0x60);
     destroyPolymorphicObject(session->videoDecoder);
     session->activeCodec = 0;
@@ -2194,8 +2225,16 @@ void teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
             destroyPolymorphicObject(ownedCapturer);
         };
         try {
-            std::thread worker(shutdownCapturer);
-            worker.join();
+            auto task = std::make_shared<std::packaged_task<void()>>(shutdownCapturer);
+            std::future<void> finished = task->get_future();
+            std::thread worker([task] { (*task)(); });
+            if (finished.wait_for(NativeTeardownDrainTimeout) == std::future_status::ready) {
+                worker.join();
+            } else {
+                worker.detach();
+                completed = false;
+                fprintf(stderr, "MacForce Now native audio capturer shutdown timed out; leaking the capturer.\n");
+            }
         } catch (...) {
             shutdownCapturer();
         }
@@ -2206,6 +2245,7 @@ void teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     destroyConstructedObject(session->window, session->functions.windowDtor);
     destroyConstructedObject(session->eventProcessor, session->functions.eventProcessorDtor);
     destroyConstructedObject(session->graphicsContext, session->functions.graphicsContextDtor);
+    return completed;
 }
 
 int32_t completePreparedStart(MacForceNowNativeNVSTGeronimoSession *session) {
@@ -3734,10 +3774,20 @@ extern "C" CVPixelBufferRef MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame(vo
     return CVPixelBufferRetain(gLatestCapturedFrame);
 }
 
-extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
+// Destruction outcomes reported to the client. `abandoned` means the native session
+// stayed alive on purpose: something Geronimo owns did not settle inside the bounded
+// teardown waits, and running GridApp's destructor or dlclosing Bifrost from there
+// would block the main thread forever. Leaking one session beats freezing the app.
+constexpr int32_t NativeDestroyOutcomeDestroyed = 0;
+constexpr int32_t NativeDestroyOutcomeAbandonedCallbacks = 1;
+constexpr int32_t NativeDestroyOutcomeAbandonedMedia = 2;
+constexpr int32_t NativeDestroyOutcomeAbandonedMicrophone = 3;
+
+extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionPointer) {
     auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
-    if (session == nullptr) { return; }
+    if (session == nullptr) { return NativeDestroyOutcomeDestroyed; }
     std::unique_lock<std::recursive_mutex> operationLock(session->operationMutex);
+    int32_t outcome = NativeDestroyOutcomeDestroyed;
     if (session->hapticFeatureEnabled && session->functions.controlFeatures != nullptr) {
         try { session->functions.controlFeatures(session->gridApp, NVbFeatureGamepadHaptics, 0); }
         catch (...) { fprintf(stderr, "MacForce Now failed to disable native haptics during teardown.\n"); }
@@ -3780,7 +3830,9 @@ extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
             fprintf(stderr, "MacForce Now forced native stop raised an unexpected C++ exception.\n");
         }
     }
-    if (session->gridAppVTable != nullptr) { detachGridAppCallbacks(session); }
+    if (session->gridAppVTable != nullptr && !detachGridAppCallbacks(session)) {
+        outcome = NativeDestroyOutcomeAbandonedCallbacks;
+    }
     {
         std::lock_guard<std::mutex> eventLock(session->eventMutex);
         session->eventHandler = nullptr;
@@ -3793,12 +3845,27 @@ extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
         session->authRefreshHandler = nullptr;
         session->authRefreshContext = nullptr;
     }
-    try { teardownPlatformMedia(session); }
-    catch (...) { fprintf(stderr, "MacForce Now native media destruction raised an unexpected C++ exception.\n"); }
+    try {
+        if (!teardownPlatformMedia(session) && outcome == NativeDestroyOutcomeDestroyed) {
+            outcome = NativeDestroyOutcomeAbandonedMedia;
+        }
+    } catch (...) {
+        fprintf(stderr, "MacForce Now native media destruction raised an unexpected C++ exception.\n");
+    }
     if (gFrameCaptureHookInstalled.load(std::memory_order_acquire)) { releaseFrameCaptureHook(); }
     if (session->microphoneRoute != nullptr) {
-        unregisterMicrophoneRoute(session->microphoneRoute);
+        if (!unregisterMicrophoneRoute(session->microphoneRoute) && outcome == NativeDestroyOutcomeDestroyed) {
+            outcome = NativeDestroyOutcomeAbandonedMicrophone;
+        }
         session->microphoneRoute = nullptr;
+    }
+    if (outcome != NativeDestroyOutcomeDestroyed) {
+        // Native work is still touching this session. Release nothing else: GridApp's
+        // destructor, the platform shutdown and dlclose all join Geronimo threads, and
+        // joining a wedged thread here is exactly what used to hang the app on quit.
+        fprintf(stderr, "MacForce Now abandoned a native Geronimo session during teardown (outcome %d).\n", outcome);
+        operationLock.unlock();
+        return outcome;
     }
     if (session->microphoneHookLeaseAcquired) {
         releaseMicrophoneHook();
@@ -3845,4 +3912,9 @@ extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
     }
     operationLock.unlock();
     delete session;
+    return outcome;
+}
+
+extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
+    MacForceNowNativeNVSTGeronimoDestroyWithResult(sessionPointer);
 }
