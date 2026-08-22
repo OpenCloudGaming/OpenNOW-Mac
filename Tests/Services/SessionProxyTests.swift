@@ -105,8 +105,8 @@ private final class MutableClock: @unchecked Sendable {
         #expect(header == "Basic \("user:pass".data(using: .utf8)!.base64EncodedString())")
     }
 
-    @Test func proxiedSessionCarriesProxyAuthorizationHeader() {
-        withPreservedProxySettings {
+    @Test func proxiedSessionCarriesProxyAuthorizationHeader() async {
+        await withPreservedProxySettings {
             var settings = validSettings()
             settings.username = "user"
             OPNSessionProxyStore.save(settings)
@@ -153,16 +153,16 @@ private final class MutableClock: @unchecked Sendable {
         #expect(!OPNSessionProxySessionProvider.shouldFallbackToDirect(after: NonNetworkError()))
     }
 
-    @Test func providerUsesDirectSessionWhenProxyDisabled() {
-        withPreservedProxySettings {
+    @Test func providerUsesDirectSessionWhenProxyDisabled() async {
+        await withPreservedProxySettings {
             OPNSessionProxyStore.save(OPNSessionProxySettings())
             let provider = OPNSessionProxySessionProvider()
             #expect(provider.controlPlaneURLSession() === URLSession.shared)
         }
     }
 
-    @Test func providerUsesProxiedSessionWhenConfigured() {
-        withPreservedProxySettings {
+    @Test func providerUsesProxiedSessionWhenConfigured() async {
+        await withPreservedProxySettings {
             OPNSessionProxyStore.save(validSettings())
             OPNSessionProxyStore.savePassword("")
             let provider = OPNSessionProxySessionProvider()
@@ -170,8 +170,8 @@ private final class MutableClock: @unchecked Sendable {
         }
     }
 
-    @Test func failureCooldownRoutesDirectlyUntilExpiry() {
-        withPreservedProxySettings {
+    @Test func failureCooldownRoutesDirectlyUntilExpiry() async {
+        await withPreservedProxySettings {
             OPNSessionProxyStore.save(validSettings())
             OPNSessionProxyStore.savePassword("")
             let clock = MutableClock(value: 1_000)
@@ -186,8 +186,8 @@ private final class MutableClock: @unchecked Sendable {
         }
     }
 
-    @Test func providerReusesSessionPerConfiguration() {
-        withPreservedProxySettings {
+    @Test func providerReusesSessionPerConfiguration() async {
+        await withPreservedProxySettings {
             OPNSessionProxyStore.save(validSettings())
             OPNSessionProxyStore.savePassword("")
             let provider = OPNSessionProxySessionProvider()
@@ -195,8 +195,8 @@ private final class MutableClock: @unchecked Sendable {
         }
     }
 
-    @Test func storeRoundTripsSettings() {
-        withPreservedProxySettings {
+    @Test func storeRoundTripsSettings() async {
+        await withPreservedProxySettings {
             var settings = validSettings()
             settings.scheme = .socks5
             settings.username = "user"
@@ -205,8 +205,8 @@ private final class MutableClock: @unchecked Sendable {
         }
     }
 
-    @Test func passwordRoundTripsThroughPreferences() {
-        withPreservedProxySettings {
+    @Test func passwordRoundTripsThroughPreferences() async {
+        await withPreservedProxySettings {
             guard OPNSessionProxyStore.savePassword("s3cret") else { return }
             #expect(OPNSessionProxyStore.loadPassword() == "s3cret")
             #expect(OPNSessionProxyStore.savePassword(""))
@@ -214,7 +214,8 @@ private final class MutableClock: @unchecked Sendable {
         }
     }
 
-    private func withPreservedProxySettings(_ body: () -> Void) {
+    private func withPreservedProxySettings(_ body: @Sendable () -> Void) async {
+        await networkTestIsolationLock.withLock {
         let defaults = UserDefaults.standard
         let keys = [
             "MacForceNow.Stream.SessionProxyEnabled",
@@ -237,5 +238,6 @@ private final class MutableClock: @unchecked Sendable {
             OPNSessionProxySessionProvider.shared.resetCooldown()
         }
         body()
+        }
     }
 }

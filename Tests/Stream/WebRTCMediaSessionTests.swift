@@ -234,7 +234,7 @@ struct WebRTCMediaSessionTests {
 
     @Test("stopping recording before first video frame fails without crashing")
     func stoppingRecordingBeforeFirstFrameFailsWithoutCrashing() async throws {
-        let recorder = WebRTCStreamRecorder()
+        let recorder = WebRTCStreamRecorder(firstFrameTimeout: .seconds(600))
         let statuses = RecordingStatusRecorder()
         recorder.onStatusChanged = { status in
             Task { await statuses.append(status) }
