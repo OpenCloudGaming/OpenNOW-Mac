@@ -15,6 +15,22 @@ final class StreamWindowAspectCoordinator {
     private var needsDeferredAspectRatioClear = false
     private var applyGeneration: UInt = 0
     private var waitsForValidGeometry = false
+    private var waitsForLiveResizeEnd = false
+    private var pendingRestoration: PendingRestoration?
+    private var pendingRestorationToken: NSObjectProtocol?
+
+    /// A style-mask, aspect-ratio or frame change rebuilds the window's theme frame. Doing
+    /// that while the user drags a window edge leaves AppKit's resize loop
+    /// (`-[NSWindow(NSWindowResizing) _resizeWithEvent:]`) holding the frame view it started
+    /// with, and the next `_setFrameCommon:` traps inside
+    /// `_adjustNeedsDisplayRegionForNewFrame:`. Main-actor work drains in event-tracking mode,
+    /// so every geometry mutation here has to wait for the drag to finish.
+    private struct PendingRestoration {
+        let window: NSWindow
+        let clearsAspectRatio: Bool
+        let restoresFullSizeContentView: Bool
+        let originalFullSizeContentView: Bool
+    }
 
     func attach(_ window: NSWindow?) {
         guard self.window !== window else { return }
@@ -29,6 +45,7 @@ final class StreamWindowAspectCoordinator {
         isFullScreenTransitioning = false
         needsDeferredAspectRatioClear = false
         waitsForValidGeometry = false
+        waitsForLiveResizeEnd = false
         addFullScreenTransitionObservers(for: window)
         scheduleApply()
     }
@@ -52,6 +69,7 @@ final class StreamWindowAspectCoordinator {
         isFullScreenTransitioning = false
         needsDeferredAspectRatioClear = false
         waitsForValidGeometry = false
+        waitsForLiveResizeEnd = false
     }
 
     func windowGeometryDidChange() {
@@ -75,6 +93,11 @@ final class StreamWindowAspectCoordinator {
             return
         }
         waitsForValidGeometry = false
+        guard !Self.isLiveResizing(window) else {
+            waitsForLiveResizeEnd = true
+            return
+        }
+        waitsForLiveResizeEnd = false
         guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
             clearAppliedAspectRatio()
             return
@@ -117,6 +140,11 @@ final class StreamWindowAspectCoordinator {
         }
         guard !isFullScreenTransitioning, !window.styleMask.contains(.fullScreen) else {
             needsDeferredAspectRatioClear = true
+            return
+        }
+        guard !Self.isLiveResizing(window) else {
+            needsDeferredAspectRatioClear = true
+            waitsForLiveResizeEnd = true
             return
         }
         if appliedLockState == true {
@@ -177,13 +205,67 @@ final class StreamWindowAspectCoordinator {
         let originalFullSizeContentView = self.originalFullSizeContentView
         guard clearsAspectRatio || restoresFullSizeContentView else { return }
         guard !window.styleMask.contains(.fullScreen), Self.hasValidGeometry(window) else { return }
-        if clearsAspectRatio {
+        let restoration = PendingRestoration(
+            window: window,
+            clearsAspectRatio: clearsAspectRatio,
+            restoresFullSizeContentView: restoresFullSizeContentView,
+            originalFullSizeContentView: originalFullSizeContentView
+        )
+        // The window is on its way out of this coordinator, so the restoration has to outlive
+        // `detach()` when a drag is in flight instead of being dropped or forced through.
+        guard !Self.isLiveResizing(window) else {
+            deferRestoration(restoration)
+            return
+        }
+        Self.restore(restoration)
+    }
+
+    private func deferRestoration(_ restoration: PendingRestoration) {
+        cancelPendingRestoration()
+        pendingRestoration = restoration
+        pendingRestorationToken = NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification,
+            object: restoration.window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.runPendingRestoration() }
+        }
+    }
+
+    private func runPendingRestoration() {
+        guard let restoration = pendingRestoration else {
+            cancelPendingRestoration()
+            return
+        }
+        cancelPendingRestoration()
+        // The coordinator took the window back while the drag was running; its own state is
+        // now authoritative.
+        guard restoration.window !== window else { return }
+        guard !restoration.window.styleMask.contains(.fullScreen), Self.hasValidGeometry(restoration.window) else { return }
+        Self.restore(restoration)
+    }
+
+    private func cancelPendingRestoration() {
+        if let pendingRestorationToken {
+            NotificationCenter.default.removeObserver(pendingRestorationToken)
+        }
+        pendingRestorationToken = nil
+        pendingRestoration = nil
+    }
+
+    private static func restore(_ restoration: PendingRestoration) {
+        let window = restoration.window
+        if restoration.clearsAspectRatio {
             window.contentAspectRatio = .zero
             window.aspectRatio = .zero
         }
-        if restoresFullSizeContentView {
-            Self.setFullSizeContentView(originalFullSizeContentView, on: window)
+        if restoration.restoresFullSizeContentView {
+            setFullSizeContentView(restoration.originalFullSizeContentView, on: window)
         }
+    }
+
+    private static func isLiveResizing(_ window: NSWindow) -> Bool {
+        window.inLiveResize || window.contentView?.inLiveResize == true
     }
 
     private static func setFullSizeContentView(_ enabled: Bool, on window: NSWindow) {
@@ -256,7 +338,18 @@ final class StreamWindowAspectCoordinator {
                 self?.finishFullScreenTransition()
             }
         }
-        fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken]
+        let didEndLiveResizeToken = notificationCenter.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.finishLiveResize()
+            }
+        }
+        fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken, didEndLiveResizeToken]
+    }
+
+    private func finishLiveResize() {
+        guard waitsForLiveResizeEnd else { return }
+        waitsForLiveResizeEnd = false
+        scheduleApply()
     }
 
     private func removeFullScreenTransitionObservers() {

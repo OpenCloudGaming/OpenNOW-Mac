@@ -178,6 +178,7 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
         private var fullScreenTransitionObserverTokens: [NSObjectProtocol] = []
         private var isFullScreenTransitioning = false
         private var needsDeferredAspectRatioClear = false
+        private var waitsForLiveResizeEnd = false
 
         func attach(_ window: NSWindow?) {
             guard self.window !== window else { return }
@@ -188,6 +189,7 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
             appliedLockState = nil
             isFullScreenTransitioning = false
             needsDeferredAspectRatioClear = false
+            waitsForLiveResizeEnd = false
             addFullScreenTransitionObservers(for: window)
             apply()
         }
@@ -206,10 +208,19 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
             appliedLockState = nil
             isFullScreenTransitioning = false
             needsDeferredAspectRatioClear = false
+            waitsForLiveResizeEnd = false
         }
 
         private func apply() {
             guard let window else { return }
+            // Changing the aspect ratio re-runs the window's frame math; mid-drag that swaps the
+            // theme frame out from under AppKit's resize loop and traps in
+            // `_adjustNeedsDisplayRegionForNewFrame:`.
+            guard !Self.isLiveResizing(window) else {
+                waitsForLiveResizeEnd = true
+                return
+            }
+            waitsForLiveResizeEnd = false
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
                 clearAppliedAspectRatio()
                 return
@@ -245,6 +256,11 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
                 needsDeferredAspectRatioClear = true
                 return
             }
+            guard !Self.isLiveResizing(window) else {
+                needsDeferredAspectRatioClear = true
+                waitsForLiveResizeEnd = true
+                return
+            }
             if appliedLockState == true {
                 window.contentAspectRatio = .zero
                 window.aspectRatio = .zero
@@ -272,7 +288,22 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
                     self?.finishFullScreenTransition()
                 }
             }
-            fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken]
+            let didEndLiveResizeToken = notificationCenter.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { [weak self] in
+                    self?.finishLiveResize()
+                }
+            }
+            fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken, didEndLiveResizeToken]
+        }
+
+        private func finishLiveResize() {
+            guard waitsForLiveResizeEnd else { return }
+            waitsForLiveResizeEnd = false
+            apply()
+        }
+
+        private static func isLiveResizing(_ window: NSWindow) -> Bool {
+            window.inLiveResize || window.contentView?.inLiveResize == true
         }
 
         private func removeFullScreenTransitionObservers() {
