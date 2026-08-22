@@ -133,12 +133,43 @@ final class OPNPillarboxDetector {
 
     // MARK: - Measurement
 
+    /// Bytes each luma sample occupies in plane 0 of a biplanar frame.
+    ///
+    /// Chroma subsampling does not change the luma container, but bit depth does:
+    /// the 10-bit formats (`x420` for 4:2:0, `x444` for 4:4:4) carry each sample in
+    /// the high bits of a 16-bit word, the 8-bit ones in a single byte. Reading a
+    /// 16-bit plane a byte at a time yields the sample *low* bits — encoder noise,
+    /// not luma — and covers only half the row, so the scan has to branch on the real
+    /// container width rather than on a 4:2:0-only format allowlist.
+    static func lumaBytesPerSample(_ pixelBuffer: CVPixelBuffer) -> Int {
+        switch CVPixelBufferGetPixelFormatType(pixelBuffer) {
+        case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_444YpCbCr10BiPlanarFullRange:
+            return 2
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+             kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange,
+             kCVPixelFormatType_444YpCbCr8BiPlanarFullRange:
+            return 1
+        default:
+            // Unknown format: infer from the stride. Row padding never doubles a row
+            // at streaming widths, so two bytes per pixel means a 16-bit container.
+            let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
+            let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+            return width > 0 && bytesPerRow / width >= 2 ? 2 : 1
+        }
+    }
+
     /// Scans the luma plane and returns the content extent, or nil if unreadable.
     static func measure(_ pixelBuffer: CVPixelBuffer) -> OPNPillarboxContentRect? {
-        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         let isBiPlanar = CVPixelBufferGetPlaneCount(pixelBuffer) >= 2
-        let isTenBit = format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-            || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+        let isTenBit = lumaBytesPerSample(pixelBuffer) == 2
         guard isBiPlanar else { return nil }
 
         guard CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly) == kCVReturnSuccess else { return nil }

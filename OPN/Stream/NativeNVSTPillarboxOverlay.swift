@@ -147,8 +147,14 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
         // Nothing to fill when the detector sees no bars.
         guard !rect.isFull else { return }
 
-        guard let luma = makeTexture(pixelBuffer, plane: 0, cache: textureCache, format: .r16Unorm),
-              let chroma = makeTexture(pixelBuffer, plane: 1, cache: textureCache, format: .rg16Unorm),
+        // Plane containers follow the frame's bit depth, not its chroma subsampling:
+        // 4:4:4 arrives as `x444`, 10 bits in the high bits of 16, exactly like the
+        // `x420` 4:2:0 frames — but an 8-bit format would put one byte per sample and
+        // fail texture creation against a 16-bit view. Chroma being full-resolution in
+        // 4:4:4 needs no handling; both passes sample it with normalised coordinates.
+        let tenBit = OPNPillarboxDetector.lumaBytesPerSample(pixelBuffer) == 2
+        guard let luma = makeTexture(pixelBuffer, plane: 0, cache: textureCache, format: tenBit ? .r16Unorm : .r8Unorm),
+              let chroma = makeTexture(pixelBuffer, plane: 1, cache: textureCache, format: tenBit ? .rg16Unorm : .rg8Unorm),
               let commandBuffer = commandQueue.makeCommandBuffer() else { return }
 
         var uniforms = OverlayUniforms(
@@ -156,7 +162,11 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
             contentRight: Float(rect.right),
             mode: Float(state.fillMode.rawValue),
             dim: state.fillDim,
-            softness: Self.fillSoftness
+            softness: Self.fillSoftness,
+            // Normalises either container onto the same 0...1 code scale: a 16-bit view
+            // of 10-bit-high-packed samples reads code/1024, an 8-bit view reads the
+            // code directly.
+            sampleScale: tenBit ? 65535.0 / 64.0 / 1023.0 : 1.0
         )
 
         // Pass 1: downsample the picture content into the tiny history texture.
@@ -217,6 +227,7 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
         var mode: Float
         var dim: Float
         var softness: Float
+        var sampleScale: Float
     }
 
     private static let shaderSource = """
@@ -224,7 +235,7 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
     using namespace metal;
 
     struct VertexOut { float4 position [[position]]; float2 uv; };
-    struct Uniforms { float contentLeft; float contentRight; float mode; float dim; float softness; };
+    struct Uniforms { float contentLeft; float contentRight; float mode; float dim; float softness; float sampleScale; };
 
     // Cubic B-spline upsample of the tiny history from four bilinear taps. C2
     // continuous and mildly smoothing, so the history magnifies into the bars as a
@@ -276,11 +287,13 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
         return out;
     }
 
-    static float3 opn_yuv10_to_rgb(texture2d<float> luma, texture2d<float> chroma, sampler s, float2 uv) {
-        // P010: 10-bit codes in the high bits of 16, sampled ~code/1024. BT.709
-        // video-range to RGB (exactness is not needed for a blurred fill).
-        float n = luma.sample(s, uv).r * (65535.0 / 64.0) / 1023.0;
-        float2 c = chroma.sample(s, uv).rg * (65535.0 / 64.0) / 1023.0;
+    static float3 opn_yuv_to_rgb(texture2d<float> luma, texture2d<float> chroma, sampler s, float2 uv, float sampleScale) {
+        // `sampleScale` folds the container away: 10-bit codes sit in the high bits of
+        // 16 and read back as ~code/1024, 8-bit codes read back as code/255 already.
+        // Both land on the same normalised scale, where video-range black is 64/1023.
+        // BT.709 video-range to RGB (exactness is not needed for a blurred fill).
+        float n = luma.sample(s, uv).r * sampleScale;
+        float2 c = chroma.sample(s, uv).rg * sampleScale;
         float y = (n * 1023.0 - 64.0) / 876.0;
         float u = (c.x * 1023.0 - 512.0) / 896.0;
         float v = (c.y * 1023.0 - 512.0) / 896.0;
@@ -296,7 +309,7 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
                                                  constant Uniforms &u [[buffer(0)]]) {
         constexpr sampler s(address::clamp_to_edge, filter::linear);
         float fx = mix(u.contentLeft, u.contentRight, clamp(in.uv.x, 0.0, 1.0));
-        return float4(opn_yuv10_to_rgb(luma, chroma, s, float2(fx, clamp(in.uv.y, 0.0, 1.0))), 1.0);
+        return float4(opn_yuv_to_rgb(luma, chroma, s, float2(fx, clamp(in.uv.y, 0.0, 1.0)), u.sampleScale), 1.0);
     }
 
     // Pass 2: paint the bars from the soft history; picture region stays transparent.

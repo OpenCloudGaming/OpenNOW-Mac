@@ -42,6 +42,30 @@ private func makeGradient(width: Int, height: Int) -> CVPixelBuffer? {
     return buffer
 }
 
+/// Builds a 10-bit biplanar luma plane (`x420` or `x444`) with `barFraction` of the
+/// width blacked out on each side. 4:4:4 sessions decode to `x444`, whose luma is a
+/// 16-bit container just like `x420` — reading it as bytes is what broke the scan.
+private func makeTenBit(width: Int, height: Int, barFraction: Double, format: OSType) -> CVPixelBuffer? {
+    var buffer: CVPixelBuffer?
+    guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, format, nil, &buffer) == kCVReturnSuccess,
+          let buffer else { return nil }
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
+    let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    let barWidth = Int(Double(width) * barFraction)
+    for y in 0..<height {
+        let row = base.advanced(by: y * stride).assumingMemoryBound(to: UInt16.self)
+        for x in 0..<width {
+            // 10-bit codes live in the high bits of 16: 64 is video-range black, 512
+            // mid-grey picture. Their low bytes are 0 and 0 respectively, which is
+            // exactly why a byte-wide read of this plane finds no bars.
+            row[x] = UInt16((x < barWidth || x >= width - barWidth) ? 64 : 512) << 6
+        }
+    }
+    return buffer
+}
+
 private let ultrawide = CGSize(width: 5120, height: 2160)
 
 @Suite("Pillarbox aspect snapping")
@@ -100,6 +124,33 @@ struct PillarboxScanTests {
         let buffer = try #require(makeGradient(width: 5120, height: 2160))
         let measured = try #require(OPNPillarboxDetector.measure(buffer))
         #expect(measured.isFull)
+    }
+
+    @Test("Bars are found in a 10-bit 4:2:0 frame")
+    func findsBarsTenBit420() throws {
+        let buffer = try #require(makeTenBit(width: 5120, height: 2160, barFraction: 0.125,
+                                             format: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange))
+        let measured = try #require(OPNPillarboxDetector.measure(buffer))
+        #expect(abs(measured.left - 0.125) < 0.002)
+        #expect(abs(measured.right - 0.875) < 0.002)
+    }
+
+    /// 4:4:4 streams decode to `x444`. A format allowlist that named only the 4:2:0
+    /// 10-bit types read this plane as bytes and reported no bars at all.
+    @Test("Bars are found in a 10-bit 4:4:4 frame")
+    func findsBarsTenBit444() throws {
+        let buffer = try #require(makeTenBit(width: 5120, height: 2160, barFraction: 0.125,
+                                             format: kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange))
+        #expect(OPNPillarboxDetector.lumaBytesPerSample(buffer) == 2)
+        let measured = try #require(OPNPillarboxDetector.measure(buffer))
+        #expect(abs(measured.left - 0.125) < 0.002)
+        #expect(abs(measured.right - 0.875) < 0.002)
+    }
+
+    @Test("An 8-bit frame is read a byte at a time")
+    func eightBitSampleWidth() throws {
+        let buffer = try #require(makeNV12(width: 5120, height: 2160, barFraction: 0.125))
+        #expect(OPNPillarboxDetector.lumaBytesPerSample(buffer) == 1)
     }
 
     @Test("An entirely black frame produces no fill")
