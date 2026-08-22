@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.18.1](https://github.com/anderson-oki/macforce-now/compare/v0.18.0...v0.18.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* catalog banner buttons on high resolutions ([45e1564](https://github.com/anderson-oki/macforce-now/commit/45e156495b22f5282ecf6386eddfa2ead5b79d5b))
+* max bitrate fallback to default bitrate ([a1fd189](https://github.com/anderson-oki/macforce-now/commit/a1fd18980ecbd040e45589b95d08ab895f8196c8))
+* pause, end and resume ([1f552bd](https://github.com/anderson-oki/macforce-now/commit/1f552bd69008d38597d1caaf7ae254cebb747495))
+* precise per-tile catalog hover tracking ([b616ec2](https://github.com/anderson-oki/macforce-now/commit/b616ec296f80f0dabab4bfe951f04778db0e8659))
+
 ## [0.18.0](https://github.com/anderson-oki/macforce-now/compare/v0.17.0...v0.18.0) (2026-08-21)
 
 
