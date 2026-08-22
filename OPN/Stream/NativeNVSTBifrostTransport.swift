@@ -30,6 +30,39 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     /// desired bitrate, leaving Geronimo on its 35000 Kbps default cap. When the negotiated mode
     /// selection came back below the user's requested bitrate, the cap is raised at runtime via
     /// feature control `0x10` once the session is stable.
+    /// The Settings bitrate picker is authoritative for native NVST. GFN finalizes
+    /// `maxBitrateKbps` from the resolution tier it granted, so honoring the server value
+    /// pins every stream to a resolution-derived cap and makes the picker inert. The
+    /// negotiated value is only used when the user expressed no cap at all; when the server
+    /// finalized below the requested cap, `scheduleBitrateCorrectionIfNeeded` raises it at
+    /// runtime through feature control `0x10`.
+    static func resolvedMaxBitrateKbps(requestedKbps: Int, negotiatedKbps: Int) -> Int {
+        requestedKbps > 0 ? requestedKbps : max(0, negotiatedKbps)
+    }
+
+    static func requestedMaxBitrateKbps(_ settings: [String: Any]) -> Int {
+        min(max(0, int(settings["maxBitrateMbps"])), 1_000) * 1_000
+    }
+
+    /// The bitrate cap GFN itself finalized for the session, independent of what the mode
+    /// selection asks for. Drives the runtime correction decision.
+    static func negotiatedMaxBitrateKbps(rawSessionJSON: String, sessionInfoJSON: String) -> Int {
+        let rawSession = jsonObject(from: rawSessionJSON)
+        let sessionInfo = jsonObject(from: sessionInfoJSON)
+        let sources = [
+            rawSession["finalizedStreamingFeatures"] as? [String: Any],
+            rawSession["streamingProfile"] as? [String: Any],
+            rawSession["negotiatedStreamProfile"] as? [String: Any],
+            sessionInfo["streamingProfile"] as? [String: Any],
+            sessionInfo["negotiatedStreamProfile"] as? [String: Any],
+        ].compactMap { $0 }
+        for source in sources {
+            let value = int(firstValue(in: source, keys: ["maxBitrateKbps", "bitrateKbps"]))
+            if value > 0 { return value }
+        }
+        return 0
+    }
+
     static func bitrateCorrectionTargetKbps(requestedKbps: Int, appliedKbps: Int) -> UInt32? {
         guard requestedKbps > 0, appliedKbps > 0, appliedKbps < requestedKbps else { return nil }
         return UInt32(requestedKbps)
@@ -649,8 +682,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 throw error
             }
             WebRTCMediaTelemetry.capture("nvst.geronimo.stream.connected", level: .info, message: "Geronimo reported StreamerConnected for native NVST.", attributes: attributes)
-            let requestedMaxBitrateKbps = min(max(0, Self.int(settings["maxBitrateMbps"])), 1_000) * 1_000
-            let appliedMaxBitrateKbps = Self.int(selectedFeatures["maxBitrateKbps"])
+            let requestedMaxBitrateKbps = Self.requestedMaxBitrateKbps(settings)
+            let appliedMaxBitrateKbps = Self.negotiatedMaxBitrateKbps(rawSessionJSON: allocation.rawSessionJSON, sessionInfoJSON: allocation.sessionInfoJSON)
             return (NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status), sessionAddress, activePump, runtimeHandlers, requestedMaxBitrateKbps, appliedMaxBitrateKbps)
         } catch {
             pump?.stop()
@@ -878,11 +911,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             let codec = normalizedCodec(string(settings["codec"], fallback: ""))
             if !codec.isEmpty { profile["codec"] = codec }
         }
-        let requestedMaxBitrateKbps = min(max(0, int(settings["maxBitrateMbps"])), 1_000) * 1_000
-        if requestedMaxBitrateKbps > 0 {
-            let negotiatedMaxBitrateKbps = int(firstValue(in: profile, keys: ["maxBitrateKbps", "bitrateKbps"]))
-            profile["maxBitrateKbps"] = negotiatedMaxBitrateKbps > 0 ? min(negotiatedMaxBitrateKbps, requestedMaxBitrateKbps) : requestedMaxBitrateKbps
-        }
+        let maxBitrateKbps = resolvedMaxBitrateKbps(
+            requestedKbps: requestedMaxBitrateKbps(settings),
+            negotiatedKbps: int(firstValue(in: profile, keys: ["maxBitrateKbps", "bitrateKbps"]))
+        )
+        if maxBitrateKbps > 0 { profile["maxBitrateKbps"] = maxBitrateKbps }
         let measuredMaxPacketSize = int(settings["maxPacketSize"])
         if measuredMaxPacketSize >= 512, measuredMaxPacketSize <= Int(UInt16.max) {
             profile["maxPacketSize"] = measuredMaxPacketSize
@@ -1047,7 +1080,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "profile": int(featureValue(in: sources, keys: ["profile", "streamingQualityProfile"])),
             "chromaFormat": explicitChromaFormat == nil ? chromaFormat(from: colorQuality) : int(explicitChromaFormat),
             "fallbackToLogicalResolution": bool(featureValue(in: sources, keys: ["fallbackToLogicalResolution"])),
-            "maxBitrateKbps": int(featureValue(in: sources, keys: ["maxBitrateKbps", "bitrateKbps", "bitrate"])),
+            "maxBitrateKbps": resolvedMaxBitrateKbps(
+                requestedKbps: requestedMaxBitrateKbps(settings),
+                negotiatedKbps: int(featureValue(in: sources, keys: ["maxBitrateKbps", "bitrateKbps", "bitrate"]))
+            ),
             "dynamicStreamingMode": int(featureValue(in: sources, keys: ["dynamicStreamingMode"])),
             "prefilterParams": prefilterParams(from: sources),
             "hudStreamingParams": hudStreamingParams(from: sources),
@@ -1166,10 +1202,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         if profile["bitDepth"] == nil { profile["bitDepth"] = int(selectedFeatures["bitDepth"]) }
         if profile["chromaFormat"] == nil { profile["chromaFormat"] = int(selectedFeatures["chromaFormat"]) }
         let selectedMaxBitrateKbps = int(selectedFeatures["maxBitrateKbps"])
-        if selectedMaxBitrateKbps > 0 {
-            let negotiatedMaxBitrateKbps = int(profile["maxBitrateKbps"])
-            profile["maxBitrateKbps"] = negotiatedMaxBitrateKbps > 0 ? min(negotiatedMaxBitrateKbps, selectedMaxBitrateKbps) : selectedMaxBitrateKbps
-        }
+        if selectedMaxBitrateKbps > 0 { profile["maxBitrateKbps"] = selectedMaxBitrateKbps }
         if profile["colorQuality"] == nil {
             profile["colorQuality"] = int(selectedFeatures["bitDepth"]) >= 10 ? "10bit_420" : "8bit_420"
         }
@@ -1218,15 +1251,15 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     private static func normalizedMonitorSettings(rawSession: [String: Any], requestData: [String: Any], settings: [String: Any], streamingProfileJSON: String) -> [Any] {
-        let rawMonitorSettings = jsonArray(from: rawSession["monitorSettings"])
-        if !rawMonitorSettings.isEmpty { return rawMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any]) } }
-        let requestMonitorSettings = jsonArray(from: requestData["clientRequestMonitorSettings"])
-        if !requestMonitorSettings.isEmpty { return requestMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any]) } }
-        let settingsMonitorSettings = jsonArray(from: settings["clientRequestMonitorSettings"])
-        if !settingsMonitorSettings.isEmpty { return settingsMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any]) } }
         let profile = jsonObject(from: streamingProfileJSON)
         let selectedMode = profile["selectedVideoMode"] as? [String: Any] ?? [:]
         let selectedFeatures = profile["selectedFeatures"] as? [String: Any] ?? [:]
+        let rawMonitorSettings = jsonArray(from: rawSession["monitorSettings"])
+        if !rawMonitorSettings.isEmpty { return rawMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any], selectedFeatures: selectedFeatures) } }
+        let requestMonitorSettings = jsonArray(from: requestData["clientRequestMonitorSettings"])
+        if !requestMonitorSettings.isEmpty { return requestMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any], selectedFeatures: selectedFeatures) } }
+        let settingsMonitorSettings = jsonArray(from: settings["clientRequestMonitorSettings"])
+        if !settingsMonitorSettings.isEmpty { return settingsMonitorSettings.compactMap { normalizedMonitorSetting($0 as? [String: Any], selectedFeatures: selectedFeatures) } }
         return [[
             "monitorId": 0,
             "positionX": 0,
@@ -1236,13 +1269,20 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "framesPerSecond": int(selectedMode["fps"]),
             "sdrHdrMode": bool(selectedFeatures["hdr"]) ? 1 : 0,
             "dpi": int(selectedMode["scaleFactor"]),
+            "maxBitrateKbps": int(selectedFeatures["maxBitrateKbps"]),
+            "dynamicStreamingMode": int(selectedFeatures["dynamicStreamingMode"]),
+            "chromaFormat": int(selectedFeatures["chromaFormat"]),
             "displayData": defaultDisplayData(),
             "hdr10PlusGamingData": defaultHDR10PlusGamingData(),
         ]]
     }
 
-    private static func normalizedMonitorSetting(_ source: [String: Any]?) -> [String: Any]? {
+    private static func normalizedMonitorSetting(_ source: [String: Any]?, selectedFeatures: [String: Any] = [:]) -> [String: Any]? {
         guard let source else { return nil }
+        // GFN's own client puts the bitrate cap on every monitor entry alongside the geometry
+        // (`monitorSettings[].maxBitrateKbps`); Geronimo's stream settings come from here, and
+        // an absent cap leaves BifrostSDKExecutor on its 35000 Kbps built-in default.
+        let maxBitrateKbps = int(source["maxBitrateKbps"]) > 0 ? int(source["maxBitrateKbps"]) : int(selectedFeatures["maxBitrateKbps"])
         return [
             "monitorId": int(source["monitorId"]),
             "positionX": int(source["positionX"]),
@@ -1252,6 +1292,9 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "framesPerSecond": int(source["framesPerSecond"]),
             "sdrHdrMode": int(source["sdrHdrMode"]),
             "dpi": int(source["dpi"]),
+            "maxBitrateKbps": maxBitrateKbps,
+            "dynamicStreamingMode": int(source["dynamicStreamingMode"]) > 0 ? int(source["dynamicStreamingMode"]) : int(selectedFeatures["dynamicStreamingMode"]),
+            "chromaFormat": int(source["chromaFormat"]) > 0 ? int(source["chromaFormat"]) : int(selectedFeatures["chromaFormat"]),
             "displayData": normalizedDisplayData(source["displayData"] as? [String: Any]),
             "hdr10PlusGamingData": normalizedHDR10PlusGamingData(source["hdr10PlusGamingData"] as? [String: Any]),
         ]
@@ -1318,6 +1361,10 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "touchSupport": bool(selectedFeatures["touchSupport"]),
         ]) { _, selected in selected }
         normalized["hdr"] = bool(selectedFeatures["hdr"])
+        // Geronimo reads the cap from the session's finalized features as well as from the mode
+        // selection; leaving the server's resolution-derived value here re-pins the stream.
+        let selectedMaxBitrateKbps = int(selectedFeatures["maxBitrateKbps"])
+        if selectedMaxBitrateKbps > 0 { normalized["maxBitrateKbps"] = selectedMaxBitrateKbps }
         return normalized
     }
 
@@ -1538,6 +1585,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             "profileHdr": bool(selectedFeatures["hdr"]) ? "true" : "false",
             "profileBitDepth": String(int(selectedFeatures["bitDepth"])),
             "profileMaxPacketSize": String(int(profile["maxPacketSize"])),
+            "profileMaxBitrateKbps": String(int(selectedFeatures["maxBitrateKbps"])),
+            "geronimoNegotiatedMaxBitrateKbps": String(negotiatedMaxBitrateKbps(rawSessionJSON: allocation.rawSessionJSON, sessionInfoJSON: allocation.sessionInfoJSON)),
             "geronimoSessionBytes": String(geronimoSessionJSON.utf8.count),
             "geronimoMonitorSettings": String(jsonArray(from: geronimoSession["monitorSettings"]).count),
             "geronimoConnectionInfo": String(jsonArray(from: geronimoSession["connectionInfo"]).count),

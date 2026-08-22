@@ -356,7 +356,12 @@ constexpr uint32_t MaximumStreamSettingsCount = 64;
 constexpr uint32_t MaximumConnectionInfoCount = 20;
 constexpr uint32_t MaximumMetadataCount = 64;
 constexpr uint16_t MinimumNVbPacketSize = 512;
+// GridApp::startStreaming logs this field as "bitrate", one word ahead of the codec at 0x18.
+constexpr size_t DownstreamVideoSettingsMaxBitrateOffset = 0x14;
 constexpr size_t NVbStreamSettingsPacketSizeOffset = 0x48;
+// Measured on a live 1440p session: the cap written into DownstreamVideoSettings at 0x14 comes
+// back out of convertToStreamingParams here.
+constexpr size_t NVbStreamSettingsMaxBitrateOffset = 0x1c;
 constexpr uint8_t SDLWindowHighDPIEnabled = 1;
 constexpr size_t MicrophoneRouteCapacity = 8;
 constexpr size_t MicrophonePCMByteCount = 1920;
@@ -2844,6 +2849,18 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
             storeUnaligned<uint32_t>(videoSettingsEntry.bytes, 0x18, session->requestedCodec);
         }
     }
+    // GridApp::startStreaming logs the entry field at 0x14 as "bitrate". When the session JSON
+    // carries no cap, Geronimo falls back to Nsk::getRecommendedBitrate's per-resolution curve
+    // (1080p60 -> 34478 Kbps, 1440p60 -> 41729 Kbps), which is what makes the Settings picker
+    // look resolution-locked. Force the requested cap in the way the codec is forced above.
+    // Nsk::getStreamStartParameters leaves this at 0 for every field the Geronimo session JSON
+    // schema has no slot for, so the cap has to be forced in the way the codec is forced above.
+    const int32_t requestedMaxBitrateKbps = jsonIntAtPath(profile, "selectedFeatures.maxBitrateKbps");
+    if (requestedMaxBitrateKbps > 0) {
+        for (auto &videoSettingsEntry : startParameters.videoSettings) {
+            storeUnaligned<uint32_t>(videoSettingsEntry.bytes, DownstreamVideoSettingsMaxBitrateOffset, static_cast<uint32_t>(requestedMaxBitrateKbps));
+        }
+    }
     session->requestedDynamicStreamingMode = static_cast<uint32_t>(std::clamp(jsonIntAtPath(profile, "selectedFeatures.dynamicStreamingMode"), 0, 3));
     const char *const tokenPaths[] = { "token", "authToken", "jwt", "auth.token", "sessionToken" };
     const char *const tokenTypePaths[] = { "tokenType", "authType", "auth.type" };
@@ -2985,6 +3002,18 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
     if (streamSettingsCount > 0) {
         pending->streamSettings.assign(streamSettings, streamSettings + streamSettingsCount);
+        // chooseStreamingSettings can re-derive the cap from Nsk::getRecommendedBitrate's
+        // per-resolution curve (1080p60 -> 34478 Kbps, 1440p60 -> 41729 Kbps), which is what made
+        // the Settings picker look resolution-locked. Restore the requested cap after the pass.
+        if (requestedMaxBitrateKbps > 0) {
+            for (auto &setting : pending->streamSettings) {
+                const uint32_t negotiatedMaxBitrateKbps = loadUnaligned<uint32_t>(setting.bytes, NVbStreamSettingsMaxBitrateOffset);
+                if (negotiatedMaxBitrateKbps != static_cast<uint32_t>(requestedMaxBitrateKbps)) {
+                    NSLog(@"[MacForceNow] NVST bitrate: restoring requested cap %d kbps over %u kbps", requestedMaxBitrateKbps, negotiatedMaxBitrateKbps);
+                    storeUnaligned<uint32_t>(setting.bytes, NVbStreamSettingsMaxBitrateOffset, static_cast<uint32_t>(requestedMaxBitrateKbps));
+                }
+            }
+        }
         if (maxPacketSize >= MinimumNVbPacketSize) {
             for (auto &setting : pending->streamSettings) {
                 storeUnaligned<uint16_t>(setting.bytes, NVbStreamSettingsPacketSizeOffset, static_cast<uint16_t>(maxPacketSize));

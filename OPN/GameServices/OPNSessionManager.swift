@@ -916,6 +916,7 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
         "widthInPixels": width,
         "heightInPixels": height,
         "framesPerSecond": int(settings["fps"], fallback: 60),
+        "maxBitrateKbps": min(max(int(settings["maxBitrateMbps"], fallback: 50), 1), 1_000) * 1_000,
         "sdrHdrMode": hdrEnabled ? 1 : 0,
         "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : [:],
         "hdr10PlusGamingData": NSNull(),

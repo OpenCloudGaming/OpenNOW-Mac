@@ -1459,7 +1459,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(selectedFeatures["maxBitrateKbps"] as? Int == 35_000)
 }
 
-@Test func nativeNVSTBifrostTransportPreservesLowerServerBitrateCap() throws {
+@Test func nativeNVSTBifrostTransportKeepsRequestedBitrateOverLowerServerCap() throws {
     let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: """
         {
@@ -1477,7 +1477,72 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
     let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
 
+    #expect(selectedFeatures["maxBitrateKbps"] as? Int == 35_000)
+}
+
+@Test func nativeNVSTBifrostTransportKeepsRequestedBitrateOverFinalizedResolutionCap() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": {
+            "resolution": "1920x1080",
+            "fps": 60,
+            "codec": "H264"
+          },
+          "finalizedStreamingFeatures": {
+            "maxBitrateKbps": 25000
+          }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: "{\"maxBitrateMbps\":100}"
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
+    #expect(selectedFeatures["maxBitrateKbps"] as? Int == 100_000)
+}
+
+@Test func nativeNVSTBifrostTransportFallsBackToNegotiatedBitrateWithoutARequestedCap() throws {
+    let profileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
+        rawSessionJSON: """
+        {
+          "streamingProfile": {
+            "resolution": "1920x1080",
+            "fps": 60,
+            "codec": "H264",
+            "maxBitrateKbps": 24000
+          }
+        }
+        """,
+        sessionInfoJSON: "{}",
+        settingsJSON: "{}"
+    )
+    let profile = try #require(JSONSerialization.jsonObject(with: Data(profileJSON.utf8)) as? [String: Any])
+    let selectedFeatures = try #require(profile["selectedFeatures"] as? [String: Any])
+
     #expect(selectedFeatures["maxBitrateKbps"] as? Int == 24_000)
+}
+
+@Test func nativeNVSTNegotiatedMaxBitrateReadsServerFinalizedCapFirst() {
+    let negotiated = NativeNVSTBifrostTransport.negotiatedMaxBitrateKbps(
+        rawSessionJSON: """
+        {
+          "finalizedStreamingFeatures": { "maxBitrateKbps": 25000 },
+          "streamingProfile": { "maxBitrateKbps": 75000 }
+        }
+        """,
+        sessionInfoJSON: "{}"
+    )
+    #expect(negotiated == 25_000)
+    #expect(NativeNVSTBifrostTransport.negotiatedMaxBitrateKbps(rawSessionJSON: "{}", sessionInfoJSON: "{\"streamingProfile\":{\"bitrateKbps\":35000}}") == 35_000)
+    #expect(NativeNVSTBifrostTransport.negotiatedMaxBitrateKbps(rawSessionJSON: "{}", sessionInfoJSON: "{}") == 0)
+}
+
+@Test func nativeNVSTResolvedMaxBitratePrefersTheRequestedCap() {
+    #expect(NativeNVSTBifrostTransport.resolvedMaxBitrateKbps(requestedKbps: 100_000, negotiatedKbps: 25_000) == 100_000)
+    #expect(NativeNVSTBifrostTransport.resolvedMaxBitrateKbps(requestedKbps: 0, negotiatedKbps: 25_000) == 25_000)
+    #expect(NativeNVSTBifrostTransport.resolvedMaxBitrateKbps(requestedKbps: 0, negotiatedKbps: 0) == 0)
 }
 
 @Test func nativeNVSTBitrateCorrectionTargetsRequestedCapWhenServerUnderFinalizes() {
