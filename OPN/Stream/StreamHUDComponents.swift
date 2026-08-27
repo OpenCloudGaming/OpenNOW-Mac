@@ -1,6 +1,6 @@
 //
 //  StreamHUDComponents.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -29,8 +29,8 @@ enum WebRTCMediaStreamTheme {
 }
 
 extension Font {
-    static func streamNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
-        MacForceNowNVIDIAFont.font(size: size, weight: weight)
+    static func streamNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

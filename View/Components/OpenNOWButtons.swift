@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct MacForceNowCompactButtonStyle: ButtonStyle {
+struct OpenNOWCompactButtonStyle: ButtonStyle {
     enum Role {
         case primary
         case destructive
@@ -11,7 +11,7 @@ struct MacForceNowCompactButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(MacForceNowNVIDIAFont.font(size: 12 * uiScale, weight: .bold))
+            .font(OpenNOWNVIDIAFont.font(size: 12 * uiScale, weight: .bold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 28 * uiScale)
@@ -28,14 +28,14 @@ struct MacForceNowCompactButtonStyle: ButtonStyle {
 
     private var stroke: Color {
         switch role {
-        case .primary: return MacForceNowDesign.accent
+        case .primary: return OpenNOWDesign.accent
         case .destructive: return Color.red.opacity(0.85)
         }
     }
 
     private func background(isPressed: Bool) -> Color {
         switch role {
-        case .primary: return isPressed ? MacForceNowDesign.accent.opacity(0.78) : MacForceNowDesign.accent
+        case .primary: return isPressed ? OpenNOWDesign.accent.opacity(0.78) : OpenNOWDesign.accent
         case .destructive: return Color.black.opacity(isPressed ? 0.5 : 0.35)
         }
     }

@@ -121,7 +121,7 @@ final class NativeNVSTPillarboxOverlayView: MTKView, MTKViewDelegate {
               let historyTexture,
               let drawable = currentDrawable,
               let passDescriptor = currentRenderPassDescriptor,
-              let pixelBufferPtr = MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame() else { return }
+              let pixelBufferPtr = OpenNOWNativeNVSTGeronimoCopyLatestVideoFrame() else { return }
 
         let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(pixelBufferPtr)).takeRetainedValue()
         detector.update(with: pixelBuffer)

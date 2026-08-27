@@ -13,17 +13,17 @@ enum RecordingsLayout {
 }
 
 extension Font {
-    static func recordingsNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
-        MacForceNowNVIDIAFont.font(size: size, weight: weight)
+    static func recordingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
 enum RecordingEditorBetaPreference {
-    static let key = "MacForceNow.Recordings.EditorEarlyBetaOptIn"
+    static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
 }
 
 enum RecordingRightsNoticePreference {
-    static let key = "MacForceNow.Recordings.RightsNoticeAcknowledged"
+    static let key = "OpenNOW.Recordings.RightsNoticeAcknowledged"
 }
 
 struct RecordingsView: View {
@@ -68,7 +68,7 @@ struct RecordingsView: View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 recordingsList
-                    .frame(width: MacForceNowDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
+                    .frame(width: OpenNOWDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -93,7 +93,7 @@ struct RecordingsView: View {
             Button("Delete Recording", role: .destructive) { deletePendingRecording() }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("This permanently removes the video file and metadata from MacForce Now recordings.")
+            Text("This permanently removes the video file and metadata from OpenNOW recordings.")
         }
         .onDisappear {
             cancelEditorPreview()
@@ -154,7 +154,7 @@ struct RecordingsView: View {
                     Text("RECORDINGS")
                         .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                     Text("Saved Videos")
                         .font(.recordingsNvidia(size: 25 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
@@ -191,9 +191,9 @@ struct RecordingsView: View {
     private var sortAndFilters: some View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             HStack(spacing: 10 * uiScale) {
-                MacForceNowDropdownMenu(
+                OpenNOWDropdownMenu(
                     items: RecordingSortOrder.allCases.map { order in
-                        MacForceNowDropdownItem(id: order.id, title: order.title, isSelected: order == sortOrder) { sortOrder = order }
+                        OpenNOWDropdownItem(id: order.id, title: order.title, isSelected: order == sortOrder) { sortOrder = order }
                     }
                 ) {
                     HStack(spacing: 8 * uiScale) {
@@ -204,7 +204,7 @@ struct RecordingsView: View {
                     }
                     .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.84))
-                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
+                    .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
                     .background(RecordingsLayout.card)
                     .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
@@ -548,7 +548,7 @@ private struct RecordingSearchField: View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(MacForceNowDesign.accent.opacity(0.85))
+                .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
                 .font(.recordingsNvidia(size: 13 * uiScale, weight: .medium))
@@ -586,8 +586,8 @@ private struct RecordingFilterChip: View {
             .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.92 : 0.64))
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.09 : 0.055))
-            .overlay { Rectangle().stroke(isActive ? MacForceNowDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+            .background(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.09 : 0.055))
+            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -643,15 +643,15 @@ private struct RecordingRow: View {
             }
             .padding(13 * uiScale)
             .background(background)
-            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? MacForceNowDesign.accent : .clear).frame(width: 3) }
-            .overlay { Rectangle().stroke(isSelected ? MacForceNowDesign.accent.opacity(0.48) : Color.white.opacity(isHovering ? 0.18 : 0.08), lineWidth: 1) }
+            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OpenNOWDesign.accent : .clear).frame(width: 3) }
+            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.48) : Color.white.opacity(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
     }
 
     private var background: some ShapeStyle {
-        if isSelected { return AnyShapeStyle(MacForceNowDesign.accent.opacity(0.105)) }
+        if isSelected { return AnyShapeStyle(OpenNOWDesign.accent.opacity(0.105)) }
         return AnyShapeStyle(Color.white.opacity(isHovering ? 0.075 : 0.04))
     }
 }
@@ -676,7 +676,7 @@ private struct RecordingThumbnail: View {
                     }
             } else {
                 LinearGradient(
-                    colors: [Color.white.opacity(0.13), Color.white.opacity(0.03), MacForceNowDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
+                    colors: [Color.white.opacity(0.13), Color.white.opacity(0.03), OpenNOWDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -685,7 +685,7 @@ private struct RecordingThumbnail: View {
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
                 .font(.recordingsNvidia(size: 19 * uiScale, weight: .bold))
-                .foregroundStyle(isSelected ? MacForceNowDesign.accent : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
+                .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
                 .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
         .frame(width: 76 * uiScale, height: 46 * uiScale)
@@ -695,7 +695,7 @@ private struct RecordingThumbnail: View {
                 .foregroundStyle(.black.opacity(0.86))
                 .padding(.horizontal, 5 * uiScale)
                 .frame(height: 15 * uiScale)
-                .background(MacForceNowDesign.accent)
+                .background(OpenNOWDesign.accent)
         }
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
         .task(id: recording.id) {
@@ -778,8 +778,8 @@ private struct RecordingPill: View {
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(active ? MacForceNowDesign.accent : Color.white.opacity(0.065))
-            .overlay { Rectangle().stroke(active ? MacForceNowDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
+            .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.065))
+            .overlay { Rectangle().stroke(active ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
     }
 }
 
@@ -791,12 +791,12 @@ private struct RecordingNowPlayingBadge: View {
         VStack(alignment: .leading, spacing: 8 * uiScale) {
             HStack(spacing: 8 * uiScale) {
                 Circle()
-                    .fill(MacForceNowDesign.accent)
+                    .fill(OpenNOWDesign.accent)
                     .frame(width: 8 * uiScale, height: 8 * uiScale)
                 Text("NOW PLAYING")
                     .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
                     .tracking(1.3)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
             }
             Text(recording.title)
                 .font(.recordingsNvidia(size: 20 * uiScale, weight: .bold))
@@ -902,7 +902,7 @@ private struct RecordingDetailTile: View {
             Text(title)
                 .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(MacForceNowDesign.accent.opacity(0.86))
+                .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
             Text(value)
                 .font(.recordingsNvidia(size: 14 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.94))
@@ -933,11 +933,11 @@ private struct RecordingEmptyState: View {
         VStack(spacing: 16 * uiScale) {
             ZStack {
                 Circle()
-                    .fill(MacForceNowDesign.accent.opacity(0.10))
+                    .fill(OpenNOWDesign.accent.opacity(0.10))
                     .frame(width: 78 * uiScale, height: 78 * uiScale)
                 Image(systemName: kind == .library ? "record.circle" : "line.3.horizontal.decrease.circle")
                     .font(.recordingsNvidia(size: 34 * uiScale, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
             }
             Text(kind == .library ? "No recordings yet" : "No matches")
                 .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
@@ -968,7 +968,7 @@ private struct RecordingEmptyPlayer: View {
                     .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
                     .font(.recordingsNvidia(size: 46 * uiScale, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
             }
             Text("Select a recording")
                 .font(.recordingsNvidia(size: 24 * uiScale, weight: .bold))
@@ -987,7 +987,7 @@ private struct RecordingsBackdrop: View {
     var body: some View {
         ZStack {
             RecordingsLayout.surface
-            RadialGradient(colors: [MacForceNowDesign.accent.opacity(0.12), .clear], center: .topLeading, startRadius: 20, endRadius: 620)
+            RadialGradient(colors: [OpenNOWDesign.accent.opacity(0.12), .clear], center: .topLeading, startRadius: 20, endRadius: 620)
             RadialGradient(colors: [Color.white.opacity(0.06), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 520)
             DiagonalGrid()
                 .stroke(Color.white.opacity(0.026), lineWidth: 1)
@@ -1047,7 +1047,7 @@ struct RecordingActionButtonStyle: ButtonStyle {
 
     private func background(isPressed: Bool) -> Color {
         switch tone {
-        case .primary: return MacForceNowDesign.accent.opacity(isPressed ? 0.78 : 1)
+        case .primary: return OpenNOWDesign.accent.opacity(isPressed ? 0.78 : 1)
         case .secondary: return Color.white.opacity(isPressed ? 0.14 : 0.075)
         case .destructive: return RecordingsLayout.danger.opacity(isPressed ? 0.18 : 0.10)
         }
@@ -1055,7 +1055,7 @@ struct RecordingActionButtonStyle: ButtonStyle {
 
     private var stroke: Color {
         switch tone {
-        case .primary: return MacForceNowDesign.accent
+        case .primary: return OpenNOWDesign.accent
         case .secondary: return RecordingsLayout.stroke
         case .destructive: return RecordingsLayout.danger.opacity(0.36)
         }

@@ -1,6 +1,6 @@
 //
 //  SettingsSessionProxyViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import SwiftUI
@@ -92,7 +92,7 @@ struct SessionProxySettingsPage: View {
                     if !testMessage.isEmpty {
                         Text(testMessage)
                             .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(testSucceeded ? MacForceNowDesign.accent : Color.white.opacity(0.75))
+                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accent : Color.white.opacity(0.75))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)

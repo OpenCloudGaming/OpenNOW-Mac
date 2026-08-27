@@ -1,6 +1,6 @@
 //
 //  LoginStyles.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension Font {
-    static func nvidiaSans(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
-        MacForceNowNVIDIAFont.font(size: size, weight: weight)
+    static func nvidiaSans(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
@@ -21,13 +21,13 @@ struct LoginTextFieldStyle: TextFieldStyle {
         configuration
             .font(.nvidiaSans(size: 14 * uiScale, weight: .regular))
             .foregroundStyle(.white)
-            .tint(MacForceNowDesign.accent)
+            .tint(OpenNOWDesign.accent)
             .padding(.horizontal, 16 * uiScale)
             .padding(.vertical, 14 * uiScale)
             .background(Color.white.opacity(0.08))
             .overlay {
                 Rectangle()
-                    .stroke(isFocused ? MacForceNowDesign.accent : MacForceNowDesign.Stroke.regular, lineWidth: isFocused ? 2 : 1)
+                    .stroke(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isFocused ? 2 : 1)
             }
     }
 }
@@ -40,7 +40,7 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
             .tracking(0.4)
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
-            .background(configuration.isPressed ? MacForceNowDesign.accent.opacity(0.76) : MacForceNowDesign.accent)
+            .background(configuration.isPressed ? OpenNOWDesign.accent.opacity(0.76) : OpenNOWDesign.accent)
             .opacity(configuration.isPressed ? 0.9 : 1)
     }
 }
@@ -63,10 +63,10 @@ struct VendorGetInButtonStyle: ButtonStyle {
             .font(.nvidiaSans(size: size.fontSize * uiScale, weight: .bold))
             .foregroundStyle(.black)
             .tracking(0.3)
-            .padding(.horizontal, MacForceNowDesign.Spacing.medium(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
             .frame(minWidth: minimumWidth.map { $0 * uiScale })
             .frame(height: size.height * uiScale)
-            .background(configuration.isPressed ? MacForceNowDesign.accent.opacity(0.78) : MacForceNowDesign.accent)
+            .background(configuration.isPressed ? OpenNOWDesign.accent.opacity(0.78) : OpenNOWDesign.accent)
             .opacity(configuration.isPressed ? 0.92 : 1)
     }
 }
@@ -84,7 +84,7 @@ struct SecondaryLoginButtonStyle: ButtonStyle {
             .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
             .overlay {
                 Rectangle()
-                    .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
+                    .stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
             }
     }
 }

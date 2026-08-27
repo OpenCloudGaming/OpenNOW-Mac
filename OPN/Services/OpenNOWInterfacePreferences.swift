@@ -1,13 +1,13 @@
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by OpenAI on 7/6/26.
 //
 
 import Foundation
 
-enum MacForceNowInterfacePreferences {
-    static let controllerModeEnabledKey = "MacForceNow.Interface.ControllerModeEnabled"
-    static let uiScaleKey = "MacForceNow.Interface.UIScale"
+enum OpenNOWInterfacePreferences {
+    static let controllerModeEnabledKey = "OpenNOW.Interface.ControllerModeEnabled"
+    static let uiScaleKey = "OpenNOW.Interface.UIScale"
 
     static let defaultUIScale: Double = 1.0
     static let uiScaleRange: ClosedRange<Double> = 0.75...2.0

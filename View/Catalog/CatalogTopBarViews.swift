@@ -1,6 +1,6 @@
 //
 //  CatalogTopBarViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -125,7 +125,7 @@ struct CatalogTopBar: View {
         }
         .padding(.horizontal, 18)
         .frame(height: 46)
-        .background(MacForceNowDesign.Surface.field)
+        .background(OpenNOWDesign.Surface.field)
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
     }
 }
@@ -179,7 +179,7 @@ struct CatalogHamburgerLabel: View {
             VStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Rectangle()
-                        .fill((isOpen || isHovering) ? MacForceNowDesign.accent : Color.white.opacity(0.84))
+                        .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.white.opacity(0.84))
                         .frame(width: index == 1 ? 20 : 23, height: 2)
                 }
             }
@@ -188,7 +188,7 @@ struct CatalogHamburgerLabel: View {
         .background((isOpen || isHovering) ? Color.black.opacity(0.22) : Color.clear)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill((isOpen || isHovering) ? MacForceNowDesign.accent : Color.clear)
+                .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.clear)
                 .frame(height: 3)
         }
         .onHover { isHovering = $0 }

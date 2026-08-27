@@ -1,5 +1,5 @@
 //
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit

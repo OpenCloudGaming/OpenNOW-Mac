@@ -2,7 +2,7 @@ import AppKit
 import AppKit
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Suite(.serialized)
 struct NVSTNativeRuntimeTests {
@@ -25,7 +25,7 @@ struct NVSTNativeRuntimeTests {
 }
 
 @Test func nvstNativeRuntimeReportsMissingBundledLibrary() throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("macforce-now-nvst-runtime-\(UUID().uuidString)", isDirectory: true)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("opennow-nvst-runtime-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -94,7 +94,7 @@ struct NVSTNativeRuntimeTests {
     var errorBuffer = [CChar](repeating: 0, count: 1024)
     let session = frameworksDirectory.path.withCString { frameworksPath in
         errorBuffer.withUnsafeMutableBufferPointer { buffer in
-            MacForceNowTestNativeNVSTGeronimoCreate(frameworksPath, buffer.baseAddress, buffer.count)
+            OpenNOWTestNativeNVSTGeronimoCreate(frameworksPath, buffer.baseAddress, buffer.count)
         }
     }
     guard let session else {
@@ -104,13 +104,13 @@ struct NVSTNativeRuntimeTests {
         return
     }
 
-    let resultName = MacForceNowTestNativeNVSTGeronimoResultCodeName(session, 302)
+    let resultName = OpenNOWTestNativeNVSTGeronimoResultCodeName(session, 302)
     #expect(resultName.map { String(cString: $0) } == "NVB_R_SESSION_LIMIT_REACHED")
 
     var surface: NSView? = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
     weak let retainedSurface = surface
     let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
-        MacForceNowTestNativeNVSTGeronimoSetVideoSurface(
+        OpenNOWTestNativeNVSTGeronimoSetVideoSurface(
             session,
             surface.map { Unmanaged.passUnretained($0).toOpaque() },
             buffer.baseAddress,
@@ -122,25 +122,25 @@ struct NVSTNativeRuntimeTests {
     #expect(retainedSurface != nil)
 
     let microphoneResult = errorBuffer.withUnsafeMutableBufferPointer { buffer in
-        MacForceNowTestNativeNVSTGeronimoSetMicrophoneEnabled(session, 1, buffer.baseAddress, buffer.count)
+        OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(session, 1, buffer.baseAddress, buffer.count)
     }
     #expect(microphoneResult == -3)
 
-    MacForceNowTestNativeNVSTGeronimoDestroy(session)
+    OpenNOWTestNativeNVSTGeronimoDestroy(session)
     #expect(retainedSurface == nil)
 }
 
 @Test func nvstGeronimoConversionRejectsUnsupportedServerAndAuthTypes() {
-    #expect((1...5).map { MacForceNowNativeNVSTGeronimoConvertServerType(Int32($0)) } == [0, 1, 2, 3, 4])
-    #expect(MacForceNowNativeNVSTGeronimoConvertServerType(1001) == 0x33)
-    #expect(MacForceNowNativeNVSTGeronimoConvertServerType(0) == -1)
-    #expect(MacForceNowNativeNVSTGeronimoConvertServerType(52) == -1)
+    #expect((1...5).map { OpenNOWNativeNVSTGeronimoConvertServerType(Int32($0)) } == [0, 1, 2, 3, 4])
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(1001) == 0x33)
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(0) == -1)
+    #expect(OpenNOWNativeNVSTGeronimoConvertServerType(52) == -1)
     #expect(convertedAuthTokenType("7") == 7)
     #expect(convertedAuthTokenType("jarvis") == 7)
     #expect(convertedAuthTokenType("JWT") == 8)
     #expect(convertedAuthTokenType("jwt-gfn") == 9)
     #expect(convertedAuthTokenType("unsupported") == -1)
-    #expect(MacForceNowNativeNVSTGeronimoConvertAuthTokenType(nil) == -1)
+    #expect(OpenNOWNativeNVSTGeronimoConvertAuthTokenType(nil) == -1)
 }
 
 @Test func nvstGeronimoEndpointParsingPreservesSessionPortAndIPv6() {
@@ -153,7 +153,7 @@ struct NVSTNativeRuntimeTests {
 @Test func nvstGeronimoMicrophoneControlRejectsMissingSession() {
     var errorBuffer = [CChar](repeating: 0, count: 256)
     let result = errorBuffer.withUnsafeMutableBufferPointer { buffer in
-        MacForceNowTestNativeNVSTGeronimoSetMicrophoneEnabled(nil, 1, buffer.baseAddress, buffer.count)
+        OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(nil, 1, buffer.baseAddress, buffer.count)
     }
 
     #expect(result == -1)
@@ -184,7 +184,7 @@ struct NVSTNativeRuntimeTests {
         accountLinked: true,
         selectedStore: ""
     )
-    let provider = MacForceNowStreamSessionCoordinator()
+    let provider = OpenNOWStreamSessionCoordinator()
     let surfaceHandle = UInt(bitPattern: Unmanaged.passUnretained(window).toOpaque())
     let transport = NativeNVSTBifrostTransport(nativeVideoSurfaceHandle: surfaceHandle)
     let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
@@ -204,7 +204,7 @@ struct NVSTNativeRuntimeTests {
     #expect(!token.isEmpty)
     #expect(!applicationID.isEmpty)
 
-    let provider = MacForceNowStreamSessionCoordinator()
+    let provider = OpenNOWStreamSessionCoordinator()
     let initialWindow = nativeNVSTTestWindow()
     initialWindow.orderFront(nil)
     defer { initialWindow.close() }
@@ -272,7 +272,7 @@ private func repoRoot() -> URL {
 }
 
 private func convertedAuthTokenType(_ tokenType: String) -> Int32 {
-    tokenType.withCString { MacForceNowNativeNVSTGeronimoConvertAuthTokenType($0) }
+    tokenType.withCString { OpenNOWNativeNVSTGeronimoConvertAuthTokenType($0) }
 }
 
 private struct ParsedNativeEndpoint: Equatable {
@@ -285,7 +285,7 @@ private func inspectedEndpoint(_ address: String, fallbackPort: UInt16) -> Parse
     var port: UInt16 = 0
     let result = address.withCString { addressPointer in
         host.withUnsafeMutableBufferPointer { hostBuffer in
-            MacForceNowNativeNVSTGeronimoInspectEndpoint(addressPointer, fallbackPort, hostBuffer.baseAddress, hostBuffer.count, &port)
+            OpenNOWNativeNVSTGeronimoInspectEndpoint(addressPointer, fallbackPort, hostBuffer.baseAddress, hostBuffer.count, &port)
         }
     }
     guard result == 0 else { return nil }
@@ -294,26 +294,26 @@ private func inspectedEndpoint(_ address: String, fallbackPort: UInt16) -> Parse
     }
 }
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoConvertServerType")
-private func MacForceNowNativeNVSTGeronimoConvertServerType(_ serverType: Int32) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoConvertServerType")
+private func OpenNOWNativeNVSTGeronimoConvertServerType(_ serverType: Int32) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoConvertAuthTokenType")
-private func MacForceNowNativeNVSTGeronimoConvertAuthTokenType(_ tokenType: UnsafePointer<CChar>?) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoConvertAuthTokenType")
+private func OpenNOWNativeNVSTGeronimoConvertAuthTokenType(_ tokenType: UnsafePointer<CChar>?) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoInspectEndpoint")
-private func MacForceNowNativeNVSTGeronimoInspectEndpoint(_ address: UnsafePointer<CChar>?, _ fallbackPort: UInt16, _ hostBuffer: UnsafeMutablePointer<CChar>?, _ hostBufferLength: Int, _ port: UnsafeMutablePointer<UInt16>?) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoInspectEndpoint")
+private func OpenNOWNativeNVSTGeronimoInspectEndpoint(_ address: UnsafePointer<CChar>?, _ fallbackPort: UInt16, _ hostBuffer: UnsafeMutablePointer<CChar>?, _ hostBufferLength: Int, _ port: UnsafeMutablePointer<UInt16>?) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoCreate")
-private func MacForceNowTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
+@_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
+private func OpenNOWTestNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoDestroy")
-private func MacForceNowTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
+@_silgen_name("OpenNOWNativeNVSTGeronimoDestroy")
+private func OpenNOWTestNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetVideoSurface")
-private func MacForceNowTestNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
+private func OpenNOWTestNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled")
-private func MacForceNowTestNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled")
+private func OpenNOWTestNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoResultCodeName")
-private func MacForceNowTestNativeNVSTGeronimoResultCodeName(_ session: UnsafeMutableRawPointer?, _ resultCode: Int32) -> UnsafePointer<CChar>?
+@_silgen_name("OpenNOWNativeNVSTGeronimoResultCodeName")
+private func OpenNOWTestNativeNVSTGeronimoResultCodeName(_ session: UnsafeMutableRawPointer?, _ resultCode: Int32) -> UnsafePointer<CChar>?

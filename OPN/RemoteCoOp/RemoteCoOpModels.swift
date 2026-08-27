@@ -435,7 +435,7 @@ public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
     }
 
     public static func fromEnvironment() -> OPNRemoteCoOpInviteTokenSigner {
-        guard let raw = ProcessInfo.processInfo.environment["MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET"],
+        guard let raw = ProcessInfo.processInfo.environment["OPENNOW_REMOTE_COOP_INVITE_SECRET"],
               !raw.isEmpty,
               let data = Self.base64URLDecoded(raw),
               !data.isEmpty else {

@@ -57,7 +57,7 @@ final class OPNGameService: @unchecked Sendable {
     static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
     static let accountLinkingCallbackTimeoutSeconds: TimeInterval = 5 * 60
     static let serverVpcCacheFreshSeconds: TimeInterval = 5 * 60
-    static let workQueue = DispatchQueue(label: "com.macforce-now.game-service.swift.work")
+    static let workQueue = DispatchQueue(label: "com.opennow.game-service.swift.work")
 
     struct VpcCacheEntry {
         let vpcId: String

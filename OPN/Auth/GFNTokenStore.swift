@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 public enum GFNTokenStore {
-    private static let service = "MacForceNow.GFN"
+    private static let service = "OpenNOW.GFN"
     private static let tokenKeyPrefix = "tokens."
 
     public struct Tokens: Codable, Sendable, Equatable {
@@ -109,10 +109,10 @@ public enum GFNTokenStore {
     }
 
     private static func logKeychainError(_ operation: String, identity: String, error: Error) {
-        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
+        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
     }
 
     private static func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
-        MacForceNowLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
+        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
     }
 }

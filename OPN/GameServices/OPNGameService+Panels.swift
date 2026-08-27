@@ -1,5 +1,5 @@
 //
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -41,7 +41,7 @@ extension OPNGameService {
                 dispatchPanel(completion, true, replayPanels, "")
             }
             Task { @MainActor in
-                MacForceNowLog.info(.catalog, "Panel fetch joined in-flight request kind=\(cacheKind) replayed=\(replayPanels.count)")
+                OpenNOWLog.info(.catalog, "Panel fetch joined in-flight request kind=\(cacheKind) replayed=\(replayPanels.count)")
             }
             return
         }
@@ -62,7 +62,7 @@ extension OPNGameService {
             guard let self else { return }
             if resolvedVpcId != optimisticVpcId, !optimisticVpcId.isEmpty {
                 Task { @MainActor in
-                    MacForceNowLog.info(.catalog, "Panel vpcId corrected kind=\(cacheKind) optimistic=\(optimisticVpcId) resolved=\(resolvedVpcId)")
+                    OpenNOWLog.info(.catalog, "Panel vpcId corrected kind=\(cacheKind) optimistic=\(optimisticVpcId) resolved=\(resolvedVpcId)")
                 }
             }
             self.startPanelFetch(vpcId: resolvedVpcId, request: request, group: group, groupKey: groupKey)
@@ -180,7 +180,7 @@ extension OPNGameService {
                 guard let self, let cachedPanels, !cachedPanels.isEmpty, group.allowsCachedDelivery else { return }
                 let sectionCount = cachedPanels.flatMap(\.sections).count
                 Task { @MainActor in
-                    MacForceNowLog.info(.catalog, "Panels served from cache kind=\(request.cacheKind) vpcId=\(vpcId) sections=\(sectionCount)")
+                    OpenNOWLog.info(.catalog, "Panels served from cache kind=\(request.cacheKind) vpcId=\(vpcId) sections=\(sectionCount)")
                 }
                 self.dispatchPanelGroup(group, panels: cachedPanels)
             }

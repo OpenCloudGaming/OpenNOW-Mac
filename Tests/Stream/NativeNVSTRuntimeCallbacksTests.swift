@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private enum RuntimeCallbackTestError: Error {
     case failed
@@ -65,7 +65,7 @@ private func collectNativeHapticRecord(_ context: UnsafeMutableRawPointer?, _ pl
 
 private typealias NativeHapticTestHandler = @convention(c) (UnsafeMutableRawPointer?, UInt16, UInt16, UInt16, UInt16) -> Void
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoDecodeHapticCallbackData")
+@_silgen_name("OpenNOWNativeNVSTGeronimoDecodeHapticCallbackData")
 private func decodeNativeHapticCallbackData(_ bytes: UnsafePointer<UInt8>?, _ count: Int, _ handler: NativeHapticTestHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
 
 @Test func nativeHapticDecoderCopiesRemappedSubtypeRecords() {

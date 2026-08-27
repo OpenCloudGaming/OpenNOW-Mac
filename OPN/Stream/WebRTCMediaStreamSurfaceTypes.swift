@@ -1,6 +1,6 @@
 //
 //  WebRTCMediaStreamSurfaceTypes.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit

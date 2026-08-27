@@ -1,6 +1,6 @@
 //
 //  SteamControllerMappingProviding.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

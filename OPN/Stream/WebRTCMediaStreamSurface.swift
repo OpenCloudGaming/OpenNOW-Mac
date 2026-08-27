@@ -67,7 +67,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var onScreenKeyboardVisible = false
     @State private var restorePointerLockOnKeyboardHide = false
     @StateObject private var onScreenKeyboard = StreamOnScreenKeyboardController()
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @State private var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -1446,7 +1446,7 @@ public struct WebRTCMediaStreamSurface: View {
             let message = Self.message(for: error)
             endStreamingPerformanceMode()
             var metadata = ["applicationID": configuration.applicationID]
-            if let sessionError = error as? MacForceNowStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+            if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
                 metadata.merge(conflict.reportMetadata) { current, _ in current }
             }
             onEnd(false, message, StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))
@@ -1876,7 +1876,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func beginStreamingPerformanceMode() {
         guard streamingPerformanceActivity == nil else { return }
-        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "MacForce Now active cloud gaming stream")
+        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "OpenNOW active cloud gaming stream")
         WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 

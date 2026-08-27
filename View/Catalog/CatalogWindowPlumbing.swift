@@ -1,6 +1,6 @@
 //
 //  CatalogWindowPlumbing.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit

@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7729CE752FDEDAB300D5C9D5"
-               BuildableName = "MacForceNow.app"
-               BlueprintName = "MacForceNow"
-               ReferencedContainer = "container:MacForceNow.xcodeproj">
+               BuildableName = "OpenNOW.app"
+               BlueprintName = "OpenNOW"
+               ReferencedContainer = "container:OpenNOW.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,9 +46,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7729CE752FDEDAB300D5C9D5"
-            BuildableName = "MacForceNow.app"
-            BlueprintName = "MacForceNow"
-            ReferencedContainer = "container:MacForceNow.xcodeproj">
+            BuildableName = "OpenNOW.app"
+            BlueprintName = "OpenNOW"
+            ReferencedContainer = "container:OpenNOW.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
@@ -75,9 +75,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7729CE752FDEDAB300D5C9D5"
-            BuildableName = "MacForceNow.app"
-            BlueprintName = "MacForceNow"
-            ReferencedContainer = "container:MacForceNow.xcodeproj">
+            BuildableName = "OpenNOW.app"
+            BlueprintName = "OpenNOW"
+            ReferencedContainer = "container:OpenNOW.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

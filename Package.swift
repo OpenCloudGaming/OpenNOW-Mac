@@ -6,22 +6,22 @@ import Foundation
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 
 let package = Package(
-    name: "MacForceNow",
+    name: "OpenNOW",
     platforms: [
         .macOS(.v15)
     ],
     products: [
-        .library(name: "MacForceNow", targets: ["MacForceNow"])
+        .library(name: "OpenNOW", targets: ["OpenNOW"])
     ],
     dependencies: [
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0")
     ],
     targets: [
         .target(
-            name: "MacForceNow",
+            name: "OpenNOW",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
-                "MacForceNowNativeGeronimoShim"
+                "OpenNOWNativeGeronimoShim"
             ],
             path: ".",
             exclude: [
@@ -32,10 +32,10 @@ let package = Package(
                 "LICENSE",
                 "README.md",
                 "release-please-config.json",
-                "MacForceNow-Info.plist",
-                "MacForceNow.entitlements",
-                "MacForceNowApp.swift",
-                "MacForceNow.xcodeproj",
+                "OpenNOW-Info.plist",
+                "OpenNOW.entitlements",
+                "OpenNOWApp.swift",
+                "OpenNOW.xcodeproj",
                 "OPN/NativeGeronimo",
                 "RemoteCoOp",
                 "Resources",
@@ -68,14 +68,14 @@ let package = Package(
             ]
         ),
         .target(
-            name: "MacForceNowNativeGeronimoShim",
+            name: "OpenNOWNativeGeronimoShim",
             path: "OPN/NativeGeronimo",
             sources: ["NativeNVSTGeronimoShim.mm"],
             publicHeadersPath: "."
         ),
         .testTarget(
-            name: "MacForceNowTests",
-            dependencies: ["MacForceNow"],
+            name: "OpenNOWTests",
+            dependencies: ["OpenNOW"],
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])

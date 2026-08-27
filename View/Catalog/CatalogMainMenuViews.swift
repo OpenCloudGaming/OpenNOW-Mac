@@ -1,6 +1,6 @@
 //
 //  CatalogMainMenuViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -46,22 +46,22 @@ struct CatalogMainMenuPanel: View {
                 Text("GEFORCE NOW")
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(1.4)
-                    .foregroundStyle(MacForceNowDesign.accent)
-                Text("MacForce Now Menu")
+                    .foregroundStyle(OpenNOWDesign.accent)
+                Text("OpenNOW Menu")
                     .nvidiaFont(size: 20, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
             .padding(.horizontal, 22 * uiScale)
-            .padding(.top, MacForceNowDesign.Spacing.large(scale: uiScale))
-            .padding(.bottom, MacForceNowDesign.Spacing.card(scale: uiScale))
+            .padding(.top, OpenNOWDesign.Spacing.large(scale: uiScale))
+            .padding(.bottom, OpenNOWDesign.Spacing.card(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
-                .padding(.horizontal, MacForceNowDesign.Spacing.card(scale: uiScale))
-                .padding(.vertical, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+                .padding(.horizontal, OpenNOWDesign.Spacing.card(scale: uiScale))
+                .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -89,8 +89,8 @@ struct CatalogMainMenuPanel: View {
                             isPresented = false
                         }
                     }
-                    .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
-                    .padding(.top, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+                    .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
 
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         CatalogMainMenuSectionLabel("ACTIONS")
@@ -104,9 +104,9 @@ struct CatalogMainMenuPanel: View {
                             }
                         }
                     }
-                    .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
-                    .padding(.top, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
-                    .padding(.bottom, MacForceNowDesign.Spacing.card(scale: uiScale))
+                    .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+                    .padding(.bottom, OpenNOWDesign.Spacing.card(scale: uiScale))
                 }
             }
 
@@ -118,11 +118,11 @@ struct CatalogMainMenuPanel: View {
                 isPresented = false
                 onSignOut()
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
-            .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
+            .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
-        .background(MacForceNowDesign.Surface.overlay.opacity(0.985))
+        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -130,7 +130,7 @@ struct CatalogMainMenuPanel: View {
         }
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(height: 2)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -191,7 +191,7 @@ struct CatalogAccountDropdownPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: MacForceNowDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
                 CatalogAccountAvatar(account: viewModel.account, size: 44 * uiScale)
                 VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(viewModel.account.displayName)
@@ -202,25 +202,25 @@ struct CatalogAccountDropdownPanel: View {
                         .nvidiaFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
-                        .frame(height: MacForceNowDesign.Spacing.card(scale: uiScale))
-                        .background(MacForceNowDesign.accent)
+                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: OpenNOWDesign.Spacing.card(scale: uiScale))
+                        .background(OpenNOWDesign.accent)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
-            .padding(.vertical, MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xxSmall(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
                 Text("ACCOUNTS")
                     .nvidiaFont(size: 10, weight: .bold)
                     .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.42))
-                    .padding(.horizontal, MacForceNowDesign.Spacing.small(scale: uiScale))
+                    .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                     .padding(.vertical, 5 * uiScale)
                 ForEach(accounts) { account in
                     let isActive = account === viewModel.account
@@ -238,15 +238,15 @@ struct CatalogAccountDropdownPanel: View {
                     }
                 }
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
-            .padding(.top, MacForceNowDesign.Spacing.section(scale: uiScale))
-            .padding(.bottom, MacForceNowDesign.Spacing.small(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
+            .padding(.top, OpenNOWDesign.Spacing.section(scale: uiScale))
+            .padding(.bottom, OpenNOWDesign.Spacing.small(scale: uiScale))
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xxSmall(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
                 CatalogAccountDropdownRow(
                     title: "Sign Out",
                     subtitle: nil,
@@ -270,14 +270,14 @@ struct CatalogAccountDropdownPanel: View {
                     }
                 }
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.section(scale: uiScale))
-            .padding(.vertical, MacForceNowDesign.Spacing.small(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
+            .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
-        .background(MacForceNowDesign.Surface.overlay.opacity(0.985))
+        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(height: 2)
         }
         .overlay(alignment: .trailing) {
@@ -301,11 +301,11 @@ struct CatalogAccountDropdownRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: MacForceNowDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
                 if let systemImage {
                     ZStack {
                         Rectangle()
-                            .fill(isActive ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                            .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
                         Image(systemName: systemImage)
                             .nvidiaFont(size: 13, weight: .bold)
                             .foregroundStyle(iconColor)
@@ -326,8 +326,8 @@ struct CatalogAccountDropdownRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
-            .padding(.trailing, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
+            .padding(.leading, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 42 * uiScale)
             .background(rowBackground)
@@ -339,17 +339,17 @@ struct CatalogAccountDropdownRow: View {
     }
 
     private var rowBackground: Color {
-        if isActive { return MacForceNowDesign.accent.opacity(0.095) }
+        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
         return Color.white.opacity(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
+        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
         return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
-        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
+        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
         return isActive ? .black : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 }
@@ -368,7 +368,7 @@ struct CatalogMainMenuSectionLabel: View {
             .nvidiaFont(size: 10, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(.white.opacity(0.42))
-            .padding(.horizontal, MacForceNowDesign.Spacing.small(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, 5 * uiScale)
     }
 }
@@ -382,7 +382,7 @@ struct CatalogMainMenuPlaytimeCard: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let activeSession = activeSessionTime(at: context.date)
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.section(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
                         .nvidiaFont(size: 10, weight: .bold)
@@ -393,9 +393,9 @@ struct CatalogMainMenuPlaytimeCard: View {
                         .nvidiaFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
-                        .frame(height: MacForceNowDesign.Spacing.large(scale: uiScale))
-                        .background(MacForceNowDesign.accent)
+                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: OpenNOWDesign.Spacing.large(scale: uiScale))
+                        .background(OpenNOWDesign.accent)
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
                     .nvidiaFont(size: 22, weight: .bold)
@@ -406,7 +406,7 @@ struct CatalogMainMenuPlaytimeCard: View {
                     .foregroundStyle(.white.opacity(0.56))
                     .lineLimit(1)
             }
-            .padding(MacForceNowDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
             .background(Color.white.opacity(0.055))
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
         }
@@ -454,7 +454,7 @@ struct CatalogMainMenuRow: View {
             HStack(spacing: 13 * uiScale) {
                 ZStack {
                     Rectangle()
-                        .fill(isActive ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                        .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
@@ -482,14 +482,14 @@ struct CatalogMainMenuRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, MacForceNowDesign.Spacing.xSmall(scale: uiScale))
-            .padding(.trailing, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
+            .padding(.leading, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: (compact ? 38 : 50) * uiScale)
             .background(rowBackground)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(isActive ? MacForceNowDesign.accent : Color.clear)
+                    .fill(isActive ? OpenNOWDesign.accent : Color.clear)
                     .frame(width: 3)
             }
             .contentShape(Rectangle())
@@ -501,18 +501,18 @@ struct CatalogMainMenuRow: View {
     }
 
     private var rowBackground: Color {
-        if isActive { return MacForceNowDesign.accent.opacity(0.095) }
+        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
         return Color.white.opacity(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
+        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
         return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
         if isActive { return .black.opacity(0.86) }
-        if role == .destructive { return MacForceNowDesign.Semantic.destructive }
+        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
         return .white.opacity(isHovering ? 0.94 : 0.72)
     }
 }

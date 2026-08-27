@@ -2,7 +2,7 @@ import AVFoundation
 import CoreVideo
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private actor StreamRecordingStatusRecorder {
     private(set) var values: [WebRTCStreamRecordingStatus] = []

@@ -1,6 +1,6 @@
 //
 //  DiscordPresenceServing.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

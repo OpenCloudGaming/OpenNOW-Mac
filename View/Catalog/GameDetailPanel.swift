@@ -1,6 +1,6 @@
 //
 //  GameDetailPanel.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -50,10 +50,10 @@ struct GameDetailPanel: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.99), location: 0.00),
-                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.98), location: 0.34),
-                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.84), location: 0.49),
-                            .init(color: MacForceNowDesign.Surface.chrome.opacity(0.22), location: 0.67),
+                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.99), location: 0.00),
+                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.98), location: 0.34),
+                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.84), location: 0.49),
+                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.22), location: 0.67),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
@@ -128,7 +128,7 @@ struct GameDetailPanel: View {
                                     withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }
                                 } label: {
                                     Circle()
-                                        .fill(index == imageIndex ? MacForceNowDesign.accent : Color.white.opacity(0.62))
+                                        .fill(index == imageIndex ? OpenNOWDesign.accent : Color.white.opacity(0.62))
                                         .frame(width: (index == imageIndex ? 12 : 9) * uiScale, height: (index == imageIndex ? 12 : 9) * uiScale)
                                 }
                                 .buttonStyle(.plain)
@@ -148,7 +148,7 @@ struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
-                .background(MacForceNowDesign.Surface.chrome)
+                .background(OpenNOWDesign.Surface.chrome)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
@@ -180,8 +180,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(chip == "IN LIBRARY" ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 10)
                     .frame(height: 27)
-                    .background(chip == "IN LIBRARY" ? MacForceNowDesign.accent : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? MacForceNowDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
+                    .background(chip == "IN LIBRARY" ? OpenNOWDesign.accent : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
             }
         }
     }
@@ -279,7 +279,7 @@ struct GameDetailPanel: View {
                     .foregroundStyle(.white.opacity(0.88))
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
                     .background(Color.white.opacity(0.08))
-                    .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .overlay {
@@ -303,37 +303,37 @@ struct GameDetailPanel: View {
     }
 
     private func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
-        var items: [MacForceNowDropdownItem] = []
+        var items: [OpenNOWDropdownItem] = []
         if game.variants.count > 1 {
-            items.append(MacForceNowDropdownItem(id: "changeStore", title: "Change game store") {
+            items.append(OpenNOWDropdownItem(id: "changeStore", title: "Change game store") {
                 showsActionsMenu = false
                 viewModel.changeSelectedGameStore()
             })
         }
-        items.append(MacForceNowDropdownItem(id: "share", title: "Share") {
+        items.append(OpenNOWDropdownItem(id: "share", title: "Share") {
             showsActionsMenu = false
             viewModel.shareSelectedGame()
         })
-        items.append(MacForceNowDropdownItem(id: "addShortcut", title: "Add shortcut") {
+        items.append(OpenNOWDropdownItem(id: "addShortcut", title: "Add shortcut") {
             showsActionsMenu = false
             viewModel.addShortcutForSelectedGame()
         })
         if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
-            items.append(MacForceNowDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {
+            items.append(OpenNOWDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {
                 showsActionsMenu = false
                 viewModel.removeSelectedVariantOwned()
             })
         } else if selectedVariant != nil {
-            items.append(MacForceNowDropdownItem(id: "markOwned", title: "Mark as owned") {
+            items.append(OpenNOWDropdownItem(id: "markOwned", title: "Mark as owned") {
                 showsActionsMenu = false
                 viewModel.markSelectedVariantOwned()
             })
         }
-        items.append(MacForceNowDropdownItem(id: "visitStore", title: "Visit game store") {
+        items.append(OpenNOWDropdownItem(id: "visitStore", title: "Visit game store") {
             showsActionsMenu = false
             viewModel.openStoreForSelectedVariant()
         })
-        return MacForceNowDropdownPanel(items: items)
+        return OpenNOWDropdownPanel(items: items)
     }
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
@@ -400,8 +400,8 @@ struct GameDetailPanel: View {
 
     private func detailMetadataScrollArea(game: OPNCatalogGameObject, panelHeight: CGFloat) -> some View {
         // Text area grows with the panel so tall (ultrawide) panels do not leave a dead gap.
-        let collapsedHeight = MacForceNowDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
-        let expandedHeight = MacForceNowDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
+        let collapsedHeight = OpenNOWDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
+        let expandedHeight = OpenNOWDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
         return ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
             VStack(alignment: .leading, spacing: 14) {
                 shortDescription(game: game)
@@ -611,8 +611,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(option.isSelected ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 11)
                     .frame(height: 32)
-                    .background(option.isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(option.isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
+                    .background(option.isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(option.isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)

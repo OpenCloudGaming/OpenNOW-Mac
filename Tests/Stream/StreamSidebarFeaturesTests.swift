@@ -1,5 +1,5 @@
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test func streamSidebarsExposeOneVisibleFeatureSet() {
     #expect(StreamSidebarCapabilities.webRTC.visibleFeatures == StreamSidebarFeature.allCases)

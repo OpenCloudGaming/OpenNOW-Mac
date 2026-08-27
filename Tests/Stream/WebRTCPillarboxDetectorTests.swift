@@ -1,7 +1,7 @@
 import CoreVideo
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 /// Builds an NV12 luma plane with `barFraction` of the width blacked out on each
 /// side, standing in for the pillarbox GeForce NOW bakes into 16:9-only titles.

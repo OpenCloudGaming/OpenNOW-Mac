@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_PATH="${1:?Usage: $0 <path/to/MacForceNow.app> [output.dmg]}"
-OUTPUT_DMG="${2:-MacForceNow.dmg}"
+APP_PATH="${1:?Usage: $0 <path/to/OpenNOW.app> [output.dmg]}"
+OUTPUT_DMG="${2:-OpenNOW.dmg}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKGROUND_PNG="${SCRIPT_DIR}/../Resources/MacForceNow/dmg-background.png"
-VOLNAME="MacForce Now"
-TMP_DIR="$(mktemp -d -t macforce-dmg)"
+BACKGROUND_PNG="${SCRIPT_DIR}/../Resources/OpenNOW/dmg-background.png"
+VOLNAME="OpenNOW"
+TMP_DIR="$(mktemp -d -t opennow-dmg)"
 STAGING="${TMP_DIR}/staging"
-RAW_DMG="${TMP_DIR}/MacForceNow_raw.dmg"
+RAW_DMG="${TMP_DIR}/OpenNOW_raw.dmg"
 MOUNT_POINT=""
 
 function cleanup {
@@ -77,7 +77,7 @@ osascript <<EOF
       set arrangement of viewOptions to not arranged
       set icon size of viewOptions to 96
       set background picture of viewOptions to POSIX file "${MOUNT_POINT}/.background/background.png"
-      set position of item "MacForceNow.app" of container window to {180, 250}
+      set position of item "OpenNOW.app" of container window to {180, 250}
       set position of item "Applications" of container window to {620, 250}
       update without registering applications
       delay 2

@@ -25,14 +25,14 @@ struct SteamControllerBindingRecorder: View {
                     Text(currentLabel)
                 }
             }
-            .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
-            .foregroundStyle(isRecording ? MacForceNowDesign.accent : .white.opacity(0.85))
+            .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+            .foregroundStyle(isRecording ? OpenNOWDesign.accent : .white.opacity(0.85))
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .background(isRecording ? MacForceNowDesign.accent.opacity(0.12) : Color.white.opacity(0.05))
+            .background(isRecording ? OpenNOWDesign.accent.opacity(0.12) : Color.white.opacity(0.05))
             .overlay(
                 Rectangle()
-                    .stroke(isRecording ? MacForceNowDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(isRecording ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

@@ -1,6 +1,6 @@
 //
 //  CatalogLaunchOverlayViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -18,7 +18,7 @@ struct VendorLaunchFlowOverlay: View {
             Color.black.opacity(0.82)
                 .ignoresSafeArea()
             RadialGradient(
-                colors: [MacForceNowDesign.accent.opacity(0.20), .clear],
+                colors: [OpenNOWDesign.accent.opacity(0.20), .clear],
                 center: .top,
                 startRadius: 20,
                 endRadius: 620
@@ -127,7 +127,7 @@ struct VendorStreamLaunchLoadingOverlay: View {
 }
 
 struct VendorEmbeddedSessionAdPlayer: View {
-    private static let volumePreferenceKey = "MacForceNow.Stream.RequiredSessionAdVolume"
+    private static let volumePreferenceKey = "OpenNOW.Stream.RequiredSessionAdVolume"
 
     let ad: CatalogStreamAdPlayback
     let onFinished: (Int) -> Void
@@ -156,10 +156,10 @@ struct VendorEmbeddedSessionAdPlayer: View {
                 Text("AD · \(countdownText)")
                     .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
+                    .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .padding(.vertical, 7)
                     .background(Color.black.opacity(0.72))
-                    .padding(MacForceNowDesign.Spacing.contentVertical)
+                    .padding(OpenNOWDesign.Spacing.contentVertical)
             }
             .background(.black)
 
@@ -193,7 +193,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
             .background(.black.opacity(0.86))
         }
         .clipShape(Rectangle())
-        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
         .onAppear(perform: startPlayback)
         .onDisappear(perform: stopPlayback)
@@ -305,7 +305,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 Button { } label: {
                     Text("LAUNCH STATUS")
                         .nvidiaFont(size: 10, weight: .bold)
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(1.4)
                 }
                 .buttonStyle(.plain)
@@ -313,12 +313,12 @@ struct VendorLaunchPanel<Content: View>: View {
             }
             .padding(.horizontal, 22)
             .frame(height: 58)
-            .background(MacForceNowDesign.Surface.chrome)
+            .background(OpenNOWDesign.Surface.chrome)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title.uppercased())
                     .nvidiaFont(size: 13, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.2)
                 Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
                     .nvidiaFont(size: 28, weight: .bold)
@@ -334,7 +334,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 .padding(.bottom, 26)
         }
         .frame(minWidth: 360, idealWidth: 640, maxWidth: 640)
-        .background(MacForceNowDesign.Surface.app)
+        .background(OpenNOWDesign.Surface.app)
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
         .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
     }
@@ -351,7 +351,7 @@ struct VendorLaunchStepHeader: View {
                 .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.black)
                 .frame(width: 26, height: 26)
-                .background(MacForceNowDesign.accent)
+                .background(OpenNOWDesign.accent)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .nvidiaFont(size: 16, weight: .bold)
@@ -418,7 +418,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)
-            .background(MacForceNowDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .background(OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0))
     }
 }
 

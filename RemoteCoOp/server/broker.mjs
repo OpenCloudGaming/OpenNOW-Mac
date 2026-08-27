@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const productionHost = "198.12.95.48";
-const port = integerEnv("MACFORCE_NOW_REMOTE_COOP_PORT", 32188);
-const portAlternates = portCandidates(port, process.env.MACFORCE_NOW_REMOTE_COOP_PORT_ALTERNATES);
-const bindHost = process.env.MACFORCE_NOW_REMOTE_COOP_BIND_HOST ?? productionHost;
+const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 32188);
+const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
+const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? productionHost;
 const MAX_FRAME_SIZE = 1024 * 1024;
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_DISPLAY_NAME_LENGTH = 64;
@@ -23,15 +23,15 @@ const brokerKeyPath = tls.keyPath;
 const brokerTLSEnabled = true;
 const brokerHTTPProtocol = "https";
 const brokerWebSocketProtocol = "wss";
-const stunURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
-const turnURLs = splitEnv("MACFORCE_NOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:32189?transport=udp,turn:${productionHost}:32189?transport=tcp`);
-const turnUsername = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_USERNAME ?? "";
-const turnCredential = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
-const turnSharedSecret = process.env.MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
-const turnCredentialTTLSeconds = Number.parseInt(process.env.MACFORCE_NOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "600", 10);
-const inviteSharedSecret = process.env.MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET ?? "";
-const networkLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_NETWORK", true);
-const messageFlowLoggingEnabled = booleanEnv("MACFORCE_NOW_REMOTE_COOP_LOG_MESSAGES", false);
+const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
+const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:32189?transport=udp,turn:${productionHost}:32189?transport=tcp`);
+const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
+const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
+const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
+const turnCredentialTTLSeconds = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "600", 10);
+const inviteSharedSecret = process.env.OPENNOW_REMOTE_COOP_INVITE_SECRET ?? "";
+const networkLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_NETWORK", true);
+const messageFlowLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_MESSAGES", false);
 const rooms = new Map();
 const sockets = new Set();
 const sessionStats = { totalStarted: 0, totalEnded: 0, recent: [] };
@@ -137,18 +137,18 @@ function listenOnAvailablePort(index) {
   const onError = error => {
     server.off("listening", onListening);
     if (error.code === "EADDRINUSE" && index + 1 < portAlternates.length) {
-      console.warn(`MacForce Now Remote Co-Op broker port ${candidate} is in use; trying ${portAlternates[index + 1]}.`);
+      console.warn(`OpenNOW Remote Co-Op broker port ${candidate} is in use; trying ${portAlternates[index + 1]}.`);
       listenOnAvailablePort(index + 1);
       return;
     }
-    console.error(`MacForce Now Remote Co-Op broker failed to listen on ${bindHost}:${candidate}: ${error.message}`);
+    console.error(`OpenNOW Remote Co-Op broker failed to listen on ${bindHost}:${candidate}: ${error.message}`);
     process.exit(1);
   };
   const onListening = () => {
     server.off("error", onError);
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : candidate;
-    console.log(`MacForce Now Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
+    console.log(`OpenNOW Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
     if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port, secure: brokerTLSEnabled });
   };
   server.once("error", onError);
@@ -167,7 +167,7 @@ async function makeBrokerServer(handler) {
   try {
     return createHTTPSServer({ cert: await readFile(brokerCertificatePath), key: await readFile(brokerKeyPath) }, handler);
   } catch (error) {
-    console.error(`MacForce Now Remote Co-Op broker failed to load HTTPS certificate/key: ${error.message}`);
+    console.error(`OpenNOW Remote Co-Op broker failed to load HTTPS certificate/key: ${error.message}`);
     process.exit(1);
   }
 }
@@ -739,12 +739,12 @@ function redactForwardedFor(header) {
 }
 
 function readOrCreateTLSMaterial() {
-  const certPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_CERT", "") || join(stateRoot, "broker-cert.pem");
-  const keyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_KEY", "") || join(stateRoot, "broker-key.pem");
+  const certPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "") || join(stateRoot, "broker-cert.pem");
+  const keyPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "") || join(stateRoot, "broker-key.pem");
   if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath, generated: false };
 
   mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-  const host = stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", productionHost);
+  const host = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", productionHost);
   const configPath = join(stateRoot, "broker-openssl.cnf");
   const altName = /^\d+\.\d+\.\d+\.\d+$/.test(host) ? `IP.1 = ${host}` : `DNS.1 = ${host}`;
   writeFileSync(configPath, `[req]\ndefault_bits = 2048\nprompt = no\ndefault_md = sha256\ndistinguished_name = dn\nx509_extensions = v3_req\n[dn]\nCN = ${host}\n[v3_req]\nsubjectAltName = @alt_names\n[alt_names]\n${altName}\n`, { mode: 0o600 });

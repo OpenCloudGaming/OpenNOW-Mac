@@ -307,7 +307,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     public func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST bitrate update failed.") { session, errorBuffer, length in
-            MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate(session, bitrateKbps, errorBuffer, length)
+            OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(session, bitrateKbps, errorBuffer, length)
         }
     }
 
@@ -338,21 +338,21 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     public func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST dynamic streaming update failed.") { session, errorBuffer, length in
-            MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode(session, mode.rawValue, errorBuffer, length)
+            OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(session, mode.rawValue, errorBuffer, length)
         }
     }
 
     public func setL4SEnabled(_ enabled: Bool) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST L4S update failed.") { session, errorBuffer, length in
-            MacForceNowNativeNVSTGeronimoSetL4SState(session, enabled ? 1 : 0, errorBuffer, length)
+            OpenNOWNativeNVSTGeronimoSetL4SState(session, enabled ? 1 : 0, errorBuffer, length)
         }
     }
 
     public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
         guard activeConnection != nil, !nativeLifecycleOperationInProgress, let sessionAddress = geronimoSessionAddress else { throw NativeNVSTError.notRunning }
         try await Self.applyRuntimeNetworkControlOnMainActor(sessionAddress: sessionAddress, fallback: "Native NVST gamepad topology update failed.") { session, errorBuffer, length in
-            MacForceNowNativeNVSTGeronimoUpdateGamepadTopology(session, topology.connectedPlayerBitmap, topology.hapticPlayerBitmap, errorBuffer, length)
+            OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(session, topology.connectedPlayerBitmap, topology.hapticPlayerBitmap, errorBuffer, length)
         }
     }
 
@@ -579,7 +579,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                 codecSupportsHDR: presentationCapability.supportsHDR
             )
         }
-        let launchPayload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: streamingProfileJSON, clientAppVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "MacForceNow")
+        let launchPayload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: streamingProfileJSON, clientAppVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW")
         try launchPayload.validate()
         let geronimoSessionJSON = try Self.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: streamingProfileJSON)
         var startAttributes = Self.geronimoStartAttributes(allocation: allocation, streamingProfileJSON: streamingProfileJSON, geronimoSessionJSON: geronimoSessionJSON)
@@ -595,12 +595,12 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         startAttributes["videoSurfaceType"] = "NSWindow"
         WebRTCMediaTelemetry.capture("nvst.geronimo.start.prepare", level: .info, message: "Preparing Geronimo native NVST session attachment.", attributes: startAttributes)
         let gameLanguage = Self.string(settings["gameLanguage"], fallback: "en_US")
-        let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "MacForceNow"
+        let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "OpenNOW"
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
         guard let session = frameworksPath.withUnsafeBufferPointer({ pathBuffer in
-            MacForceNowNativeNVSTGeronimoCreate(pathBuffer.baseAddress, errorBuffer, 1024)
+            OpenNOWNativeNVSTGeronimoCreate(pathBuffer.baseAddress, errorBuffer, 1024)
         }) else {
             let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo session could not be created.")
             var attributes = startAttributes
@@ -611,19 +611,19 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         do {
             try setGeronimoMicrophoneConfigurationOnMainActor(microphoneConfiguration, session: session)
         } catch {
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw error
         }
         eventSink.updateTelemetryAttributes(startAttributes)
         let eventContext = Unmanaged.passUnretained(eventSink).toOpaque()
-        let callbackResult = MacForceNowNativeNVSTGeronimoSetEventHandler(session, nativeNVSTGeronimoEventCallback, eventContext, errorBuffer, 1024)
+        let callbackResult = OpenNOWNativeNVSTGeronimoSetEventHandler(session, nativeNVSTGeronimoEventCallback, eventContext, errorBuffer, 1024)
         guard callbackResult == 0 else {
             let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo callback registration failed with result \(callbackResult).")
             var attributes = startAttributes
             attributes["result"] = String(callbackResult)
             attributes["error"] = message
             WebRTCMediaTelemetry.capture("nvst.geronimo.callback.failed", level: .error, message: message, attributes: attributes)
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
         let runtimeHandlers = NativeNVSTRuntimeHandlers(
@@ -632,21 +632,21 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             hapticHandler: hapticHandler,
             hapticResetHandler: hapticResetHandler
         )
-        let hapticResult = MacForceNowNativeNVSTGeronimoSetHapticHandler(session, nativeNVSTGeronimoHapticCallback, runtimeHandlers.hapticContext)
-        let authRefreshResult = MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler(session, nativeNVSTGeronimoAuthRefreshCallback, runtimeHandlers.authRefreshContext)
+        let hapticResult = OpenNOWNativeNVSTGeronimoSetHapticHandler(session, nativeNVSTGeronimoHapticCallback, runtimeHandlers.hapticContext)
+        let authRefreshResult = OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(session, nativeNVSTGeronimoAuthRefreshCallback, runtimeHandlers.authRefreshContext)
         guard hapticResult == 0, authRefreshResult == 0 else {
             await runtimeHandlers.cancel()
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable("Native Geronimo runtime handler registration failed.")
         }
         guard let nativeVideoSurfaceHandle, let nativeVideoSurface = UnsafeMutableRawPointer(bitPattern: nativeVideoSurfaceHandle) else {
             let message = "Native Geronimo requires an AppKit video surface."
             WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: startAttributes)
             await runtimeHandlers.cancel()
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
-        let surfaceResult = MacForceNowNativeNVSTGeronimoSetVideoSurface(session, nativeVideoSurface, errorBuffer, 1024)
+        let surfaceResult = OpenNOWNativeNVSTGeronimoSetVideoSurface(session, nativeVideoSurface, errorBuffer, 1024)
         guard surfaceResult == 0 else {
             let message = Self.errorMessage(errorBuffer, fallback: "Native Geronimo video surface binding failed with result \(surfaceResult).")
             var attributes = startAttributes
@@ -654,7 +654,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             attributes["error"] = message
             WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.failed", level: .error, message: message, attributes: attributes)
             await runtimeHandlers.cancel()
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw NativeNVSTError.privateABIUnavailable(message)
         }
         WebRTCMediaTelemetry.capture("nvst.geronimo.video_surface.bound", level: .info, message: "Native Geronimo video surface bound for SDL window creation.", attributes: startAttributes)
@@ -674,7 +674,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
                                                 // GeronimoStart's native-creates-its-own-session semantics would issue a second,
                                                 // independent session creation that collides with the one we already hold —
                                                 // GeronimoResume attaches to the existing session instead.
-                                                MacForceNowNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
+                                                OpenNOWNativeNVSTGeronimoResume(session, rawSessionPointer, profilePointer, cloudSessionPointer, languagePointer, versionPointer, localePointer, traceParentPointer, authTokenTypePointer, authTokenPointer, microphoneAvailable ? 1 : 0, microphoneEnabled ? 1 : 0, errorBuffer, 1024)
                                             }
                                         }
                                     }
@@ -722,7 +722,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         } catch {
             pump?.stop()
             await runtimeHandlers.cancel()
-            MacForceNowNativeNVSTGeronimoDestroy(session)
+            OpenNOWNativeNVSTGeronimoDestroy(session)
             throw error
         }
     }
@@ -733,7 +733,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     /// Geronimo threads; this reports which outcome happened and how long it took.
     @MainActor private static func destroyGeronimoOnMainActor(sessionAddress: UInt, attributes: [String: String] = [:]) {
         let startedAt = DispatchTime.now().uptimeNanoseconds
-        let outcome = MacForceNowNativeNVSTGeronimoDestroyWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress))
+        let outcome = OpenNOWNativeNVSTGeronimoDestroyWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress))
         let elapsedSeconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000_000
         var destroyAttributes = attributes
         destroyAttributes["outcome"] = geronimoDestroyOutcomeName(outcome)
@@ -784,7 +784,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = MacForceNowNativeNVSTGeronimoPause(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
+        let result = OpenNOWNativeNVSTGeronimoPause(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo pause failed with result \(result)."))
         }
@@ -794,7 +794,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
+        let result = OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(UnsafeMutableRawPointer(bitPattern: sessionAddress), errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.privateABIUnavailable(errorMessage(errorBuffer, fallback: "Native Geronimo performance overlay failed with result \(result)."))
         }
@@ -804,7 +804,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled(UnsafeMutableRawPointer(bitPattern: sessionAddress), enabled ? 1 : 0, errorBuffer, 1024)
+        let result = OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(UnsafeMutableRawPointer(bitPattern: sessionAddress), enabled ? 1 : 0, errorBuffer, 1024)
         guard result == 0 else {
             throw NativeNVSTError.transportFailed(errorMessage(errorBuffer, fallback: "Native Geronimo microphone update failed with result \(result)."))
         }
@@ -815,8 +815,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
     }
 
     @MainActor private static func setGeronimoMicrophoneConfigurationOnMainActor(_ configuration: NativeNVSTMicrophoneConfiguration, session: UnsafeMutableRawPointer?) throws {
-        let volumeResult = MacForceNowNativeNVSTGeronimoSetMicrophoneVolume(session, configuration.volume)
-        let vadResult = MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled(session, configuration.voiceActivityEnabled ? 1 : 0)
+        let volumeResult = OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(session, configuration.volume)
+        let vadResult = OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(session, configuration.voiceActivityEnabled ? 1 : 0)
         guard volumeResult == 0, vadResult == 0 else {
             throw NativeNVSTError.privateABIUnavailable("Native Geronimo microphone processing configuration failed.")
         }
@@ -835,7 +835,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         var serverLocation = [CChar](repeating: 0, count: 128)
         let result = nativeStatsBytes.withUnsafeMutableBytes { statsBuffer in
             serverLocation.withUnsafeMutableBufferPointer { locationBuffer in
-                MacForceNowNativeNVSTGeronimoCopyPerformanceStats(
+                OpenNOWNativeNVSTGeronimoCopyPerformanceStats(
                     UnsafeMutableRawPointer(bitPattern: sessionAddress),
                     statsBuffer.baseAddress,
                     statsBuffer.count,
@@ -888,8 +888,8 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = "MacForce Now native NVST disconnect".withCString { reason in
-            MacForceNowNativeNVSTGeronimoStopWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress), reason, 0, errorBuffer, 1024)
+        let result = "OpenNOW native NVST disconnect".withCString { reason in
+            OpenNOWNativeNVSTGeronimoStopWithResult(UnsafeMutableRawPointer(bitPattern: sessionAddress), reason, 0, errorBuffer, 1024)
         }
         return (result, result == 0 ? nil : errorMessage(errorBuffer, fallback: "Native NVST stop request failed with result \(result)."))
     }
@@ -901,11 +901,11 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
             switch encoded.nativePayload {
             case .event(let payload):
                 return payload.withUnsafeBytes { bytes in
-                    MacForceNowNativeNVSTGeronimoSendInput(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
+                    OpenNOWNativeNVSTGeronimoSendInput(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
                 }
             case .text(let payload):
                 return payload.withUnsafeBytes { bytes in
-                    MacForceNowNativeNVSTGeronimoSendText(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
+                    OpenNOWNativeNVSTGeronimoSendText(UnsafeMutableRawPointer(bitPattern: sessionAddress), bytes.bindMemory(to: UInt8.self).baseAddress, payload.count, baseAddress, buffer.count)
                 }
             }
         }
@@ -928,7 +928,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
         let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: 1024)
         defer { errorBuffer.deallocate() }
         errorBuffer.initialize(repeating: 0, count: 1024)
-        let result = MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(
+        let result = OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(
             UnsafeMutableRawPointer(bitPattern: sessionAddress),
             event.x,
             event.y,
@@ -1273,7 +1273,7 @@ public actor NativeNVSTBifrostTransport: NativeNVSTTransport {
 
     private static func openNOWStreamingProfileGuid(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String) -> String {
         let signature = "\(allocation.session.applicationID)|\(streamingProfileJSON)"
-        let key = "MacForceNow.NativeNVST.StreamingProfileGuid.\(stableProfileHash(signature))"
+        let key = "OpenNOW.NativeNVST.StreamingProfileGuid.\(stableProfileHash(signature))"
         let defaults = OPNAppPreferenceStorage.standard
         if let existing = defaults.string(forKey: key), UUID(uuidString: existing) != nil { return existing.lowercased() }
         let generated = UUID().uuidString.lowercased()
@@ -1726,7 +1726,7 @@ private final class NativeNVSTGeronimoPumpDriver {
         let result = errorBuffer.withUnsafeMutableBufferPointer { buffer -> Int32 in
             guard let baseAddress = buffer.baseAddress else { return -1 }
             baseAddress.pointee = 0
-            return MacForceNowNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, processSDLEvents, baseAddress, buffer.count)
+            return OpenNOWNativeNVSTGeronimoPump(UnsafeMutableRawPointer(bitPattern: sessionAddress), 0, processSDLEvents, baseAddress, buffer.count)
         }
         guard result != 0 else { return }
         stop()
@@ -2573,103 +2573,103 @@ private struct NativeNVSTGeronimoPerformanceStats {
     }
 }
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoCreate")
-private func MacForceNowNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
+@_silgen_name("OpenNOWNativeNVSTGeronimoCreate")
+private func OpenNOWNativeNVSTGeronimoCreate(_ frameworksPath: UnsafePointer<CChar>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> UnsafeMutableRawPointer?
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetEventHandler")
-private func MacForceNowNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRawPointer?, _ eventHandler: NativeNVSTGeronimoEventHandler?, _ eventContext: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetEventHandler")
+private func OpenNOWNativeNVSTGeronimoSetEventHandler(_ session: UnsafeMutableRawPointer?, _ eventHandler: NativeNVSTGeronimoEventHandler?, _ eventContext: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetHapticHandler")
-private func MacForceNowNativeNVSTGeronimoSetHapticHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoHapticHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetHapticHandler")
+private func OpenNOWNativeNVSTGeronimoSetHapticHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoHapticHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler")
-private func MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoAuthRefreshHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler")
+private func OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(_ session: UnsafeMutableRawPointer?, _ handler: NativeNVSTGeronimoAuthRefreshHandler?, _ context: UnsafeMutableRawPointer?) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetVideoSurface")
-private func MacForceNowNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVideoSurface")
+private func OpenNOWNativeNVSTGeronimoSetVideoSurface(_ session: UnsafeMutableRawPointer?, _ nativeHandle: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 // Currently unused: the transport always drives GeronimoResume because allocateSession
 // already creates the CloudMatch session before the native phase runs. Kept as the
 // reference binding for the GridApp::start entry point (and its shim implementation) in
 // case a future first-party allocation path needs to start rather than resume a session.
-@_silgen_name("MacForceNowNativeNVSTGeronimoStart")
-private func MacForceNowNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoStart")
+private func OpenNOWNativeNVSTGeronimoStart(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoResume")
-private func MacForceNowNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoResume")
+private func OpenNOWNativeNVSTGeronimoResume(_ session: UnsafeMutableRawPointer?, _ rawSessionJSON: UnsafePointer<CChar>?, _ streamingProfileJSON: UnsafePointer<CChar>?, _ cloudSessionJSON: UnsafePointer<CChar>?, _ gameLanguage: UnsafePointer<CChar>?, _ clientAppVersion: UnsafePointer<CChar>?, _ clientLocale: UnsafePointer<CChar>?, _ traceParent: UnsafePointer<CChar>?, _ authTokenType: UnsafePointer<CChar>?, _ authToken: UnsafePointer<CChar>?, _ microphoneAvailable: Int32, _ microphoneEnabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled")
-private func MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled")
+private func OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetMicrophoneVolume")
-private func MacForceNowNativeNVSTGeronimoSetMicrophoneVolume(_ session: UnsafeMutableRawPointer?, _ volume: Double) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetMicrophoneVolume")
+private func OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(_ session: UnsafeMutableRawPointer?, _ volume: Double) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled")
-private func MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled")
+private func OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(_ session: UnsafeMutableRawPointer?, _ enabled: Int32) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoPump")
-private func MacForceNowNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ processSDLEvents: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoPump")
+private func OpenNOWNativeNVSTGeronimoPump(_ session: UnsafeMutableRawPointer?, _ waitTimeoutMilliseconds: Int32, _ processSDLEvents: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoPause")
-private func MacForceNowNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoPause")
+private func OpenNOWNativeNVSTGeronimoPause(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSendInput")
-private func MacForceNowNativeNVSTGeronimoSendInput(_ session: UnsafeMutableRawPointer?, _ inputEventBytes: UnsafePointer<UInt8>?, _ inputEventByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSendInput")
+private func OpenNOWNativeNVSTGeronimoSendInput(_ session: UnsafeMutableRawPointer?, _ inputEventBytes: UnsafePointer<UInt8>?, _ inputEventByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSendAbsoluteMouse")
-private func MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(_ session: UnsafeMutableRawPointer?, _ windowX: Int32, _ windowY: Int32, _ timestampNanoseconds: UInt64, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSendAbsoluteMouse")
+private func OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(_ session: UnsafeMutableRawPointer?, _ windowX: Int32, _ windowY: Int32, _ timestampNanoseconds: UInt64, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay")
-private func MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay")
+private func OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(_ session: UnsafeMutableRawPointer?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
 /// Enables recording of Geronimo's decoded frames for pillarbox blur fill. Kept off
 /// unless a zoom/mirror fill mode is selected. Module-internal so the client-side
 /// overlay renderer can drive it.
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetFrameCaptureActive")
-func MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(_ active: Bool)
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetFrameCaptureActive")
+func OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(_ active: Bool)
 
 /// Copies the most recently captured decoded frame, retained (+1). Wrap the result
 /// with `Unmanaged<CVPixelBuffer>.fromOpaque(_:).takeRetainedValue()`. NULL when no
 /// frame has been captured or capture is inactive.
-@_silgen_name("MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame")
-func MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame() -> OpaquePointer?
+@_silgen_name("OpenNOWNativeNVSTGeronimoCopyLatestVideoFrame")
+func OpenNOWNativeNVSTGeronimoCopyLatestVideoFrame() -> OpaquePointer?
 
 /// -1 when the capture hook failed to install, else count of frames captured.
-@_silgen_name("MacForceNowNativeNVSTGeronimoFrameCaptureCount")
-func MacForceNowNativeNVSTGeronimoFrameCaptureCount() -> Int64
+@_silgen_name("OpenNOWNativeNVSTGeronimoFrameCaptureCount")
+func OpenNOWNativeNVSTGeronimoFrameCaptureCount() -> Int64
 
 /// Latest captured frame size packed as (width << 32 | height), 0 if none.
-@_silgen_name("MacForceNowNativeNVSTGeronimoLatestVideoFrameSize")
-func MacForceNowNativeNVSTGeronimoLatestVideoFrameSize() -> UInt64
+@_silgen_name("OpenNOWNativeNVSTGeronimoLatestVideoFrameSize")
+func OpenNOWNativeNVSTGeronimoLatestVideoFrameSize() -> UInt64
 
 /// Install progress: 0 not-attempted, 1 branch-reached, 2 dlsym-avfp-failed,
 /// 3 cv-target-failed, 4 slot-not-found, 5 slot-bad, 6 cas-failed, 7 installed.
-@_silgen_name("MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus")
-func MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus() -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoFrameCaptureInstallStatus")
+func OpenNOWNativeNVSTGeronimoFrameCaptureInstallStatus() -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate")
-private func MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate(_ session: UnsafeMutableRawPointer?, _ bitrateKbps: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate")
+private func OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(_ session: UnsafeMutableRawPointer?, _ bitrateKbps: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode")
-private func MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode(_ session: UnsafeMutableRawPointer?, _ mode: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode")
+private func OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(_ session: UnsafeMutableRawPointer?, _ mode: UInt32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSetL4SState")
-private func MacForceNowNativeNVSTGeronimoSetL4SState(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSetL4SState")
+private func OpenNOWNativeNVSTGeronimoSetL4SState(_ session: UnsafeMutableRawPointer?, _ enabled: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoUpdateGamepadTopology")
-private func MacForceNowNativeNVSTGeronimoUpdateGamepadTopology(_ session: UnsafeMutableRawPointer?, _ connectedPlayerBitmap: UInt8, _ hapticPlayerBitmap: UInt8, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoUpdateGamepadTopology")
+private func OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(_ session: UnsafeMutableRawPointer?, _ connectedPlayerBitmap: UInt8, _ hapticPlayerBitmap: UInt8, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoCopyPerformanceStats")
-private func MacForceNowNativeNVSTGeronimoCopyPerformanceStats(_ session: UnsafeMutableRawPointer?, _ performanceStatsBytes: UnsafeMutableRawPointer?, _ performanceStatsByteCount: Int, _ serverLocationBuffer: UnsafeMutablePointer<CChar>?, _ serverLocationBufferLength: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoCopyPerformanceStats")
+private func OpenNOWNativeNVSTGeronimoCopyPerformanceStats(_ session: UnsafeMutableRawPointer?, _ performanceStatsBytes: UnsafeMutableRawPointer?, _ performanceStatsByteCount: Int, _ serverLocationBuffer: UnsafeMutablePointer<CChar>?, _ serverLocationBufferLength: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoSendText")
-private func MacForceNowNativeNVSTGeronimoSendText(_ session: UnsafeMutableRawPointer?, _ utf8Bytes: UnsafePointer<UInt8>?, _ utf8ByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoSendText")
+private func OpenNOWNativeNVSTGeronimoSendText(_ session: UnsafeMutableRawPointer?, _ utf8Bytes: UnsafePointer<UInt8>?, _ utf8ByteCount: Int, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoStopWithResult")
-private func MacForceNowNativeNVSTGeronimoStopWithResult(_ session: UnsafeMutableRawPointer?, _ reason: UnsafePointer<CChar>?, _ code: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoStopWithResult")
+private func OpenNOWNativeNVSTGeronimoStopWithResult(_ session: UnsafeMutableRawPointer?, _ reason: UnsafePointer<CChar>?, _ code: Int32, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoDestroy")
-private func MacForceNowNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
+@_silgen_name("OpenNOWNativeNVSTGeronimoDestroy")
+private func OpenNOWNativeNVSTGeronimoDestroy(_ session: UnsafeMutableRawPointer?)
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoDestroyWithResult")
-private func MacForceNowNativeNVSTGeronimoDestroyWithResult(_ session: UnsafeMutableRawPointer?) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoDestroyWithResult")
+private func OpenNOWNativeNVSTGeronimoDestroyWithResult(_ session: UnsafeMutableRawPointer?) -> Int32

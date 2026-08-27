@@ -1,6 +1,6 @@
 //
 //  SettingsStreamingViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -20,7 +20,7 @@ struct ServerLocationSettingsPage: View {
                     Text("Cloudmatch Region")
                         .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Automatic chooses the best measured MacForce Now route.")
+                    Text("Automatic chooses the best measured OpenNOW route.")
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }

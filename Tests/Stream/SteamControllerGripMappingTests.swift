@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 /// `SteamControllerGripCombo`/`Target` stay live — reused by `SteamControllerBindingTarget
 /// .gamepadChord`. `SteamControllerGripProfile` stays live too, as the one-time migration

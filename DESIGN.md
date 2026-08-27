@@ -1,4 +1,4 @@
-# MacForce Now Design System
+# OpenNOW Design System
 
 Squared, panel-based dark interface echoing the GeForce NOW industrial aesthetic: flat
 surfaces, 1px strokes, a single NVIDIA green accent, and NVIDIA Sans typography. Corner
@@ -7,17 +7,17 @@ are always plain rectangles.
 
 Token sources of truth:
 
-- App shell: `View/MacForceNowDesign.swift` (`MacForceNowDesign`), `View/Login/LoginStyles.swift`
+- App shell: `View/OpenNOWDesign.swift` (`OpenNOWDesign`), `View/Login/LoginStyles.swift`
 - Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`WebRTCMediaStreamTheme`)
-- Typography: `View/Design/MacForceNowNVIDIAFont.swift` (`MacForceNowNVIDIAFont`)
+- Typography: `View/Design/OpenNOWNVIDIAFont.swift` (`OpenNOWNVIDIAFont`)
 
 ## Colors
 
 ### Brand
 
-- **Accent** (#75E61A): NVIDIA green, `MacForceNowDesign.accent` /
+- **Accent** (#75E61A): NVIDIA green, `OpenNOWDesign.accent` /
   `WebRTCMediaStreamTheme.accent`. Primary actions, active states, focus rings, section
-- **Destructive** (#FF8980): `MacForceNowDesign.Semantic.destructive`. Destructive menu
+- **Destructive** (#FF8980): `OpenNOWDesign.Semantic.destructive`. Destructive menu
   roles, end-stream actions, error accents.
   eyebrows, top edge bars. Never used for large backgrounds.
 - **Accent Soft** (#ABFF5C): `WebRTCMediaStreamTheme.accentSoft`. Status text on the
@@ -25,7 +25,7 @@ Token sources of truth:
 
 ### Surfaces
 
-- **App Background** (#191919): `MacForceNowDesign.Surface.app`. Root window background.
+- **App Background** (#191919): `OpenNOWDesign.Surface.app`. Root window background.
 - **App Bar** (#2D2D2D): `Surface.appBar` / `WebRTCMediaStreamTheme.appBar`. Header bands
   on docks, dialogs, and panels.
 - **Panel** (#1C1C1C app, #171717 stream): `Surface.panel` / `WebRTCMediaStreamTheme.panel`.
@@ -74,7 +74,7 @@ Token sources of truth:
 ## Typography
 
 Typeface is **NVIDIA Sans** in three weights, bundled as WOFF2 and loaded through
-`MacForceNowNVIDIAFont` (falls back to the system font at the matching weight if the
+`OpenNOWNVIDIAFont` (falls back to the system font at the matching weight if the
 bundle resource is unavailable). SwiftUI accessors: `.openNOWNVIDIA(size:weight:)` and
 `.nvidiaSans(size:weight:)`; the stream surface uses the file-private
 `.streamNvidia(size:weight:)`.
@@ -106,7 +106,7 @@ Twitch panel, transient message pills). Do not use them in new code.
 
 ## Spacing
 
-### App Shell (`MacForceNowDesign.Spacing`)
+### App Shell (`OpenNOWDesign.Spacing`)
 
 **Scale** — 4pt-grid values for generic layout spacing. Each exists as an unscaled
 static let and a `scale:`-parameterized function; use the function on surfaces that
@@ -148,14 +148,14 @@ interface scale. Chrome measures it with `WindowTopInsetReader` and never scales
 All point sizes in this document are pre-scale (100 %) values. A user-adjustable
 interface scale multiplies every size on the chrome surfaces it wraps.
 
-- **Token**: `MacForceNowInterfacePreferences.uiScale` (`MacForceNow.Interface.UIScale`),
+- **Token**: `OpenNOWInterfacePreferences.uiScale` (`OpenNOW.Interface.UIScale`),
   Double in 0.75–2.0, default 1.0. Always read/write through `clampedUIScale(_:)`.
-- **Mechanism**: `.macForceNowInterfaceScale(_:)` (`View/MacForceNowDesign.swift`) lays
+- **Mechanism**: `.macForceNowInterfaceScale(_:)` (`View/OpenNOWDesign.swift`) lays
   content out in a reduced logical space, then applies `scaleEffect` so chrome reflows
   larger instead of cropping. Never apply plain `scaleEffect` to chrome without the
   compensating frame, and never scale the video surface itself.
 - **Text fidelity**: `scaleEffect` alone rasterizes text at display density and upscales
-  the bitmap (progressively blurrier as scale grows). `MacForceNowInterfaceScaleDensityBooster`
+  the bitmap (progressively blurrier as scale grows). `OpenNOWInterfaceScaleDensityBooster`
   (mounted once at the `ContentView` root) keeps every non-Metal window layer's
   `contentsScale` pinned at `uiScale × window.backingScaleFactor` via a run-loop observer,
   forcing SwiftUI to re-render text and vector content at zoom density. It skips
@@ -174,7 +174,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 
 - **Default**: 0 — panels, docks, dialogs, buttons, fields, and cards are plain
   `Rectangle`s with 1px strokes. No `RoundedRectangle`, no `Capsule`.
-- **Avatar**: 14 (`MacForceNowDesign.Radius.avatar`).
+- **Avatar**: 14 (`OpenNOWDesign.Radius.avatar`).
 - **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
   icon buttons (`size * 0.32`). New UI must not add further exceptions.
 
@@ -186,7 +186,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   16 horizontal padding, square corners. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
-- **Compact Row Action** (`MacForceNowCompactButtonStyle`): settings/inline row
+- **Compact Row Action** (`OpenNOWCompactButtonStyle`): settings/inline row
   actions. Height 28, NVIDIA Sans 12pt bold, 14 horizontal padding, square corners.
   Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
   #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
@@ -212,12 +212,12 @@ Full-width rectangular button, height 38, NVIDIA Sans 12pt bold (tracking 0.4).
   Divider stroke.
 - **Focused**: accent stroke at 2px. **Disabled**: opacity 0.46.
 
-### Dropdown Menu (`MacForceNowDropdownMenu`)
+### Dropdown Menu (`OpenNOWDropdownMenu`)
 
 Square dropdown replacing native `Menu` for every app-shell dropdown: game detail
 "⋮" actions, catalog sort and filter groups, recordings sort, login provider picker.
-Built from `MacForceNowDropdownPanel` + `MacForceNowDropdownRow`
-(`View/Components/MacForceNowDropdown.swift`). Panel: Panel Raised background, 1px
+Built from `OpenNOWDropdownPanel` + `OpenNOWDropdownRow`
+(`View/Components/OpenNOWDropdown.swift`). Panel: Panel Raised background, 1px
 Stroke Regular, 4 (Menu Panel Vertical) padding, minimum width 208 (expands to the
 trigger's width when the trigger is wider, e.g. the login provider picker),
 leading-aligned to the trigger and anchored 4pt below it, no shadow. When the panel would extend past the
@@ -372,7 +372,7 @@ reserved for floating layers above the stream:
 
 - Build every panel, button, field, and card as a `Rectangle` with a 1px stroke.
 - Use NVIDIA Sans on all branded and stream surfaces; keep the size/weight scale above.
-- Pull colors from `MacForceNowDesign` / `WebRTCMediaStreamTheme` tokens; express light
+- Pull colors from `OpenNOWDesign` / `WebRTCMediaStreamTheme` tokens; express light
   tints as white opacities from the token tables.
 - Reserve accent for primary actions, active/focused states, eyebrows, and edge bars.
 - Indicate keyboard/gamepad focus with the 2px accent focus ring or accent stroke.

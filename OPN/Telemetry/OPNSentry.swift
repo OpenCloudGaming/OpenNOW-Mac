@@ -52,11 +52,11 @@ public final class OPNSentryTransaction {
 extension OPNSentryTransaction: @unchecked Sendable {}
 
 final class OPNSentry {
-    private static let fallbackDsn = "https://ddf2cd6fe39e070e972c8f864271f1ab@o428453.ingest.us.sentry.io/4511824907599872"
+    private static let dsnInfoPlistKey = "OPNSentryDSN"
     private static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
     private static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
     private static let maxDiagnosticsUploadBytes = 384 * 1024
-    private static let telemetryDisabledKey = "MacForceNow.Telemetry.Disabled"
+    private static let telemetryDisabledKey = "OpenNOW.Telemetry.Disabled"
     private nonisolated(unsafe) static var initialized = false
 
     public static func isTelemetryDisabled() -> Bool {
@@ -157,7 +157,7 @@ final class OPNSentry {
     public static func formattedLogMessage(level: String, area: String, message: String) -> String {
         let resolvedLevel = level.isEmpty ? "info" : level.lowercased()
         let resolvedArea = area.isEmpty ? "General" : area
-        return "[MacForceNow][\(resolvedLevel)][\(resolvedArea)] \(message)"
+        return "[OpenNOW][\(resolvedLevel)][\(resolvedArea)] \(message)"
     }
 
     public static func logDebugMessage(_ message: String) {
@@ -226,7 +226,7 @@ final class OPNSentry {
 
     public static func diagnosticsLogForUpload() -> String {
         let log = diagnosticsLogQueue.sync { diagnosticsLogText() }
-        return sanitizedUploadLog(log.isEmpty ? "No MacForce Now diagnostics log lines recorded for this run." : log)
+        return sanitizedUploadLog(log.isEmpty ? "No OpenNOW diagnostics log lines recorded for this run." : log)
     }
 
     public static func uploadDiagnosticsLog(_ logText: String) async throws -> URL {
@@ -292,7 +292,7 @@ final class OPNSentry {
 
     public static func startTransaction(name: String, operation: String, makeCurrent: Bool) -> OPNSentryTransaction? {
         guard isTelemetryEnabled() else { return nil }
-        let resolvedName = name.isEmpty ? "MacForce Now operation" : name
+        let resolvedName = name.isEmpty ? "OpenNOW operation" : name
         let resolvedOperation = operation.isEmpty ? "task" : operation
         let span = initialized && SentrySDK.isEnabled ? SentrySDK.startTransaction(name: resolvedName, operation: resolvedOperation, bindToScope: makeCurrent) : nil
         return OPNSentryTransaction(name: resolvedName, operation: resolvedOperation, makeCurrent: makeCurrent, span: span)
@@ -402,7 +402,15 @@ final class OPNSentry {
 
     private static func resolvedDsn() -> String? {
         guard !environmentFlagEnabled("OPN_DISABLE_SENTRY") else { return nil }
-        return environmentString("OPN_SENTRY_DSN") ?? environmentString("SENTRY_DSN") ?? fallbackDsn
+        return environmentString("OPN_SENTRY_DSN")
+            ?? environmentString("SENTRY_DSN")
+            ?? infoPlistString(dsnInfoPlistKey)
+    }
+
+    private static func infoPlistString(_ key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func resolvedEnvironment() -> String {
@@ -574,7 +582,7 @@ final class OPNSentry {
     private static func diagnosticsLogURL() -> URL {
         let manager = FileManager.default
         let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        return base.appendingPathComponent("MacForceNow", isDirectory: true).appendingPathComponent("MacForceNow-diagnostics-current.log")
+        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("OpenNOW-diagnostics-current.log")
     }
 
     static func clearDiagnosticsLog(at url: URL, fileManager manager: FileManager = .default) {
@@ -595,7 +603,7 @@ final class OPNSentry {
         let sanitized = sanitizedUploadLog(text)
         guard let sanitizedData = sanitized.data(using: .utf8), !sanitizedData.isEmpty else { throw OPNSentryDiagnosticsUploadError.emptyLog }
         guard sanitizedData.count > maxDiagnosticsUploadBytes else { return sanitizedData }
-        let notice = "MacForce Now diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because the diagnostics paste service rejects larger payloads.\n\n"
+        let notice = "OpenNOW diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because the diagnostics paste service rejects larger payloads.\n\n"
         guard let noticeData = notice.data(using: .utf8), noticeData.count < maxDiagnosticsUploadBytes else { throw OPNSentryDiagnosticsUploadError.emptyLog }
         let suffixByteCount = max(0, maxDiagnosticsUploadBytes - noticeData.count - 16)
         var suffixText = String(decoding: sanitizedData.suffix(suffixByteCount), as: UTF8.self)

@@ -1,6 +1,6 @@
 //
 //  LoginView.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -13,7 +13,7 @@ struct LoginView: View {
     let accounts: [LoginAccount]
     let onWindowTitleChange: (String?) -> Void
 
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @FocusState private var focusedField: LoginField?
 
     var body: some View {

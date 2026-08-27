@@ -90,12 +90,12 @@ jobs:
           xcodebuild -version
         shell: bash
 
-      - name: Build MacForceNow
+      - name: Build OpenNOW
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project MacForceNow.xcodeproj \
-            -scheme MacForceNow \
+            -project OpenNOW.xcodeproj \
+            -scheme OpenNOW \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \

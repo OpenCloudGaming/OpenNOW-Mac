@@ -79,13 +79,13 @@ public struct OPNSessionProxyConfiguration: Equatable, Sendable {
 }
 
 public enum OPNSessionProxyStore {
-    private static let enabledKey = "MacForceNow.Stream.SessionProxyEnabled"
-    private static let schemeKey = "MacForceNow.Stream.SessionProxyScheme"
-    private static let hostKey = "MacForceNow.Stream.SessionProxyHost"
-    private static let portKey = "MacForceNow.Stream.SessionProxyPort"
-    private static let usernameKey = "MacForceNow.Stream.SessionProxyUsername"
-    private static let passwordKey = "MacForceNow.Stream.SessionProxyPassword"
-    private static let legacyKeychainPurgeKey = "MacForceNow.Stream.SessionProxyLegacyKeychainPurged"
+    private static let enabledKey = "OpenNOW.Stream.SessionProxyEnabled"
+    private static let schemeKey = "OpenNOW.Stream.SessionProxyScheme"
+    private static let hostKey = "OpenNOW.Stream.SessionProxyHost"
+    private static let portKey = "OpenNOW.Stream.SessionProxyPort"
+    private static let usernameKey = "OpenNOW.Stream.SessionProxyUsername"
+    private static let passwordKey = "OpenNOW.Stream.SessionProxyPassword"
+    private static let legacyKeychainPurgeKey = "OpenNOW.Stream.SessionProxyLegacyKeychainPurged"
 
     public static func load() -> OPNSessionProxySettings {
         purgeLegacyKeychainPasswordIfNeeded()
@@ -125,7 +125,7 @@ public enum OPNSessionProxyStore {
         guard !storage.bool(forKey: legacyKeychainPurgeKey) else { return }
         SecItemDelete([
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "MacForceNow.SessionProxy",
+            kSecAttrService as String: "OpenNOW.SessionProxy",
             kSecAttrAccount as String: "password",
         ] as CFDictionary)
         storage.set(true, forKey: legacyKeychainPurgeKey)

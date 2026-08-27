@@ -1,11 +1,11 @@
 import Darwin
 import Foundation
 
-enum MacForceNowUpdatePreferences {
-    static let automaticUpdateChecksEnabledKey = "MacForceNowAutomaticUpdateChecksEnabled"
+enum OpenNOWUpdatePreferences {
+    static let automaticUpdateChecksEnabledKey = "OpenNOWAutomaticUpdateChecksEnabled"
     static let defaultAutomaticUpdateChecksEnabled = true
 
-    private static let remindAfterKey = "MacForceNowUpdateRemindAfter"
+    private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
 
     static var automaticUpdateChecksEnabled: Bool {
         get {

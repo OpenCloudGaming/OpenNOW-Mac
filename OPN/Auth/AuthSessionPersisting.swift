@@ -1,6 +1,6 @@
 //
 //  AuthSessionPersisting.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

@@ -1,6 +1,6 @@
 //
 //  CatalogContentViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -122,7 +122,7 @@ struct CatalogContentView: View {
                             .padding(.bottom, 44)
                         }
                         .background(
-                            MacForceNowDesign.Surface.app
+                            OpenNOWDesign.Surface.app
                                 .contentShape(Rectangle())
                                 .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                         )
@@ -143,7 +143,7 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
-                .background(MacForceNowDesign.Surface.app)
+                .background(OpenNOWDesign.Surface.app)
                 .onReceive(heroTimer) { _ in
                     guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -298,7 +298,7 @@ struct CatalogHeroView: View {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
-                                    .fill(index == activeIndex ? MacForceNowDesign.accent : Color.white.opacity(0.58))
+                                    .fill(index == activeIndex ? OpenNOWDesign.accent : Color.white.opacity(0.58))
                                     .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
@@ -368,7 +368,7 @@ struct CatalogBrowseControlsView: View {
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
                         .nvidiaFont(size: 12, weight: .bold)
-                        .foregroundStyle(MacForceNowDesign.accent.opacity(0.88))
+                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
@@ -377,9 +377,9 @@ struct CatalogBrowseControlsView: View {
                         .nvidiaFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.84))
                 }
-                MacForceNowDropdownMenu(
+                OpenNOWDropdownMenu(
                     items: viewModel.sortOptions.map { option in
-                        MacForceNowDropdownItem(
+                        OpenNOWDropdownItem(
                             id: option.id,
                             title: option.label.isEmpty ? option.id : option.label,
                             isSelected: option.id == viewModel.selectedSortId
@@ -387,13 +387,13 @@ struct CatalogBrowseControlsView: View {
                     },
                     isDisabled: viewModel.sortOptions.isEmpty
                 ) {
-                    HStack(spacing: MacForceNowDesign.Spacing.xSmall) {
+                    HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                         Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                         Image(systemName: "chevron.down")
                     }
                     .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
+                    .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .frame(height: 34)
                     .background(Color.white.opacity(0.08))
                 }
@@ -403,9 +403,9 @@ struct CatalogBrowseControlsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(viewModel.visibleFilterGroups, id: \.id) { group in
-                            MacForceNowDropdownMenu(
+                            OpenNOWDropdownMenu(
                                 items: group.options.map { option in
-                                    MacForceNowDropdownItem(
+                                    OpenNOWDropdownItem(
                                         id: option.id,
                                         title: option.label.isEmpty ? option.id : option.label,
                                         isSelected: viewModel.selectedFilterIds.contains(option.id)
@@ -418,7 +418,7 @@ struct CatalogBrowseControlsView: View {
                                 }
                                 .nvidiaFont(size: 11, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.82))
-                                .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
+                                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                                 .frame(height: 32)
                                 .background(Color.white.opacity(0.075))
                                 .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
@@ -434,7 +434,7 @@ struct CatalogBrowseControlsView: View {
                                 .foregroundStyle(.black.opacity(0.88))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
-                                .background(MacForceNowDesign.accent)
+                                .background(OpenNOWDesign.accent)
                             }
                             .buttonStyle(.plain)
                         }
@@ -458,7 +458,7 @@ struct CatalogEmptyDestinationView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .nvidiaFont(size: 22, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -691,7 +691,7 @@ struct CatalogDestinationGridView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
                     .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.86))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
                     .tracking(0.8)
                 Spacer(minLength: 0)
             }
@@ -816,7 +816,7 @@ struct CatalogPanelActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .nvidiaFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(MacForceNowDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accent)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -829,12 +829,12 @@ struct CatalogPanelActionTile: View {
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 10)
                         .frame(height: 25)
-                        .background(MacForceNowDesign.accent)
+                        .background(OpenNOWDesign.accent)
                 }
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
-            .overlay { Rectangle().stroke(isHovering ? MacForceNowDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
             .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
             .animation(.easeOut(duration: 0.2), value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
@@ -864,15 +864,15 @@ struct VendorActiveSessionHomeBanner: View {
     var body: some View {
         HStack(spacing: 0) {
             Circle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(width: 8 * uiScale, height: 8 * uiScale)
-                .shadow(color: MacForceNowDesign.accent, radius: 4)
+                .shadow(color: OpenNOWDesign.accent, radius: 4)
                 .padding(.trailing, 10 * uiScale)
 
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("SESSION ACTIVE")
                     .nvidiaFont(size: 10, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.2)
                 Text(title)
                     .nvidiaFont(size: 14, weight: .bold)
@@ -893,7 +893,7 @@ struct VendorActiveSessionHomeBanner: View {
         }
         .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
         .padding(.vertical, 10 * uiScale)
-        .background(MacForceNowDesign.Surface.chrome)
+        .background(OpenNOWDesign.Surface.chrome)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.white.opacity(0.08))
@@ -913,7 +913,7 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(primary
-                ? MacForceNowDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
+                ? OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
                 : Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
             .overlay {
                 if !primary {

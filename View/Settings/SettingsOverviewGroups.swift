@@ -1,6 +1,6 @@
 //
 //  SettingsOverviewGroups.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit

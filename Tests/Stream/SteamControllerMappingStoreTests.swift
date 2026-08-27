@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @MainActor
 @Suite struct SteamControllerMappingStoreTests {
@@ -26,8 +26,8 @@ import Testing
             .l4: SteamControllerGripCombo(buttons: [.south]),
         ])
         let data = try JSONEncoder().encode([legacyProfile])
-        defaults.set(data, forKey: "MacForceNow.Input.SteamControllerGripProfiles")
-        defaults.set(legacyProfile.id.uuidString, forKey: "MacForceNow.Input.SteamControllerGripActiveProfile")
+        defaults.set(data, forKey: "OpenNOW.Input.SteamControllerGripProfiles")
+        defaults.set(legacyProfile.id.uuidString, forKey: "OpenNOW.Input.SteamControllerGripActiveProfile")
         defaults.set(false, forKey: SteamControllerTrackpadMousePreference.key)
 
         let store = SteamControllerMappingStore(defaults: defaults)

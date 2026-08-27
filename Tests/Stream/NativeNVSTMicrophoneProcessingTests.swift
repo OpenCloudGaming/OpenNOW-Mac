@@ -1,5 +1,5 @@
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Suite(.serialized)
 struct NativeNVSTMicrophoneProcessingTests {
@@ -57,23 +57,23 @@ struct NativeNVSTMicrophoneProcessingTests {
     }
 
     @Test func onlyVerifiedMicrophoneFramesAreSupported() {
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 4, 1_920) == 1)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(44_100, 16, 2, 4, 1_920) == 0)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 32, 2, 4, 1_920) == 0)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 1, 4, 1_920) == 0)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 3, 1_920) == 0)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 4, 960) == 0)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 4, 1_920) == 1)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(44_100, 16, 2, 4, 1_920) == 0)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 32, 2, 4, 1_920) == 0)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 1, 4, 1_920) == 0)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 3, 1_920) == 0)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(48_000, 16, 2, 4, 960) == 0)
     }
 
     @Test func unsupportedFramePassesThroughWithoutMutation() {
         var state = voiceState()
         var frame = [UInt8](repeating: 0x5a, count: 0x58)
         let original = frame
-        let stateSize = MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize()
+        let stateSize = OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize()
 
         let result = state.withUnsafeMutableBytes { stateBuffer in
             frame.withUnsafeMutableBytes { frameBuffer in
-                MacForceNowNativeNVSTGeronimoTestProcessMicrophoneFrame(
+                OpenNOWNativeNVSTGeronimoTestProcessMicrophoneFrame(
                     frameBuffer.baseAddress,
                     frameBuffer.count,
                     0.5,
@@ -89,15 +89,15 @@ struct NativeNVSTMicrophoneProcessingTests {
     }
 
     @Test func routeTeardownRemovesTheClientSlot() {
-        let baseline = MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount()
+        let baseline = OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount()
         let client = UnsafeMutableRawPointer(bitPattern: 0x1234)
-        let route = MacForceNowNativeNVSTGeronimoTestRegisterMicrophoneRoute(client)
+        let route = OpenNOWNativeNVSTGeronimoTestRegisterMicrophoneRoute(client)
         #expect(route != nil)
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount() == baseline + 1)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount() == baseline + 1)
 
-        MacForceNowNativeNVSTGeronimoTestUnregisterMicrophoneRoute(route)
+        OpenNOWNativeNVSTGeronimoTestUnregisterMicrophoneRoute(route)
 
-        #expect(MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount() == baseline)
+        #expect(OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount() == baseline)
     }
 
     @Test func settingsPreserveDisabledPushToTalkAndVoiceActivitySemantics() {
@@ -120,20 +120,20 @@ struct NativeNVSTMicrophoneProcessingTests {
     }
 
     private func voiceState() -> [UInt64] {
-        let size = MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize()
+        let size = OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize()
         var state = [UInt64](repeating: 0, count: (size + MemoryLayout<UInt64>.size - 1) / MemoryLayout<UInt64>.size)
         let result = state.withUnsafeMutableBytes {
-            MacForceNowNativeNVSTGeronimoTestResetVoiceActivityState($0.baseAddress, size)
+            OpenNOWNativeNVSTGeronimoTestResetVoiceActivityState($0.baseAddress, size)
         }
         #expect(result == 0)
         return state
     }
 
     private func process(_ samples: inout [Int16], volume: Double, vadEnabled: Bool, state: inout [UInt64]) -> Int32 {
-        let stateSize = MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize()
+        let stateSize = OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize()
         return state.withUnsafeMutableBytes { stateBuffer in
             samples.withUnsafeMutableBufferPointer { sampleBuffer in
-                MacForceNowNativeNVSTGeronimoTestProcessMicrophonePCM(
+                OpenNOWNativeNVSTGeronimoTestProcessMicrophonePCM(
                     sampleBuffer.baseAddress,
                     sampleBuffer.count,
                     volume,
@@ -146,26 +146,26 @@ struct NativeNVSTMicrophoneProcessingTests {
     }
 }
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize")
-private func MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize() -> Int
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize")
+private func OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize() -> Int
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestResetVoiceActivityState")
-private func MacForceNowNativeNVSTGeronimoTestResetVoiceActivityState(_ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestResetVoiceActivityState")
+private func OpenNOWNativeNVSTGeronimoTestResetVoiceActivityState(_ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestProcessMicrophonePCM")
-private func MacForceNowNativeNVSTGeronimoTestProcessMicrophonePCM(_ samples: UnsafeMutablePointer<Int16>?, _ sampleCount: Int, _ volume: Double, _ vadEnabled: Int32, _ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestProcessMicrophonePCM")
+private func OpenNOWNativeNVSTGeronimoTestProcessMicrophonePCM(_ samples: UnsafeMutablePointer<Int16>?, _ sampleCount: Int, _ volume: Double, _ vadEnabled: Int32, _ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported")
-private func MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(_ sampleRate: UInt32, _ bitsPerSample: UInt32, _ channels: UInt32, _ format: UInt32, _ byteCount: UInt32) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported")
+private func OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(_ sampleRate: UInt32, _ bitsPerSample: UInt32, _ channels: UInt32, _ format: UInt32, _ byteCount: UInt32) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestProcessMicrophoneFrame")
-private func MacForceNowNativeNVSTGeronimoTestProcessMicrophoneFrame(_ frame: UnsafeMutableRawPointer?, _ frameByteCount: Int, _ volume: Double, _ vadEnabled: Int32, _ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestProcessMicrophoneFrame")
+private func OpenNOWNativeNVSTGeronimoTestProcessMicrophoneFrame(_ frame: UnsafeMutableRawPointer?, _ frameByteCount: Int, _ volume: Double, _ vadEnabled: Int32, _ state: UnsafeMutableRawPointer?, _ stateByteCount: Int) -> Int32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestRegisterMicrophoneRoute")
-private func MacForceNowNativeNVSTGeronimoTestRegisterMicrophoneRoute(_ client: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestRegisterMicrophoneRoute")
+private func OpenNOWNativeNVSTGeronimoTestRegisterMicrophoneRoute(_ client: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestUnregisterMicrophoneRoute")
-private func MacForceNowNativeNVSTGeronimoTestUnregisterMicrophoneRoute(_ route: UnsafeMutableRawPointer?)
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestUnregisterMicrophoneRoute")
+private func OpenNOWNativeNVSTGeronimoTestUnregisterMicrophoneRoute(_ route: UnsafeMutableRawPointer?)
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount")
-private func MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount() -> Int
+@_silgen_name("OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount")
+private func OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount() -> Int

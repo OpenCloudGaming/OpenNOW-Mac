@@ -1,5 +1,5 @@
 //
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -255,8 +255,8 @@ private final class AccountLinkingCallbackListener: @unchecked Sendable {
     }
 
     func sendCallbackPage(client: Int32, success: Bool) {
-        let successBody = "<!doctype html><html><head><meta charset=\"utf-8\"><title>MacForce Now Account Linking</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Account link complete</h1><p>You can close this window and return to MacForceNow.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
-        let errorBody = "<!doctype html><html><head><meta charset=\"utf-8\"><title>MacForce Now Account Linking</title></head><body style=\"background:#140606;color:#fff0f0;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Account link failed</h1><p>Return to MacForce Now to try again.</p></main></body></html>"
+        let successBody = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Account Linking</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Account link complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
+        let errorBody = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Account Linking</title></head><body style=\"background:#140606;color:#fff0f0;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Account link failed</h1><p>Return to OpenNOW to try again.</p></main></body></html>"
         let body = success ? successBody : errorBody
         let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
         _ = response.withCString { send(client, $0, strlen($0), 0) }

@@ -1,19 +1,19 @@
 import Foundation
 
-struct MacForceNowWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
+struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
         let level = Self.sentryLevel(for: event)
         let message = "\(event.name): \(event.message)\(suffix)"
         switch level {
         case .debug:
-            MacForceNowLog.debug(.stream, message)
+            OpenNOWLog.debug(.stream, message)
         case .info:
-            MacForceNowLog.info(.stream, message)
+            OpenNOWLog.info(.stream, message)
         case .warning:
-            MacForceNowLog.warning(.stream, message)
+            OpenNOWLog.warning(.stream, message)
         case .error:
-            MacForceNowLog.error(.stream, message)
+            OpenNOWLog.error(.stream, message)
         }
     }
 

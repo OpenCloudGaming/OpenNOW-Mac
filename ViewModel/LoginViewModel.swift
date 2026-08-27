@@ -1,5 +1,5 @@
 //  LoginViewModel.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -92,15 +92,15 @@ final class LoginViewModel: ObservableObject {
     }
 
     func bootstrap() {
-        MacForceNowLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
+        OpenNOWLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
         prefillLastAccount()
         refreshLoginProviders()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
-        MacForceNowLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
+        OpenNOWLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
-    private static let termsAcceptedKey = "MacForceNow.Login.GFNTermsAccepted"
+    private static let termsAcceptedKey = "OpenNOW.Login.GFNTermsAccepted"
 
     func presentTermsOfUseIfNeeded() {
         guard !acceptedTerms else { return }
@@ -153,7 +153,7 @@ final class LoginViewModel: ObservableObject {
         deviceCodeUserCode = ""
         deviceCodeVerificationURI = ""
         validationMessage = "Sign-in cancelled. Choose GET IN to try again."
-        MacForceNowLog.info(.auth, "User cancelled pending sign-in")
+        OpenNOWLog.info(.auth, "User cancelled pending sign-in")
     }
 
     func completeOAuthWithCallbackText() {
@@ -161,29 +161,29 @@ final class LoginViewModel: ObservableObject {
     }
 
     func handleOAuthCallback(_ url: URL) {
-        guard url.scheme == "com.nvidia.geforcenow" || url.scheme == "macforce-now" else { return }
+        guard url.scheme == "com.nvidia.geforcenow" || url.scheme == "opennow" else { return }
         Task { await completeOAuth(callbackText: url.absoluteString) }
     }
 
     func handleOpenedFile(_ url: URL) {
-        MacForceNowLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
+        OpenNOWLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
         guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else {
-            MacForceNowLog.info(.shortcut, "Ignoring non-gfnpc opened file: \(url.pathExtension)")
+            OpenNOWLog.info(.shortcut, "Ignoring non-gfnpc opened file: \(url.pathExtension)")
             return
         }
         do {
             pendingGameShortcut = try GFNGameShortcut(fileURL: url)
             if let shortcut = pendingGameShortcut {
-                MacForceNowLog.info(.shortcut, "Parsed gfnpc shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
+                OpenNOWLog.info(.shortcut, "Parsed gfnpc shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
             }
             if activeSession == nil {
-                MacForceNowLog.info(.shortcut, "Shortcut parsed but no active session is available")
+                OpenNOWLog.info(.shortcut, "Shortcut parsed but no active session is available")
                 validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its GeForce NOW shortcut."
             } else {
-                MacForceNowLog.info(.shortcut, "Shortcut queued for active catalog session")
+                OpenNOWLog.info(.shortcut, "Shortcut queued for active catalog session")
             }
         } catch {
-            MacForceNowLog.error(.shortcut, "Failed to parse gfnpc shortcut: \(error.localizedDescription)")
+            OpenNOWLog.error(.shortcut, "Failed to parse gfnpc shortcut: \(error.localizedDescription)")
             validationMessage = error.localizedDescription
         }
     }
@@ -214,16 +214,16 @@ final class LoginViewModel: ObservableObject {
         validationMessage = ""
         successMessage = ""
         let loginProvider = selectedProvider
-        MacForceNowLog.info(.auth, "Beginning OAuth launch provider=\(loginProvider.idpId)")
+        OpenNOWLog.info(.auth, "Beginning OAuth launch provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
-            MacForceNowLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
+            OpenNOWLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
             validationMessage = "Accept account terms and local session storage before continuing."
             return
         }
 
         isLaunchingOAuth = true
-        validationMessage = "Finish \(loginProvider.title) sign-in in the browser. MacForce Now will continue automatically."
+        validationMessage = "Finish \(loginProvider.title) sign-in in the browser. OpenNOW will continue automatically."
 
         let generation = loginLaunchGeneration
         authService.startOAuthLogin(providerIdpId: loginProvider.idpId) { [weak self] success, session, error in
@@ -236,7 +236,7 @@ final class LoginViewModel: ObservableObject {
 
             guard success else {
                 self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : error
-                MacForceNowLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                OpenNOWLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
                 return
             }
 
@@ -245,7 +245,7 @@ final class LoginViewModel: ObservableObject {
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
                 self.validationMessage = ""
                 self.successMessage = "\(loginProvider.title) account connected. Client token and session metadata are ready."
-                MacForceNowLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
+                OpenNOWLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -256,10 +256,10 @@ final class LoginViewModel: ObservableObject {
         deviceCodeUserCode = ""
         deviceCodeVerificationURI = ""
         let loginProvider = selectedProvider
-        MacForceNowLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
+        OpenNOWLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
-            MacForceNowLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
+            OpenNOWLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
             validationMessage = "Accept account terms and local session storage before continuing."
             return
         }
@@ -284,7 +284,7 @@ final class LoginViewModel: ObservableObject {
 
             guard success else {
                 self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : error
-                MacForceNowLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                OpenNOWLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
                 return
             }
 
@@ -295,7 +295,7 @@ final class LoginViewModel: ObservableObject {
                 self.successMessage = "\(loginProvider.title) account connected with device code."
                 self.deviceCodeUserCode = ""
                 self.deviceCodeVerificationURI = ""
-                MacForceNowLog.info(.auth, "Device-code OAuth completed provider=\(loginProvider.idpId)")
+                OpenNOWLog.info(.auth, "Device-code OAuth completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -306,13 +306,13 @@ final class LoginViewModel: ObservableObject {
 
         let device = primaryDevice
         guard !device.pendingOAuthState.isEmpty, !device.pendingOAuthCodeVerifier.isEmpty else {
-            MacForceNowLog.warning(.auth, "OAuth callback ignored because pending state is missing")
+            OpenNOWLog.warning(.auth, "OAuth callback ignored because pending state is missing")
             validationMessage = "Start browser sign-in before completing authorization."
             return
         }
 
         guard let query = Self.callbackQuery(from: callbackText.trimmed) else {
-            MacForceNowLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
+            OpenNOWLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
             validationMessage = "Paste the full callback URL or authorization query from the browser."
             requestedFocus = .callback
             return
@@ -320,7 +320,7 @@ final class LoginViewModel: ObservableObject {
 
         isAuthenticating = true
         defer { isAuthenticating = false }
-        MacForceNowLog.info(.auth, "Completing OAuth callback provider=\(device.pendingOAuthProviderIdpId.isEmpty ? selectedProvider.idpId : device.pendingOAuthProviderIdpId)")
+        OpenNOWLog.info(.auth, "Completing OAuth callback provider=\(device.pendingOAuthProviderIdpId.isEmpty ? selectedProvider.idpId : device.pendingOAuthProviderIdpId)")
 
         do {
             let callback = try await jarvisAuthService.parseCallback(query: query, expectedState: device.pendingOAuthState)
@@ -341,12 +341,12 @@ final class LoginViewModel: ObservableObject {
             _ = await jarvisAuthService.finishLogin(success: true)
             let providerTitle = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title).title
             successMessage = "\(providerTitle) account connected. Client token and session metadata are ready."
-            MacForceNowLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
+            OpenNOWLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
         } catch {
             _ = await jarvisAuthService.finishLogin(success: false)
             validationMessage = Self.userFacingError(error)
             requestedFocus = .callback
-            MacForceNowLog.error(.auth, "OAuth callback failed: \(validationMessage)")
+            OpenNOWLog.error(.auth, "OAuth callback failed: \(validationMessage)")
         }
     }
 
@@ -359,7 +359,7 @@ final class LoginViewModel: ObservableObject {
         rememberSession = account.rememberSession
 
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
-            MacForceNowLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
+            OpenNOWLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
             validationMessage = "No saved session exists for this account. Sign in again."
             return false
         }
@@ -388,30 +388,30 @@ final class LoginViewModel: ObservableObject {
         }
 
         do {
-            MacForceNowLog.info(.auth, "Refreshing saved session account=\(account.email)")
+            OpenNOWLog.info(.auth, "Refreshing saved session account=\(account.email)")
             await jarvisAuthService.setSession(jarvisSession)
             let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
-            MacForceNowLog.info(.auth, "Session refreshed account=\(account.email)")
+            OpenNOWLog.info(.auth, "Session refreshed account=\(account.email)")
             return true
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
                 markActive(accountEmail: account.email)
                 trySave()
                 successMessage = "Using saved offline session for \(account.displayName)."
-                MacForceNowLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
+                OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
                 return true
             } else {
                 validationMessage = "Saved session expired. Sign in again."
-                MacForceNowLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
+                OpenNOWLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
                 return false
             }
         }
     }
 
     private func signOutCurrentSession() async {
-        MacForceNowLog.info(.auth, "Signing out current session")
+        OpenNOWLog.info(.auth, "Signing out current session")
         for account in accounts {
             account.isActive = false
             account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
@@ -425,13 +425,13 @@ final class LoginViewModel: ObservableObject {
         trySave()
         await jarvisAuthService.clearSession()
         successMessage = "Signed out."
-        MacForceNowLog.info(.auth, "Sign out completed")
+        OpenNOWLog.info(.auth, "Sign out completed")
     }
 
     private func persistSignedInSession(session: JarvisSession, userInfo: JarvisUserInfo?, authMethod: String) {
         guard let modelContext else {
             validationMessage = "SwiftData context is unavailable."
-            MacForceNowLog.error(.auth, "Cannot persist signed-in session because SwiftData context is unavailable")
+            OpenNOWLog.error(.auth, "Cannot persist signed-in session because SwiftData context is unavailable")
             return
         }
 
@@ -515,7 +515,7 @@ final class LoginViewModel: ObservableObject {
         }
         primaryDevice.lastUsedAt = now
         trySave()
-        MacForceNowLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
+        OpenNOWLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
     }
 
     private func markActive(accountEmail: String) {
@@ -543,7 +543,7 @@ final class LoginViewModel: ObservableObject {
         modelContext.insert(device)
         devices = [device]
         trySave()
-        MacForceNowLog.info(.auth, "Created login device registration deviceId=\(device.deviceId)")
+        OpenNOWLog.info(.auth, "Created login device registration deviceId=\(device.deviceId)")
     }
 
     private func prefillLastAccount() {
@@ -561,7 +561,7 @@ final class LoginViewModel: ObservableObject {
             guard let self else { return }
             self.isLoadingProviders = false
             guard success else {
-                MacForceNowLog.warning(.auth, "Provider discovery failed: \(error)")
+                OpenNOWLog.warning(.auth, "Provider discovery failed: \(error)")
                 return
             }
             self.applyProviderInfo(info)
@@ -629,7 +629,7 @@ final class LoginViewModel: ObservableObject {
             try modelContext?.save()
         } catch {
             validationMessage = error.localizedDescription
-            MacForceNowLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
+            OpenNOWLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
         }
     }
 
@@ -638,8 +638,8 @@ final class LoginViewModel: ObservableObject {
         let fallback = fallbackEmail.trimmed
         let value = candidate.isEmpty ? fallback : candidate
         if !value.isEmpty { return value.lowercased() }
-        if !session.userId.isEmpty { return "\(session.userId.lowercased())@macforce-now.local" }
-        return "macforce-now-user@macforce-now.local"
+        if !session.userId.isEmpty { return "\(session.userId.lowercased())@opennow.local" }
+        return "opennow-user@opennow.local"
     }
 
     private static func displayName(session: JarvisSession, userInfo: JarvisUserInfo?, email: String) -> String {

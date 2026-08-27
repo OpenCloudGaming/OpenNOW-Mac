@@ -146,7 +146,7 @@ public final class NativeWebRTCGamepadMonitor {
     public private(set) var topology = NativeWebRTCGamepadTopology(playerIndices: [])
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     nonisolated(unsafe) private var pollState = GamepadPollState()
-    private let pollingQueue = DispatchQueue(label: "com.macforce-now.gamepad-poll", qos: .userInteractive)
+    private let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
     private var pollingAllowed = false
     private let bindingClock = ContinuousClock()
     private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]

@@ -3,7 +3,7 @@ import CryptoKit
 import SwiftUI
 
 enum SettingsVendorLayout {
-    static let surface = MacForceNowDesign.Surface.deep
+    static let surface = OpenNOWDesign.Surface.deep
     static let sidebar = Color(red: 31 / 255, green: 32 / 255, blue: 31 / 255)
     static let card = Color(red: 26 / 255, green: 27 / 255, blue: 26 / 255)
     static let cardRaised = Color(red: 34 / 255, green: 35 / 255, blue: 34 / 255)
@@ -11,8 +11,8 @@ enum SettingsVendorLayout {
 }
 
 extension Font {
-    static func settingsNvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
-        MacForceNowNVIDIAFont.font(size: size, weight: weight)
+    static func settingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
@@ -95,7 +95,7 @@ enum SettingsAppMetadata {
     static var displayName: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        ?? "MacForce Now Mac"
+        ?? "OpenNOW Mac"
     }
 
     static var version: String {
@@ -151,7 +151,7 @@ struct SettingsSurfaceBackground: View {
     var body: some View {
         ZStack {
             SettingsVendorLayout.surface
-            LinearGradient(colors: [MacForceNowDesign.accent.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
+            LinearGradient(colors: [OpenNOWDesign.accent.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
             LinearGradient(colors: [.black.opacity(0.22), .clear, .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing)
         }
     }
@@ -205,7 +205,7 @@ struct SettingsTabItem: View {
                 Image(systemName: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? MacForceNowDesign.accent : .white.opacity(0.52))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(0.52))
                     .frame(width: 18 * uiScale, height: 18 * uiScale)
                 Text(title)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: isSelected ? .bold : .medium))
@@ -218,7 +218,7 @@ struct SettingsTabItem: View {
             .frame(width: 150 * uiScale, height: 44 * uiScale)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(isSelected ? MacForceNowDesign.accent : .clear)
+                    .fill(isSelected ? OpenNOWDesign.accent : .clear)
                     .frame(width: 150 * uiScale, height: 3 * uiScale)
             }
             .contentShape(Rectangle())
@@ -287,7 +287,7 @@ struct SettingsHeader: View {
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(title.uppercased())
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(1.5)
                     Text(title)
                         .font(.settingsNvidia(size: 34 * uiScale, weight: .bold))

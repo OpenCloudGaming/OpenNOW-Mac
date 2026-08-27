@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private struct RecordedNativeNVSTFinish: Equatable, Sendable {
     let session: StreamSessionDescriptor
@@ -289,7 +289,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     do {
         _ = try await path.start(configuration: nativeConfiguration())
         Issue.record("Expected active-session conflict")
-    } catch let error as MacForceNowStreamSessionError {
+    } catch let error as OpenNOWStreamSessionError {
         guard case .activeSessionConflict(let conflict) = error else {
             Issue.record("Expected active-session conflict, received \(error)")
             return
@@ -1050,7 +1050,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
 }
 
 @Test func nativeNVSTLaunchPayloadRejectsMissingVerifiedStartFields() throws {
-    let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}", serverType: 0), streamingProfileJSON: "{}", clientAppVersion: "MacForceNow")
+    let payload = NativeNVSTLaunchPayload(allocation: nativeAllocation(rawSessionJSON: "{}", serverType: 0), streamingProfileJSON: "{}", clientAppVersion: "OpenNOW")
 
     #expect(payload.missingFields.contains("serverType"))
     #expect(payload.missingFields.contains("tokenType"))
@@ -1077,7 +1077,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         }
         """, serverType: 52),
         streamingProfileJSON: profileJSON,
-        clientAppVersion: "MacForceNow"
+        clientAppVersion: "OpenNOW"
     )
     let unsupportedAuth = NativeNVSTLaunchPayload(
         allocation: nativeAllocation(rawSessionJSON: """
@@ -1089,7 +1089,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
         }
         """),
         streamingProfileJSON: profileJSON,
-        clientAppVersion: "MacForceNow"
+        clientAppVersion: "OpenNOW"
     )
 
     #expect(throws: NativeNVSTError.invalidSession("Native NVST launch payload has unsupported server type 52.")) {
@@ -1275,7 +1275,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
       "sessionRequestData": { "appId": 123 }
     }
     """)
-    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "MacForceNow")
+    let payload = NativeNVSTLaunchPayload(allocation: allocation, streamingProfileJSON: profileJSON, clientAppVersion: "OpenNOW")
     let sessionJSON = try NativeNVSTBifrostTransport.geronimoSessionJSON(allocation: allocation, streamingProfileJSON: profileJSON)
     let session = try #require(JSONSerialization.jsonObject(with: Data(sessionJSON.utf8)) as? [String: Any])
 
@@ -1284,7 +1284,7 @@ private actor RecordingNativeNVSTTransport: NativeNVSTTransport {
     #expect(session["networkSessionId"] as? String == "")
 }
 
-@Test func nativeNVSTGeronimoSessionJSONGeneratesStableMacForceNowProfileGuidWhenCloudSessionOmitsOne() throws {
+@Test func nativeNVSTGeronimoSessionJSONGeneratesStableOpenNOWProfileGuidWhenCloudSessionOmitsOne() throws {
     let streamingProfileJSON = try NativeNVSTBifrostTransport.streamingProfileJSON(
         rawSessionJSON: "{}",
         sessionInfoJSON: "{}",

@@ -1,6 +1,6 @@
 import AppKit
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamWindowConstrainsTitlebarExclusiveContentToVideoAspect() async throws {
     let window = NSWindow(

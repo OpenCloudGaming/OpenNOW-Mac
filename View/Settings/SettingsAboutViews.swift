@@ -1,6 +1,6 @@
 //
 //  SettingsAboutViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -13,7 +13,7 @@ struct AboutSettingsPage: View {
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
-    @AppStorage(MacForceNowUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = MacForceNowUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
@@ -24,7 +24,7 @@ struct AboutSettingsPage: View {
                     ZStack {
                         Rectangle()
                             .fill(Color.black.opacity(0.22))
-                            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.72), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.72), lineWidth: 1) }
                         VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
                             .scaledToFit()
                             .padding(.horizontal, 14 * uiScale)
@@ -42,9 +42,9 @@ struct AboutSettingsPage: View {
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
-                                .background(MacForceNowDesign.accent)
+                                .background(OpenNOWDesign.accent)
                         }
-                        Text("A macOS runtime for launching and streaming MacForce Now sessions with local catalog, account, and diagnostics surfaces.")
+                        Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
@@ -68,14 +68,14 @@ struct AboutSettingsPage: View {
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey, uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled, uiScale: uiScale) { enabled in
-                    MacForceNowAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+                    OpenNOWAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
                 }
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 10 * uiScale) {
                     SettingsActionButton(title: "CHECK FOR UPDATES", uiScale: uiScale) {
-                        MacForceNowAppDelegate.requestApplicationUpdateCheck()
+                        OpenNOWAppDelegate.requestApplicationUpdateCheck()
                     }
-                    Text("Checks GitHub releases and installs a newer signed MacForce Now build when available.")
+                    Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                 }
@@ -111,7 +111,7 @@ struct AboutSettingsPage: View {
                     }
                     Text(diagnosticsState.message)
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(diagnosticsState.isError ? MacForceNowDesign.Semantic.destructive : .white.opacity(0.62))
+                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.62))
                 }
             }
         }
@@ -154,13 +154,13 @@ struct AboutSettingsPage: View {
     }
 
     private var automaticUpdateChecksSubtitle: String {
-        if MacForceNowUpdatePreferences.updateChecksAreSuspendedForDebugging {
+        if OpenNOWUpdatePreferences.updateChecksAreSuspendedForDebugging {
             return "Paused while running a debug build or attached debugger. Manual checks remain available."
         }
         if automaticUpdateChecksEnabled {
-            return "Checks GitHub releases on launch and hourly while MacForce Now is running."
+            return "Checks GitHub releases on launch and hourly while OpenNOW is running."
         }
-        return "MacForce Now will not check for new releases automatically. Manual checks remain available."
+        return "OpenNOW will not check for new releases automatically. Manual checks remain available."
     }
 
     private var diagnosticsText: String {
@@ -169,7 +169,7 @@ struct AboutSettingsPage: View {
 
     private func diagnosticsText(logURL: URL?, uploadError: String, inlineLog: String) -> String {
         var lines = [
-            "MacForce Now Mac Diagnostics",
+            "OpenNOW Mac Diagnostics",
             "Version: \(SettingsAppMetadata.versionWithBuild)",
             "Bundle: \(bundleIdentifier)",
             "macOS: \(operatingSystemVersion)",
@@ -250,19 +250,19 @@ struct DiagnosticsUploadConfirmationDialog: View {
                 HStack(alignment: .top, spacing: 14 * uiScale) {
                     ZStack {
                         Rectangle()
-                            .fill(MacForceNowDesign.accent.opacity(0.16))
+                            .fill(OpenNOWDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
-                            .foregroundStyle(MacForceNowDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accent)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
-                    .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.42), lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.42), lineWidth: 1) }
 
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19 * uiScale, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("MacForce Now will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
+                        Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)
@@ -271,7 +271,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
 
                 HStack(alignment: .top, spacing: 10 * uiScale) {
                     Rectangle()
-                        .fill(MacForceNowDesign.accent)
+                        .fill(OpenNOWDesign.accent)
                         .frame(width: 4 * uiScale, height: 42 * uiScale)
                     Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
@@ -328,14 +328,14 @@ struct SettingsDialogButton: View {
 
     private var backgroundColor: Color {
         switch tone {
-        case .primary: return MacForceNowDesign.accent.opacity(isHovering ? 0.88 : 1)
+        case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
         case .secondary: return Color.white.opacity(isHovering ? 0.10 : 0.06)
         }
     }
 
     private var strokeColor: Color {
         switch tone {
-        case .primary: return MacForceNowDesign.accent
+        case .primary: return OpenNOWDesign.accent
         case .secondary: return Color.white.opacity(0.14)
         }
     }

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Suite struct SteamControllerPadPointerTranslatorTests {
     @Test func touchStartProducesNoMovement() {

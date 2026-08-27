@@ -1,6 +1,6 @@
 //
 //  OPNRequestConcurrencyLimiter.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

@@ -1,14 +1,14 @@
 import AppKit
 import SwiftUI
 
-struct MacForceNowDropdownItem: Identifiable {
+struct OpenNOWDropdownItem: Identifiable {
     let id: String
     let title: String
     var isSelected = false
     let action: () -> Void
 }
 
-struct MacForceNowDropdownRow: View {
+struct OpenNOWDropdownRow: View {
     let title: String
     var isSelected = false
     let action: () -> Void
@@ -18,19 +18,19 @@ struct MacForceNowDropdownRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: MacForceNowDesign.Spacing.xSmall(scale: uiScale)) {
+            HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 Text(title)
                     .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(isHovering ? MacForceNowDesign.Text.primary : MacForceNowDesign.Text.secondary)
+                    .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark")
                         .nvidiaFont(size: 11, weight: .bold)
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                 }
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.controlRow(scale: uiScale))
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, minHeight: 30 * uiScale, alignment: .leading)
             .background(isHovering ? Color.white.opacity(0.08) : .clear)
             .contentShape(Rectangle())
@@ -41,8 +41,8 @@ struct MacForceNowDropdownRow: View {
     }
 }
 
-struct MacForceNowDropdownPanel: View {
-    let items: [MacForceNowDropdownItem]
+struct OpenNOWDropdownPanel: View {
+    let items: [OpenNOWDropdownItem]
     var width: CGFloat?
 
     @Environment(\.opnUIScale) private var uiScale
@@ -54,21 +54,21 @@ struct MacForceNowDropdownPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(items) { item in
-                MacForceNowDropdownRow(title: item.title, isSelected: item.isSelected, action: item.action)
+                OpenNOWDropdownRow(title: item.title, isSelected: item.isSelected, action: item.action)
             }
         }
-        .padding(.vertical, MacForceNowDesign.Spacing.menuPanelVertical(scale: uiScale))
+        .padding(.vertical, OpenNOWDesign.Spacing.menuPanelVertical(scale: uiScale))
         .frame(width: width ?? Self.minimumWidth(scale: uiScale))
-        .background(MacForceNowDesign.Surface.panelRaised)
+        .background(OpenNOWDesign.Surface.panelRaised)
         .overlay {
             Rectangle()
-                .stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1)
+                .stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
         }
     }
 }
 
-struct MacForceNowDropdownMenu<Label: View>: View {
-    let items: [MacForceNowDropdownItem]
+struct OpenNOWDropdownMenu<Label: View>: View {
+    let items: [OpenNOWDropdownItem]
     var isDisabled = false
     @ViewBuilder let label: () -> Label
 
@@ -111,11 +111,11 @@ struct MacForceNowDropdownMenu<Label: View>: View {
     }
 
     private var anchorSpacing: CGFloat {
-        MacForceNowDesign.Spacing.xxSmall(scale: uiScale)
+        OpenNOWDesign.Spacing.xxSmall(scale: uiScale)
     }
 
     private var panelWidth: CGFloat {
-        max(MacForceNowDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
+        max(OpenNOWDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
     }
 
     @ViewBuilder
@@ -135,7 +135,7 @@ struct MacForceNowDropdownMenu<Label: View>: View {
     }
 
     private var measuredPanel: some View {
-        MacForceNowDropdownPanel(items: dismissingItems, width: panelWidth)
+        OpenNOWDropdownPanel(items: dismissingItems, width: panelWidth)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in
@@ -143,9 +143,9 @@ struct MacForceNowDropdownMenu<Label: View>: View {
             }
     }
 
-    private var dismissingItems: [MacForceNowDropdownItem] {
+    private var dismissingItems: [OpenNOWDropdownItem] {
         items.map { item in
-            MacForceNowDropdownItem(id: item.id, title: item.title, isSelected: item.isSelected) {
+            OpenNOWDropdownItem(id: item.id, title: item.title, isSelected: item.isSelected) {
                 isPresented = false
                 item.action()
             }

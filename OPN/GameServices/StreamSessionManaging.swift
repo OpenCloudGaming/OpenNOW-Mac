@@ -1,6 +1,6 @@
 //
 //  StreamSessionManaging.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="Resources/MacForceNow/logo.png" alt="MacForce Now" width="140">
+<img src="Resources/OpenNOW/logo.png" alt="OpenNOW" width="140">
 
-# MacForce Now
+# OpenNOW
 
 **A native macOS client for GeForce NOW — built for Mac, built for controllers.**
 
@@ -14,17 +14,17 @@
 
 <br>
 
-<img src="docs/screenshots/catalog.png" alt="MacForce Now catalog with GFN Thursday, Top Sellers, and Free-to-Play rails">
+<img src="docs/screenshots/catalog.png" alt="OpenNOW catalog with GFN Thursday, Top Sellers, and Free-to-Play rails">
 
 </div>
 
 ---
 
-## Why MacForce Now
+## Why OpenNOW
 
-MacForce Now is written in SwiftUI from the ground up and driven by the same WebRTC and NVST streaming protocols the official desktop app uses — not a web view in a wrapper. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
+OpenNOW is written in SwiftUI from the ground up and driven by the same WebRTC and NVST streaming protocols the official desktop app uses — not a web view in a wrapper. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
 
-GeForce NOW works on a Mac, but the official client leaves a lot on the table — a mouse-and-keyboard web view, pillarbox bars baked into every ultrawide stream, and no love for the controllers people actually game with. MacForce Now fills those gaps with a real Mac app, and then keeps going.
+GeForce NOW works on a Mac, but the official client leaves a lot on the table — a mouse-and-keyboard web view, pillarbox bars baked into every ultrawide stream, and no love for the controllers people actually game with. OpenNOW fills those gaps with a real Mac app, and then keeps going.
 
 | | |
 |---|---|
@@ -41,13 +41,11 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table �
 
 ## Install
 
-1. Download `MacForceNow.dmg` from the [Releases](../../releases) page.
-2. Open it and drag **MacForce Now** to Applications.
+1. Download `OpenNOW.dmg` from the [Releases](../../releases) page.
+2. Open it and drag **OpenNOW** to Applications.
 3. Launch from Spotlight. If macOS blocks it, right-click the app → **Open**.
 
 Requires macOS 15.6 or later and your own GeForce NOW account.
-
-> **Runs alongside upstream OpenNOW.** MacForce Now uses its own bundle ID, URL scheme, keychain services, and preferences — install both, no conflicts, no overwritten logins.
 
 ## Made for Ultrawide
 
@@ -57,7 +55,7 @@ Pick your shape, then your resolution — 16:9, 16:10, 21:9, or 32:9. The wide e
 
 ### No more black bars
 
-GeForce NOW bakes pillarbox columns into 16:9-only titles — real black pixels, not window padding, so a wide monitor is stuck with them. MacForce Now detects those bars in the incoming frames and lets you decide what fills them:
+GeForce NOW bakes pillarbox columns into 16:9-only titles — real black pixels, not window padding, so a wide monitor is stuck with them. OpenNOW detects those bars in the incoming frames and lets you decide what fills them:
 
 ![Pillarbox fill options: Black, Colour, Blur Mirror, Blur Zoom, Stretch, Crop](docs/screenshots/pillarbox-fill.png)
 
@@ -87,7 +85,7 @@ The two-transport architecture is documented in [`docs/StreamTransportArchitectu
 
 ## Steam Controller, Unlocked
 
-MacForce Now talks to Valve's controllers directly over HID, so you get the pad in your GeForce NOW stream without Steam running in the background.
+OpenNOW talks to Valve's controllers directly over HID, so you get the pad in your GeForce NOW stream without Steam running in the background.
 
 - **Every 2026 variant** — wired, BLE, and both dongles — plus the original 2015 controller.
 - **Haptics, grips, trackpads** — rumble feedback, four back grips, and both pads parsed and bindable client-side.
@@ -145,7 +143,7 @@ Struct layouts for all three formats are documented in SDL's [`controller_struct
 ## Build from Source
 
 ```sh
-xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
 ```
 
 Run the package tests from the repository root so SwiftPM uses one shared `.build` graph:
@@ -162,7 +160,7 @@ swift test --scratch-path .build/shared
 **Layout**
 
 - `Model` — persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `MacForceNowApp.swift` — macOS app entry point and application delegate
+- `OpenNOWApp.swift` — macOS app entry point and application delegate
 - `Resources` — bundled images, fonts, and store icon assets
 - `View` — SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` — observable UI state for login, catalog, controller catalog, and recordings
@@ -173,13 +171,13 @@ swift test --scratch-path .build/shared
 
 **Packages**
 
-The root `Package.swift` exposes a testable `MacForceNow` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
+The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
 
 **Focused test runs**
 
 ```sh
 swift test --scratch-path .build/shared --filter WebRTCStreamRecording
-swift test --scratch-path .build/shared --filter MacForceNowGameServicesTests
+swift test --scratch-path .build/shared --filter OpenNOWGameServicesTests
 ```
 
 Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.
@@ -197,6 +195,6 @@ Pull requests welcome. Use conventional commit prefixes (`fix:`, `feat:`, `docs:
 
 ## About
 
-MacForce Now is a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac), extended with Steam Controller 2026 support and renamed so it can live alongside upstream on the same Mac. Licensed under [MIT](LICENSE).
+OpenNOW began as a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac) and is now maintained independently as the canonical continuation of the project, extended with Steam Controller 2026 support, a native NVST streaming path, and more. Licensed under [MIT](LICENSE).
 
 > **Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. Use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).

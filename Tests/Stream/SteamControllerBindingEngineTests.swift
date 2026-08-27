@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private let device: InputDeviceID = "test-controller"
 private let stamp = MediaTimestamp(nanoseconds: 0)

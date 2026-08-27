@@ -9,7 +9,7 @@ struct SteamControllerDiagramView: View {
     let snapshot: SteamControllerInputSnapshot
     var selectedControl: SteamControllerControl?
     var onSelectControl: ((SteamControllerControl) -> Void)?
-    var backgroundColor: Color = MacForceNowDesign.Surface.deep
+    var backgroundColor: Color = OpenNOWDesign.Surface.deep
 
     // The shell art is authored in a 456x320 space. Every live overlay below is
     // positioned in those same coordinates and scaled to the rendered diagram width,
@@ -37,7 +37,7 @@ struct SteamControllerDiagramView: View {
             .scaleEffect(isSelected ? 1.12 : 1)
             .overlay {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 999).stroke(MacForceNowDesign.accent, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: 999).stroke(OpenNOWDesign.accent, lineWidth: 2)
                 }
             }
             .animation(.easeOut(duration: 0.12), value: isSelected)
@@ -169,18 +169,18 @@ struct SteamControllerDiagramView: View {
             shape.fill(Color.white.opacity(0.04))
             GeometryReader { geo in
                 shape
-                    .fill(MacForceNowDesign.accent.opacity(0.3))
+                    .fill(OpenNOWDesign.accent.opacity(0.3))
                     .frame(width: geo.size.width * CGFloat(max(0, min(1, value))))
             }
             .clipShape(shape)
-            shape.stroke(pressed ? MacForceNowDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
+            shape.stroke(pressed ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             HStack(spacing: 4) {
                 Text(label)
-                    .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
-                    .foregroundStyle(pressed ? MacForceNowDesign.accent : .white.opacity(0.5))
+                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+                    .foregroundStyle(pressed ? OpenNOWDesign.accent : .white.opacity(0.5))
                 Text("\(Int(value * 100))%")
-                    .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
-                    .foregroundStyle(pressed ? MacForceNowDesign.accent.opacity(0.8) : .white.opacity(0.3))
+                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
+                    .foregroundStyle(pressed ? OpenNOWDesign.accent.opacity(0.8) : .white.opacity(0.3))
                     .monospacedDigit()
             }
         }
@@ -189,14 +189,14 @@ struct SteamControllerDiagramView: View {
     private func bumperButton(_ label: String, pressed: Bool) -> some View {
         ZStack {
             Capsule()
-                .fill(pressed ? MacForceNowDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
+                .fill(pressed ? OpenNOWDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
                 .overlay(
                     Capsule()
-                        .stroke(pressed ? MacForceNowDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
+                        .stroke(pressed ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
                 )
             Text(label)
-                .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
-                .foregroundStyle(pressed ? MacForceNowDesign.accent : .white.opacity(0.5))
+                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
+                .foregroundStyle(pressed ? OpenNOWDesign.accent : .white.opacity(0.5))
         }
     }
 
@@ -211,22 +211,22 @@ struct SteamControllerDiagramView: View {
                 .fill(Color.white.opacity(0.02))
                 .overlay(
                     Circle().stroke(
-                        pressed ? MacForceNowDesign.accent.opacity(0.7) : Color.white.opacity(active ? 0.28 : 0.16),
+                        pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(active ? 0.28 : 0.16),
                         lineWidth: pressed ? 1.5 : 1
                     )
                 )
                 .frame(width: well, height: well)
 
             Circle()
-                .fill(active ? MacForceNowDesign.accent.opacity(0.9) : Color.white.opacity(0.12))
+                .fill(active ? OpenNOWDesign.accent.opacity(0.9) : Color.white.opacity(0.12))
                 .overlay(
                     Circle().stroke(
-                        active ? MacForceNowDesign.accent : Color.white.opacity(0.28),
+                        active ? OpenNOWDesign.accent : Color.white.opacity(0.28),
                         lineWidth: 1
                     )
                 )
                 .frame(width: cap, height: cap)
-                .shadow(color: active ? MacForceNowDesign.accent.opacity(0.5) : .clear, radius: 6)
+                .shadow(color: active ? OpenNOWDesign.accent.opacity(0.5) : .clear, radius: 6)
                 .offset(x: CGFloat(x) * travel, y: CGFloat(-y) * travel)
         }
         .frame(width: well, height: well)
@@ -235,11 +235,11 @@ struct SteamControllerDiagramView: View {
     private func faceButtonNode(_ label: String, pressed: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(pressed ? MacForceNowDesign.accent : Color.white.opacity(0.05))
-                .overlay(Circle().stroke(pressed ? MacForceNowDesign.accent.opacity(0.8) : Color.white.opacity(0.18), lineWidth: 1))
-                .shadow(color: pressed ? MacForceNowDesign.accent.opacity(0.4) : .clear, radius: 6)
+                .fill(pressed ? OpenNOWDesign.accent : Color.white.opacity(0.05))
+                .overlay(Circle().stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.18), lineWidth: 1))
+                .shadow(color: pressed ? OpenNOWDesign.accent.opacity(0.4) : .clear, radius: 6)
             Text(label)
-                .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
                 .foregroundStyle(pressed ? .black : .white.opacity(0.35))
         }
         .frame(width: art(27), height: art(27))
@@ -251,13 +251,13 @@ struct SteamControllerDiagramView: View {
         // The label counter-rotates so "U/R/D/L" stay upright at every arm's rotation.
         return ZStack {
             RoundedRectangle(cornerRadius: art(4))
-                .fill(pressed ? MacForceNowDesign.accent : Color.white.opacity(0.06))
+                .fill(pressed ? OpenNOWDesign.accent : Color.white.opacity(0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: art(4))
-                        .stroke(pressed ? MacForceNowDesign.accent.opacity(0.7) : Color.white.opacity(0.16), lineWidth: 1)
+                        .stroke(pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(0.16), lineWidth: 1)
                 )
             Text(label)
-                .font(MacForceNowNVIDIAFont.font(size: 8, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 8, weight: .bold))
                 .foregroundStyle(pressed ? .black : .white.opacity(0.3))
                 .rotationEffect(.degrees(-rotation))
         }
@@ -267,12 +267,12 @@ struct SteamControllerDiagramView: View {
     private func centerButton(icon: String, pressed: Bool) -> some View {
         ZStack {
             Capsule()
-                .fill(pressed ? MacForceNowDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
+                .fill(pressed ? OpenNOWDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
             Capsule()
-                .stroke(pressed ? MacForceNowDesign.accent.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: icon)
                 .font(.nvidiaSans(size: 8, weight: .bold))
-                .foregroundStyle(pressed ? MacForceNowDesign.accent : .white.opacity(0.35))
+                .foregroundStyle(pressed ? OpenNOWDesign.accent : .white.opacity(0.35))
         }
         .frame(width: art(30), height: art(14))
     }
@@ -280,11 +280,11 @@ struct SteamControllerDiagramView: View {
     private func steamButtonView(pressed: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(pressed ? MacForceNowDesign.accent.opacity(0.25) : Color.white.opacity(0.05))
-                .overlay(Circle().stroke(pressed ? MacForceNowDesign.accent.opacity(0.8) : Color.white.opacity(0.16), lineWidth: 1))
-                .shadow(color: pressed ? MacForceNowDesign.accent.opacity(0.4) : .clear, radius: 6)
+                .fill(pressed ? OpenNOWDesign.accent.opacity(0.25) : Color.white.opacity(0.05))
+                .overlay(Circle().stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.16), lineWidth: 1))
+                .shadow(color: pressed ? OpenNOWDesign.accent.opacity(0.4) : .clear, radius: 6)
             Canvas { context, size in
-                let ink = pressed ? MacForceNowDesign.accent : Color.white.opacity(0.4)
+                let ink = pressed ? OpenNOWDesign.accent : Color.white.opacity(0.4)
                 let bigCenter = CGPoint(x: size.width * 0.40, y: size.height * 0.62)
                 let smallCenter = CGPoint(x: size.width * 0.66, y: size.height * 0.36)
                 var rod = Path()
@@ -309,28 +309,28 @@ struct SteamControllerDiagramView: View {
     private func quickAccessButtonView(pressed: Bool) -> some View {
         ZStack {
             Capsule()
-                .fill(pressed ? MacForceNowDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
+                .fill(pressed ? OpenNOWDesign.accent.opacity(0.25) : Color.white.opacity(0.04))
             Capsule()
-                .stroke(pressed ? MacForceNowDesign.accent.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: "ellipsis")
                 .font(.nvidiaSans(size: 9, weight: .bold))
-                .foregroundStyle(pressed ? MacForceNowDesign.accent : .white.opacity(0.35))
+                .foregroundStyle(pressed ? OpenNOWDesign.accent : .white.opacity(0.35))
         }
         .frame(width: art(38), height: art(15))
-        .shadow(color: pressed ? MacForceNowDesign.accent.opacity(0.4) : .clear, radius: 5)
+        .shadow(color: pressed ? OpenNOWDesign.accent.opacity(0.4) : .clear, radius: 5)
     }
 
     private func trackpadView(_ pad: SteamControllerTrackpadState) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: art(16))
-                .fill(pad.pressed ? MacForceNowDesign.accent.opacity(0.12) : Color.white.opacity(0.045))
+                .fill(pad.pressed ? OpenNOWDesign.accent.opacity(0.12) : Color.white.opacity(0.045))
                 .overlay(
                     RoundedRectangle(cornerRadius: art(16)).stroke(
-                        pad.pressed ? MacForceNowDesign.accent.opacity(0.8) : (pad.touched ? MacForceNowDesign.accent.opacity(0.45) : Color.white.opacity(0.14)),
+                        pad.pressed ? OpenNOWDesign.accent.opacity(0.8) : (pad.touched ? OpenNOWDesign.accent.opacity(0.45) : Color.white.opacity(0.14)),
                         lineWidth: pad.pressed ? 1.5 : 1
                     )
                 )
-                .shadow(color: pad.pressed ? MacForceNowDesign.accent.opacity(0.4) : .clear, radius: 6)
+                .shadow(color: pad.pressed ? OpenNOWDesign.accent.opacity(0.4) : .clear, radius: 6)
             Canvas { context, size in
                 let count = 5
                 for row in 0..<count {
@@ -348,9 +348,9 @@ struct SteamControllerDiagramView: View {
 
             if pad.touched {
                 Circle()
-                    .fill(pad.pressed ? MacForceNowDesign.accent : MacForceNowDesign.accent.opacity(0.6))
+                    .fill(pad.pressed ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.6))
                     .frame(width: art(14), height: art(14))
-                    .shadow(color: MacForceNowDesign.accent.opacity(0.5), radius: 4)
+                    .shadow(color: OpenNOWDesign.accent.opacity(0.5), radius: 4)
                     .offset(x: CGFloat(pad.x) * art(38), y: CGFloat(-pad.y) * art(38))
             }
         }
@@ -361,15 +361,15 @@ struct SteamControllerDiagramView: View {
         let pressed = control.gamepadButton.map { snapshot.buttons.contains($0) } ?? false
         return ZStack {
             Capsule()
-                .fill(pressed ? MacForceNowDesign.accent.opacity(0.25) : Color.white.opacity(0.02))
+                .fill(pressed ? OpenNOWDesign.accent.opacity(0.25) : Color.white.opacity(0.02))
             Capsule()
                 .stroke(
-                    pressed ? MacForceNowDesign.accent.opacity(0.7) : Color.white.opacity(0.18),
+                    pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(0.18),
                     style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                 )
             Text(control.label)
-                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
-                .foregroundStyle(pressed ? MacForceNowDesign.accent : .white.opacity(0.4))
+                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
+                .foregroundStyle(pressed ? OpenNOWDesign.accent : .white.opacity(0.4))
         }
         .frame(width: art(30), height: art(15))
     }

@@ -1,6 +1,6 @@
 //
 //  CatalogGameTileViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -97,11 +97,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? MacForceNowDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : MacForceNowDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? MacForceNowDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : MacForceNowDesign.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.plain)
@@ -179,7 +179,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         .overlay(alignment: .top) {
             if isSelected {
                 Rectangle()
-                    .fill(MacForceNowDesign.accent)
+                    .fill(OpenNOWDesign.accent)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: 4)
                     .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale) - 4)
             }
@@ -198,7 +198,7 @@ struct CatalogGameCardBadge: View {
     var body: some View {
         HStack(spacing: 0) {
             MallRibbonShape()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(width: 7, height: 24)
             Text(label)
                 .nvidiaFont(size: 13, weight: .bold)

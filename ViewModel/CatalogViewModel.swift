@@ -1,5 +1,5 @@
 //  CatalogViewModel.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -110,7 +110,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .connections: return "Manage store accounts and Twitch broadcast settings."
         case .controller: return "Steam Controller support, permissions, input testing, and mapping."
         case .general: return "Interface mode, display scale, and experimental features."
-        case .about: return "MacForce Now Mac runtime, system capability, and service identifiers."
+        case .about: return "OpenNOW Mac runtime, system capability, and service identifiers."
         }
     }
 
@@ -424,7 +424,7 @@ final class CatalogViewModel {
             loadCatalogDataAfterProviderConfiguration()
             return
         }
-        MacForceNowLog.info(.catalog, "Initial catalog load deferred until expired session refresh completes")
+        OpenNOWLog.info(.catalog, "Initial catalog load deferred until expired session refresh completes")
         Task { [weak self] in
             guard let self else { return }
             _ = await onRefreshAuth()
@@ -488,9 +488,9 @@ final class CatalogViewModel {
                     : "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)"
                 Task { @MainActor in
                     if success {
-                        MacForceNowLog.info(.auth, message)
+                        OpenNOWLog.info(.auth, message)
                     } else {
-                        MacForceNowLog.warning(.auth, message)
+                        OpenNOWLog.warning(.auth, message)
                     }
                     continuation.resume()
                 }
@@ -542,7 +542,7 @@ final class CatalogViewModel {
     }
 
     func openShowAll(_ section: CatalogSectionModel) {
-        MacForceNowLog.info(.catalog, "Show All opened section=\(section.id) title=\(section.title) games=\(section.games.count) canLoadFullList=\(section.canLoadFullList) seeMoreFilterIds=\(section.seeMoreFilterIds) seeMoreSortId=\(section.seeMoreSortId)")
+        OpenNOWLog.info(.catalog, "Show All opened section=\(section.id) title=\(section.title) games=\(section.games.count) canLoadFullList=\(section.canLoadFullList) seeMoreFilterIds=\(section.seeMoreFilterIds) seeMoreSortId=\(section.seeMoreSortId)")
         // My Library / My Favorites are server-side catalog filters (the `collections` filter
         // group), so every Show All page is the same browse with a different seed filter.
         let seededFilterIds: [String]
@@ -610,7 +610,7 @@ final class CatalogViewModel {
             self.isLoading = false
             let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - browseStartTime) * 1000)
             guard success else {
-                MacForceNowLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
+                OpenNOWLog.warning(.catalog, "Show All browse failed elapsed=\(elapsedMs)ms error=\(error)")
                 self.isLoadingMoreCatalog = false
                 if self.refreshAuthIfNeeded(error: error) { return }
                 self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
@@ -620,9 +620,9 @@ final class CatalogViewModel {
             let newCount = browseResult.games.count
             let isPartialDelivery = newCount < browseResult.totalCount && browseResult.hasNextPage
             if isPartialDelivery {
-                MacForceNowLog.info(.catalog, "Show All first page delivered elapsed=\(elapsedMs)ms games=\(newCount) total=\(browseResult.totalCount) hasNext=\(browseResult.hasNextPage)")
+                OpenNOWLog.info(.catalog, "Show All first page delivered elapsed=\(elapsedMs)ms games=\(newCount) total=\(browseResult.totalCount) hasNext=\(browseResult.hasNextPage)")
             } else {
-                MacForceNowLog.info(.catalog, "Show All browse completed elapsed=\(elapsedMs)ms games=\(newCount) prevGames=\(resultCount) total=\(browseResult.totalCount)")
+                OpenNOWLog.info(.catalog, "Show All browse completed elapsed=\(elapsedMs)ms games=\(newCount) prevGames=\(resultCount) total=\(browseResult.totalCount)")
             }
             self.catalogGames = browseResult.games
             self.totalCatalogCount = browseResult.totalCount
@@ -632,7 +632,7 @@ final class CatalogViewModel {
             self.isLoadingMoreCatalog = false
             self.filterGroups = browseResult.filterGroups
             self.sortOptions = browseResult.sortOptions
-            MacForceNowLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
+            OpenNOWLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
             if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
             self.selectedFilterIds = browseResult.selectedFilterIds
             self.schedulePatchingPollIfNeeded()
@@ -643,7 +643,7 @@ final class CatalogViewModel {
         guard hasMoreCatalogResults, !catalogEndCursor.isEmpty, !isLoading, !isLoadingMoreCatalog else { return }
         let generation = browseGeneration
         isLoadingMoreCatalog = true
-        MacForceNowLog.info(.catalog, "Show All loading next page cursor=\(catalogEndCursor)")
+        OpenNOWLog.info(.catalog, "Show All loading next page cursor=\(catalogEndCursor)")
         gameService.browseCatalogObject(
             searchQuery: searchQuery.trimmed,
             sortId: selectedSortId.isEmpty ? "a_to_z" : selectedSortId,
@@ -655,7 +655,7 @@ final class CatalogViewModel {
             guard let self, generation == self.browseGeneration else { return }
             self.isLoadingMoreCatalog = false
             guard success else {
-                MacForceNowLog.warning(.catalog, "Show All next page failed error=\(error)")
+                OpenNOWLog.warning(.catalog, "Show All next page failed error=\(error)")
                 return
             }
             let browseResult = result
@@ -666,7 +666,7 @@ final class CatalogViewModel {
             self.supportedCatalogCount = max(self.supportedCatalogCount, browseResult.numberSupported)
             self.hasMoreCatalogResults = browseResult.hasNextPage
             self.catalogEndCursor = browseResult.endCursor
-            MacForceNowLog.info(.catalog, "Show All next page applied added=\(newGames.count) total=\(self.catalogGames.count) hasNext=\(browseResult.hasNextPage)")
+            OpenNOWLog.info(.catalog, "Show All next page applied added=\(newGames.count) total=\(self.catalogGames.count) hasNext=\(browseResult.hasNextPage)")
             self.schedulePatchingPollIfNeeded()
         }
     }
@@ -798,27 +798,27 @@ final class CatalogViewModel {
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
         configureCatalogService()
         let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
-        MacForceNowLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
+        OpenNOWLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
         setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
         if let game = matchingGame(for: shortcut, in: allKnownGames) {
-            MacForceNowLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            OpenNOWLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
         if Int(shortcut.cmsId) != nil {
-            MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
+            OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
             gameService.fetchGameObjectByCMSId(shortcut.cmsId) { [weak self] success, game, error in
                 guard let self else { return }
                 if success, let game {
-                    MacForceNowLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
+                    OpenNOWLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
                     self.selectGame(game)
                     self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
                     return
                 }
-                MacForceNowLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
+                OpenNOWLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
                 if let game = Self.launchGame(from: shortcut, title: title) {
-                    MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+                    OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
                     self.selectGame(game)
                     self.launch(game: game, variantIndex: 0)
                 } else {
@@ -828,7 +828,7 @@ final class CatalogViewModel {
             return
         }
         if let game = Self.launchGame(from: shortcut, title: title) {
-            MacForceNowLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+            OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: 0)
             return
@@ -837,24 +837,24 @@ final class CatalogViewModel {
     }
 
     private func resolveShortcutByBrowsing(_ shortcut: GFNGameShortcut, title: String) {
-        MacForceNowLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
+        OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let deliveryGate = CatalogDeliveryGate()
         gameService.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { [weak self] success, result, error in
             guard let self else { return }
             guard deliveryGate.claimFirstDelivery() else { return }
             guard success else {
-                MacForceNowLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
+                OpenNOWLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
                 self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
                 return
             }
             let games = result.games
-            MacForceNowLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
+            OpenNOWLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
             guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
-                MacForceNowLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
+                OpenNOWLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
                 self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
                 return
             }
-            MacForceNowLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            OpenNOWLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             self.catalogGames = games
             self.selectGame(game)
             self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
@@ -879,7 +879,7 @@ final class CatalogViewModel {
     }
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        MacForceNowLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
+        OpenNOWLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
         activeLaunchSession = nil
@@ -945,17 +945,17 @@ final class CatalogViewModel {
             guard let self else { return }
             self.launchMessage = ""
             guard success, let plan else {
-                MacForceNowLog.error(.launch, "Launch plan failed: \(message)")
+                OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
                 self.clearLaunchFlow()
                 self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
                 return
             }
             switch plan {
             case .ready(let configuration):
-                MacForceNowLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
+                OpenNOWLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
                 self.startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: self.account.membershipTier), message: message)
             case .activeSession(let active, let resume, let replacement):
-                MacForceNowLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
+                OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
                 self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
@@ -1127,7 +1127,7 @@ final class CatalogViewModel {
 
     func presentRequiredStreamAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
         guard URL(string: ad.mediaUrl) != nil else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
         }
         activeStreamAdContinuation?.resume(throwing: CancellationError())
         activeStreamAdContinuation = nil
@@ -1163,7 +1163,7 @@ final class CatalogViewModel {
         guard let continuation = activeStreamAdContinuation else { return }
         activeStreamAdContinuation = nil
         activeStreamAdPlayback = nil
-        continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
+        continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
     }
 
     private func cancelActiveStreamAdPlayback() {
@@ -2064,7 +2064,7 @@ final class CatalogViewModel {
         if !attachment.marquee { loadMarqueePanels() }
         if !attachment.main { loadMainPanels() }
         if !attachment.isEmpty {
-            MacForceNowLog.info(.catalog, "Adopted launch panel prefetch marquee=\(attachment.marquee) main=\(attachment.main)")
+            OpenNOWLog.info(.catalog, "Adopted launch panel prefetch marquee=\(attachment.marquee) main=\(attachment.main)")
         }
     }
 
@@ -2093,7 +2093,7 @@ final class CatalogViewModel {
             guard let self else { return }
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
-                MacForceNowLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
+                OpenNOWLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
                 self.applyMarqueePanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
@@ -2111,7 +2111,7 @@ final class CatalogViewModel {
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
                 let gameCount = panels.flatMap(\.sections).flatMap(\.games).count
-                MacForceNowLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
+                OpenNOWLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
                 self.applyMainPanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
@@ -2323,7 +2323,7 @@ final class CatalogViewModel {
         }
         for error in [libraryResult.error, targetedResult.error] where !error.isEmpty {
             if refreshAuthIfNeeded(error: error) { return }
-            MacForceNowLog.warning(.catalog, "App patch status poll failed: \(error)")
+            OpenNOWLog.warning(.catalog, "App patch status poll failed: \(error)")
         }
     }
 
@@ -2870,7 +2870,7 @@ struct CatalogPlatformOption: Identifiable {
 }
 
 struct CatalogPlaytimeStatistics: Codable, Equatable {
-    private static let storagePrefix = "MacForceNow.Catalog.PlaytimeStatistics"
+    private static let storagePrefix = "OpenNOW.Catalog.PlaytimeStatistics"
 
     static let empty = CatalogPlaytimeStatistics(totalSeconds: 0, sessionCount: 0, lastSessionSeconds: 0, longestSessionSeconds: 0, lastPlayedTitle: "", lastPlayedAt: nil)
 
@@ -2957,7 +2957,7 @@ struct CatalogSubscriptionStatus: Equatable {
 }
 
 struct CatalogPreviousGameSession: Codable, Equatable {
-    private static let storageKey = "MacForceNow.Catalog.PreviousGameSession"
+    private static let storageKey = "OpenNOW.Catalog.PreviousGameSession"
 
     let title: String
     let appId: String

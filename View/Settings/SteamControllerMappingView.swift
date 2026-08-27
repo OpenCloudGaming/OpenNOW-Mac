@@ -17,7 +17,7 @@ struct SteamControllerMappingView: View {
     @State private var selectedControl: SteamControllerControl = .leftGrip
     @State private var bindingKindOverride: BindingKind?
 
-    private static let backgroundColor = MacForceNowDesign.Surface.deep
+    private static let backgroundColor = OpenNOWDesign.Surface.deep
     private static let panelColor = Color(red: 24 / 255, green: 25 / 255, blue: 24 / 255)
     private static let sidebarColor = Color(red: 21 / 255, green: 22 / 255, blue: 21 / 255)
 
@@ -79,9 +79,9 @@ struct SteamControllerMappingView: View {
         HStack {
             Image(systemName: "gamecontroller.fill")
                 .font(.nvidiaSans(size: 18))
-                .foregroundStyle(MacForceNowDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accent)
             Text("CONTROLLER MAPPING")
-                .font(MacForceNowNVIDIAFont.font(size: 15, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 15, weight: .bold))
                 .tracking(1.2)
                 .foregroundStyle(.white.opacity(0.78))
             Spacer()
@@ -110,7 +110,7 @@ struct SteamControllerMappingView: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(savedProfile?.name ?? "Default")
-                        .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+                        .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")
@@ -129,7 +129,7 @@ struct SteamControllerMappingView: View {
             if draft != nil {
                 TextField("Profile name", text: draftNameBinding)
                     .textFieldStyle(.plain)
-                    .font(MacForceNowNVIDIAFont.font(size: 12, weight: .medium))
+                    .font(OpenNOWNVIDIAFont.font(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(.horizontal, 10)
                     .frame(width: 200, height: 30)
@@ -159,11 +159,11 @@ struct SteamControllerMappingView: View {
             Button("New Profile") {
                 store.createProfile(named: "")
             }
-            .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
             .foregroundStyle(.black)
             .padding(.horizontal, 14)
             .frame(height: 30)
-            .background(MacForceNowDesign.accent)
+            .background(OpenNOWDesign.accent)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .buttonStyle(.plain)
         }
@@ -177,12 +177,12 @@ struct SteamControllerMappingView: View {
         HStack(spacing: 10) {
             if hasUnsavedChanges {
                 Text("Unsaved changes")
-                    .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
+                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
                     .foregroundStyle(.orange.opacity(0.85))
             }
             Spacer()
             Button("Cancel") { dismiss() }
-                .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.75))
                 .padding(.horizontal, 18)
                 .frame(height: 32)
@@ -195,11 +195,11 @@ struct SteamControllerMappingView: View {
                 SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
                 dismiss()
             }
-            .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
             .foregroundStyle(hasUnsavedChanges ? .black : .black.opacity(0.4))
             .padding(.horizontal, 22)
             .frame(height: 32)
-            .background(MacForceNowDesign.accent.opacity(hasUnsavedChanges ? 1 : 0.35))
+            .background(OpenNOWDesign.accent.opacity(hasUnsavedChanges ? 1 : 0.35))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .buttonStyle(.plain)
             .disabled(!hasUnsavedChanges)
@@ -214,7 +214,7 @@ struct SteamControllerMappingView: View {
                 .font(.nvidiaSans(size: 44))
                 .foregroundStyle(.white.opacity(0.15))
             Text("No profile selected")
-                .font(MacForceNowNVIDIAFont.font(size: 14, weight: .medium))
+                .font(OpenNOWNVIDIAFont.font(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.4))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -236,7 +236,7 @@ struct SteamControllerMappingView: View {
                         backgroundColor: Self.backgroundColor
                     )
                     Text("Click any control to bind it")
-                        .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
+                        .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
                         .tracking(0.3)
                         .foregroundStyle(.white.opacity(0.25))
                 }
@@ -261,13 +261,13 @@ struct SteamControllerMappingView: View {
                             .font(.nvidiaSans(size: 12, weight: .semibold))
                             .frame(width: 16)
                         Text(category.label)
-                            .font(MacForceNowNVIDIAFont.font(size: 12, weight: .bold))
+                            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
                     }
-                    .foregroundStyle(selectedControl.category == category ? MacForceNowDesign.accent : .white.opacity(0.6))
+                    .foregroundStyle(selectedControl.category == category ? OpenNOWDesign.accent : .white.opacity(0.6))
                     .padding(.horizontal, 14)
                     .frame(height: 34)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(selectedControl.category == category ? MacForceNowDesign.accent.opacity(0.12) : Color.clear)
+                    .background(selectedControl.category == category ? OpenNOWDesign.accent.opacity(0.12) : Color.clear)
                 }
                 .buttonStyle(.plain)
             }
@@ -291,13 +291,13 @@ struct SteamControllerMappingView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     Text(control.label)
-                        .font(MacForceNowNVIDIAFont.font(size: 13, weight: .bold))
+                        .font(OpenNOWNVIDIAFont.font(size: 13, weight: .bold))
                         .foregroundStyle(held ? .black : .white.opacity(0.9))
                         .frame(width: 44, height: 26)
-                        .background(held ? MacForceNowDesign.accent : Color.white.opacity(0.08))
+                        .background(held ? OpenNOWDesign.accent : Color.white.opacity(0.08))
                         .clipShape(Capsule())
                     Text(control.category.label)
-                        .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
+                        .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))
                     Spacer(minLength: 0)
                 }
@@ -306,7 +306,7 @@ struct SteamControllerMappingView: View {
                     behaviorSection(padSettingsKind)
                     Divider().overlay(Color.white.opacity(0.1))
                     Text("CLICK BINDING")
-                        .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
+                        .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
                         .tracking(1.0)
                         .foregroundStyle(.white.opacity(0.35))
                 }
@@ -346,7 +346,7 @@ struct SteamControllerMappingView: View {
                 Spacer(minLength: 0)
 
                 Text("While a control is bound to a gamepad combo, L1/R1/L2/R2 in that combo land first and the rest follow a moment later so games register them as modifier + press.")
-                    .font(MacForceNowNVIDIAFont.font(size: 10, weight: .medium))
+                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.25))
             }
             .padding(20)
@@ -384,8 +384,8 @@ struct SteamControllerMappingView: View {
         }()
         return VStack(alignment: .leading, spacing: 10) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
-                .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : MacForceNowDesign.accent.opacity(0.9))
+                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
+                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : OpenNOWDesign.accent.opacity(0.9))
             let columns = [GridItem(.adaptive(minimum: 64), spacing: 6)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
                 ForEach(SteamControllerGripComboTarget.all) { chip in
@@ -396,12 +396,12 @@ struct SteamControllerMappingView: View {
                         draft?.bindings[control] = updated.isEmpty ? .passthroughButton : .gamepadChord(updated)
                     } label: {
                         Text(chip.label)
-                            .font(MacForceNowNVIDIAFont.font(size: 10, weight: .bold))
+                            .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
                             .foregroundStyle(selected ? .black : .white.opacity(0.55))
                             .frame(maxWidth: .infinity)
                             .frame(height: 24)
-                            .background(selected ? MacForceNowDesign.accent : Color.white.opacity(0.05))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? MacForceNowDesign.accent.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
+                            .background(selected ? OpenNOWDesign.accent : Color.white.opacity(0.05))
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
@@ -439,13 +439,13 @@ struct SteamControllerMappingView: View {
                 } label: {
                     HStack {
                         Text(label)
-                            .font(MacForceNowNVIDIAFont.font(size: 11, weight: .bold))
+                            .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
                             .foregroundStyle(current == button ? .black : .white.opacity(0.7))
                         Spacer()
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 30)
-                    .background(current == button ? MacForceNowDesign.accent : Color.white.opacity(0.05))
+                    .background(current == button ? OpenNOWDesign.accent : Color.white.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
@@ -500,7 +500,7 @@ struct SteamControllerMappingView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("BEHAVIOR")
-                .font(MacForceNowNVIDIAFont.font(size: 9, weight: .bold))
+                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
                 .tracking(1.0)
                 .foregroundStyle(.white.opacity(0.35))
             Picker("", selection: binding.mode) {
@@ -514,7 +514,7 @@ struct SteamControllerMappingView: View {
             if binding.wrappedValue.mode == .mouse || binding.wrappedValue.mode == .scrollWheel {
                 HStack {
                     Text("Sensitivity")
-                        .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
+                        .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.55))
                     Spacer()
                     Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
@@ -523,7 +523,7 @@ struct SteamControllerMappingView: View {
                 }
                 Slider(value: binding.sensitivity, in: 0.1...4.0)
                 Toggle("Invert Y-Axis", isOn: binding.invertY)
-                    .font(MacForceNowNVIDIAFont.font(size: 11, weight: .medium))
+                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
                     .toggleStyle(.switch)
             }
         }

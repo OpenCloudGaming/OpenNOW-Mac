@@ -1,6 +1,6 @@
 //
 //  LoginAuthServing.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

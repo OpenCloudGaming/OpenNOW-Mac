@@ -1,7 +1,7 @@
 import QuartzCore
 import SwiftUI
 
-enum MacForceNowDesign {
+enum OpenNOWDesign {
     enum Surface {
         static let app = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
         static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
@@ -106,11 +106,11 @@ enum MacForceNowDesign {
             .nvidiaSans(size: size * scale, weight: .black)
         }
 
-        static func label(size: CGFloat, scale: CGFloat = 1, weight: MacForceNowNVIDIAFont.Weight = .bold) -> Font {
+        static func label(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWNVIDIAFont.Weight = .bold) -> Font {
             .nvidiaSans(size: size * scale, weight: weight)
         }
 
-        static func body(size: CGFloat, scale: CGFloat = 1, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
+        static func body(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
             .nvidiaSans(size: size * scale, weight: weight)
         }
 
@@ -143,12 +143,12 @@ extension View {
     func openNowFocusRing(_ isFocused: Bool) -> some View {
         overlay {
             Rectangle()
-                .stroke(isFocused ? MacForceNowDesign.accent : .clear, lineWidth: 2)
+                .stroke(isFocused ? OpenNOWDesign.accent : .clear, lineWidth: 2)
         }
     }
 
     func macForceNowInterfaceScale(_ scale: CGFloat) -> some View {
-        modifier(MacForceNowInterfaceScaleModifier(scale: scale))
+        modifier(OpenNOWInterfaceScaleModifier(scale: scale))
     }
 }
 
@@ -164,7 +164,7 @@ extension EnvironmentValues {
     }
 }
 
-private struct MacForceNowInterfaceScaleModifier: ViewModifier {
+private struct OpenNOWInterfaceScaleModifier: ViewModifier {
     let scale: CGFloat
 
     private var effectiveScale: CGFloat {
@@ -182,24 +182,24 @@ private struct MacForceNowInterfaceScaleModifier: ViewModifier {
     }
 }
 
-struct MacForceNowInterfaceScaleDensityBooster: NSViewRepresentable {
+struct OpenNOWInterfaceScaleDensityBooster: NSViewRepresentable {
     let scale: CGFloat
 
-    func makeNSView(context: Context) -> MacForceNowInterfaceScaleDensityView {
-        MacForceNowInterfaceScaleDensityView(scale: scale)
+    func makeNSView(context: Context) -> OpenNOWInterfaceScaleDensityView {
+        OpenNOWInterfaceScaleDensityView(scale: scale)
     }
 
-    func updateNSView(_ nsView: MacForceNowInterfaceScaleDensityView, context: Context) {
+    func updateNSView(_ nsView: OpenNOWInterfaceScaleDensityView, context: Context) {
         nsView.scale = scale
     }
 
-    static func dismantleNSView(_ nsView: MacForceNowInterfaceScaleDensityView, coordinator: ()) {
+    static func dismantleNSView(_ nsView: OpenNOWInterfaceScaleDensityView, coordinator: ()) {
         nsView.restoreNaturalDensity()
         nsView.invalidate()
     }
 }
 
-final class MacForceNowInterfaceScaleDensityView: NSView {
+final class OpenNOWInterfaceScaleDensityView: NSView {
     var scale: CGFloat {
         didSet { reconfigure() }
     }

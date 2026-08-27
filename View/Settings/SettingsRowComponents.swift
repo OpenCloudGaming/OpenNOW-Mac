@@ -1,6 +1,6 @@
 //
 //  SettingsRowComponents.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -22,7 +22,7 @@ struct SettingsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10 * uiScale) {
                 Rectangle()
-                    .fill(MacForceNowDesign.accent)
+                    .fill(OpenNOWDesign.accent)
                     .frame(width: 4 * uiScale, height: 18 * uiScale)
                 Text(title.uppercased())
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
@@ -45,7 +45,7 @@ struct SettingsCard<Content: View>: View {
                 SettingsVendorLayout.card
                 LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
                 Rectangle()
-                    .fill(MacForceNowDesign.accent.opacity(0.10))
+                    .fill(OpenNOWDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
         )
@@ -116,8 +116,8 @@ struct SettingsOptionRow: View {
                             .foregroundStyle(index == selectedIndex && !isLocked ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
                             .padding(.horizontal, 12 * uiScale)
                             .frame(height: 32 * uiScale)
-                            .background(index == selectedIndex ? MacForceNowDesign.accent.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
-                            .overlay { Rectangle().stroke(index == selectedIndex ? MacForceNowDesign.accent.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.12), lineWidth: 1) }
+                            .background(index == selectedIndex ? OpenNOWDesign.accent.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
+                            .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.12), lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -260,11 +260,11 @@ struct SettingsSliderRow: View {
                     .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
                 Text(valueText)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(isLocked ? 0.48 : 1))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(isLocked ? 0.48 : 1))
             }
             .frame(width: 250 * uiScale, alignment: .leading)
             Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
-                .tint(MacForceNowDesign.accent)
+                .tint(OpenNOWDesign.accent)
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)
         }
@@ -333,8 +333,8 @@ struct SettingsActionButton: View {
     private var backgroundColor: Color {
         guard isEnabled else { return Color.white.opacity(0.045) }
         switch tone {
-        case .primary: return MacForceNowDesign.accent.opacity(isHovering ? 0.88 : 1)
-        case .secondary: return MacForceNowDesign.accent.opacity(isHovering ? 0.22 : 0.14)
+        case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
+        case .secondary: return OpenNOWDesign.accent.opacity(isHovering ? 0.22 : 0.14)
         }
     }
 
@@ -342,13 +342,13 @@ struct SettingsActionButton: View {
         guard isEnabled else { return .white.opacity(0.32) }
         switch tone {
         case .primary: return .black
-        case .secondary: return MacForceNowDesign.accent
+        case .secondary: return OpenNOWDesign.accent
         }
     }
 
     private var strokeColor: Color {
         guard isEnabled else { return Color.white.opacity(0.08) }
-        return tone == .primary ? MacForceNowDesign.accent : MacForceNowDesign.accent.opacity(0.34)
+        return tone == .primary ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.34)
     }
 }
 
@@ -366,7 +366,7 @@ struct SettingsStatusPill: View {
                 .tracking(0.8)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? MacForceNowDesign.accent : .white.opacity(0.66))
+                .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.66))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -374,7 +374,7 @@ struct SettingsStatusPill: View {
         .frame(minWidth: 94 * uiScale, alignment: .trailing)
         .frame(height: 40 * uiScale)
         .background(Color.white.opacity(positive ? 0.055 : 0.035))
-        .overlay { Rectangle().stroke(positive ? MacForceNowDesign.accent.opacity(0.24) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.24) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
@@ -396,7 +396,7 @@ struct SettingsRegionRow: View {
                         .minimumScaleFactor(0.72)
                     Spacer(minLength: 6 * uiScale)
                     Circle()
-                        .fill(selected ? MacForceNowDesign.accent : Color.white.opacity(isHovering ? 0.34 : 0.22))
+                        .fill(selected ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.34 : 0.22))
                         .frame(width: 8 * uiScale, height: 8 * uiScale)
                         .padding(.top, 4 * uiScale)
                 }
@@ -405,8 +405,8 @@ struct SettingsRegionRow: View {
             .frame(maxWidth: .infinity, minHeight: 56 * uiScale, alignment: .leading)
             .padding(.horizontal, 11 * uiScale)
             .padding(.vertical, 9 * uiScale)
-            .background(selected ? MacForceNowDesign.accent.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
-            .overlay { Rectangle().stroke(selected ? MacForceNowDesign.accent.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
+            .background(selected ? OpenNOWDesign.accent.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
+            .overlay { Rectangle().stroke(selected ? OpenNOWDesign.accent.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -438,13 +438,13 @@ struct RegionLatencyBadge: View {
                 .frame(width: 6 * uiScale, height: 6 * uiScale)
             Text(latencyText)
                 .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(selected ? MacForceNowDesign.accent : .white.opacity(0.74))
+                .foregroundStyle(selected ? OpenNOWDesign.accent : .white.opacity(0.74))
                 .lineLimit(1)
         }
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 24 * uiScale)
         .background(selected ? Color.black.opacity(0.20) : Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(selected ? MacForceNowDesign.accent.opacity(0.30) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(selected ? OpenNOWDesign.accent.opacity(0.30) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 
     private var latencyText: String {
@@ -453,7 +453,7 @@ struct RegionLatencyBadge: View {
 
     private var indicatorColor: Color {
         guard latencyMs >= 0 else { return .white.opacity(0.36) }
-        if latencyMs <= 40 { return MacForceNowDesign.accent }
+        if latencyMs <= 40 { return OpenNOWDesign.accent }
         if latencyMs <= 65 { return Color(red: 1.0, green: 0.77, blue: 0.24) }
         return Color(red: 1.0, green: 0.32, blue: 0.26)
     }
@@ -467,7 +467,7 @@ struct SettingsMessageView: View {
     var body: some View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: systemImage)
-                .foregroundStyle(MacForceNowDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accent)
             Text(message)
                 .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.78))

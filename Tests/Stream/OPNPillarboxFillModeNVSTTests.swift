@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 /// The native NVST path can honour only the geometry and flat-colour fills; the
 /// blur modes need the decoded pixels it never sees and must collapse to black.

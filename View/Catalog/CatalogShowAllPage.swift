@@ -13,7 +13,7 @@ struct CatalogShowAllPage: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     CatalogShowAllFilterPanel(viewModel: viewModel)
                         .frame(width: 280)
-                        .background(MacForceNowDesign.Surface.overlay)
+                        .background(OpenNOWDesign.Surface.overlay)
                         .overlay(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1) }
                 }
                 if isSortMenuPresented {
@@ -21,7 +21,7 @@ struct CatalogShowAllPage: View {
                 }
             }
         }
-        .background(MacForceNowDesign.Surface.app)
+        .background(OpenNOWDesign.Surface.app)
     }
 
     private var mainColumn: some View {
@@ -37,7 +37,7 @@ struct CatalogShowAllPage: View {
                 if viewModel.showsCatalogLoadingIndicator {
                     ProgressView()
                         .progressViewStyle(.linear)
-                        .tint(MacForceNowDesign.accent)
+                        .tint(OpenNOWDesign.accent)
                         .frame(height: 2)
                         .transition(.opacity)
                 }
@@ -159,7 +159,7 @@ private struct CatalogSortDropdownPanel: View {
                         if selected {
                             Image(systemName: "checkmark")
                                 .nvidiaFont(size: 12, weight: .bold)
-                                .foregroundStyle(MacForceNowDesign.accent)
+                                .foregroundStyle(OpenNOWDesign.accent)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -170,10 +170,10 @@ private struct CatalogSortDropdownPanel: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(MacForceNowDesign.Surface.overlay.opacity(0.985))
+        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(height: 2)
         }
         .overlay(alignment: .trailing) {
@@ -231,7 +231,7 @@ private struct CatalogShowAllFilterPanel: View {
             HStack(spacing: 12) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
                     .nvidiaFont(size: 15, weight: .bold)
-                    .foregroundStyle(selected ? MacForceNowDesign.accent : .white.opacity(0.72))
+                    .foregroundStyle(selected ? OpenNOWDesign.accent : .white.opacity(0.72))
                 Text(option.label.isEmpty ? option.id : option.label)
                     .nvidiaFont(size: 13, weight: .medium)
                     .foregroundStyle(.white.opacity(0.88))

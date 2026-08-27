@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import MacForceNow
+@testable import OpenNOW
 
 private struct MockJarvisTransport: JarvisHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]

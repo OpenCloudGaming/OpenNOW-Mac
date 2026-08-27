@@ -20,125 +20,44 @@ Execute every task in this order:
 - If generated SwiftPM files exceed the warning threshold or duplicate `artifacts/sentry-cocoa` directories appear, run `scripts/clean-spm-builds.sh`, then rerun builds/tests with `--scratch-path .build/shared`.
 - Never commit generated build artifacts.
 
-# Upstream Sync
+# Repository Identity
 
-This repository is a fork of `OpenCloudGaming/OpenNOW-Mac`. The `sync-fork.yml` workflow runs weekly (Monday 06:00 UTC) and opens a PR labeled `upstream-sync` from `upstream/main` into `main`. The fork was renamed from OpenNOW to MacForce Now, so upstream syncs require manual conflict resolution on renamed files and re-application of identifier renames on merged lines.
+This repository (`OpenCloudGaming/openNOW-Mac`) is the canonical OpenNOW source. It descended from `OpenCloudGaming/OpenNOW-Mac`, was temporarily renamed to MacForce Now, was restored to OpenNOW in 2026-08, and was transferred into the OpenCloudGaming organization in 2026-08. There is no separate upstream to sync from: no `upstream` remote, no `sync-fork.yml` workflow, and no upstream-sync procedure. Do not add an upstream-sync setup or reintroduce `MacForceNow`/`macforce-now` identifiers.
 
-## Renamed File Mapping
+Identity anchors (verify these survive any bulk rename or merge):
 
-When a `upstream-sync` PR conflicts on any of these paths, the upstream change applies to the old path (left); resolve onto the new path (right):
+- `OpenNOW.xcodeproj/project.pbxproj`: Release `PRODUCT_BUNDLE_IDENTIFIER = "io.github.opencloudgaming.opennow"`, Debug `= "io.github.opencloudgaming.opennow.dev"`, tests `= "io.github.opencloudgaming.opennow.tests"`, Debug `PRODUCT_NAME = "OpenNOW Dev"`.
+- URL scheme `opennow`; UserDefaults domain `io.github.opencloudgaming.opennow`; keychain services `OpenNOW.GFN` / `OpenNOW.Twitch`; telemetry key prefix `opennow.*`.
+- `App/OpenNOWAppDelegate.swift`: updater is `OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")`.
+- RemoteCoOp: LaunchDaemon `com.opennow.remote-coop.panel`, systemd unit `opennow-remote-coop-panel.service`, environment variables `OPENNOW_REMOTE_COOP_*`, PAM service `opennow-remote-coop`.
 
-| Upstream path (old) | Fork path (new) |
-|---|---|
-| `OpenNOWApp.swift` | `MacForceNowApp.swift` |
-| `OpenNOW-Info.plist` | `MacForceNow-Info.plist` |
-| `OpenNOW.entitlements` | `MacForceNow.entitlements` |
-| `OpenNOW.xcodeproj/project.pbxproj` | `MacForceNow.xcodeproj/project.pbxproj` |
-| `OPN/Services/OpenNOWLog.swift` | `OPN/Services/MacForceNowLog.swift` |
-| `OPN/Services/OpenNOWGitHubUpdater.swift` | `OPN/Services/MacForceNowGitHubUpdater.swift` |
-| `OPN/Services/OpenNOWInterfacePreferences.swift` | `OPN/Services/MacForceNowInterfacePreferences.swift` |
-| `OPN/Services/OpenNOWWebRTCMediaTelemetrySink.swift` | `OPN/Services/MacForceNowWebRTCMediaTelemetrySink.swift` |
-| `OPN/GameServices/OpenNOWStreamSessionCoordinator.swift` | `OPN/GameServices/MacForceNowStreamSessionCoordinator.swift` |
-| `OPN/Core/OpenNOWNotifications.swift` | `OPN/Core/MacForceNowNotifications.swift` |
-| `View/OpenNOWDesign.swift` | `View/MacForceNowDesign.swift` |
-| `View/Design/OpenNOWNVIDIAFont.swift` | `View/Design/MacForceNowNVIDIAFont.swift` |
-| `View/Startup/OpenNOWStartupLoadingView.swift` | `View/Startup/MacForceNowStartupLoadingView.swift` |
-| `Tests/Games/OpenNOWGameServicesTests.swift` | `Tests/Games/MacForceNowGameServicesTests.swift` |
-| `Tests/Twitch/OpenNOWTwitchTests.swift` | `Tests/Twitch/MacForceNowTwitchTests.swift` |
-| `Resources/OpenNOW/` | `Resources/MacForceNow/` |
-| `RemoteCoOp/service/macos/com.opennow.remote-coop.panel.plist` | `RemoteCoOp/service/macos/com.macforce-now.remote-coop.panel.plist` |
-| `RemoteCoOp/service/linux/opennow-remote-coop-panel.service` | `RemoteCoOp/service/linux/macforce-now-remote-coop-panel.service` |
-| `RemoteCoOp/service/opennow-remote-coop-panel.env.example` | `RemoteCoOp/service/macforce-now-remote-coop-panel.env.example` |
-| `RemoteCoOp/panel/auth/opennow-remote-coop.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.pam.example` |
-| `RemoteCoOp/panel/auth/opennow-remote-coop.macos.pam.example` | `RemoteCoOp/panel/auth/macforce-now-remote-coop.macos.pam.example` |
+`App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed. `OpenNOWApp.swift` contains only the `@main` App struct; update preferences live in `OPN/Services/OpenNOWUpdatePreferences.swift` and the `NSApplicationDelegate` in `App/OpenNOWAppDelegate.swift`.
 
-### App Shell Extraction
+# UI Scaling & Design System
 
-`MacForceNowApp.swift` contains only the `@main` App struct. Upstream changes to `OpenNOWApp.swift` resolve onto three fork files depending on what they touch:
+The app has a `uiScale` system and design tokens defined in `DESIGN.md`. Any new or imported UI code (new views, modified modifiers, new constants) must follow it:
 
-| Content | Fork path |
-|---|---|
-| `@main` App struct, SwiftData container setup | `MacForceNowApp.swift` |
-| Update preferences (`automaticUpdateChecksEnabled`, remind-later, debugger detection) | `OPN/Services/MacForceNowUpdatePreferences.swift` |
-| `NSApplicationDelegate` (open-file handling, stream shortcuts, updater UI/scheduling) | `App/MacForceNowAppDelegate.swift` |
-
-`App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed.
-
-## Identifier Re-Application
-
-Upstream commits may reintroduce `OpenNOW`/`opennow`/`OPENNOW_` identifiers on merged lines. After resolving file-level conflicts, run this sweep on the merge result to re-apply the fork's rename.
-
-**Never sweep `AGENTS.md`** — the rename mapping table above documents `OpenNOW` → `MacForceNow` by name; sweeping rewrites the table into nonsense (`MacForceNow` → `MacForceNow`).
-
-```sh
-files=$(rg -l 'OpenNOW|opennow|OPENNOW_' \
-  --glob '!**/.build/**' --glob '!**/.git/**' --glob '!**/WebRTC.framework/**' \
-  --glob '!**/vendor/**' --glob '!**/Package.resolved' --glob '!**/.playwright-mcp/**' \
-  --glob '!**/.claude/**' --glob '!**/.opencode/**' --glob '!**/.agents/**' \
-  --glob '!README.md' --glob '!AGENTS.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md')
-echo "$files" | xargs sed -i '' 's/OpenNOW /MacForce Now /g; s/OpenNOW/MacForceNow/g; s/opennow/macforce-now/g; s/OPENNOW_/MACFORCE_NOW_/g'
-```
-
-Then fix display-name occurrences that should contain a space, and preserve the GitHub repo name:
-
-```sh
-sed -i '' 's/repository: "opennow-mac"/repository: "macforce-now"/' MacForceNowApp.swift
-sed -i '' 's/Window("MacForceNow"/Window("MacForce Now"/' MacForceNowApp.swift
-sed -i '' 's/INFOPLIST_KEY_CFBundleDisplayName = MacForceNow;/INFOPLIST_KEY_CFBundleDisplayName = "MacForce Now";/' MacForceNow.xcodeproj/project.pbxproj
-sed -i '' 's/-scheme MacForce Now /-scheme MacForceNow /' .github/workflows/release.yml .github/workflows/unit-tests.yml
-```
-
-## UI Scaling & Design System Re-Application
-
-Upstream has no `uiScale` system and does not follow this fork's `DESIGN.md` tokens. Any upstream-added or upstream-modified UI code (new views, modified modifiers, new constants) must be migrated to the fork's design system, not merged verbatim:
-
-- **Thread `uiScale` through every merged view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `MacForceNowDesign.Spacing.*(scale:)`).
+- **Thread `uiScale` through every view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `OpenNOWDesign.Spacing.*(scale:)`).
 - **Scale consistently within one geometric expression.** Every constant contributing to the same size must scale identically. Mixing scaled and unscaled values only breaks at `uiScale != 1` and looks correct at 1.0 — e.g. `wideTileWidth(scale:) - 32 * uiScale` combined with an unscaled `.padding(.horizontal, 16)` left the tile tray background narrower than the tile (and its full-width selection bar) at any scale above 1.0.
-- **Use fork fonts and colors**: `.nvidiaFont(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `MacForceNowDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
-- **New upstream components** must follow `DESIGN.md` component patterns; update `DESIGN.md` if the merge introduces a genuinely new pattern.
-- **Verify visually at a non-default UI scale** (e.g. 1.25 and 1.5 via Settings) for every merged view — layout bugs from inconsistent scaling are invisible at 1.0.
+- **Use project fonts and colors**: `.nvidiaFont(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `OpenNOWDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
+- **New components** must follow `DESIGN.md` component patterns; update `DESIGN.md` when a change introduces a genuinely new pattern.
+- **Verify visually at a non-default UI scale** (e.g. 1.25 and 1.5 via Settings) for every touched view — layout bugs from inconsistent scaling are invisible at 1.0.
 
-Sweep the view files touched by the merge for unscaled constants as a heuristic:
+Sweep touched view files for unscaled constants as a heuristic:
 
 ```sh
-git diff upstream/main...HEAD --name-only -- 'View/**/*.swift' | xargs rg -n '\.(frame|padding|offset)\(' | rg -v 'uiScale|scale:|\.infinity|minLength: 0'
+git diff main...HEAD --name-only -- 'View/**/*.swift' | xargs rg -n '\.(frame|padding|offset)\(' | rg -v 'uiScale|scale:|\.infinity|minLength: 0'
 ```
 
 Review each hit; not every unscaled value is wrong (stroke widths, 1pt dividers, and deliberate fixed sizes are fine), but any constant paired with scaled siblings in the same layout expression is a bug.
 
-## Sync Procedure
+# Merge & Build Pitfalls
 
-1. Fetch the `upstream-sync` PR locally and merge `upstream/main` into a working branch off `main`.
-2. Resolve file-level conflicts using the mapping table above: apply upstream content changes onto the new fork paths, not the old ones.
-3. Run the identifier re-application sweep on the full working tree.
-4. Verify the only remaining `opennow` hits are `README.md` (upstream attribution), `CHANGELOG.md` (history), and `.github/workflows/sync-fork.yml` (upstream URL):
-   ```sh
-   rg -n 'OpenNOW|opennow|OPENNOW_' --glob '!**/.build/**' --glob '!**/.git/**' \
-     --glob '!**/WebRTC.framework/**' --glob '!**/vendor/**' --glob '!**/Package.resolved' \
-     --glob '!**/.playwright-mcp/**' --glob '!**/.claude/**' --glob '!**/.opencode/**' \
-     --glob '!**/.agents/**' --glob '!README.md' --glob '!AGENTS.md' --glob '!**/sync-fork.yml' --glob '!CHANGELOG.md'
-   ```
-   Expect zero output.
-5. Verify fork identity survived (the sweep only fixes OpenNOW strings, not these):
-   - `MacForceNow.xcodeproj/project.pbxproj`: Debug `PRODUCT_BUNDLE_IDENTIFIER = "com.necorico.macforce-now.dev"`, Release `= "com.necorico.macforce-now"`, Debug `PRODUCT_NAME = "MacForce Now Dev"`. Any upstream-added targets (e.g. test targets) must also get fork IDs (`com.necorico.macforce-now.*`), not `io.github.opencloudgaming.*`.
-   - `MacForceNowApp.swift`: updater is `MacForceNowGitHubUpdater(owner: "anderson-oki", repository: "macforce-now")`.
-   - `.github/workflows/`: fork keeps `unit-tests.yml`; do not adopt upstream CI replacements without user approval.
-6. Apply the UI Scaling & Design System Re-Application rules to every upstream-touched view: thread `uiScale`, replace hardcoded fonts/colors/spacing with design tokens, then visually verify merged screens at 1.25x and 1.5x UI scale.
-7. Run `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. **Zero failures required before committing.** Hardware-dependent NVST tests stay gated behind `ENABLE_NVST_HARDWARE_TESTS=1`.
-8. Run `xcodebuild build -project MacForceNow.xcodeproj -scheme MacForceNow -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO`.
-9. Commit the merge with `chore: sync upstream` and push.
-
-## Sync Pitfalls (learned from the 1.51 sync)
-
-- **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In the 1.51 sync, `--theirs` wiped the fork's quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` with the fork version as `ours` and review every conflict.
-- **Upstream feature deletions are decisions, not defaults.** When upstream deletes a subsystem the fork integrated (e.g. Twitch removal in `e688e8a`), surface it to the user before accepting the deletion — the fork may have built UI, settings, and tests around it that must be removed consistently.
-- **Upstream UI code must now compile under SPM strict concurrency.** The SPM target compiles `App/`, `View/`, and `ViewModel/` (Swift 6 mode), which is stricter than the Xcode target: `@MainActor`-isolated types with `Equatable`/`Identifiable` conformances error under SPM but only warn in Xcode. If a merged view trips `#ConformanceIsolation`, fix it during the merge — for value-type enums drop the `@MainActor` annotation, for views comparing only `Sendable` properties use `nonisolated static func ==`, for views comparing non-Sendable model objects use `@preconcurrency Equatable`.
-- **Fork features live inside shared files.** Fork-only code (Steam Controller hooks, Discord presence, pillarbox fill UI, Show All grid, uiScale) is inlined in files upstream also edits. After resolving, diff the result against fork `main` and grep for those feature keywords to confirm nothing was dropped.
-- **Upstream UI code bypasses uiScale and the design system.** Merged-in views come with hardcoded dimensions, system fonts, and raw colors that silently break at non-default UI scales and drift from `DESIGN.md`. Always run the UI Scaling & Design System Re-Application pass (above) on upstream-touched views; partially scaled expressions (some constants scaled, some not) are worse than none because they only fail at `uiScale != 1`.
+- **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In one past sync, `--theirs` wiped the quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` and review every conflict.
+- **All UI code must compile under SPM strict concurrency.** The SPM target compiles `App/`, `View/`, and `ViewModel/` (Swift 6 mode), which is stricter than the Xcode target: `@MainActor`-isolated types with `Equatable`/`Identifiable` conformances error under SPM but only warn in Xcode. If a view trips `#ConformanceIsolation`: for value-type enums drop the `@MainActor` annotation, for views comparing only `Sendable` properties use `nonisolated static func ==`, for views comparing non-Sendable model objects use `@preconcurrency Equatable`.
 - **Modifying vendored dylibs breaks macOS code signing.** `install_name_tool` invalidates signatures; every process that stats the file afterwards (including `git status`) gets SIGKILL'd with `CODESIGNING: Invalid Page`. Re-sign immediately: `codesign --force --sign - <dylib>` (and `codesign --force --deep --sign -` for frameworks).
-- **Never rebase a sync branch.** `git rebase` flattens the upstream merge commit into a regular commit — the tree carries upstream's changes but upstream's commit history never enters the fork. GitHub then reports the fork as permanently "N commits behind", and `sync-fork.yml`'s ancestor check (`git merge-base --is-ancestor upstream/main origin/main`) opens redundant PRs forever. Keep the merge commit; if the branch needs main's latest, merge main INTO the sync branch, never rebase. If history was already flattened, repair with `git merge -s ours <upstream-sha-synced> -m "chore: record upstream ancestry"` on main.
-- **Never amend a merge commit.** `git commit --amend` on a merge commit drops the second parent, converting it into a regular commit — same effect as rebase, upstream ancestry lost. If the commit message or content needs adjustment after resolving, create a follow-up commit instead.
-- **Upstream type migrations can silently break tests.** Auto-merged upstream changes may introduce new types (e.g. `String` → `InputDeviceID`) or expose previously unambiguous expressions (e.g. `.nan` ambiguity between `CGFloat` and `Double`). String interpolation like `"controller-\(index)"` breaks when the parameter type changed from `String` to a non-interpolation-conforming type. After resolving conflicts, run `swift test --scratch-path .build/shared` and fix any compilation errors before committing.
+- **Never amend a merge commit.** `git commit --amend` on a merge commit drops the second parent, converting it into a regular commit — merged ancestry is lost. If the commit message or content needs adjustment after resolving, create a follow-up commit instead.
+- **Type migrations can silently break tests.** Merged changes may introduce new types (e.g. `String` → `InputDeviceID`) or expose previously unambiguous expressions (e.g. `.nan` ambiguity between `CGFloat` and `Double`). After resolving conflicts, run `swift test --scratch-path .build/shared` and fix any compilation errors before committing.
 
 # Coding Standards
 
@@ -171,5 +90,5 @@ Review each hit; not every unscaled value is wrong (stroke widths, 1pt dividers,
 
 # Commit Standards
 - Commit all completed work before considering a task done.
-- Push completed commits to the current branch's upstream remote after committing.
+- Push completed commits to the current branch's remote tracking branch on `origin` after committing.
 - Prefix every message with a conventional tag: `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`.

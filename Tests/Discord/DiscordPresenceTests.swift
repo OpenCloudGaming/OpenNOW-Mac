@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test func discordArtworkPrefersBoxArtOverOtherTypes() {
     let byType = [
@@ -43,17 +43,17 @@ import Testing
 @Test func discordActivityBuildsNestedAssetsAndTimestamps() throws {
     let activity = DiscordActivity(
         details: "Cyberpunk 2077",
-        state: "Streaming via MacForce Now",
+        state: "Streaming via OpenNOW",
         largeImageKey: "https://cdn.example.com/box.jpg",
         largeImageText: "Cyberpunk 2077",
         smallImageKey: "app_icon",
-        smallImageText: "MacForce Now",
+        smallImageText: "OpenNOW",
         startTimestampSeconds: 1_700_000_000
     )
     let json = activity.jsonObject()
 
     #expect(json["details"] as? String == "Cyberpunk 2077")
-    #expect(json["state"] as? String == "Streaming via MacForce Now")
+    #expect(json["state"] as? String == "Streaming via OpenNOW")
     #expect(json["instance"] as? Bool == false)
 
     let assets = try #require(json["assets"] as? [String: Any])

@@ -153,7 +153,7 @@ struct SessionParameters {
 
 struct GeronimoStats { alignas(8) unsigned char bytes[0x450]; };
 
-struct MacForceNowNativeNVSTPerformanceStats {
+struct OpenNOWNativeNVSTPerformanceStats {
     uint32_t available = 0;
     uint32_t frameWidth = 0;
     uint32_t frameHeight = 0;
@@ -226,8 +226,8 @@ static_assert(offsetof(SessionControl::SessionParameters, connectionInfo) == 0x2
 static_assert(offsetof(SessionControl::SessionParameters, userAge) == 0x280, "libGeronimo SessionParameters userAge offset changed");
 static_assert(sizeof(SessionControl::SessionParameters) == 0x288, "libGeronimo SessionParameters size changed");
 static_assert(sizeof(GeronimoStats) == 0x450, "libGeronimo GeronimoStats size changed");
-static_assert(offsetof(MacForceNowNativeNVSTPerformanceStats, gameFramesPerSecond) == 0x28, "Native performance stats double alignment changed");
-static_assert(sizeof(MacForceNowNativeNVSTPerformanceStats) == 0x50, "Native performance stats ABI changed");
+static_assert(offsetof(OpenNOWNativeNVSTPerformanceStats, gameFramesPerSecond) == 0x28, "Native performance stats double alignment changed");
+static_assert(sizeof(OpenNOWNativeNVSTPerformanceStats) == 0x50, "Native performance stats ABI changed");
 
 namespace {
 // Teardown never blocks the main thread forever: every in-flight-callback drain
@@ -307,9 +307,9 @@ using GetStreamStartParameters = int (*)(const std::string &, const std::string 
 using ConvertToStreamingParams = bool (*)(const Nsk::StreamStartParameters &, const Nsk::VideoDecoderInitParams &, Nsk::NVbStreamingParams_t &);
 using FreeStreamingParams = void (*)(Nsk::NVbStreamingParams_t &);
 using NVbEnumToString = const char *(*)(int32_t, int32_t);
-using MacForceNowGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *, uint32_t, uint32_t, const char *);
-using MacForceNowGeronimoHapticHandler = void (*)(void *, uint16_t, uint16_t, uint16_t, uint16_t);
-using MacForceNowGeronimoAuthRefreshHandler = void (*)(void *, uint32_t, char *, size_t);
+using OpenNOWGeronimoEventHandler = void (*)(void *, int32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *, uint32_t, uint32_t, const char *);
+using OpenNOWGeronimoHapticHandler = void (*)(void *, uint16_t, uint16_t, uint16_t, uint16_t);
+using OpenNOWGeronimoAuthRefreshHandler = void (*)(void *, uint32_t, char *, size_t);
 using NVbCallback = bool (*)(void *, uint32_t, void *);
 using ObjectCtor = void (*)(void *);
 using ObjectDtor = void (*)(void *);
@@ -355,7 +355,7 @@ constexpr uint32_t NVbClientEventHaptic = 0x14;
 constexpr uint32_t NVbSessionNotificationStreamerConnected = 1;
 constexpr uint32_t NVbFeatureGamepadHaptics = 6;
 constexpr uint16_t DefaultHapticDurationMilliseconds = 1000;
-// Fork divergence from upstream: MacForce Now drives an ASYNCHRONOUS prepare. The native
+// Fork divergence from upstream: OpenNOW drives an ASYNCHRONOUS prepare. The native
 // start flow advances its state machine from the async onPrepareResult event delivered by
 // GridApp::processEvents(); synchronous prepare (upstream's reference-client value) returns
 // without firing that event, so completePreparedStart never runs and the launch stalls with
@@ -511,7 +511,7 @@ void *openNOWCreateBifrostClient();
 NVbResult_t openNOWRegisterBifrostCallback(void *client, void *context, NVbCallback callback);
 bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData);
 
-struct MacForceNowNativeNVSTGeronimoSession {
+struct OpenNOWNativeNVSTGeronimoSession {
     void *libraryHandle = nullptr;
     void *bifrostHandle = nullptr;
     void *gridApp = nullptr;
@@ -521,12 +521,12 @@ struct MacForceNowNativeNVSTGeronimoSession {
     NVbEnumToString enumToString = nullptr;
     GeronimoFunctions functions;
     std::mutex eventMutex;
-    MacForceNowGeronimoEventHandler eventHandler = nullptr;
+    OpenNOWGeronimoEventHandler eventHandler = nullptr;
     void *eventContext = nullptr;
     std::mutex runtimeHandlerMutex;
-    MacForceNowGeronimoHapticHandler hapticHandler = nullptr;
+    OpenNOWGeronimoHapticHandler hapticHandler = nullptr;
     void *hapticContext = nullptr;
-    MacForceNowGeronimoAuthRefreshHandler authRefreshHandler = nullptr;
+    OpenNOWGeronimoAuthRefreshHandler authRefreshHandler = nullptr;
     void *authRefreshContext = nullptr;
     std::atomic<uint32_t> callbacksInFlight{0};
     std::atomic<bool> acceptsCallbacks{true};
@@ -579,13 +579,13 @@ struct MacForceNowNativeNVSTGeronimoSession {
 };
 
 std::mutex gGridAppSessionsMutex;
-std::unordered_map<void *, MacForceNowNativeNVSTGeronimoSession *> gGridAppSessions;
+std::unordered_map<void *, OpenNOWNativeNVSTGeronimoSession *> gGridAppSessions;
 std::mutex gPlatformMutex;
 size_t gPlatformReferenceCount = 0;
 
-void setSessionFailure(MacForceNowNativeNVSTGeronimoSession *session, const char *message);
-bool setSessionFailureUnlessStopping(MacForceNowNativeNVSTGeronimoSession *session, const char *message);
-bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uint32_t codec);
+void setSessionFailure(OpenNOWNativeNVSTGeronimoSession *session, const char *message);
+bool setSessionFailureUnlessStopping(OpenNOWNativeNVSTGeronimoSession *session, const char *message);
+bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec);
 
 void setError(char *buffer, size_t length, const char *message) {
     if (buffer == nullptr || length == 0) { return; }
@@ -730,7 +730,7 @@ bool unregisterMicrophoneRoute(MicrophoneRouteSlot *slot) {
     const bool drained = slot->drained.wait_for(routesLock, NativeTeardownDrainTimeout, [slot] {
         return slot->inFlight.load(std::memory_order_acquire) == 0;
     });
-    if (!drained) { fprintf(stderr, "MacForce Now microphone route drain timed out during teardown.\n"); }
+    if (!drained) { fprintf(stderr, "OpenNOW microphone route drain timed out during teardown.\n"); }
     {
         std::lock_guard<std::mutex> stateLock(slot->stateMutex);
         resetVoiceActivity(slot->vad);
@@ -929,7 +929,7 @@ OSType openNOWCVGetPixelFormatType(CVPixelBufferRef buffer) {
             if (previous != nullptr) { CFRelease(previous); }
             const uint64_t count = gFrameCaptureCount.fetch_add(1, std::memory_order_relaxed) + 1;
             if (count == 1 || (count % 600) == 0) {
-                NSLog(@"[MacForceNow] NVST frame capture #%llu: %zux%zu fmt=0x%08x",
+                NSLog(@"[OpenNOW] NVST frame capture #%llu: %zux%zu fmt=0x%08x",
                       static_cast<unsigned long long>(count),
                       CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer),
                       static_cast<unsigned int>(result));
@@ -989,7 +989,7 @@ bool acquireFrameCaptureHook(void *geronimoHandle) {
     gFrameCaptureInstallStatus.store(1, std::memory_order_release);
     if (geronimoHandle == nullptr) { return false; }
     void *addVideoFramePass = dlsym(geronimoHandle, kAddVideoFramePassSymbol);
-    if (addVideoFramePass == nullptr) { gFrameCaptureInstallStatus.store(2, std::memory_order_release); NSLog(@"[MacForceNow] frame tap: dlsym addVideoFramePass FAILED"); return false; }
+    if (addVideoFramePass == nullptr) { gFrameCaptureInstallStatus.store(2, std::memory_order_release); NSLog(@"[OpenNOW] frame tap: dlsym addVideoFramePass FAILED"); return false; }
     gAddVideoFramePassStart = reinterpret_cast<uintptr_t>(addVideoFramePass);
     // The function is a few KB (large stack frame, many format branches); a generous
     // window bounds the caller check without needing the exact symbol size.
@@ -1001,9 +1001,9 @@ bool acquireFrameCaptureHook(void *geronimoHandle) {
     void **slot = cvTarget != nullptr ? findImportSlotByValue(addVideoFramePass, cvTarget) : nullptr;
     if (slot == nullptr) {
         slot = findLazySymbolPointer(addVideoFramePass, "_CVPixelBufferGetPixelFormatType", true);
-        NSLog(@"[MacForceNow] frame tap: value scan missed, name scan %@", slot != nullptr ? @"hit" : @"MISSED");
+        NSLog(@"[OpenNOW] frame tap: value scan missed, name scan %@", slot != nullptr ? @"hit" : @"MISSED");
     } else {
-        NSLog(@"[MacForceNow] frame tap: value scan hit slot=%p", (void *)slot);
+        NSLog(@"[OpenNOW] frame tap: value scan hit slot=%p", (void *)slot);
     }
     if (slot == nullptr || reinterpret_cast<uintptr_t>(slot) % alignof(void *) != 0) { gFrameCaptureInstallStatus.store(4, std::memory_order_release); return false; }
     void *current = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
@@ -1159,13 +1159,13 @@ NVbResult_t openNOWSendMicAudioFrame(void *client, const char *sessionIdentifier
     return result;
 }
 
-const char *nvbResultName(MacForceNowNativeNVSTGeronimoSession *session, int32_t resultCode) {
+const char *nvbResultName(OpenNOWNativeNVSTGeronimoSession *session, int32_t resultCode) {
     if (session == nullptr || session->enumToString == nullptr) { return nullptr; }
     const char *name = session->enumToString(0, resultCode);
     return name != nullptr && strncmp(name, "NVB_R_", 6) == 0 ? name : nullptr;
 }
 
-void emitEvent(MacForceNowNativeNVSTGeronimoSession *session,
+void emitEvent(OpenNOWNativeNVSTGeronimoSession *session,
                int32_t phase,
                uint32_t callbackType,
                uint32_t clientEvent,
@@ -1176,7 +1176,7 @@ void emitEvent(MacForceNowNativeNVSTGeronimoSession *session,
                uint32_t sessionAlive = 0,
                const char *reasonName = nullptr) {
     if (session == nullptr) { return; }
-    MacForceNowGeronimoEventHandler handler = nullptr;
+    OpenNOWGeronimoEventHandler handler = nullptr;
     void *context = nullptr;
     {
         std::lock_guard<std::mutex> lock(session->eventMutex);
@@ -1186,17 +1186,17 @@ void emitEvent(MacForceNowNativeNVSTGeronimoSession *session,
     if (handler != nullptr) { handler(context, phase, callbackType, clientEvent, notification, resultCode, resultName, resumable, sessionAlive, reasonName); }
 }
 
-MacForceNowNativeNVSTGeronimoSession *beginGridAppCallback(void *gridApp) {
+OpenNOWNativeNVSTGeronimoSession *beginGridAppCallback(void *gridApp) {
     std::lock_guard<std::mutex> lock(gGridAppSessionsMutex);
     auto iterator = gGridAppSessions.find(gridApp);
     if (iterator == gGridAppSessions.end()) { return nullptr; }
-    MacForceNowNativeNVSTGeronimoSession *session = iterator->second;
+    OpenNOWNativeNVSTGeronimoSession *session = iterator->second;
     if (!session->acceptsCallbacks.load(std::memory_order_acquire)) { return nullptr; }
     session->callbacksInFlight.fetch_add(1, std::memory_order_acq_rel);
     return session;
 }
 
-void endGridAppCallback(MacForceNowNativeNVSTGeronimoSession *session) {
+void endGridAppCallback(OpenNOWNativeNVSTGeronimoSession *session) {
     if (session == nullptr) { return; }
     if (session->callbacksInFlight.fetch_sub(1, std::memory_order_acq_rel) == 1) {
         std::lock_guard<std::mutex> lock(session->callbackMutex);
@@ -1205,14 +1205,14 @@ void endGridAppCallback(MacForceNowNativeNVSTGeronimoSession *session) {
 }
 
 struct GridAppCallbackLease {
-    MacForceNowNativeNVSTGeronimoSession *session = nullptr;
+    OpenNOWNativeNVSTGeronimoSession *session = nullptr;
 
     ~GridAppCallbackLease() {
         endGridAppCallback(session);
     }
 };
 
-void emitHapticRecords(MacForceNowNativeNVSTGeronimoSession *session, const void *callbackData) {
+void emitHapticRecords(OpenNOWNativeNVSTGeronimoSession *session, const void *callbackData) {
     if (session == nullptr || callbackData == nullptr || loadUnaligned<uint32_t>(callbackData, 0) != NVbClientEventHaptic) { return; }
     const uint32_t subtype = loadUnaligned<uint32_t>(callbackData, 0x10);
     if (subtype != 1 && subtype != 2) { return; }
@@ -1227,7 +1227,7 @@ void emitHapticRecords(MacForceNowNativeNVSTGeronimoSession *session, const void
         const uint16_t highFrequency = loadUnaligned<uint16_t>(record, 4);
         const uint16_t suppliedDuration = subtype == 2 ? loadUnaligned<uint16_t>(record, 6) : 0;
         const uint16_t duration = suppliedDuration == 0 ? DefaultHapticDurationMilliseconds : suppliedDuration;
-        MacForceNowGeronimoHapticHandler handler = nullptr;
+        OpenNOWGeronimoHapticHandler handler = nullptr;
         void *context = nullptr;
         {
             std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
@@ -1239,7 +1239,7 @@ void emitHapticRecords(MacForceNowNativeNVSTGeronimoSession *session, const void
 }
 
 bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callbackData) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     NVbCallback originalCallback = session == nullptr
         ? gOriginalBifrostCallback.load(std::memory_order_acquire)
         : session->originalBifrostCallback;
@@ -1251,7 +1251,7 @@ bool openNOWBifrostCallback(void *gridApp, uint32_t callbackType, void *callback
 }
 
 void openNOWGridAppUpdateAuthToken(void *gridApp, void *updateAuthToken) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr || updateAuthToken == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     char *response = loadUnaligned<char *>(updateAuthToken, 0x08);
@@ -1273,7 +1273,7 @@ void callVoidVirtual(void *object, size_t byteOffset) {
     if (function != nullptr) { function(object); }
 }
 
-void emitConnectedIfReady(MacForceNowNativeNVSTGeronimoSession *session) {
+void emitConnectedIfReady(OpenNOWNativeNVSTGeronimoSession *session) {
     bool shouldEmit = false;
     {
         std::lock_guard<std::mutex> lock(session->stateMutex);
@@ -1294,7 +1294,7 @@ void emitConnectedIfReady(MacForceNowNativeNVSTGeronimoSession *session) {
 }
 
 void openNOWGridAppPrepareResult(void *gridApp, const NVbResult_t *result, void *) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     try {
@@ -1316,13 +1316,13 @@ void openNOWGridAppPrepareResult(void *gridApp, const NVbResult_t *result, void 
             setSessionFailure(session, "GridApp prepare callback handling raised an unexpected C++ exception.");
             emitEvent(session, 70, 0, 0, 0, -12);
         } catch (...) {
-            fprintf(stderr, "MacForce Now failed to contain a GridApp prepare callback exception.\n");
+            fprintf(stderr, "OpenNOW failed to contain a GridApp prepare callback exception.\n");
         }
     }
 }
 
 void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     try {
@@ -1358,13 +1358,13 @@ void openNOWGridAppStreamingBegin(void *gridApp, const void *streamInfo) {
             setSessionFailure(session, "GridApp streaming-begin callback handling raised an unexpected C++ exception.");
             emitEvent(session, 70, 0, 0, 0, -13);
         } catch (...) {
-            fprintf(stderr, "MacForce Now failed to contain a GridApp streaming-begin callback exception.\n");
+            fprintf(stderr, "OpenNOW failed to contain a GridApp streaming-begin callback exception.\n");
         }
     }
 }
 
 void openNOWGridAppSetupFailure(void *gridApp, const void *failureInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
@@ -1377,7 +1377,7 @@ void openNOWGridAppSetupFailure(void *gridApp, const void *failureInfo) {
 }
 
 void openNOWGridAppResumeFailure(void *gridApp, const void *failureInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
@@ -1390,7 +1390,7 @@ void openNOWGridAppResumeFailure(void *gridApp, const void *failureInfo) {
 }
 
 void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     uint32_t codec = session->requestedCodec;
@@ -1413,7 +1413,7 @@ void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
             callVoidVirtual(session->videoDecoder, 0x58);
             session->videoDecoderStarted = true;
             if (!gFrameCaptureHookInstalled.exchange(true, std::memory_order_acq_rel)) {
-                NSLog(@"[MacForceNow] frame tap: decoder started, installing capture hook");
+                NSLog(@"[OpenNOW] frame tap: decoder started, installing capture hook");
                 if (!acquireFrameCaptureHook(session->libraryHandle)) {
                     gFrameCaptureHookInstalled.store(false, std::memory_order_release);
                 }
@@ -1436,7 +1436,7 @@ void openNOWGridAppSetupSuccess(void *gridApp, const void *sessionInfo) {
 }
 
 void openNOWGridAppStreamingTerminated(void *gridApp, const void *terminationInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     uint32_t terminationReason = terminationInfo == nullptr ? 0 : loadUnaligned<uint32_t>(terminationInfo, 0);
@@ -1466,7 +1466,7 @@ void openNOWGridAppStreamingTerminated(void *gridApp, const void *terminationInf
 }
 
 void openNOWGridAppCursorInfoUpdate(void *gridApp, const void *cursorInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     try {
@@ -1486,7 +1486,7 @@ void openNOWGridAppCursorInfoUpdate(void *gridApp, const void *cursorInfo) {
 }
 
 void openNOWGridAppSetupProgress(void *gridApp, const void *parameters) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     uint32_t state = parameters == nullptr ? 0 : loadUnaligned<uint32_t>(parameters, 0);
@@ -1496,7 +1496,7 @@ void openNOWGridAppSetupProgress(void *gridApp, const void *parameters) {
 }
 
 void openNOWGridAppActiveSessions(void *gridApp, const void *result) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = result == nullptr ? -1 : loadUnaligned<int32_t>(result, 0);
@@ -1504,7 +1504,7 @@ void openNOWGridAppActiveSessions(void *gridApp, const void *result) {
 }
 
 void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
@@ -1525,7 +1525,7 @@ void openNOWGridAppStopResult(void *gridApp, const void *failureInfo) {
 }
 
 void openNOWGridAppPauseResult(void *gridApp, const void *failureInfo) {
-    MacForceNowNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
+    OpenNOWNativeNVSTGeronimoSession *session = beginGridAppCallback(gridApp);
     if (session == nullptr) { return; }
     GridAppCallbackLease callbackLease{session};
     int32_t resultCode = failureInfo == nullptr ? -1 : loadUnaligned<int32_t>(failureInfo, 0);
@@ -1944,7 +1944,7 @@ void destroyPolymorphicObject(void *&object) {
     if (destructor != nullptr) { destructor(ownedObject); }
 }
 
-bool installGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session, char *errorBuffer, size_t errorBufferLength) {
+bool installGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session, char *errorBuffer, size_t errorBufferLength) {
     auto **sourceVTable = reinterpret_cast<void **>(resolve(session->libraryHandle, "_ZTV7GridApp", errorBuffer, errorBufferLength));
     if (sourceVTable == nullptr) { return false; }
     auto **clone = static_cast<void **>(malloc(GridAppVTableSize));
@@ -2015,7 +2015,7 @@ bool installGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session, char
 // Returns false when Geronimo callbacks were still running after the bounded wait.
 // Detaching always happens; only the drain is best-effort, because a wedged Bifrost
 // worker thread must never freeze the main thread that is tearing the session down.
-bool detachGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session) {
+bool detachGridAppCallbacks(OpenNOWNativeNVSTGeronimoSession *session) {
     if (session == nullptr) { return true; }
     {
         std::lock_guard<std::mutex> lock(gGridAppSessionsMutex);
@@ -2026,17 +2026,17 @@ bool detachGridAppCallbacks(MacForceNowNativeNVSTGeronimoSession *session) {
     const bool drained = session->callbacksDrained.wait_for(lock, NativeTeardownDrainTimeout, [session] {
         return session->callbacksInFlight.load(std::memory_order_acquire) == 0;
     });
-    if (!drained) { fprintf(stderr, "MacForce Now Geronimo callback drain timed out during teardown.\n"); }
+    if (!drained) { fprintf(stderr, "OpenNOW Geronimo callback drain timed out during teardown.\n"); }
     return drained;
 }
 
-void setSessionFailure(MacForceNowNativeNVSTGeronimoSession *session, const char *message) {
+void setSessionFailure(OpenNOWNativeNVSTGeronimoSession *session, const char *message) {
     std::lock_guard<std::mutex> lock(session->stateMutex);
     session->state = NativeSessionState::failed;
     session->lastError = message == nullptr ? "Native Geronimo media initialization failed." : message;
 }
 
-bool setSessionFailureUnlessStopping(MacForceNowNativeNVSTGeronimoSession *session, const char *message) {
+bool setSessionFailureUnlessStopping(OpenNOWNativeNVSTGeronimoSession *session, const char *message) {
     std::lock_guard<std::mutex> lock(session->stateMutex);
     if (session->state == NativeSessionState::paused || session->state == NativeSessionState::stopping ||
         session->state == NativeSessionState::stopped || session->state == NativeSessionState::failed) { return false; }
@@ -2068,7 +2068,7 @@ bool videoSurfaceDimensions(void *nativeHandle, uint32_t &width, uint32_t &heigh
     return width > 0 && height > 0;
 }
 
-bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uint32_t codec) {
+bool ensureVideoDecoderLocked(OpenNOWNativeNVSTGeronimoSession *session, uint32_t codec) {
     // Only H264 (1), HEVC (2), and AV1 (4) are concrete decodable codecs; anything else
     // (e.g. the "any" bitmask 7) has no decoder mapping. The codec is delivered to the
     // decoder via decoderSettings offset 0x0c below, not through createVideoDecoder.
@@ -2119,7 +2119,7 @@ bool ensureVideoDecoderLocked(MacForceNowNativeNVSTGeronimoSession *session, uin
     return true;
 }
 
-bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
+bool setupPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
     if (session->videoSurfaceHandle == nullptr) {
         setSessionFailure(session, "Native Geronimo requires a video surface before prepare completes.");
@@ -2159,7 +2159,7 @@ bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     SDLWindowInitParams windowParameters{};
     storeUnaligned<void *>(windowParameters.bytes, 0x00, session->graphicsContext);
     storeUnaligned<void *>(windowParameters.bytes, 0x08, session->eventProcessor);
-    storeUnaligned<const char *>(windowParameters.bytes, 0x28, "MacForceNow");
+    storeUnaligned<const char *>(windowParameters.bytes, 0x28, "OpenNOW");
     uint32_t windowWidth = 0;
     uint32_t windowHeight = 0;
     void *videoSurfaceHandle = const_cast<void *>(session->videoSurfaceHandle);
@@ -2174,12 +2174,12 @@ bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     // VRR support (isVRRCapable -> -[NSWindow screen]) on its com.nvidia.geronimo.rendersetup
     // queue. That is vendor code we cannot patch (re-signing the dylib breaks Gatekeeper),
     // so the resulting Main Thread Checker report in debug builds is expected noise;
-    // app-side window access is all main-thread and any MTC frame inside MacForceNow
+    // app-side window access is all main-thread and any MTC frame inside OpenNOW
     // code is a real bug.
     storeUnaligned<void *>(windowParameters.bytes, 0x70, videoSurfaceHandle);
     storeUnaligned<uint8_t>(windowParameters.bytes, 0x78, 1);
     if (!session->functions.windowInitialize(session->window, session->ioInterface, windowParameters)) {
-        setSessionFailure(session, "SDLWindow initialization failed for the MacForce Now native surface.");
+        setSessionFailure(session, "SDLWindow initialization failed for the OpenNOW native surface.");
         return false;
     }
 
@@ -2208,7 +2208,7 @@ bool setupPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
 
 // Returns false when the audio capturer refused to shut down inside the bounded
 // wait; the capturer is then leaked on purpose so teardown can keep going.
-bool teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
+bool teardownPlatformMedia(OpenNOWNativeNVSTGeronimoSession *session) {
     std::lock_guard<std::mutex> mediaLock(session->mediaMutex);
     bool completed = true;
     callVoidVirtual(session->videoDecoder, 0x60);
@@ -2233,7 +2233,7 @@ bool teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
             } else {
                 worker.detach();
                 completed = false;
-                fprintf(stderr, "MacForce Now native audio capturer shutdown timed out; leaking the capturer.\n");
+                fprintf(stderr, "OpenNOW native audio capturer shutdown timed out; leaking the capturer.\n");
             }
         } catch (...) {
             shutdownCapturer();
@@ -2248,7 +2248,7 @@ bool teardownPlatformMedia(MacForceNowNativeNVSTGeronimoSession *session) {
     return completed;
 }
 
-int32_t completePreparedStart(MacForceNowNativeNVSTGeronimoSession *session) {
+int32_t completePreparedStart(OpenNOWNativeNVSTGeronimoSession *session) {
     std::unique_ptr<PendingStart> pending;
     {
         std::lock_guard<std::mutex> lock(session->stateMutex);
@@ -2299,7 +2299,7 @@ int32_t completePreparedStart(MacForceNowNativeNVSTGeronimoSession *session) {
 }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoInspectEndpoint(const char *address,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoInspectEndpoint(const char *address,
                                                                uint16_t fallbackPort,
                                                                char *hostBuffer,
                                                                size_t hostBufferLength,
@@ -2311,7 +2311,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoInspectEndpoint(const char *addr
     return 0;
 }
 
-extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath, char *errorBuffer, size_t errorBufferLength) {
+extern "C" void *OpenNOWNativeNVSTGeronimoCreate(const char *frameworksPath, char *errorBuffer, size_t errorBufferLength) {
     void *handle = nullptr;
     void *bifrostHandle = nullptr;
     void *gridApp = nullptr;
@@ -2320,7 +2320,7 @@ extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath,
     bool bifrostRegistrationHookAcquired = false;
     PlatformShutdown platformShutdown = nullptr;
     GeronimoFunctions functions;
-    MacForceNowNativeNVSTGeronimoSession *session = nullptr;
+    OpenNOWNativeNVSTGeronimoSession *session = nullptr;
     try {
         std::string directory = stringOrEmpty(frameworksPath);
         if (directory.empty()) {
@@ -2432,7 +2432,7 @@ extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath,
             return nullptr;
         }
 
-        session = new (std::nothrow) MacForceNowNativeNVSTGeronimoSession();
+        session = new (std::nothrow) OpenNOWNativeNVSTGeronimoSession();
         if (session == nullptr) {
             setError(errorBuffer, errorBufferLength, "Failed to allocate native Geronimo session.");
             functions.gridAppDtor(gridApp);
@@ -2503,16 +2503,16 @@ extern "C" void *MacForceNowNativeNVSTGeronimoCreate(const char *frameworksPath,
     }
 }
 
-extern "C" const char *MacForceNowNativeNVSTGeronimoResultCodeName(void *sessionPointer, int32_t resultCode) {
-    return nvbResultName(static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer), resultCode);
+extern "C" const char *OpenNOWNativeNVSTGeronimoResultCodeName(void *sessionPointer, int32_t resultCode) {
+    return nvbResultName(static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer), resultCode);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetEventHandler(void *sessionPointer,
-                                                              MacForceNowGeronimoEventHandler eventHandler,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetEventHandler(void *sessionPointer,
+                                                              OpenNOWGeronimoEventHandler eventHandler,
                                                               void *eventContext,
                                                               char *errorBuffer,
                                                               size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->libraryHandle == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for callback registration.");
         return -1;
@@ -2531,10 +2531,10 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetEventHandler(void *sessionPoi
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetHapticHandler(void *sessionPointer,
-                                                                MacForceNowGeronimoHapticHandler handler,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetHapticHandler(void *sessionPointer,
+                                                                OpenNOWGeronimoHapticHandler handler,
                                                                 void *context) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return -1; }
     std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
     session->hapticHandler = handler;
@@ -2542,19 +2542,19 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetHapticHandler(void *sessionPo
     return 0;
 }
 
-extern "C" uint32_t MacForceNowNativeNVSTGeronimoVideoDecoderCreationCodec(uint32_t requestedCodec) {
+extern "C" uint32_t OpenNOWNativeNVSTGeronimoVideoDecoderCreationCodec(uint32_t requestedCodec) {
     return videoDecoderCreationCodec(requestedCodec);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoAudioFrameTriggersRendererReopen(uint32_t configuredChannelCount,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoAudioFrameTriggersRendererReopen(uint32_t configuredChannelCount,
                                                                                 uint32_t incomingChannelCount) {
     return audioFrameTriggersRendererReopen(configuredChannelCount, incomingChannelCount) ? 1 : 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler(void *sessionPointer,
-                                                                    MacForceNowGeronimoAuthRefreshHandler handler,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetAuthRefreshHandler(void *sessionPointer,
+                                                                    OpenNOWGeronimoAuthRefreshHandler handler,
                                                                     void *context) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return -1; }
     std::lock_guard<std::mutex> lock(session->runtimeHandlerMutex);
     session->authRefreshHandler = handler;
@@ -2562,14 +2562,14 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetAuthRefreshHandler(void *sess
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoDecodeHapticCallbackData(const uint8_t *callbackData,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoDecodeHapticCallbackData(const uint8_t *callbackData,
                                                                         size_t callbackDataLength,
-                                                                        MacForceNowGeronimoHapticHandler handler,
+                                                                        OpenNOWGeronimoHapticHandler handler,
                                                                         void *context) {
     if (callbackData == nullptr || callbackDataLength < 0x16 || handler == nullptr) { return -1; }
     const uint16_t byteCount = std::min<uint16_t>(loadUnaligned<uint16_t>(callbackData, 0x14), 32);
     if (callbackDataLength < 0x16 + byteCount) { return -2; }
-    MacForceNowNativeNVSTGeronimoSession session;
+    OpenNOWNativeNVSTGeronimoSession session;
     session.hapticHandler = handler;
     session.hapticContext = context;
     emitHapticRecords(&session, callbackData);
@@ -2577,12 +2577,12 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDecodeHapticCallbackData(const u
     return subtype == 1 ? byteCount / 6 : (subtype == 2 ? byteCount / 8 : 0);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoUpdateGamepadTopology(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoUpdateGamepadTopology(void *sessionPointer,
                                                                      uint8_t connectedPlayerBitmap,
                                                                      uint8_t hapticPlayerBitmap,
                                                                      char *errorBuffer,
                                                                      size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.handleGamepadChanged == nullptr || session->functions.controlFeatures == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for gamepad topology.");
         return -1;
@@ -2620,11 +2620,11 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoUpdateGamepadTopology(void *sess
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetVideoSurface(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVideoSurface(void *sessionPointer,
                                                               void *nativeHandle,
                                                               char *errorBuffer,
                                                               size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->libraryHandle == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for video surface binding.");
         return -1;
@@ -2654,11 +2654,11 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetVideoSurface(void *sessionPoi
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetMicrophoneEnabled(void *sessionPointer,
                                                                     int32_t enabled,
                                                                     char *errorBuffer,
                                                                     size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for microphone control.");
         return -1;
@@ -2693,8 +2693,8 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetMicrophoneEnabled(void *sessi
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetMicrophoneVolume(void *sessionPointer, double volume) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetMicrophoneVolume(void *sessionPointer, double volume) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->microphoneRoute == nullptr || !std::isfinite(volume)) { return -1; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
     const float boundedVolume = static_cast<float>(std::clamp(volume, 0.0, 1.0));
@@ -2703,8 +2703,8 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetMicrophoneVolume(void *sessio
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled(void *sessionPointer, int32_t enabled) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetVoiceActivityEnabled(void *sessionPointer, int32_t enabled) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->microphoneRoute == nullptr) { return -1; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
     session->voiceActivityEnabled = enabled != 0;
@@ -2714,17 +2714,17 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetVoiceActivityEnabled(void *se
     return 0;
 }
 
-extern "C" size_t MacForceNowNativeNVSTGeronimoTestVoiceActivityStateSize() {
+extern "C" size_t OpenNOWNativeNVSTGeronimoTestVoiceActivityStateSize() {
     return sizeof(AdaptiveVoiceActivityState);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoTestResetVoiceActivityState(void *stateBytes, size_t stateByteCount) {
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestResetVoiceActivityState(void *stateBytes, size_t stateByteCount) {
     if (stateBytes == nullptr || stateByteCount != sizeof(AdaptiveVoiceActivityState) || reinterpret_cast<uintptr_t>(stateBytes) % alignof(AdaptiveVoiceActivityState) != 0) { return -1; }
     new (stateBytes) AdaptiveVoiceActivityState();
     return 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoTestProcessMicrophonePCM(int16_t *samples,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestProcessMicrophonePCM(int16_t *samples,
                                                                         size_t sampleCount,
                                                                         double volume,
                                                                         int32_t vadEnabled,
@@ -2736,7 +2736,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoTestProcessMicrophonePCM(int16_t
     return processMicrophonePCM(samples, samples, sampleCount, static_cast<float>(volume), vadEnabled != 0, state) ? 0 : -2;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(uint32_t sampleRate,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestMicrophoneFrameSupported(uint32_t sampleRate,
                                                                             uint32_t bitsPerSample,
                                                                             uint32_t channels,
                                                                             uint32_t format,
@@ -2752,7 +2752,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoTestMicrophoneFrameSupported(uin
     return isSupportedMicrophoneFrame(frame) ? 1 : 0;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoTestProcessMicrophoneFrame(void *frameBytes,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTestProcessMicrophoneFrame(void *frameBytes,
                                                                           size_t frameByteCount,
                                                                           double volume,
                                                                           int32_t vadEnabled,
@@ -2769,15 +2769,15 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoTestProcessMicrophoneFrame(void 
     return processMicrophonePCM(samples, samples, MicrophoneSampleCount, static_cast<float>(volume), vadEnabled != 0, state) ? 1 : -2;
 }
 
-extern "C" void *MacForceNowNativeNVSTGeronimoTestRegisterMicrophoneRoute(void *client) {
+extern "C" void *OpenNOWNativeNVSTGeronimoTestRegisterMicrophoneRoute(void *client) {
     return registerMicrophoneRoute(client);
 }
 
-extern "C" void MacForceNowNativeNVSTGeronimoTestUnregisterMicrophoneRoute(void *route) {
+extern "C" void OpenNOWNativeNVSTGeronimoTestUnregisterMicrophoneRoute(void *route) {
     unregisterMicrophoneRoute(static_cast<MicrophoneRouteSlot *>(route));
 }
 
-extern "C" size_t MacForceNowNativeNVSTGeronimoTestMicrophoneRouteCount() {
+extern "C" size_t OpenNOWNativeNVSTGeronimoTestMicrophoneRouteCount() {
     size_t count = 0;
     for (MicrophoneRouteSlot &slot : gMicrophoneRoutes) {
         if (slot.client.load(std::memory_order_acquire) != nullptr) { ++count; }
@@ -2800,7 +2800,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
                               bool shouldResume,
                               char *errorBuffer,
                               size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->libraryHandle == nullptr || session->gridApp == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized.");
         return -1;
@@ -2849,7 +2849,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     Nsk::ApplicationStreamStartParameters application;
     memset(application.reserved0, 0, sizeof(application.reserved0));
     application.gameLanguage = stringOrEmpty(gameLanguage).empty() ? "en_US" : stringOrEmpty(gameLanguage);
-    application.clientAppVersion = stringOrEmpty(clientAppVersion).empty() ? "MacForceNow" : stringOrEmpty(clientAppVersion);
+    application.clientAppVersion = stringOrEmpty(clientAppVersion).empty() ? "OpenNOW" : stringOrEmpty(clientAppVersion);
     application.clientLocale = stringOrEmpty(clientLocale).empty() ? application.gameLanguage : stringOrEmpty(clientLocale);
 
     Nsk::StreamStartParameters startParameters;
@@ -2945,7 +2945,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     session->initServerAddress = endpoint.host;
     session->startServerAddress = endpoint.host;
     session->appIdString = std::to_string(appId);
-    session->clientAppVersion = stringOrEmpty(clientAppVersion).empty() ? "MacForceNow" : stringOrEmpty(clientAppVersion);
+    session->clientAppVersion = stringOrEmpty(clientAppVersion).empty() ? "OpenNOW" : stringOrEmpty(clientAppVersion);
     session->clientLocale = stringOrEmpty(clientLocale).empty() ? "en_US" : stringOrEmpty(clientLocale);
     session->keyboardLayout = jsonStringAtPath(geronimo, "keyboardLayout");
     if (session->keyboardLayout.empty()) { session->keyboardLayout = "en_US"; }
@@ -3049,7 +3049,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
             for (auto &setting : pending->streamSettings) {
                 const uint32_t negotiatedMaxBitrateKbps = loadUnaligned<uint32_t>(setting.bytes, NVbStreamSettingsMaxBitrateOffset);
                 if (negotiatedMaxBitrateKbps != static_cast<uint32_t>(requestedMaxBitrateKbps)) {
-                    NSLog(@"[MacForceNow] NVST bitrate: restoring requested cap %d kbps over %u kbps", requestedMaxBitrateKbps, negotiatedMaxBitrateKbps);
+                    NSLog(@"[OpenNOW] NVST bitrate: restoring requested cap %d kbps over %u kbps", requestedMaxBitrateKbps, negotiatedMaxBitrateKbps);
                     storeUnaligned<uint32_t>(setting.bytes, NVbStreamSettingsMaxBitrateOffset, static_cast<uint32_t>(requestedMaxBitrateKbps));
                 }
             }
@@ -3156,7 +3156,7 @@ int32_t startOrResumeGeronimo(void *sessionPointer,
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoStart(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoStart(void *sessionPointer,
                                                      const char *rawSessionJSON,
                                                      const char *streamingProfileJSON,
                                                      const char *cloudSessionJSON,
@@ -3187,17 +3187,17 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoStart(void *sessionPointer,
                                  errorBufferLength);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoConvertServerType(int32_t serverType) {
+extern "C" int32_t OpenNOWNativeNVSTGeronimoConvertServerType(int32_t serverType) {
     return convertedServerType(serverType);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoConvertAuthTokenType(const char *tokenType) {
+extern "C" int32_t OpenNOWNativeNVSTGeronimoConvertAuthTokenType(const char *tokenType) {
     if (tokenType == nullptr) { return -1; }
     uint32_t authType = 0;
     return authTypeForTokenType(tokenType, authType) ? static_cast<int32_t>(authType) : -1;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoInspectMetadata(const char *geronimoJSON,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoInspectMetadata(const char *geronimoJSON,
                                                                uint32_t index,
                                                                char *keyBuffer,
                                                                size_t keyBufferLength,
@@ -3238,7 +3238,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoInspectMetadata(const char *gero
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoResume(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoResume(void *sessionPointer,
                                                       const char *rawSessionJSON,
                                                       const char *streamingProfileJSON,
                                                       const char *cloudSessionJSON,
@@ -3269,13 +3269,13 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoResume(void *sessionPointer,
                                  errorBufferLength);
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoPump(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoPump(void *sessionPointer,
                                                     int32_t waitTimeoutMilliseconds,
                                                     int32_t processSDLEvents,
                                                     char *errorBuffer,
                                                     size_t errorBufferLength) {
     @autoreleasepool {
-        auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+        auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
         if (session == nullptr || session->gridApp == nullptr || session->functions.gridAppProcessEvents == nullptr) {
             setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for event pumping.");
             return -1;
@@ -3348,8 +3348,8 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoPump(void *sessionPointer,
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoPause(void *sessionPointer, char *errorBuffer, size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+extern "C" int32_t OpenNOWNativeNVSTGeronimoPause(void *sessionPointer, char *errorBuffer, size_t errorBufferLength) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.pause == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for pause.");
         return -1;
@@ -3387,12 +3387,12 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoPause(void *sessionPointer, char
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSendInput(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSendInput(void *sessionPointer,
                                                          const uint8_t *inputEventBytes,
                                                          size_t inputEventByteCount,
                                                          char *errorBuffer,
                                                          size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.sendInput == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for input.");
         return -1;
@@ -3435,13 +3435,13 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSendInput(void *sessionPointer,
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSendAbsoluteMouse(void *sessionPointer,
                                                                   int32_t windowX,
                                                                   int32_t windowY,
                                                                   uint64_t timestampNanoseconds,
                                                                   char *errorBuffer,
                                                                   size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.sendInput == nullptr ||
         session->functions.windowConvertPointToVideoFrame == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for absolute mouse input.");
@@ -3487,10 +3487,10 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSendAbsoluteMouse(void *sessionP
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoTogglePerformanceOverlay(void *sessionPointer,
                                                                          char *errorBuffer,
                                                                          size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.togglePerfIndicator == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for the performance overlay.");
         return -1;
@@ -3512,11 +3512,11 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoTogglePerformanceOverlay(void *s
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetStreamingMaxBitrate(void *sessionPointer,
                                                                        uint32_t bitrateKbps,
                                                                        char *errorBuffer,
                                                                        size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is unavailable for bitrate control.");
         return -1;
@@ -3533,7 +3533,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetStreamingMaxBitrate(void *ses
     return session->functions.ioInterfaceGetMaxBitrateKbps(session->ioInterface) == bitrateKbps ? 0 : -4;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetDynamicStreamingMode(void *sessionPointer,
                                                                         uint32_t mode,
                                                                         char *errorBuffer,
                                                                         size_t errorBufferLength) {
@@ -3541,7 +3541,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode(void *se
         setError(errorBuffer, errorBufferLength, "Native Geronimo dynamic streaming mode is invalid.");
         return -1;
     }
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) { return -2; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
     {
@@ -3555,11 +3555,11 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetDynamicStreamingMode(void *se
     return session->functions.ioInterfaceGetDynamicStreamingMode(session->ioInterface) == mode ? 0 : -5;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSetL4SState(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSetL4SState(void *sessionPointer,
                                                             int32_t enabled,
                                                             char *errorBuffer,
                                                             size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->ioInterface == nullptr) { return -1; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
     {
@@ -3574,17 +3574,17 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSetL4SState(void *sessionPointer
     return state == static_cast<uint32_t>(enabled != 0) ? 0 : -4;
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoCopyPerformanceStats(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoCopyPerformanceStats(void *sessionPointer,
                                                                     void *performanceStatsBytes,
                                                                     size_t performanceStatsByteCount,
                                                                     char *serverLocationBuffer,
                                                                     size_t serverLocationBufferLength,
                                                                     char *errorBuffer,
                                                                     size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
-    if (performanceStatsBytes == nullptr || performanceStatsByteCount != sizeof(MacForceNowNativeNVSTPerformanceStats)) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
+    if (performanceStatsBytes == nullptr || performanceStatsByteCount != sizeof(OpenNOWNativeNVSTPerformanceStats)) {
         if (errorBuffer != nullptr && errorBufferLength > 0) {
-            snprintf(errorBuffer, errorBufferLength, "Native Geronimo performance stats require %zu output bytes.", sizeof(MacForceNowNativeNVSTPerformanceStats));
+            snprintf(errorBuffer, errorBufferLength, "Native Geronimo performance stats require %zu output bytes.", sizeof(OpenNOWNativeNVSTPerformanceStats));
         }
         return -1;
     }
@@ -3617,7 +3617,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoCopyPerformanceStats(void *sessi
         std::string zone;
         session->functions.statsInterfaceGetStats(statsInterface, rawStats, gpuType, rendererType, clientAppVersion, locale, region, zone);
 
-        MacForceNowNativeNVSTPerformanceStats performanceStats;
+        OpenNOWNativeNVSTPerformanceStats performanceStats;
         const uint32_t bitrateKilobitsPerSecond = loadUnaligned<uint32_t>(rawStats.bytes, 0xa0);
         const double gameFramesPerSecond = loadUnaligned<double>(rawStats.bytes, 0x410);
         const bool hasLiveStats = bitrateKilobitsPerSecond > 0 || (std::isfinite(gameFramesPerSecond) && gameFramesPerSecond > 0);
@@ -3652,12 +3652,12 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoCopyPerformanceStats(void *sessi
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoSendText(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoSendText(void *sessionPointer,
                                                         const uint8_t *utf8Bytes,
                                                         size_t utf8ByteCount,
                                                         char *errorBuffer,
                                                         size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr || session->gridApp == nullptr || session->functions.sendInput == nullptr) {
         setError(errorBuffer, errorBufferLength, "Native Geronimo session is not initialized for text input.");
         return -1;
@@ -3687,12 +3687,12 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoSendText(void *sessionPointer,
     }
 }
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoStopWithResult(void *sessionPointer,
+extern "C" int32_t OpenNOWNativeNVSTGeronimoStopWithResult(void *sessionPointer,
                                                               const char *reason,
                                                               int32_t code,
                                                               char *errorBuffer,
                                                               size_t errorBufferLength) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return 0; }
     std::lock_guard<std::recursive_mutex> operationLock(session->operationMutex);
     if (session->microphoneRoute != nullptr) {
@@ -3716,7 +3716,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoStopWithResult(void *sessionPoin
     }
     try {
         if (session->gridApp == nullptr || session->functions.stop == nullptr ||
-            !session->functions.stop(session->gridApp, reason == nullptr ? "MacForce Now native NVST stop" : reason, code)) {
+            !session->functions.stop(session->gridApp, reason == nullptr ? "OpenNOW native NVST stop" : reason, code)) {
             setSessionFailure(session, "GridApp::stop rejected the native stop request.");
             setError(errorBuffer, errorBufferLength, "GridApp::stop rejected the native stop request.");
             emitEvent(session, 70, 0, 0, 0, -2);
@@ -3731,33 +3731,33 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoStopWithResult(void *sessionPoin
     }
 }
 
-extern "C" void MacForceNowNativeNVSTGeronimoStop(void *sessionPointer) {
-    MacForceNowNativeNVSTGeronimoStopWithResult(sessionPointer, "MacForce Now native NVST stop", 0, nullptr, 0);
+extern "C" void OpenNOWNativeNVSTGeronimoStop(void *sessionPointer) {
+    OpenNOWNativeNVSTGeronimoStopWithResult(sessionPointer, "OpenNOW native NVST stop", 0, nullptr, 0);
 }
 
 // Enables decoded-frame capture for pillarbox blur fill. The interpose is installed
 // once the decoder starts, but only records frames while this is on, so the caller
 // keeps it off unless a zoom/mirror fill mode is selected.
-extern "C" void MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(bool active) {
+extern "C" void OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(bool active) {
     gFrameCaptureActive.store(active, std::memory_order_release);
 }
 
 // Diagnostics: -1 when the capture hook failed to install (import slot not found),
 // otherwise the number of decoded frames captured so far. Lets the Swift side report
 // tap health through the app's own logger instead of NSLog.
-extern "C" int64_t MacForceNowNativeNVSTGeronimoFrameCaptureCount(void) {
+extern "C" int64_t OpenNOWNativeNVSTGeronimoFrameCaptureCount(void) {
     if (!gFrameCaptureHookInstalled.load(std::memory_order_acquire)) { return -1; }
     return static_cast<int64_t>(gFrameCaptureCount.load(std::memory_order_relaxed));
 }
 
 // Install progress code (see gFrameCaptureInstallStatus). Lets Swift report exactly
 // where the hook install stopped.
-extern "C" int32_t MacForceNowNativeNVSTGeronimoFrameCaptureInstallStatus(void) {
+extern "C" int32_t OpenNOWNativeNVSTGeronimoFrameCaptureInstallStatus(void) {
     return static_cast<int32_t>(gFrameCaptureInstallStatus.load(std::memory_order_acquire));
 }
 
 // Latest captured frame width/height packed as (width << 32 | height), 0 if none.
-extern "C" uint64_t MacForceNowNativeNVSTGeronimoLatestVideoFrameSize(void) {
+extern "C" uint64_t OpenNOWNativeNVSTGeronimoLatestVideoFrameSize(void) {
     std::lock_guard<std::mutex> lock(gLatestFrameMutex);
     if (gLatestCapturedFrame == nullptr) { return 0; }
     const uint64_t w = CVPixelBufferGetWidth(gLatestCapturedFrame);
@@ -3768,7 +3768,7 @@ extern "C" uint64_t MacForceNowNativeNVSTGeronimoLatestVideoFrameSize(void) {
 // Returns the most recently captured decoded frame, retained (+1). The caller owns
 // the reference and must CFRelease/CVPixelBufferRelease it. NULL when nothing has
 // been captured yet or capture is inactive.
-extern "C" CVPixelBufferRef MacForceNowNativeNVSTGeronimoCopyLatestVideoFrame(void) {
+extern "C" CVPixelBufferRef OpenNOWNativeNVSTGeronimoCopyLatestVideoFrame(void) {
     std::lock_guard<std::mutex> lock(gLatestFrameMutex);
     if (gLatestCapturedFrame == nullptr) { return nullptr; }
     return CVPixelBufferRetain(gLatestCapturedFrame);
@@ -3783,20 +3783,20 @@ constexpr int32_t NativeDestroyOutcomeAbandonedCallbacks = 1;
 constexpr int32_t NativeDestroyOutcomeAbandonedMedia = 2;
 constexpr int32_t NativeDestroyOutcomeAbandonedMicrophone = 3;
 
-extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionPointer) {
-    auto *session = static_cast<MacForceNowNativeNVSTGeronimoSession *>(sessionPointer);
+extern "C" int32_t OpenNOWNativeNVSTGeronimoDestroyWithResult(void *sessionPointer) {
+    auto *session = static_cast<OpenNOWNativeNVSTGeronimoSession *>(sessionPointer);
     if (session == nullptr) { return NativeDestroyOutcomeDestroyed; }
     std::unique_lock<std::recursive_mutex> operationLock(session->operationMutex);
     int32_t outcome = NativeDestroyOutcomeDestroyed;
     if (session->hapticFeatureEnabled && session->functions.controlFeatures != nullptr) {
         try { session->functions.controlFeatures(session->gridApp, NVbFeatureGamepadHaptics, 0); }
-        catch (...) { fprintf(stderr, "MacForce Now failed to disable native haptics during teardown.\n"); }
+        catch (...) { fprintf(stderr, "OpenNOW failed to disable native haptics during teardown.\n"); }
     }
     session->hapticFeatureEnabled = false;
     for (uint8_t sourceIndex = 0; sourceIndex < 4; ++sourceIndex) {
         if (session->registeredGamepads[sourceIndex] && session->functions.handleGamepadChanged != nullptr) {
             try { session->functions.handleGamepadChanged(session->gridApp, sourceIndex, 0xffff, 0xffff, false); }
-            catch (...) { fprintf(stderr, "MacForce Now failed to disconnect a native gamepad during teardown.\n"); }
+            catch (...) { fprintf(stderr, "OpenNOW failed to disconnect a native gamepad during teardown.\n"); }
         }
         session->registeredGamepads[sourceIndex] = false;
     }
@@ -3818,7 +3818,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
     }
     if (shouldForceStop) {
         try {
-            if (!session->functions.stop(session->gridApp, "MacForce Now native NVST forced destroy", 0)) {
+            if (!session->functions.stop(session->gridApp, "OpenNOW native NVST forced destroy", 0)) {
                 std::lock_guard<std::mutex> stateLock(session->stateMutex);
                 session->state = NativeSessionState::failed;
                 session->lastError = "GridApp::stop rejected the forced native stop request.";
@@ -3827,7 +3827,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
             std::lock_guard<std::mutex> stateLock(session->stateMutex);
             session->state = NativeSessionState::failed;
             session->lastError = "GridApp::stop raised during forced native destruction.";
-            fprintf(stderr, "MacForce Now forced native stop raised an unexpected C++ exception.\n");
+            fprintf(stderr, "OpenNOW forced native stop raised an unexpected C++ exception.\n");
         }
     }
     if (session->gridAppVTable != nullptr && !detachGridAppCallbacks(session)) {
@@ -3850,7 +3850,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
             outcome = NativeDestroyOutcomeAbandonedMedia;
         }
     } catch (...) {
-        fprintf(stderr, "MacForce Now native media destruction raised an unexpected C++ exception.\n");
+        fprintf(stderr, "OpenNOW native media destruction raised an unexpected C++ exception.\n");
     }
     if (gFrameCaptureHookInstalled.load(std::memory_order_acquire)) { releaseFrameCaptureHook(); }
     if (session->microphoneRoute != nullptr) {
@@ -3863,7 +3863,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
         // Native work is still touching this session. Release nothing else: GridApp's
         // destructor, the platform shutdown and dlclose all join Geronimo threads, and
         // joining a wedged thread here is exactly what used to hang the app on quit.
-        fprintf(stderr, "MacForce Now abandoned a native Geronimo session during teardown (outcome %d).\n", outcome);
+        fprintf(stderr, "OpenNOW abandoned a native Geronimo session during teardown (outcome %d).\n", outcome);
         operationLock.unlock();
         return outcome;
     }
@@ -3876,7 +3876,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
             try {
                 session->functions.gridAppDtor(session->gridApp);
             } catch (...) {
-                fprintf(stderr, "MacForce Now GridApp destruction raised an unexpected C++ exception.\n");
+                fprintf(stderr, "OpenNOW GridApp destruction raised an unexpected C++ exception.\n");
             }
         }
         session->initialized = false;
@@ -3887,7 +3887,7 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
         try {
             releasePlatform(session->platformShutdown);
         } catch (...) {
-            fprintf(stderr, "MacForce Now Geronimo platform shutdown raised an unexpected C++ exception.\n");
+            fprintf(stderr, "OpenNOW Geronimo platform shutdown raised an unexpected C++ exception.\n");
         }
         session->platformStarted = false;
     }
@@ -3915,6 +3915,6 @@ extern "C" int32_t MacForceNowNativeNVSTGeronimoDestroyWithResult(void *sessionP
     return outcome;
 }
 
-extern "C" void MacForceNowNativeNVSTGeronimoDestroy(void *sessionPointer) {
-    MacForceNowNativeNVSTGeronimoDestroyWithResult(sessionPointer);
+extern "C" void OpenNOWNativeNVSTGeronimoDestroy(void *sessionPointer) {
+    OpenNOWNativeNVSTGeronimoDestroyWithResult(sessionPointer);
 }

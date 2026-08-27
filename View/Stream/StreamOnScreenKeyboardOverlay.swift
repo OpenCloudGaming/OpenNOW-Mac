@@ -1,6 +1,6 @@
 //
 //  StreamOnScreenKeyboardOverlay.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Combine

@@ -1,5 +1,5 @@
 //  LoginFormView.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -26,7 +26,7 @@ struct LoginFormView: View {
                     SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: { isShowingSignIn = false })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background {
-                            MacForceNowDesign.Surface.scrim
+                            OpenNOWDesign.Surface.scrim
                                 .contentShape(Rectangle())
                                 .onTapGesture { isShowingSignIn = false }
                         }
@@ -42,7 +42,7 @@ struct LoginFormView: View {
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacForceNowDesign.Surface.scrim)
+                    .background(OpenNOWDesign.Surface.scrim)
                     .transition(.opacity)
                 }
             }
@@ -79,7 +79,7 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, height: metrics.height)
 
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(width: 8)
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -92,23 +92,23 @@ struct LoginFormView: View {
             VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
                 .scaledToFit()
                 .frame(width: logoWidth, height: logoHeight)
-                .padding(.bottom, MacForceNowDesign.Spacing.large)
+                .padding(.bottom, OpenNOWDesign.Spacing.large)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("MACFORCE NOW")
+                Text("OPENNOW")
                     .font(.nvidiaSans(size: 11, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.4)
-                    .padding(.bottom, MacForceNowDesign.Spacing.xxSmall)
+                    .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 
                 Text("Get In. Game On.")
                     .font(.nvidiaSans(size: headlineSize, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.Text.primary)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
-                    .padding(.bottom, MacForceNowDesign.Spacing.medium)
+                    .padding(.bottom, OpenNOWDesign.Spacing.medium)
 
                 if showsBullets {
-                    VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.small) {
+                    VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small) {
                         VendorContentString(text: "GeForce RTX performance on any device")
                         VendorContentString(text: "Connect to top PC game stores")
                         VendorContentString(text: "Stream thousands of supported titles")
@@ -116,7 +116,7 @@ struct LoginFormView: View {
                     }
                 }
             }
-            .padding(.bottom, MacForceNowDesign.Spacing.xxxLarge)
+            .padding(.bottom, OpenNOWDesign.Spacing.xxxLarge)
 
             Button(action: openSignIn) {
                 Text("GET IN")
@@ -126,7 +126,7 @@ struct LoginFormView: View {
             .frame(maxWidth: 260)
             .accessibilityHint("Opens the GeForce NOW sign-in window")
         }
-        .padding(.vertical, MacForceNowDesign.Spacing.medium)
+        .padding(.vertical, OpenNOWDesign.Spacing.medium)
         .padding(.leading, metrics.contentLeft)
         .padding(.trailing, metrics.contentRight)
         .frame(width: metrics.panelWidth, alignment: .leading)
@@ -190,34 +190,34 @@ private struct ProviderCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: MacForceNowDesign.Spacing.small) {
+            HStack(spacing: OpenNOWDesign.Spacing.small) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider.title)
                         .font(.nvidiaSans(size: 14, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                     if !provider.loginProviderCode.isEmpty {
                         Text(provider.loginProviderCode)
                             .font(.nvidiaSans(size: 11, weight: .regular))
-                            .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
                             .lineLimit(1)
                     }
                 }
 
-                Spacer(minLength: MacForceNowDesign.Spacing.small)
+                Spacer(minLength: OpenNOWDesign.Spacing.small)
 
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.nvidiaSans(size: 12, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                 }
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.controlRow)
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
             .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
             .overlay {
                 Rectangle()
-                    .stroke(isSelected ? MacForceNowDesign.accent : (isHovering ? MacForceNowDesign.Stroke.strong : MacForceNowDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
             }
             .contentShape(Rectangle())
         }
@@ -231,14 +231,14 @@ private struct VendorContentString: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: MacForceNowDesign.Spacing.medium) {
+        HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium) {
             Circle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(width: 8, height: 8)
-                .padding(.top, MacForceNowDesign.Spacing.xxSmall)
+                .padding(.top, OpenNOWDesign.Spacing.xxSmall)
             Text(text)
                 .font(.nvidiaSans(size: 14, weight: .regular))
-                .foregroundStyle(MacForceNowDesign.Text.secondary)
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -251,26 +251,26 @@ private struct SignInModal: View {
     let onClose: () -> Void
 
     private var panelWidth: CGFloat {
-        max(min(520, availableSize.width - MacForceNowDesign.Spacing.pageHorizontal * 2), 280)
+        max(min(520, availableSize.width - OpenNOWDesign.Spacing.pageHorizontal * 2), 280)
     }
 
     private var panelMaxHeight: CGFloat {
-        max(availableSize.height - MacForceNowDesign.Spacing.pageHorizontal * 2, 320)
+        max(availableSize.height - OpenNOWDesign.Spacing.pageHorizontal * 2, 320)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
                 HStack(alignment: .top) {
                     Text("Sign in to GeForce NOW")
                         .font(.nvidiaSans(size: 20, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.Text.primary)
-                    Spacer(minLength: MacForceNowDesign.Spacing.small)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                    Spacer(minLength: OpenNOWDesign.Spacing.small)
                     ModalCloseButton(action: onClose)
                 }
 
@@ -279,25 +279,25 @@ private struct SignInModal: View {
                     ScrollView(.vertical) { formContent }
                 }
             }
-            .padding(MacForceNowDesign.Spacing.xLarge)
+            .padding(OpenNOWDesign.Spacing.xLarge)
         }
         .frame(width: panelWidth)
         .frame(maxHeight: panelMaxHeight)
-        .background(MacForceNowDesign.Surface.panel)
-        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+        .background(OpenNOWDesign.Surface.panel)
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: onClose)
     }
 
     private var formContent: some View {
-        VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xSmall) {
+        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
                 Text("SERVICE PROVIDER")
                     .font(.nvidiaSans(size: 11, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .tracking(0.8)
 
-                VStack(spacing: MacForceNowDesign.Spacing.xSmall) {
+                VStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                     ForEach(viewModel.providers) { provider in
                         ProviderCard(
                             provider: provider,
@@ -310,7 +310,7 @@ private struct SignInModal: View {
                 if viewModel.isLoadingProviders {
                     Text("Loading provider list...")
                         .font(.nvidiaSans(size: 12, weight: .regular))
-                        .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
 
@@ -331,7 +331,7 @@ private struct SignInModal: View {
             } label: {
                 Text("BROWSER SIGN-IN")
                     .font(.nvidiaSans(size: 12, weight: .bold))
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(0.8)
             }
             .buttonStyle(.plain)
@@ -339,19 +339,19 @@ private struct SignInModal: View {
             .accessibilityHint("Opens NVIDIA browser authentication")
 
             if !viewModel.deviceCodeUserCode.isEmpty {
-                VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.xSmall) {
+                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
                     Text("ENTER THIS CODE IN YOUR BROWSER")
                         .font(.nvidiaSans(size: 11, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.Text.tertiary)
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .tracking(0.8)
                     Text(viewModel.deviceCodeUserCode)
                         .font(.nvidiaSans(size: 22, weight: .bold))
                         .monospacedDigit()
                         .tracking(1.6)
-                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(viewModel.deviceCodeVerificationURI)
                         .font(.nvidiaSans(size: 12, weight: .regular))
-                        .foregroundStyle(MacForceNowDesign.Text.secondary)
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .lineLimit(2)
                 }
             }
@@ -359,7 +359,7 @@ private struct SignInModal: View {
             if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                 Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
                     .font(.nvidiaSans(size: 13, weight: .regular))
-                    .foregroundStyle(viewModel.validationMessage.isEmpty ? MacForceNowDesign.accent : .orange)
+                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accent : .orange)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -376,7 +376,7 @@ private struct ModalCloseButton: View {
         Button(action: action) {
             Image(systemName: "xmark")
                 .font(.nvidiaSans(size: 11, weight: .bold))
-                .foregroundStyle(isHovering ? MacForceNowDesign.Text.primary : MacForceNowDesign.Text.secondary)
+                .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                 .frame(width: 28, height: 28)
                 .background(isHovering ? Color.white.opacity(0.08) : Color.clear)
                 .contentShape(Rectangle())
@@ -394,52 +394,52 @@ private struct TermsOfUseDialog: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
-                .fill(MacForceNowDesign.accent)
+                .fill(OpenNOWDesign.accent)
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: MacForceNowDesign.Spacing.medium) {
-                HStack(spacing: MacForceNowDesign.Spacing.small) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+                HStack(spacing: OpenNOWDesign.Spacing.small) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.nvidiaSans(size: 20, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                     Text("GeForce NOW Terms of Use")
                         .font(.nvidiaSans(size: 20, weight: .bold))
-                        .foregroundStyle(MacForceNowDesign.Text.primary)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
 
-                Text("MacForce Now is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
+                Text("OpenNOW is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
                     .font(.nvidiaSans(size: 13, weight: .regular))
-                    .foregroundStyle(MacForceNowDesign.Text.secondary)
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
-                    HStack(spacing: MacForceNowDesign.Spacing.xSmall) {
+                    HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                         Image(systemName: "link")
                             .font(.nvidiaSans(size: 11, weight: .bold))
-                            .foregroundStyle(MacForceNowDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accent)
                         Link("Read the full GeForce NOW Terms of Use", destination: touURL)
                             .font(.nvidiaSans(size: 13, weight: .bold))
-                            .foregroundStyle(MacForceNowDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accent)
                     }
                 }
             }
-            .padding(MacForceNowDesign.Spacing.card)
+            .padding(OpenNOWDesign.Spacing.card)
 
             HStack {
                 Button("Decline", action: viewModel.declineTermsOfUse)
                     .buttonStyle(VendorTermsDeclineButtonStyle())
-                Spacer(minLength: MacForceNowDesign.Spacing.small)
+                Spacer(minLength: OpenNOWDesign.Spacing.small)
                 Button("Accept & Continue", action: onAccept)
                     .buttonStyle(VendorGetInButtonStyle())
             }
-            .padding(.horizontal, MacForceNowDesign.Spacing.card)
-            .padding(.bottom, MacForceNowDesign.Spacing.card)
+            .padding(.horizontal, OpenNOWDesign.Spacing.card)
+            .padding(.bottom, OpenNOWDesign.Spacing.card)
         }
         .frame(width: 460)
-        .background(MacForceNowDesign.Surface.panel)
-        .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+        .background(OpenNOWDesign.Surface.panel)
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: viewModel.declineTermsOfUse)
     }
@@ -450,9 +450,9 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
         configuration.label
             .font(.nvidiaSans(size: 13, weight: .bold))
             .foregroundStyle(.white)
-            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
+            .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 36)
             .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }

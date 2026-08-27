@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 // Cache keys are hashes of a serialized dictionary. Swift dictionary iteration order is
 // randomized per instance, so a key built without sorted serialization differs between

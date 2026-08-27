@@ -1,5 +1,5 @@
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test func nativeNVSTGovernorLeavesCongestionAdaptationToBifrost() {
     var governor = NativeNVSTNetworkGovernor(maximumBitrateKbps: 50_000, l4sEnabled: true)

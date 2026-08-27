@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private final class MutableClock: @unchecked Sendable {
     private let lock = NSLock()
@@ -218,11 +218,11 @@ private final class MutableClock: @unchecked Sendable {
         await networkTestIsolationLock.withLock {
         let defaults = UserDefaults.standard
         let keys = [
-            "MacForceNow.Stream.SessionProxyEnabled",
-            "MacForceNow.Stream.SessionProxyScheme",
-            "MacForceNow.Stream.SessionProxyHost",
-            "MacForceNow.Stream.SessionProxyPort",
-            "MacForceNow.Stream.SessionProxyUsername",
+            "OpenNOW.Stream.SessionProxyEnabled",
+            "OpenNOW.Stream.SessionProxyScheme",
+            "OpenNOW.Stream.SessionProxyHost",
+            "OpenNOW.Stream.SessionProxyPort",
+            "OpenNOW.Stream.SessionProxyUsername",
         ]
         let existing = keys.map { defaults.object(forKey: $0) }
         let existingPassword = OPNSessionProxyStore.loadPassword()

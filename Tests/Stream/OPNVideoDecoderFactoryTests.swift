@@ -1,6 +1,6 @@
 import Testing
 @preconcurrency import WebRTC
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Suite("Video decoder factory")
 struct OPNVideoDecoderFactoryTests {

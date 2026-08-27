@@ -1,6 +1,6 @@
 //
 //  LoginMarketingView.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //

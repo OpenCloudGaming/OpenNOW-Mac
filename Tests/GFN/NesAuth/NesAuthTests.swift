@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private struct MockNesAuthTransport: NesAuthHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]

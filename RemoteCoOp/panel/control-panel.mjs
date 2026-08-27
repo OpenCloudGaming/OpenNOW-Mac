@@ -15,19 +15,19 @@ const repoRoot = dirname(remoteCoOpRoot);
 const stateRoot = join(panelRoot, "state");
 const runServersScript = join(remoteCoOpRoot, "run-servers.mjs");
 const productionHost = "198.12.95.48";
-const bindHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_BIND_HOST", "127.0.0.1");
-const port = integerEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_PORT", 32187);
-const sessionTimeoutMs = integerEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_SESSION_TIMEOUT_SECONDS", 3_600) * 1_000;
+const bindHost = stringEnv("OPENNOW_REMOTE_COOP_PANEL_BIND_HOST", "127.0.0.1");
+const port = integerEnv("OPENNOW_REMOTE_COOP_PANEL_PORT", 32187);
+const sessionTimeoutMs = integerEnv("OPENNOW_REMOTE_COOP_PANEL_SESSION_TIMEOUT_SECONDS", 3_600) * 1_000;
 const loginWindowMs = 5 * 60_000;
 const maxLoginFailures = 8;
-const childAutostart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_AUTOSTART", true);
-const childAutoRestart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_CHILD_AUTORESTART", false);
-const automaticUpdates = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC", false);
-const updateIntervalMs = Math.max(60, integerEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_INTERVAL_SECONDS", 300)) * 1_000;
-const updateBranch = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_BRANCH", "");
-const updateValidationCommand = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_VALIDATE", "node RemoteCoOp/run-servers.mjs --dry-run");
-const updateAutoRestart = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_AUTO_RESTART", true);
-const updateRequireSignedCommits = booleanEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_UPDATE_REQUIRE_SIGNED", true);
+const childAutostart = booleanEnv("OPENNOW_REMOTE_COOP_AUTOSTART", true);
+const childAutoRestart = booleanEnv("OPENNOW_REMOTE_COOP_CHILD_AUTORESTART", false);
+const automaticUpdates = booleanEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTOMATIC", false);
+const updateIntervalMs = Math.max(60, integerEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_INTERVAL_SECONDS", 300)) * 1_000;
+const updateBranch = stringEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_BRANCH", "");
+const updateValidationCommand = stringEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_VALIDATE", "node RemoteCoOp/run-servers.mjs --dry-run");
+const updateAutoRestart = booleanEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_AUTO_RESTART", true);
+const updateRequireSignedCommits = booleanEnv("OPENNOW_REMOTE_COOP_PANEL_UPDATE_REQUIRE_SIGNED", true);
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -45,7 +45,7 @@ const sessions = new Map();
 const loginFailures = new Map();
 const events = new Set();
 const logs = [];
-const maxLogs = integerEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_LOG_LINES", 1_000);
+const maxLogs = integerEnv("OPENNOW_REMOTE_COOP_PANEL_LOG_LINES", 1_000);
 let manager;
 let updaterRunning = false;
 let lastUpdateResult = readJSONState("last-update.json", null);
@@ -109,7 +109,7 @@ async function route(request, response) {
   }
   if (request.method === "POST" && url.pathname === "/admin/api/logout") {
     sessions.delete(session.id);
-    setCookie(response, "macforce-now_coop_panel", "", { maxAge: 0 });
+    setCookie(response, "opennow_coop_panel", "", { maxAge: 0 });
     sendJSON(response, 200, { ok: true });
     return;
   }
@@ -194,7 +194,7 @@ async function handleLogin(request, response) {
   loginFailures.delete(remote);
   if (username) loginFailures.delete(username);
   const session = createSession(username);
-  setCookie(response, "macforce-now_coop_panel", signSessionID(session.id), { maxAge: Math.floor(sessionTimeoutMs / 1_000) });
+  setCookie(response, "opennow_coop_panel", signSessionID(session.id), { maxAge: Math.floor(sessionTimeoutMs / 1_000) });
   audit(username, "login");
   redirect(response, "/admin");
 }
@@ -344,7 +344,7 @@ function finiteNumber(value) {
 manager = new ChildManager();
 
 server.listen(port, bindHost, () => {
-  appendLog("panel", `MacForce Now Remote Co-Op panel listening on https://${bindHost}:${port}`);
+  appendLog("panel", `OpenNOW Remote Co-Op panel listening on https://${bindHost}:${port}`);
   appendLog("panel", `auth helper: ${authConfiguration().helperPath}`);
   if (childAutostart) manager.start("autostart").catch(error => appendLog("panel", `autostart failed: ${error.message}`));
   if (automaticUpdates) scheduleAutomaticUpdates();
@@ -401,19 +401,19 @@ function scheduleAutomaticUpdates() {
 }
 
 function childEnvironment() {
-  const publicHost = stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", productionHost);
+  const publicHost = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", productionHost);
   const env = {
     ...process.env,
-    MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST: publicHost,
-    MACFORCE_NOW_REMOTE_COOP_PORT: stringEnv("MACFORCE_NOW_REMOTE_COOP_PORT", "32188"),
-    MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET: stringEnv("MACFORCE_NOW_REMOTE_COOP_TURN_SHARED_SECRET", generatedTurnSecret),
-    MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET: stringEnv("MACFORCE_NOW_REMOTE_COOP_INVITE_SECRET", generatedInviteSecret)
+    OPENNOW_REMOTE_COOP_PUBLIC_HOST: publicHost,
+    OPENNOW_REMOTE_COOP_PORT: stringEnv("OPENNOW_REMOTE_COOP_PORT", "32188"),
+    OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", generatedTurnSecret),
+    OPENNOW_REMOTE_COOP_INVITE_SECRET: stringEnv("OPENNOW_REMOTE_COOP_INVITE_SECRET", generatedInviteSecret)
   };
   return env;
 }
 
 function authenticatedSession(request) {
-  const cookie = parseCookies(request.headers.cookie ?? "")["macforce-now_coop_panel"];
+  const cookie = parseCookies(request.headers.cookie ?? "")["opennow_coop_panel"];
   const sessionID = verifySessionCookie(cookie);
   if (!sessionID) return null;
   const session = sessions.get(sessionID);
@@ -500,11 +500,11 @@ function readOrCreateSecret(name) {
 }
 
 function readOrCreateTLSMaterial() {
-  const certPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_CERT", join(stateRoot, "panel-cert.pem"));
-  const keyPath = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_KEY", join(stateRoot, "panel-key.pem"));
+  const certPath = stringEnv("OPENNOW_REMOTE_COOP_PANEL_CERT", join(stateRoot, "panel-cert.pem"));
+  const keyPath = stringEnv("OPENNOW_REMOTE_COOP_PANEL_KEY", join(stateRoot, "panel-key.pem"));
   if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath, generated: false };
 
-  const host = stringEnv("MACFORCE_NOW_REMOTE_COOP_PANEL_TLS_HOST", stringEnv("MACFORCE_NOW_REMOTE_COOP_PUBLIC_HOST", productionHost));
+  const host = stringEnv("OPENNOW_REMOTE_COOP_PANEL_TLS_HOST", stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", productionHost));
   const configPath = join(stateRoot, "openssl.cnf");
   const altName = /^\d+\.\d+\.\d+\.\d+$/.test(host) ? `IP.1 = ${host}` : `DNS.1 = ${host}`;
   writeFileSync(configPath, `[req]\ndefault_bits = 2048\nprompt = no\ndefault_md = sha256\ndistinguished_name = dn\nx509_extensions = v3_req\n[dn]\nCN = ${host}\n[v3_req]\nsubjectAltName = @alt_names\n[alt_names]\n${altName}\n`, { mode: 0o600 });

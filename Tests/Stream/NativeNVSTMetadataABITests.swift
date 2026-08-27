@@ -1,7 +1,7 @@
 import Foundation
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test func nativeMetadataPreservesArrayShapeUTF8EmptyStringsAndDuplicates() throws {
     let json = """
@@ -81,7 +81,7 @@ private func inspectMetadata(_ json: String) throws -> MetadataInspection {
     var error = [CChar](repeating: 0, count: 256)
     let countResult = json.withCString { jsonPointer in
         error.withUnsafeMutableBufferPointer { errorBuffer in
-            MacForceNowNativeNVSTGeronimoInspectMetadata(jsonPointer, UInt32.max, nil, 0, nil, 0, &count, &pointersStable, errorBuffer.baseAddress, errorBuffer.count)
+            OpenNOWNativeNVSTGeronimoInspectMetadata(jsonPointer, UInt32.max, nil, 0, nil, 0, &count, &pointersStable, errorBuffer.baseAddress, errorBuffer.count)
         }
     }
     guard countResult == 0 else {
@@ -96,7 +96,7 @@ private func inspectMetadata(_ json: String) throws -> MetadataInspection {
             key.withUnsafeMutableBufferPointer { keyBuffer in
                 value.withUnsafeMutableBufferPointer { valueBuffer in
                     error.withUnsafeMutableBufferPointer { errorBuffer in
-                        MacForceNowNativeNVSTGeronimoInspectMetadata(jsonPointer, index, keyBuffer.baseAddress, keyBuffer.count, valueBuffer.baseAddress, valueBuffer.count, &count, &pointersStable, errorBuffer.baseAddress, errorBuffer.count)
+                        OpenNOWNativeNVSTGeronimoInspectMetadata(jsonPointer, index, keyBuffer.baseAddress, keyBuffer.count, valueBuffer.baseAddress, valueBuffer.count, &count, &pointersStable, errorBuffer.baseAddress, errorBuffer.count)
                     }
                 }
             }
@@ -123,5 +123,5 @@ private func metadataJSON(count: Int, malformedLastEntry: Bool = false) throws -
     return try #require(String(data: data, encoding: .utf8))
 }
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoInspectMetadata")
-private func MacForceNowNativeNVSTGeronimoInspectMetadata(_ geronimoJSON: UnsafePointer<CChar>?, _ index: UInt32, _ keyBuffer: UnsafeMutablePointer<CChar>?, _ keyBufferLength: Int, _ valueBuffer: UnsafeMutablePointer<CChar>?, _ valueBufferLength: Int, _ count: UnsafeMutablePointer<UInt32>?, _ pointersStable: UnsafeMutablePointer<Int32>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32
+@_silgen_name("OpenNOWNativeNVSTGeronimoInspectMetadata")
+private func OpenNOWNativeNVSTGeronimoInspectMetadata(_ geronimoJSON: UnsafePointer<CChar>?, _ index: UInt32, _ keyBuffer: UnsafeMutablePointer<CChar>?, _ keyBufferLength: Int, _ valueBuffer: UnsafeMutablePointer<CChar>?, _ valueBufferLength: Int, _ count: UnsafeMutablePointer<UInt32>?, _ pointersStable: UnsafeMutablePointer<Int32>?, _ errorBuffer: UnsafeMutablePointer<CChar>?, _ errorBufferLength: Int) -> Int32

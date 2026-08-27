@@ -1,6 +1,6 @@
 //
 //  SettingsSystemViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -146,8 +146,8 @@ struct SystemHealthBadge: View {
         }
         .padding(.horizontal, 14 * uiScale)
         .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
-        .background(positive ? MacForceNowDesign.accent : Color.white.opacity(0.07))
-        .overlay { Rectangle().stroke(positive ? MacForceNowDesign.accent : Color.white.opacity(0.13), lineWidth: 1) }
+        .background(positive ? OpenNOWDesign.accent : Color.white.opacity(0.07))
+        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent : Color.white.opacity(0.13), lineWidth: 1) }
     }
 }
 
@@ -161,7 +161,7 @@ struct SystemCapabilityRow: View {
     var body: some View {
         HStack(spacing: 12 * uiScale) {
             Rectangle()
-                .fill(positive ? MacForceNowDesign.accent : Color.white.opacity(0.22))
+                .fill(positive ? OpenNOWDesign.accent : Color.white.opacity(0.22))
                 .frame(width: 4 * uiScale, height: 42 * uiScale)
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
@@ -174,12 +174,12 @@ struct SystemCapabilityRow: View {
             Spacer(minLength: 0)
             Text(value.uppercased())
                 .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? MacForceNowDesign.accent : .white.opacity(0.56))
+                .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.56))
                 .tracking(0.8)
                 .padding(.horizontal, 10 * uiScale)
                 .frame(height: 28 * uiScale)
                 .background(Color.white.opacity(positive ? 0.07 : 0.04))
-                .overlay { Rectangle().stroke(positive ? MacForceNowDesign.accent.opacity(0.38) : Color.white.opacity(0.08), lineWidth: 1) }
+                .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.38) : Color.white.opacity(0.08), lineWidth: 1) }
         }
         .padding(12 * uiScale)
         .background(Color.white.opacity(0.045))

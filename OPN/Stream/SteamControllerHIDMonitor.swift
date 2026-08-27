@@ -6,7 +6,7 @@ import IOKit.hid
 import os
 
 public enum SteamControllerPreference {
-    public static let key = "MacForceNow.Input.SteamControllerSupportEnabled"
+    public static let key = "OpenNOW.Input.SteamControllerSupportEnabled"
 
     public static var isEnabled: Bool {
         OPNAppPreferenceStorage.standard.bool(forKey: key)
@@ -16,7 +16,7 @@ public enum SteamControllerPreference {
 /// Superseded by per-pad `SteamControllerPadSettings` in `SteamControllerMappingProfile`.
 /// `key` stays just long enough for `SteamControllerMappingStore`'s one-time migration.
 public enum SteamControllerTrackpadMousePreference {
-    public static let key = "MacForceNow.Input.SteamControllerTrackpadMouseEnabled"
+    public static let key = "OpenNOW.Input.SteamControllerTrackpadMouseEnabled"
 }
 
 public enum SteamControllerPermissionError: Error, LocalizedError {
@@ -26,7 +26,7 @@ public enum SteamControllerPermissionError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .missingBundleIdentifier:
-            return "MacForce Now bundle identifier is unavailable."
+            return "OpenNOW bundle identifier is unavailable."
         case let .tccutilFailed(exitCode, stderr):
             let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return "tccutil reset failed (exit \(exitCode)).\(trimmed.isEmpty ? "" : " " + trimmed)"
@@ -205,7 +205,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         let shouldCapture = !captureRequesters.isEmpty
         guard shouldCapture != isInputCaptureActive else { return }
         isInputCaptureActive = shouldCapture
-        MacForceNowLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
+        OpenNOWLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
         if shouldCapture {
             for context in devices.values {
                 configureCapture(for: context)
@@ -369,7 +369,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         isMonitorActive = true
         self.manager = manager
         scheduleActivationRetryAfterPermissionChange()
-        MacForceNowLog.info(.controller, "Monitor activated")
+        OpenNOWLog.info(.controller, "Monitor activated")
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.enabled", level: .info, message: "Steam Controller support enabled.")
     }
 
@@ -467,7 +467,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
         let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
 
-        MacForceNowLog.info(.controller, "Matched device: productID=0x\(String(format: "%04X", productID)) usagePage=0x\(String(format: "%04X", usagePage)) usage=0x\(String(format: "%04X", usage)) controllerID=0x\(String(format: "%016X", controllerID)) wirelessReceiver=\(isWirelessReceiver)")
+        OpenNOWLog.info(.controller, "Matched device: productID=0x\(String(format: "%04X", productID)) usagePage=0x\(String(format: "%04X", usagePage)) usage=0x\(String(format: "%04X", usage)) controllerID=0x\(String(format: "%016X", controllerID)) wirelessReceiver=\(isWirelessReceiver)")
 
         if usagePage == SteamControllerReport.gamepadUsagePage {
             handleGamepadDeviceMatched(device, controllerID: controllerID)
@@ -500,10 +500,10 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     private func handleGamepadDeviceMatched(_ device: IOHIDDevice, controllerID: UInt64) {
         if let context = devices.values.first(where: { $0.controllerID == controllerID }) {
             associateGamepadDevice(device, with: context)
-            MacForceNowLog.debug(.controller, "Gamepad interface associated with vendor controllerID=0x\(String(format: "%016X", controllerID))")
+            OpenNOWLog.debug(.controller, "Gamepad interface associated with vendor controllerID=0x\(String(format: "%016X", controllerID))")
         } else {
             pendingGamepadDevices[controllerID] = device
-            MacForceNowLog.debug(.controller, "Gamepad interface pending for controllerID=0x\(String(format: "%016X", controllerID))")
+            OpenNOWLog.debug(.controller, "Gamepad interface pending for controllerID=0x\(String(format: "%016X", controllerID))")
         }
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.matched", level: .info, message: "Steam Controller gamepad interface matched.")
     }
@@ -604,7 +604,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
         if pendingGamepadDevices.removeValue(forKey: controllerID) != nil {
             WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.pending.removed", level: .info, message: "Steam Controller pending gamepad interface removed.")
-            MacForceNowLog.debug(.controller, "Pending gamepad interface removed controllerID=0x\(String(format: "%016X", controllerID))")
+            OpenNOWLog.debug(.controller, "Pending gamepad interface removed controllerID=0x\(String(format: "%016X", controllerID))")
         }
     }
 
@@ -618,7 +618,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         let report = Array(UnsafeBufferPointer(start: reportBuffer, count: count))
         let isDeckStateReport = report.first == SteamControllerReport.deckStateReportID
         if isGamepad, !isDeckStateReport, report.first != 0 {
-            MacForceNowLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
+            OpenNOWLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
         }
         let event = isDeckStateReport
             ? SteamControllerReport.parseDeckState(report, previous: context.deckSnapshot)
@@ -646,12 +646,12 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             if merged.buttons != context.mergedSnapshot.buttons {
                 if isDeckStateReport, report.count >= 16 {
                     let bits = UInt64(report[8]) | (UInt64(report[9]) << 8) | (UInt64(report[10]) << 16) | (UInt64(report[11]) << 24) | (UInt64(report[12]) << 32) | (UInt64(report[13]) << 40) | (UInt64(report[14]) << 48) | (UInt64(report[15]) << 56)
-                    MacForceNowLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(merged.buttons)")
+                    OpenNOWLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(merged.buttons)")
                 } else if context.model == .triton, report.count >= 6 {
                     let bits = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
-                    MacForceNowLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(merged.buttons)")
+                    OpenNOWLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(merged.buttons)")
                 } else {
-                    MacForceNowLog.debug(.controller, "Buttons changed: \(merged.buttons)")
+                    OpenNOWLog.debug(.controller, "Buttons changed: \(merged.buttons)")
                 }
             }
             context.mergedSnapshot = merged
@@ -681,7 +681,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     private func powerOff(_ context: DeviceContext) {
         let report = SteamControllerReport.powerOffReport(model: context.model)
         sendFeatureReport(report, to: context.device, attempts: Self.featureReportAttempts)
-        MacForceNowLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
+        OpenNOWLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
         WebRTCMediaTelemetry.capture(
             "webrtc.input.steamcontroller.poweroff.combo",
             level: .info,
@@ -770,7 +770,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             captureDeviceOpenFailure(interface: "vendor", context: context, status: status)
             return false
         }
-        MacForceNowLog.warning(.controller, "Seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
+        OpenNOWLog.warning(.controller, "Seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
         let reopenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         if reopenStatus == kIOReturnSuccess {
             registerVendorReportCallback(for: context)

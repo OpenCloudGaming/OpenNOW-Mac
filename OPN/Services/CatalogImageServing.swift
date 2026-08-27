@@ -1,6 +1,6 @@
 //
 //  CatalogImageServing.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

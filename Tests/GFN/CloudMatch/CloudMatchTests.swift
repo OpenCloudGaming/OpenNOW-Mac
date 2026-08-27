@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]

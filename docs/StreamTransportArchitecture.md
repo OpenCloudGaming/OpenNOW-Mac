@@ -1,6 +1,6 @@
 # Stream Transport Architecture
 
-MacForce Now has two streaming transports selected per game by `OPNStreamTransportSelector.selectedTransport(forGame:capabilities:)` (`OPN/Stream/StreamTransportSelection.swift`), driven by the launch profile's transport mode:
+OpenNOW has two streaming transports selected per game by `OPNStreamTransportSelector.selectedTransport(forGame:capabilities:)` (`OPN/Stream/StreamTransportSelection.swift`), driven by the launch profile's transport mode:
 
 | | WebRTC path | Native NVST path |
 |---|---|---|

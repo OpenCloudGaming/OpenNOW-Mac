@@ -24,7 +24,7 @@ final class OPNActiveSessionObject {
 }
 
 enum OPNActiveSessionService {
-    private static let persistedSessionIdKey = "MacForceNow.Stream.ActiveSessionId"
+    private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
     private static let terminationPollLimit = 12
     private static let terminationPollDelay: TimeInterval = 0.25
 

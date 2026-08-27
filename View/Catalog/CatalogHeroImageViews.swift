@@ -1,6 +1,6 @@
 //
 //  CatalogHeroImageViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit

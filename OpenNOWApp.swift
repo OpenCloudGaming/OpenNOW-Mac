@@ -1,6 +1,6 @@
 //
-//  MacForceNowApp.swift
-//  MacForceNow
+//  OpenNOWApp.swift
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -10,8 +10,8 @@ import SwiftUI
 import SwiftData
 
 @main
-struct MacForceNowApp: App {
-    @NSApplicationDelegateAdaptor(MacForceNowAppDelegate.self) private var appDelegate
+struct OpenNOWApp: App {
+    @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
 
     let sharedModelContainer: ModelContainer
 
@@ -19,13 +19,13 @@ struct MacForceNowApp: App {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
         Task.detached(priority: .userInitiated) {
-            MacForceNowNVIDIAFont.prepare()
+            OpenNOWNVIDIAFont.prepare()
             VendorResourceImage.prewarm()
         }
-        MacForceNowLog.info(.app, "MacForce Now application initializing")
+        OpenNOWLog.info(.app, "OpenNOW application initializing")
         let container = Self.makeModelContainer()
         sharedModelContainer = container
-        MacForceNowLog.info(.app, "MacForce Now application initialization completed")
+        OpenNOWLog.info(.app, "OpenNOW application initialization completed")
         Self.preloadImageCacheContainerAsync()
         Self.startCatalogLaunchPrefetch(container: container)
     }
@@ -40,27 +40,27 @@ struct MacForceNowApp: App {
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            MacForceNowLog.info(.app, "SwiftData model container created")
+            OpenNOWLog.info(.app, "SwiftData model container created")
             return container
         } catch {
-            MacForceNowLog.error(.app, "Could not create SwiftData model container, attempting store recovery: \(error.localizedDescription)")
+            OpenNOWLog.error(.app, "Could not create SwiftData model container, attempting store recovery: \(error.localizedDescription)")
         }
 
         Self.removePersistentStoreFiles(at: modelConfiguration.url)
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            MacForceNowLog.warning(.app, "SwiftData model container recreated after removing unreadable store")
+            OpenNOWLog.warning(.app, "SwiftData model container recreated after removing unreadable store")
             return container
         } catch {
-            MacForceNowLog.error(.app, "SwiftData store recovery failed, falling back to in-memory store: \(error.localizedDescription)")
+            OpenNOWLog.error(.app, "SwiftData store recovery failed, falling back to in-memory store: \(error.localizedDescription)")
         }
 
         do {
             let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-            MacForceNowLog.warning(.app, "SwiftData running with an in-memory store; sessions will not persist across launches")
+            OpenNOWLog.warning(.app, "SwiftData running with an in-memory store; sessions will not persist across launches")
             return container
         } catch {
-            MacForceNowLog.fatal(.app, "Could not create an in-memory SwiftData model container: \(error.localizedDescription)")
+            OpenNOWLog.fatal(.app, "Could not create an in-memory SwiftData model container: \(error.localizedDescription)")
             preconditionFailure("SwiftData model container could not be created in any configuration: \(error)")
         }
     }
@@ -73,7 +73,7 @@ struct MacForceNowApp: App {
             do {
                 try fileManager.removeItem(at: candidate)
             } catch {
-                MacForceNowLog.warning(.app, "Could not remove SwiftData store file \(candidate.lastPathComponent): \(error.localizedDescription)")
+                OpenNOWLog.warning(.app, "Could not remove SwiftData store file \(candidate.lastPathComponent): \(error.localizedDescription)")
             }
         }
     }
@@ -123,16 +123,16 @@ struct MacForceNowApp: App {
         let configuration = ModelConfiguration(schema: schema, url: storeURL)
         do {
             let container = try ModelContainer(for: schema, configurations: [configuration])
-            MacForceNowLog.info(.app, "Catalog image cache container created")
+            OpenNOWLog.info(.app, "Catalog image cache container created")
             return container
         } catch {
-            MacForceNowLog.warning(.app, "Could not create catalog image cache container, image caching disabled: \(error.localizedDescription)")
+            OpenNOWLog.warning(.app, "Could not create catalog image cache container, image caching disabled: \(error.localizedDescription)")
             return nil
         }
     }
 
     var body: some Scene {
-        Window("MacForce Now", id: "main") {
+        Window("OpenNOW", id: "main") {
             ContentView()
         }
         .defaultSize(width: 1100, height: 680)
@@ -141,7 +141,7 @@ struct MacForceNowApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
                 Button {
-                    MacForceNowAppDelegate.requestApplicationUpdateCheck()
+                    OpenNOWAppDelegate.requestApplicationUpdateCheck()
                 } label: {
                     Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                 }

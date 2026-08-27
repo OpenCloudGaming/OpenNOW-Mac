@@ -382,7 +382,7 @@ public final class NativeWebRTCStreamView: NSView {
         // Blur and crop/stretch both need the decoded-frame tap: blur samples it,
         // crop/stretch measure the content rect from it.
         let needsCapture = fill == .blurredMirror || fill == .blurredZoom || fill == .cropFill || fill == .stretchEdges
-        MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(needsCapture)
+        OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(needsCapture)
         pillarboxOverlay.setFill(mode: fill, dim: dim)
         applyPillarboxGeometry()
     }

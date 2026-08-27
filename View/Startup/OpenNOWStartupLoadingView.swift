@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum MacForceNowStartupAnimation {
+enum OpenNOWStartupAnimation {
     static let duration: TimeInterval = 2.4
     static let quickDuration: TimeInterval = 0.9
     static let dismissalDelayNanoseconds: UInt64 = 2_400_000_000
@@ -16,8 +16,8 @@ enum MacForceNowStartupAnimation {
 /// progress bar. Every stage is keyed off normalized progress, so the same
 /// choreography plays whole at both the 2.4s cold duration and the 0.9s warm
 /// one instead of skipping its later half.
-struct MacForceNowStartupLoadingView: View {
-    var duration: TimeInterval = MacForceNowStartupAnimation.duration
+struct OpenNOWStartupLoadingView: View {
+    var duration: TimeInterval = OpenNOWStartupAnimation.duration
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.opnUIScale) private var uiScale
@@ -25,11 +25,11 @@ struct MacForceNowStartupLoadingView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = MacForceNowStartupMetrics(size: proxy.size, uiScale: uiScale)
+            let metrics = OpenNOWStartupMetrics(size: proxy.size, uiScale: uiScale)
 
-            TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.heroFrameInterval)) { timeline in
+            TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.heroFrameInterval)) { timeline in
                 let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
-                let stage = MacForceNowStartupStage(
+                let stage = OpenNOWStartupStage(
                     progress: startupClamp(elapsed / duration),
                     elapsed: elapsed,
                     duration: duration,
@@ -37,20 +37,20 @@ struct MacForceNowStartupLoadingView: View {
                 )
 
                 ZStack {
-                    MacForceNowStartupBackdrop(stage: stage, metrics: metrics)
+                    OpenNOWStartupBackdrop(stage: stage, metrics: metrics)
 
-                    MacForceNowStartupFrameMarks(stage: stage, metrics: metrics)
+                    OpenNOWStartupFrameMarks(stage: stage, metrics: metrics)
 
-                    MacForceNowStartupLockup(stage: stage, metrics: metrics)
+                    OpenNOWStartupLockup(stage: stage, metrics: metrics)
 
                     if !metrics.compact {
-                        MacForceNowStartupTelemetry(stage: stage, metrics: metrics)
+                        OpenNOWStartupTelemetry(stage: stage, metrics: metrics)
                     }
 
-                    MacForceNowStartupRail(stage: stage, metrics: metrics)
+                    OpenNOWStartupRail(stage: stage, metrics: metrics)
 
                     if !stage.reduceMotion {
-                        MacForceNowStartupScanBeam(stage: stage, metrics: metrics)
+                        OpenNOWStartupScanBeam(stage: stage, metrics: metrics)
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -61,7 +61,7 @@ struct MacForceNowStartupLoadingView: View {
         .background(.black)
         .onAppear { startDate = Date() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("MacForce Now is starting")
+        .accessibilityLabel("OpenNOW is starting")
     }
 }
 
@@ -69,7 +69,7 @@ struct MacForceNowStartupLoadingView: View {
 
 /// Every derived value the layers need, computed once per frame so no subview
 /// re-derives an easing curve the others already paid for.
-private struct MacForceNowStartupStage {
+private struct OpenNOWStartupStage {
     let progress: Double
     let elapsed: TimeInterval
     let duration: TimeInterval
@@ -104,7 +104,7 @@ private struct MacForceNowStartupStage {
     }
 }
 
-private struct MacForceNowStartupMetrics {
+private struct OpenNOWStartupMetrics {
     let size: CGSize
     let uiScale: CGFloat
 
@@ -145,9 +145,9 @@ private struct MacForceNowStartupMetrics {
 /// capsules, all with `.blendMode(.screen)`, which forces an offscreen pass per
 /// layer on exactly the frames where app bootstrap is saturating the CPU. One
 /// canvas draws the same depth for a single composite.
-private struct MacForceNowStartupBackdrop: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupBackdrop: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     var body: some View {
         let ignite = stage.ignite
@@ -174,7 +174,7 @@ private struct MacForceNowStartupBackdrop: View {
     }
 
     private func drawCoreBloom(in context: inout GraphicsContext, size: CGSize, centerY: CGFloat, develop: Double, bloom: Double) {
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
         let radius = min(size.width, size.height) * (0.34 + bloom * 0.06)
         let center = CGPoint(x: size.width / 2, y: centerY)
         let gradient = Gradient(stops: [
@@ -193,7 +193,7 @@ private struct MacForceNowStartupBackdrop: View {
     /// one `Path` each so the whole grid costs two stroke calls.
     private func drawFloorGrid(in context: inout GraphicsContext, size: CGSize, ignite: Double, drift: Double) {
         guard ignite > 0.001 else { return }
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
         let vanishing = CGPoint(x: size.width / 2, y: size.height * 0.46)
         let depth = size.height - vanishing.y
         guard depth > 0 else { return }
@@ -271,9 +271,9 @@ private struct MacForceNowStartupBackdrop: View {
 
 /// Corner brackets, product mark and build stamp. HUD chrome, drawn with the
 /// app's square geometry rather than the rounded cards this screen used before.
-private struct MacForceNowStartupFrameMarks: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupFrameMarks: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     private static let version: String = {
         let bundle = Bundle.main.infoDictionary
@@ -288,8 +288,8 @@ private struct MacForceNowStartupFrameMarks: View {
 
         ZStack {
             ForEach(0..<4, id: \.self) { corner in
-                MacForceNowStartupCornerBracket(arm: arm)
-                    .stroke(MacForceNowDesign.accent.opacity(0.52 * reveal), lineWidth: 1)
+                OpenNOWStartupCornerBracket(arm: arm)
+                    .stroke(OpenNOWDesign.accent.opacity(0.52 * reveal), lineWidth: 1)
                     .frame(width: arm, height: arm)
                     .rotationEffect(.degrees(Double(corner) * 90))
                     .padding(metrics.inset)
@@ -302,23 +302,23 @@ private struct MacForceNowStartupFrameMarks: View {
             }
 
             VStack(alignment: .leading, spacing: 4 * scale) {
-                Text("MACFORCE NOW")
-                    .font(MacForceNowDesign.Typography.label(size: 11, scale: scale, weight: .black))
+                Text("OPENNOW")
+                    .font(OpenNOWDesign.Typography.label(size: 11, scale: scale, weight: .black))
                     .tracking(3.4 * scale)
-                    .foregroundStyle(MacForceNowDesign.Text.secondary)
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                 Text("BOOT SEQUENCE")
-                    .font(MacForceNowDesign.Typography.mono(size: 9, scale: scale))
+                    .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                     .tracking(1.6 * scale)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.72))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.72))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(metrics.inset + arm + 14 * scale)
             .opacity(reveal)
 
             Text(Self.version)
-                .font(MacForceNowDesign.Typography.mono(size: 9, scale: scale))
+                .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                 .tracking(1.4 * scale)
-                .foregroundStyle(MacForceNowDesign.Text.muted)
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(metrics.inset + arm + 14 * scale)
                 .opacity(reveal)
@@ -336,7 +336,7 @@ private struct MacForceNowStartupFrameMarks: View {
     }
 }
 
-private struct MacForceNowStartupCornerBracket: Shape {
+private struct OpenNOWStartupCornerBracket: Shape {
     let arm: CGFloat
 
     func path(in rect: CGRect) -> Path {
@@ -352,9 +352,9 @@ private struct MacForceNowStartupCornerBracket: Shape {
 
 /// The falling beam. It is the only travelling element on screen, and it ends
 /// its travel exactly on the rail so the progress bar reads as its residue.
-private struct MacForceNowStartupScanBeam: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupScanBeam: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     var body: some View {
         let scale = metrics.uiScale
@@ -377,7 +377,7 @@ private struct MacForceNowStartupScanBeam: View {
     }
 
     private func beam(width: CGFloat, haloHeight: CGFloat, thickness: CGFloat, intensity: Double) -> some View {
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
 
         return VStack(spacing: 0) {
             LinearGradient(
@@ -406,9 +406,9 @@ private struct MacForceNowStartupScanBeam: View {
 
 /// Logo, wordmark and tagline, masked so they only exist where the beam has
 /// already passed.
-private struct MacForceNowStartupLockup: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupLockup: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     var body: some View {
         let scale = metrics.uiScale
@@ -417,13 +417,13 @@ private struct MacForceNowStartupLockup: View {
             : metrics.revealFraction(beamY: metrics.beamY(stage.sweep))
 
         VStack(spacing: (metrics.compact ? 16 : 22) * scale) {
-            MacForceNowStartupLogoCore(stage: stage, metrics: metrics)
+            OpenNOWStartupLogoCore(stage: stage, metrics: metrics)
 
-            MacForceNowStartupWordmark(stage: stage, metrics: metrics)
+            OpenNOWStartupWordmark(stage: stage, metrics: metrics)
         }
         .frame(width: metrics.lockupWidth, height: metrics.bandHeight)
         .mask(alignment: .top) {
-            MacForceNowStartupDevelopMask(reveal: reveal)
+            OpenNOWStartupDevelopMask(reveal: reveal)
         }
         .position(x: metrics.size.width / 2, y: metrics.bandCenterY)
         .allowsHitTesting(false)
@@ -432,7 +432,7 @@ private struct MacForceNowStartupLockup: View {
 
 /// Wipe mask keyed to beam position: opaque behind the beam, a short soft edge
 /// at it, empty ahead of it.
-private struct MacForceNowStartupDevelopMask: View {
+private struct OpenNOWStartupDevelopMask: View {
     let reveal: Double
 
     var body: some View {
@@ -451,15 +451,15 @@ private struct MacForceNowStartupDevelopMask: View {
     }
 }
 
-private struct MacForceNowStartupLogoCore: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupLogoCore: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     var body: some View {
         let chroma = stage.chroma
         let bloom = stage.bloom
         let offset = CGFloat(chroma) * (metrics.compact ? 9 : 14) * metrics.uiScale
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
 
         ZStack {
             // RGB split ghosts collapse into register as the beam clears the logo.
@@ -491,11 +491,11 @@ private struct MacForceNowStartupLogoCore: View {
 
 /// Per-letter stagger with a tracking collapse — the wordmark tightens into
 /// place instead of fading in as a block.
-private struct MacForceNowStartupWordmark: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupWordmark: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
-    private static let letters = Array("MACFORCE NOW")
+    private static let letters = Array("OPENNOW")
 
     var body: some View {
         let scale = metrics.uiScale
@@ -514,8 +514,8 @@ private struct MacForceNowStartupWordmark: View {
                         Color.clear.frame(width: size * 0.34, height: 1)
                     } else {
                         Text(String(letter))
-                            .font(MacForceNowDesign.Typography.display(size: size))
-                            .foregroundStyle(MacForceNowDesign.Text.primary)
+                            .font(OpenNOWDesign.Typography.display(size: size))
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                             .offset(y: CGFloat(1 - reveal) * 10 * scale)
                             .opacity(reveal)
                             .blur(radius: CGFloat(1 - reveal) * 5)
@@ -524,9 +524,9 @@ private struct MacForceNowStartupWordmark: View {
             }
 
             Text("CLOUD GAMING CLIENT")
-                .font(MacForceNowDesign.Typography.mono(size: metrics.compact ? 9 : 11, scale: scale, weight: .bold))
+                .font(OpenNOWDesign.Typography.mono(size: metrics.compact ? 9 : 11, scale: scale, weight: .bold))
                 .tracking((3.4 + 3.4 * (1 - settle)) * scale)
-                .foregroundStyle(MacForceNowDesign.accent.opacity(0.92 * settle))
+                .foregroundStyle(OpenNOWDesign.accent.opacity(0.92 * settle))
                 .opacity(settle)
         }
     }
@@ -538,9 +538,9 @@ private struct MacForceNowStartupWordmark: View {
 /// spanning exactly the rail width beneath it, so every station's marker, label
 /// and stamp sit on a shared baseline instead of drifting per row the way the
 /// left-anchored ledger did.
-private struct MacForceNowStartupTelemetry: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupTelemetry: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     private static let entries: [(label: String, mark: Double)] = [
         ("core.bootstrap", 0.20),
@@ -559,12 +559,12 @@ private struct MacForceNowStartupTelemetry: View {
 
         VStack(spacing: 12 * scale) {
             Text("LOAD SEQUENCE")
-                .font(MacForceNowDesign.Typography.mono(size: 9, scale: scale))
+                .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                 .tracking(2.4 * scale)
-                .foregroundStyle(MacForceNowDesign.Text.muted)
+                .foregroundStyle(OpenNOWDesign.Text.muted)
 
             ZStack(alignment: .topLeading) {
-                MacForceNowStartupBusTrack(
+                OpenNOWStartupBusTrack(
                     fill: busFill,
                     trackWidth: width,
                     scale: scale
@@ -573,7 +573,7 @@ private struct MacForceNowStartupTelemetry: View {
 
                 HStack(spacing: 0) {
                     ForEach(Array(Self.entries.enumerated()), id: \.offset) { _, entry in
-                        MacForceNowStartupBusStation(
+                        OpenNOWStartupBusStation(
                             label: entry.label,
                             stamp: entry.mark * stage.duration,
                             settled: stage.progress >= entry.mark,
@@ -605,7 +605,7 @@ private struct MacForceNowStartupTelemetry: View {
     }
 }
 
-private struct MacForceNowStartupBusTrack: View {
+private struct OpenNOWStartupBusTrack: View {
     let fill: Double
     let trackWidth: CGFloat
     let scale: CGFloat
@@ -613,19 +613,19 @@ private struct MacForceNowStartupBusTrack: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Rectangle()
-                .fill(MacForceNowDesign.Stroke.subtle)
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(width: trackWidth, height: 1)
 
             Rectangle()
-                .fill(MacForceNowDesign.accent.opacity(0.60))
+                .fill(OpenNOWDesign.accent.opacity(0.60))
                 .frame(width: trackWidth * CGFloat(fill), height: 1)
-                .shadow(color: MacForceNowDesign.accent.opacity(0.55), radius: 4 * scale)
+                .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 4 * scale)
         }
         .frame(width: trackWidth, alignment: .leading)
     }
 }
 
-private struct MacForceNowStartupBusStation: View {
+private struct OpenNOWStartupBusStation: View {
     let label: String
     let stamp: Double
     let settled: Bool
@@ -634,15 +634,15 @@ private struct MacForceNowStartupBusStation: View {
     let scale: CGFloat
 
     var body: some View {
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
 
         VStack(spacing: 8 * scale) {
             Rectangle()
-                .fill(settled ? accent : MacForceNowDesign.Surface.deep)
+                .fill(settled ? accent : OpenNOWDesign.Surface.deep)
                 .frame(width: marker, height: marker)
                 .overlay {
                     Rectangle()
-                        .stroke(settled ? accent : MacForceNowDesign.Stroke.strong, lineWidth: 1)
+                        .stroke(settled ? accent : OpenNOWDesign.Stroke.strong, lineWidth: 1)
                 }
                 .shadow(color: settled ? accent.opacity(0.85) : .clear, radius: 6 * scale)
                 // Opaque pad so the bus line passes between stations, not through them.
@@ -650,15 +650,15 @@ private struct MacForceNowStartupBusStation: View {
                 .background(Color.black)
 
             Text(label)
-                .font(MacForceNowDesign.Typography.mono(size: 9, scale: scale))
-                .foregroundStyle(settled ? MacForceNowDesign.Text.secondary : MacForceNowDesign.Text.muted)
+                .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
+                .foregroundStyle(settled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
                 .lineLimit(1)
                 .fixedSize()
 
             Text(String(format: "%.2fs", stamp))
-                .font(MacForceNowDesign.Typography.mono(size: 8, scale: scale, weight: .medium))
+                .font(OpenNOWDesign.Typography.mono(size: 8, scale: scale, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(settled ? accent.opacity(0.80) : MacForceNowDesign.Text.muted)
+                .foregroundStyle(settled ? accent.opacity(0.80) : OpenNOWDesign.Text.muted)
         }
         .opacity(0.38 + reveal * 0.62)
         .offset(y: CGFloat(1 - reveal) * 4 * scale)
@@ -669,9 +669,9 @@ private struct MacForceNowStartupBusStation: View {
 
 /// Segmented progress. Discrete cells snapping on read as machine state; the
 /// smooth capsule this replaces read as a generic download bar.
-private struct MacForceNowStartupRail: View {
-    let stage: MacForceNowStartupStage
-    let metrics: MacForceNowStartupMetrics
+private struct OpenNOWStartupRail: View {
+    let stage: OpenNOWStartupStage
+    let metrics: OpenNOWStartupMetrics
 
     var body: some View {
         let scale = metrics.uiScale
@@ -681,19 +681,19 @@ private struct MacForceNowStartupRail: View {
         VStack(spacing: 10 * scale) {
             HStack(alignment: .firstTextBaseline) {
                 Text(stage.statusText)
-                    .font(MacForceNowDesign.Typography.label(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
+                    .font(OpenNOWDesign.Typography.label(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
                     .tracking((metrics.compact ? 2.0 : 3.0) * scale)
-                    .foregroundStyle(MacForceNowDesign.Text.secondary)
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
 
                 Spacer(minLength: 12 * scale)
 
                 Text("\(percent)%")
-                    .font(MacForceNowDesign.Typography.mono(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .font(OpenNOWDesign.Typography.mono(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .contentTransition(.identity)
             }
 
-            MacForceNowStartupSegmentBar(fill: fill, cells: metrics.railCells, scale: scale)
+            OpenNOWStartupSegmentBar(fill: fill, cells: metrics.railCells, scale: scale)
                 .frame(height: (metrics.compact ? 8 : 11) * scale)
         }
         .frame(width: metrics.railWidth)
@@ -703,13 +703,13 @@ private struct MacForceNowStartupRail: View {
     }
 }
 
-private struct MacForceNowStartupSegmentBar: View {
+private struct OpenNOWStartupSegmentBar: View {
     let fill: Double
     let cells: Int
     let scale: CGFloat
 
     var body: some View {
-        let accent = MacForceNowDesign.accent
+        let accent = OpenNOWDesign.accent
         let filledCount = Int((Double(cells) * fill).rounded(.down))
 
         HStack(spacing: 3 * scale) {
@@ -718,7 +718,7 @@ private struct MacForceNowStartupSegmentBar: View {
                 let isHead = index == filledCount - 1
 
                 Rectangle()
-                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : MacForceNowDesign.Stroke.regular)
+                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : OpenNOWDesign.Stroke.regular)
                     .frame(maxWidth: .infinity)
                     .scaleEffect(y: isHead ? 1.0 : (isFilled ? 0.78 : 0.42), anchor: .bottom)
                     .shadow(color: isHead ? accent.opacity(0.95) : .clear, radius: 10 * scale)

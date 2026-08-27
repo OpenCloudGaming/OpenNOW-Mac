@@ -1,6 +1,6 @@
 //
 //  ControllerCatalogView.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -732,7 +732,7 @@ private struct ControllerHeader: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("GEFORCE NOW")
                     .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.6)
                 Text(headerTitle)
                     .nvidiaFont(size: 24, weight: .bold)
@@ -767,7 +767,7 @@ private struct ControllerDeviceBadge: View {
         HStack(spacing: 9) {
             Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
                 .nvidiaFont(size: 13, weight: .bold)
-                .foregroundStyle(MacForceNowDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accent)
             Text(glyphs.deviceName)
                 .nvidiaFont(size: 12, weight: .bold)
                 .foregroundStyle(.white.opacity(0.72))
@@ -808,8 +808,8 @@ private struct ControllerNavigationBar: View {
                         .foregroundStyle(selected || active ? .black.opacity(0.86) : .white.opacity(0.78))
                         .padding(.horizontal, 14)
                         .frame(height: 40)
-                        .background(selected || active ? MacForceNowDesign.accent : Color.white.opacity(0.065))
-                        .overlay { Rectangle().stroke(selected ? .white.opacity(0.82) : (active ? MacForceNowDesign.accent : Color.white.opacity(0.10)), lineWidth: selected ? 2 : 1) }
+                        .background(selected || active ? OpenNOWDesign.accent : Color.white.opacity(0.065))
+                        .overlay { Rectangle().stroke(selected ? .white.opacity(0.82) : (active ? OpenNOWDesign.accent : Color.white.opacity(0.10)), lineWidth: selected ? 2 : 1) }
                     }
                     .buttonStyle(.plain)
                 }
@@ -934,7 +934,7 @@ private struct ControllerHeroBillboard: View {
                     Text("NOW PLAYING IN THE CLOUD")
                         .nvidiaFont(size: 11, weight: .bold)
                         .tracking(1.6)
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                     Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                         .nvidiaFont(size: height < 260 ? 31 : 36, weight: .bold)
                         .foregroundStyle(.white)
@@ -995,7 +995,7 @@ private struct ControllerGameRail: View {
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
                 Text("\(section.games.count) games".uppercased())
                     .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.82))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
                 Spacer(minLength: 0)
                 if canShowAll {
                     Button("SHOW ALL", action: showAll)
@@ -1092,7 +1092,7 @@ private struct ControllerGameTile: View {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
                                 .nvidiaFont(size: 12, weight: .bold)
-                                .foregroundStyle(MacForceNowDesign.accent)
+                                .foregroundStyle(OpenNOWDesign.accent)
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                             .nvidiaFont(size: 16, weight: .bold)
@@ -1107,8 +1107,8 @@ private struct ControllerGameTile: View {
                 .padding(15)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .overlay { Rectangle().stroke(isFocused ? MacForceNowDesign.accent : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
-            .shadow(color: isFocused ? MacForceNowDesign.accent.opacity(0.18) : .black.opacity(0.20), radius: isFocused ? 12 : 8, y: 8)
+            .overlay { Rectangle().stroke(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
+            .shadow(color: isFocused ? OpenNOWDesign.accent.opacity(0.18) : .black.opacity(0.20), radius: isFocused ? 12 : 8, y: 8)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)
@@ -1140,7 +1140,7 @@ private struct ControllerEmbeddedPage<Content: View>: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
                     .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.4)
                 Text(subtitle)
                     .nvidiaFont(size: 15, weight: .medium)
@@ -1205,7 +1205,7 @@ private struct ControllerSearchOverlay: View {
         HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
                 .nvidiaFont(size: 18, weight: .bold)
-                .foregroundStyle(rowIndex == 0 ? MacForceNowDesign.accent : .white.opacity(0.62))
+                .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accent : .white.opacity(0.62))
             TextField("Search games, stores, genres, publishers, controls, ratings, or tags", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .nvidiaFont(size: 20, weight: .medium)
@@ -1221,7 +1221,7 @@ private struct ControllerSearchOverlay: View {
         .padding(.horizontal, 18)
         .frame(height: 58)
         .background(Color.white.opacity(rowIndex == 0 ? 0.12 : 0.075))
-        .overlay { Rectangle().stroke(rowIndex == 0 ? MacForceNowDesign.accent : Color.white.opacity(0.13), lineWidth: rowIndex == 0 ? 2 : 1) }
+        .overlay { Rectangle().stroke(rowIndex == 0 ? OpenNOWDesign.accent : Color.white.opacity(0.13), lineWidth: rowIndex == 0 ? 2 : 1) }
     }
 
     private var filterBar: some View {
@@ -1255,7 +1255,7 @@ private struct ControllerSearchOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
             .padding(.horizontal, 14)
             .frame(height: 36)
-            .background(isFocused ? MacForceNowDesign.accent : Color.white.opacity(0.075))
+            .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
             .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : Color.white.opacity(0.12), lineWidth: isFocused ? 2 : 1) }
         }
         .buttonStyle(.plain)
@@ -1278,11 +1278,11 @@ private struct ControllerSearchOverlay: View {
                     .nvidiaFont(size: 12, weight: .bold)
                     .tracking(0.6)
             }
-            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? MacForceNowDesign.accent : .white.opacity(0.82)))
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OpenNOWDesign.accent : .white.opacity(0.82)))
             .padding(.horizontal, 14)
             .frame(height: 36)
-            .background(isFocused ? MacForceNowDesign.accent : (isSelected ? MacForceNowDesign.accent.opacity(0.15) : Color.white.opacity(0.075)))
-            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
+            .background(isFocused ? OpenNOWDesign.accent : (isSelected ? OpenNOWDesign.accent.opacity(0.15) : Color.white.opacity(0.075)))
+            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
         }
         .buttonStyle(.plain)
     }
@@ -1389,7 +1389,7 @@ private struct ControllerGameDetailOverlay: View {
                                 .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
                                 .padding(.horizontal, 15)
                                 .frame(height: 44)
-                                .background(index == selectedActionIndex ? MacForceNowDesign.accent : Color.white.opacity(0.09))
+                                .background(index == selectedActionIndex ? OpenNOWDesign.accent : Color.white.opacity(0.09))
                                 .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
                             }
                             .buttonStyle(.plain)
@@ -1479,13 +1479,13 @@ private struct ControllerActionMenuOverlay: View {
                                     if item.isRefresh, isRefreshingCatalog {
                                         ProgressView()
                                             .controlSize(.small)
-                                            .tint(index == selectedIndex ? .black.opacity(0.86) : MacForceNowDesign.accent)
+                                            .tint(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .scaleEffect(0.82)
                                             .frame(width: 28)
                                     } else {
                                         Image(systemName: item.icon)
                                             .nvidiaFont(size: 15, weight: .bold)
-                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : MacForceNowDesign.accent)
+                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .frame(width: 28)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
@@ -1496,7 +1496,7 @@ private struct ControllerActionMenuOverlay: View {
                                 }
                                 .padding(.horizontal, 14)
                                 .frame(height: 48)
-                                .background(index == selectedIndex ? MacForceNowDesign.accent : Color.white.opacity(0.055))
+                                .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.055))
                                 .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
                             }
                             .buttonStyle(.plain)
@@ -1509,7 +1509,7 @@ private struct ControllerActionMenuOverlay: View {
             }
             .frame(maxWidth: 420, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(MacForceNowDesign.accent).frame(width: 3) }
+            .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
             .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
@@ -1590,12 +1590,12 @@ private struct ControllerCompactGameCard: View, Equatable {
                     .lineLimit(1)
                 Text(subtitle)
                     .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.84))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.84))
                     .lineLimit(1)
             }
             .padding(10)
             .background(Color.white.opacity(isFocused ? 0.12 : 0.055))
-            .overlay { Rectangle().stroke(isFocused ? MacForceNowDesign.accent : Color.white.opacity(0.10), lineWidth: isFocused ? 3 : 1) }
+            .overlay { Rectangle().stroke(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: isFocused ? 3 : 1) }
         }
         .buttonStyle(.plain)
     }
@@ -1615,8 +1615,8 @@ private struct ControllerOptionChip: View {
                 .foregroundStyle(isSelected || isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
                 .padding(.horizontal, 13)
                 .frame(height: 36)
-                .background(isSelected || isFocused ? MacForceNowDesign.accent : Color.white.opacity(0.075))
-                .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? MacForceNowDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
+                .background(isSelected || isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+                .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
         }
         .buttonStyle(.plain)
     }
@@ -1631,7 +1631,7 @@ private struct ControllerOverlaySectionTitle: View {
         Text(title.uppercased())
             .nvidiaFont(size: 12, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(MacForceNowDesign.accent.opacity(0.86))
+            .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
     }
 }
 
@@ -1646,8 +1646,8 @@ private struct ControllerMetadataPill: View {
             .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
             .padding(.horizontal, 10)
             .frame(height: 28)
-            .background(highlighted ? MacForceNowDesign.accent : Color.white.opacity(0.10))
-            .overlay { Rectangle().stroke(highlighted ? MacForceNowDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
+            .background(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+            .overlay { Rectangle().stroke(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
     }
 }
 
@@ -1768,12 +1768,12 @@ private struct ControllerGlyphPill: View {
                     .lineLimit(1)
             }
         }
-        .foregroundStyle(MacForceNowDesign.accent)
+        .foregroundStyle(OpenNOWDesign.accent)
         .padding(.horizontal, compact ? 6 : 7)
         .frame(minWidth: compact ? 25 : 0)
         .frame(height: 22)
-        .background(MacForceNowDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OpenNOWDesign.accent.opacity(0.12))
+        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
     }
 
@@ -1795,11 +1795,11 @@ private struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.right.symbolName)
         }
         .nvidiaFont(size: 11, weight: .bold)
-        .foregroundStyle(MacForceNowDesign.accent)
+        .foregroundStyle(OpenNOWDesign.accent)
         .padding(.horizontal, 8)
         .frame(height: 22)
-        .background(MacForceNowDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OpenNOWDesign.accent.opacity(0.12))
+        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel("Arrow keys")
     }
 }
@@ -1810,7 +1810,7 @@ private struct ControllerCatalogBackground: View {
 
     var body: some View {
         ZStack {
-            MacForceNowDesign.Surface.app.ignoresSafeArea()
+            OpenNOWDesign.Surface.app.ignoresSafeArea()
             if let game {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill, maxPixelSize: 1280)
                     .ignoresSafeArea()

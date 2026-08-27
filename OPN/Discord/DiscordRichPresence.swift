@@ -84,7 +84,7 @@ final class DiscordRichPresence {
 
         case let .streaming(game):
             let start = stampTimer(for: game.title)
-            return activity(game: game, state: "Streaming via MacForce Now", timestamp: start)
+            return activity(game: game, state: "Streaming via OpenNOW", timestamp: start)
         }
     }
 
@@ -95,7 +95,7 @@ final class DiscordRichPresence {
             largeImageKey: game.artworkURL,
             largeImageText: game.artworkURL != nil ? game.title : nil,
             smallImageKey: DiscordRichPresenceConfig.smallImageKey,
-            smallImageText: "MacForce Now",
+            smallImageText: "OpenNOW",
             startTimestampSeconds: timestamp
         )
     }

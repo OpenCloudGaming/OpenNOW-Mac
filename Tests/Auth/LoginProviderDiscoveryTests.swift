@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private final class FakeLoginAuthService: LoginAuthServing, @unchecked Sendable {
     let outcome: (Bool, String)

@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import MacForceNow
+@testable import OpenNOW
 
 private struct MockStarfleetTransport: StarfleetHTTPTransport {
     let handler: @Sendable (URLRequest) throws -> [String: Any]
@@ -79,11 +79,11 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
 }
 
 @Test func starfleetBuildsDeviceAuthorizationRequests() throws {
-    let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: "device", displayName: "MacForceNow", providerIdpId: "idp")
+    let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
     #expect(body.contains("client_id=ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ"))
     #expect(body.contains("scope=openid%20consent%20email%20tk_client%20age"))
     #expect(body.contains("device_id=device"))
-    #expect(body.contains("display_name=MacForceNow"))
+    #expect(body.contains("display_name=OpenNOW"))
     #expect(body.contains("idp_id=idp"))
 
     let request = try #require(StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body))
@@ -98,10 +98,10 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(body.contains("device_code=device-code"))
     #expect(body.contains("client_id=ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ"))
 
-    let logout = try #require(StarfleetOAuthRequestFactory.logoutURL(idToken: "id", locale: "en_US", postLogoutRedirectURI: "macforce-now://logout"))
+    let logout = try #require(StarfleetOAuthRequestFactory.logoutURL(idToken: "id", locale: "en_US", postLogoutRedirectURI: "opennow://logout"))
     #expect(logout.absoluteString.contains("id_token_hint=id"))
     #expect(logout.absoluteString.contains("ui_locales=en_US"))
-    #expect(logout.absoluteString.contains("post_logout_redirect_uri=macforce-now://logout"))
+    #expect(logout.absoluteString.contains("post_logout_redirect_uri=opennow://logout"))
 }
 
 @Test func starfleetParsesTokenResponseExpiry() {
@@ -185,7 +185,7 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
         .success((status: 200, json: ["client_token": "client", "expires_in": 240])),
     ])
     let service = StarfleetService(transport: transport)
-    let response = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "MacForceNow", providerIdpId: "idp")
+    let response = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
     #expect(response.deviceCode == "device-code")
     #expect(response.userCode == "ABCD-EFGH")
     #expect(response.interval == 5)
@@ -204,7 +204,7 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     let service = StarfleetService(transport: transport)
 
     await #expect(throws: StarfleetAuthError.oauthError("Device flow is not allowed")) {
-        _ = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "MacForceNow", providerIdpId: "idp")
+        _ = try await service.requestDeviceAuthorization(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp")
     }
 }
 

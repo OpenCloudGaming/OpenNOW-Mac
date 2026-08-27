@@ -1,6 +1,6 @@
 import AppKit
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private actor MouseInputRecorder {
     private var events: [NativeNVSTInput] = []

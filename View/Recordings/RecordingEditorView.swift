@@ -51,14 +51,14 @@ struct RecordingEditorView: View {
                     Text("QUICK EDIT")
                         .font(.recordingsNvidia(size: 10, weight: .bold))
                         .tracking(1.4)
-                        .foregroundStyle(MacForceNowDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accent)
                     Text("EARLY BETA")
                         .font(.recordingsNvidia(size: 8, weight: .bold))
                         .tracking(0.8)
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, 6)
                         .frame(height: 16)
-                        .background(MacForceNowDesign.accent)
+                        .background(OpenNOWDesign.accent)
                 }
                 Text("Drag the green handles to trim. Drag across the timeline to select a cut.")
                     .font(.recordingsNvidia(size: 11, weight: .medium))
@@ -94,7 +94,7 @@ struct RecordingEditorView: View {
                 Text("Timeline")
                     .font(.recordingsNvidia(size: 10, weight: .bold))
                     .tracking(1.2)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.86))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
                 Text("\(recordingEditorDurationText(viewModel.outputDurationSeconds)) output")
                     .font(.recordingsNvidia(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
@@ -336,7 +336,7 @@ struct RecordingEditorView: View {
             Text(title)
                 .font(.recordingsNvidia(size: 9, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(MacForceNowDesign.accent.opacity(0.82))
+                .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
             content()
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -352,7 +352,7 @@ struct RecordingEditorView: View {
                 .foregroundStyle(.white.opacity(0.62))
                 .frame(width: 82, alignment: .leading)
             Slider(value: value, in: range)
-                .tint(MacForceNowDesign.accent)
+                .tint(OpenNOWDesign.accent)
         }
     }
 

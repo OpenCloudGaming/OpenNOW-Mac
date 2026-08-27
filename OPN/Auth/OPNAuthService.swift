@@ -30,7 +30,7 @@ public struct OPNDeviceCodeLoginChallenge: Equatable, Sendable {
 public final class OPNAuthService: @unchecked Sendable {
     public static let shared = OPNAuthService()
     private static let jarvisConfiguration = JarvisOAuthConfiguration.gfnPC
-    static let jarvisAuthStatusDidChangeNotification = Notification.Name("MacForceNow.JarvisAuthStatusDidChange")
+    static let jarvisAuthStatusDidChangeNotification = Notification.Name("OpenNOW.JarvisAuthStatusDidChange")
 
     static let oAuthAuthorizeURL = jarvisConfiguration.authorizeURLString
     static let oAuthTokenURL = jarvisConfiguration.tokenURLString
@@ -92,7 +92,7 @@ public final class OPNAuthService: @unchecked Sendable {
         }
 
         let pkce = generatePKCEState()
-        let deviceId = generateMacForceNowDeviceId()
+        let deviceId = generateOpenNOWDeviceId()
         let redirectUri = "http://localhost:\(port)"
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
         let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
@@ -154,8 +154,8 @@ public final class OPNAuthService: @unchecked Sendable {
 
     public func startStarfleetDeviceCodeLogin(providerIdpId: String = OPNAuthService.defaultIdpId, challengeHandler: @escaping OPNDeviceCodeChallengeCallback, completion: @escaping OPNAuthCallback) {
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
-        let deviceId = generateMacForceNowDeviceId()
-        let displayName = Host.current().localizedName ?? "MacForce Now Mac"
+        let deviceId = generateOpenNOWDeviceId()
+        let displayName = Host.current().localizedName ?? "OpenNOW Mac"
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -210,7 +210,7 @@ public final class OPNAuthService: @unchecked Sendable {
                     continuation.resume(returning: session)
                 } else {
                     continuation.resume(throwing: NSError(
-                        domain: "MacForceNow.OPNAuthService",
+                        domain: "OpenNOW.OPNAuthService",
                         code: 1,
                         userInfo: [NSLocalizedDescriptionKey: message.isEmpty ? "Session refresh failed." : message]
                     ))
@@ -570,7 +570,7 @@ public final class OPNAuthService: @unchecked Sendable {
             }
             var buffer = [UInt8](repeating: 0, count: 4096)
             let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)
-            let body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>MacForce Now Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to MacForceNow.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
+            let body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
             let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
             _ = response.withCString { send(clientSocket, $0, strlen($0), 0) }
             close(clientSocket)
@@ -648,13 +648,13 @@ public final class OPNAuthService: @unchecked Sendable {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private func generateMacForceNowDeviceId() -> String {
+    private func generateOpenNOWDeviceId() -> String {
         var hostnameBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
         let hostname = gethostname(&hostnameBuffer, hostnameBuffer.count) == 0
             ? String(decoding: hostnameBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
             : "unknown"
         let user = ProcessInfo.processInfo.environment["USER"] ?? "unknown"
-        return SHA256.hash(data: Data("\(hostname):\(user):macforce-now-stable".utf8)).map { String(format: "%02x", $0) }.joined()
+        return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable".utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func authUserDefaults() -> UserDefaults {
@@ -673,7 +673,7 @@ public final class OPNAuthService: @unchecked Sendable {
 
     private func sessionStorageDirectory() -> String? {
         guard let basePath = applicationSupportBasePath(), !basePath.isEmpty else { return nil }
-        let directory = (basePath as NSString).appendingPathComponent("MacForceNow")
+        let directory = (basePath as NSString).appendingPathComponent("OpenNOW")
         if !FileManager.default.fileExists(atPath: directory) {
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }

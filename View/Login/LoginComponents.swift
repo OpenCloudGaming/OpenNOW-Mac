@@ -1,6 +1,6 @@
 //
 //  LoginComponents.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -10,7 +10,7 @@ import SwiftUI
 
 struct LoginBackdrop: View {
     var body: some View {
-        MacForceNowDesign.Surface.app
+        OpenNOWDesign.Surface.app
         .ignoresSafeArea()
     }
 }
@@ -55,7 +55,7 @@ struct VendorResourceImage: View {
             return cachedImage
         }
 
-        for subdirectory in ["MacForceNow", "Resources/MacForceNow", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+        for subdirectory in ["OpenNOW", "Resources/OpenNOW", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
                 imageCache.setObject(image, forKey: cacheKey)
@@ -143,10 +143,10 @@ struct VendorSplashLoadingView: View {
 private struct VendorSplashCancelButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
+            .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 34)
             .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -156,7 +156,7 @@ struct VendorIndeterminateProgressBar: View {
             let width = proxy.size.width
             let indicatorWidth = max(width * 0.34, 72)
 
-            TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.ambientFrameInterval)) { timeline in
+            TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in
                 let cycleDuration = 1.15
                 let progress = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
                 let phase = -0.36 + (1.40 * progress)
@@ -165,7 +165,7 @@ struct VendorIndeterminateProgressBar: View {
                     Rectangle()
                         .fill(.white.opacity(0.24))
                     Rectangle()
-                        .fill(MacForceNowDesign.accent)
+                        .fill(OpenNOWDesign.accent)
                         .frame(width: indicatorWidth)
                         .offset(x: phase * width)
                 }
@@ -183,7 +183,7 @@ struct GFNHeroArtwork: View {
             if reduceMotion {
                 artwork(proxy: proxy, motionTime: 0, isAnimated: false)
             } else {
-                TimelineView(.periodic(from: .now, by: MacForceNowDesign.Motion.ambientFrameInterval)) { timeline in
+                TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in
                     artwork(proxy: proxy, motionTime: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
                 }
             }
@@ -351,6 +351,6 @@ struct AccountAvatar: View {
             .nvidiaFont(size: size * 0.34, weight: .bold)
             .foregroundStyle(.black)
             .frame(width: size, height: size)
-            .background(MacForceNowDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .background(OpenNOWDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }

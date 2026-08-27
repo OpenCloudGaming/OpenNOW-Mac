@@ -1,4 +1,4 @@
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by OpenCode on 6/16/26.
 //
@@ -93,7 +93,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                 )
 
                 RadialGradient(
-                    colors: [MacForceNowDesign.accent.opacity(0.18), .clear],
+                    colors: [OpenNOWDesign.accent.opacity(0.18), .clear],
                     center: .center,
                     startRadius: 12,
                     endRadius: compact ? 260 : 480
@@ -121,9 +121,9 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(MacForceNowDesign.accent)
+                                .fill(OpenNOWDesign.accent)
                                 .frame(width: 6, height: 6)
-                                .shadow(color: MacForceNowDesign.accent, radius: 6)
+                                .shadow(color: OpenNOWDesign.accent, radius: 6)
                             Text(stage.uppercased())
                                 .font(.nvidia(size: 11, weight: .bold))
                                 .tracking(1.5)
@@ -135,10 +135,10 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                         Text("Position \(queuePosition)")
                             .font(.nvidia(size: 13, weight: .bold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, MacForceNowDesign.Spacing.contentVertical)
+                            .padding(.horizontal, OpenNOWDesign.Spacing.contentVertical)
                             .frame(height: 32)
                             .background(Color.black.opacity(0.48))
-                            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.38), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.38), lineWidth: 1) }
                     }
 
                     if let cancelAction {
@@ -146,10 +146,10 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                             .font(.nvidia(size: 13, weight: .bold))
                             .buttonStyle(.plain)
                             .foregroundStyle(.white.opacity(0.88))
-                            .padding(.horizontal, MacForceNowDesign.Spacing.medium)
+                            .padding(.horizontal, OpenNOWDesign.Spacing.medium)
                             .frame(height: 34)
                             .background(Color.white.opacity(0.08))
-                            .overlay { Rectangle().stroke(MacForceNowDesign.Stroke.regular, lineWidth: 1) }
+                            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                             .accessibilityLabel("Cancel stream launch")
                     }
 
@@ -179,13 +179,13 @@ private struct StreamLaunchSignal: View {
             let rotation = reduceMotion ? 0 : cycle * 360
             ZStack {
                 Circle()
-                    .fill(MacForceNowDesign.accent.opacity(0.12))
+                    .fill(OpenNOWDesign.accent.opacity(0.12))
                     .blur(radius: 14)
                 Circle()
                     .stroke(.white.opacity(0.15), lineWidth: 1)
                 Circle()
                     .trim(from: 0.06, to: 0.70)
-                    .stroke(MacForceNowDesign.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(OpenNOWDesign.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(rotation))
                 Circle()
                     .trim(from: 0.12, to: 0.42)
@@ -193,9 +193,9 @@ private struct StreamLaunchSignal: View {
                     .padding(9)
                     .rotationEffect(.degrees(-rotation * 0.72))
                 Circle()
-                    .fill(MacForceNowDesign.accent)
+                    .fill(OpenNOWDesign.accent)
                     .frame(width: 8, height: 8)
-                    .shadow(color: MacForceNowDesign.accent, radius: 8)
+                    .shadow(color: OpenNOWDesign.accent, radius: 8)
             }
         }
     }
@@ -206,7 +206,7 @@ struct WebRTCMediaStreamView: View {
     let onProgress: WebRTCMediaStreamProgressHandler?
     let onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)?
     let onEnd: WebRTCMediaStreamCompletion
-    private let coordinator: MacForceNowStreamSessionCoordinator
+    private let coordinator: OpenNOWStreamSessionCoordinator
 
     init(configuration: StreamLaunchConfiguration,
          onProgress: WebRTCMediaStreamProgressHandler?,
@@ -216,7 +216,7 @@ struct WebRTCMediaStreamView: View {
         self.onProgress = onProgress
         self.onRequiredSessionAd = onRequiredSessionAd
         self.onEnd = onEnd
-        coordinator = MacForceNowStreamSessionCoordinator(
+        coordinator = OpenNOWStreamSessionCoordinator(
             adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
             progressHandler: { progress in
                 Task { @MainActor in onProgress?(progress) }
@@ -320,7 +320,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var onScreenKeyboardVisible = false
     @State private var restorePointerLockOnKeyboardHide = false
     @StateObject private var onScreenKeyboard = StreamOnScreenKeyboardController()
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
 
     var body: some View {
         ZStack {
@@ -341,7 +341,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         .background(Color.black)
         .onAppear {
-            WebRTCMediaTelemetry.configure(sink: MacForceNowWebRTCMediaTelemetrySink())
+            WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
             startIfNeeded()
         }
         // A `Timer.publish` stored on the view would be rebuilt on every
@@ -501,14 +501,14 @@ private struct NativeNVSTMediaStreamSurface: View {
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
-        if let sessionError = error as? MacForceNowStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+        if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
             metadata.merge(conflict.reportMetadata) { current, _ in current }
         }
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))
     }
 
     private func stopStream() {
-        MacForceNowNativeNVSTGeronimoSetFrameCaptureActive(false)
+        OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(false)
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -1041,7 +1041,7 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func toggleNativeStatsHUD() {
         guard isConnected, !isEnding, !didEnd else { return }
         nativeStatsVisible.toggle()
-        WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "MacForce Now NVST stats shown." : "MacForce Now NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+        WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
     }
 
     private func startNativeStatsPolling(path: NativeNVSTStreamingPath) {
@@ -1169,7 +1169,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                     .font(.streamNvidia(size: 16, weight: .bold))
                     .tracking(1.4)
                     .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                Text("Waiting for a usable network path. MacForce Now will resume the same GeForce NOW session automatically.")
+                Text("Waiting for a usable network path. OpenNOW will resume the same GeForce NOW session automatically.")
                     .font(.streamNvidia(size: 12, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -1218,7 +1218,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                 nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(latestNativeStats?.frameLoss), detail: nativeStatsTotal(latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
                 nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsCount(latestNativeStats?.packetLoss), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
                 nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: MacForceNowDesign.accent)
+                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
                 nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
@@ -1644,7 +1644,7 @@ private struct NativeNVSTMediaStreamSurface: View {
                             action: pauseFromStreamControls
                         )
                         StreamQuitMenuButton(
-                            title: isEnding ? "Quitting..." : (pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit MacForceNow"),
+                            title: isEnding ? "Quitting..." : (pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit OpenNOW"),
                             isPrimary: false,
                             isFocused: streamControlsFocusIndex == 2,
                             isDisabled: isEnding,
@@ -1681,7 +1681,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         guard streamingPerformanceActivity == nil else { return }
         var options: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical, .idleSystemSleepDisabled]
         if preventDisplaySleep { options.insert(.idleDisplaySleepDisabled) }
-        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "MacForce Now active native NVST stream")
+        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "OpenNOW active native NVST stream")
         WebRTCMediaTelemetry.capture("nvst.stream.performance_mode.begin", level: .info, message: "Native NVST performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 
@@ -1774,7 +1774,7 @@ private struct InlineStreamSessionAdPresenter: StreamSessionAdPresenter {
 
     func playRequiredSessionAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
         guard let handler else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("Required ad playback is not available.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad playback is not available.")
         }
         return try await handler(ad)
     }

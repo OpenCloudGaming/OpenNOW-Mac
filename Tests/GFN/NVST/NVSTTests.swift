@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Test func nvstBuildsSignInURLFromServerAndSession() throws {
     let configuration = NVSTSignalingConfiguration(signalingServer: "66-22-138-138.cloudmatchbeta.nvidiagrid.net", sessionID: "session-123")

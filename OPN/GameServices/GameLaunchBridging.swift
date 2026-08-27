@@ -1,6 +1,6 @@
 //
 //  GameLaunchBridging.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

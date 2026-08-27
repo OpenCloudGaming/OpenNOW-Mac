@@ -1,6 +1,6 @@
 //
 //  CatalogMediaViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -77,7 +77,7 @@ struct CatalogImageFallback: View {
             } else {
                 Image(systemName: "play.rectangle.fill")
                     .nvidiaFont(size: 34, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent.opacity(0.78))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
         }
@@ -94,13 +94,13 @@ struct CatalogMessageView: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Rectangle()
-                    .fill(MacForceNowDesign.accent.opacity(0.13))
+                    .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .nvidiaFont(size: 15, weight: .bold)
-                    .foregroundStyle(MacForceNowDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accent)
             }
             .frame(width: 36, height: 36)
-            .overlay { Rectangle().stroke(MacForceNowDesign.accent.opacity(0.30), lineWidth: 1) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
@@ -131,7 +131,7 @@ struct CatalogMessageView: View {
         }
         .padding(14)
         .background(Color.white.opacity(0.060))
-        .overlay(alignment: .leading) { Rectangle().fill(MacForceNowDesign.accent).frame(width: 3) }
+        .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
         .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
     }
 
@@ -163,7 +163,7 @@ struct CatalogErrorPresentation {
             return
         }
         if Self.looksTechnical(message) {
-            title = "MacForce Now received an unexpected service response."
+            title = "OpenNOW received an unexpected service response."
             hint = "Try again in a moment. If it keeps happening, copy the details for diagnostics."
             technicalDetails = message
             return

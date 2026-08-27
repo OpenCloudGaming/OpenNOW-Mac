@@ -1,5 +1,5 @@
 //
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -124,7 +124,7 @@ extension OPNGameService {
     // persisted across launches: the panel disk cache is keyed by vpcId, so
     // without a stored value a cold launch cannot even read cached home rails
     // until the cloudmatch serverInfo round trip completes.
-    static let persistedServerVpcIdKeyPrefix = "MacForceNow.Catalog.ServerVpcId."
+    static let persistedServerVpcIdKeyPrefix = "OpenNOW.Catalog.ServerVpcId."
 
     func persistedServerVpcIdKey(providerStreamingBaseUrl: String) -> String {
         Self.persistedServerVpcIdKeyPrefix + normalizeStreamingBaseUrl(providerStreamingBaseUrl)
@@ -164,7 +164,7 @@ extension OPNGameService {
         getServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { resolved in
             guard resolved != optimistic else { return }
             Task { @MainActor in
-                MacForceNowLog.warning(.catalog, "Catalog vpcId changed optimistic=\(optimistic) resolved=\(resolved)")
+                OpenNOWLog.warning(.catalog, "Catalog vpcId changed optimistic=\(optimistic) resolved=\(resolved)")
             }
         }
     }

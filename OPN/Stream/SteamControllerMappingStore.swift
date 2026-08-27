@@ -5,8 +5,8 @@ import Foundation
 public final class SteamControllerMappingStore: ObservableObject {
     public static let shared = SteamControllerMappingStore()
 
-    public static let profilesKey = "MacForceNow.Input.SteamControllerMappingProfiles"
-    public static let activeProfileKey = "MacForceNow.Input.SteamControllerMappingActiveProfile"
+    public static let profilesKey = "OpenNOW.Input.SteamControllerMappingProfiles"
+    public static let activeProfileKey = "OpenNOW.Input.SteamControllerMappingActiveProfile"
 
     @Published public private(set) var profiles: [SteamControllerMappingProfile]
     @Published public private(set) var activeProfileID: UUID?
@@ -91,8 +91,8 @@ public final class SteamControllerMappingStore: ObservableObject {
     }
 
     // Superseded store's persistence keys — read once during migration below, then never again.
-    private static let legacyGripProfilesKey = "MacForceNow.Input.SteamControllerGripProfiles"
-    private static let legacyGripActiveProfileKey = "MacForceNow.Input.SteamControllerGripActiveProfile"
+    private static let legacyGripProfilesKey = "OpenNOW.Input.SteamControllerGripProfiles"
+    private static let legacyGripActiveProfileKey = "OpenNOW.Input.SteamControllerGripActiveProfile"
 
     /// First launch after this feature ships: fold the old grip-only profile (if any)
     /// and the old global trackpad-mouse toggle into one migrated profile, so existing

@@ -1,6 +1,6 @@
 //
 //  SettingsControllerViews.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import AppKit
@@ -74,7 +74,7 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.nvidiaSans(size: 14 * uiScale))
-                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? MacForceNowDesign.accent : .orange)
+                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OpenNOWDesign.accent : .orange)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(hidMonitor.inputMonitoringPermissionGranted ? "Input Monitoring Permission Granted" : "Input Monitoring Permission Required")
@@ -92,22 +92,22 @@ struct SteamControllerSettingsPage: View {
                                 Button("Grant Permission") {
                                     hidMonitor.requestInputMonitoringPermission()
                                 }
-                                .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
+                                .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
 
                                 Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                     resetInputMonitoringPermission()
                                 }
-                                .buttonStyle(MacForceNowCompactButtonStyle(role: .destructive, uiScale: uiScale))
+                                .buttonStyle(OpenNOWCompactButtonStyle(role: .destructive, uiScale: uiScale))
                                 .disabled(permissionResetInFlight)
-                                .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
+                                .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches OpenNOW.")
                             }
                         } else {
                             Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                 resetInputMonitoringPermission()
                             }
-                            .buttonStyle(MacForceNowCompactButtonStyle(role: .destructive, uiScale: uiScale))
+                            .buttonStyle(OpenNOWCompactButtonStyle(role: .destructive, uiScale: uiScale))
                             .disabled(permissionResetInFlight)
-                            .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches MacForce Now.")
+                            .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches OpenNOW.")
                         }
                     }
 
@@ -115,7 +115,7 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.nvidiaSans(size: 14 * uiScale))
-                            .foregroundStyle(accessibilityPermissionGranted ? MacForceNowDesign.accent : .orange)
+                            .foregroundStyle(accessibilityPermissionGranted ? OpenNOWDesign.accent : .orange)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
@@ -132,7 +132,7 @@ struct SteamControllerSettingsPage: View {
                             Button("Grant Permission") {
                                 SteamControllerLocalCursorInjector.requestAccessibilityPermission()
                             }
-                            .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
+                            .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
                         }
                     }
                     .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }
@@ -149,7 +149,7 @@ struct SteamControllerSettingsPage: View {
                                 .foregroundStyle(.white.opacity(0.58))
                             HStack(spacing: 6 * uiScale) {
                                 Circle()
-                                    .fill(hidMonitor.isMonitorActive ? MacForceNowDesign.accent : .red)
+                                    .fill(hidMonitor.isMonitorActive ? OpenNOWDesign.accent : .red)
                                     .frame(width: 8 * uiScale, height: 8 * uiScale)
                                 Text(hidMonitor.isMonitorActive ? "Active" : "Inactive")
                                     .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
@@ -193,7 +193,7 @@ struct SteamControllerSettingsPage: View {
                         Button("Open Tester") {
                             showingControllerTest = true
                         }
-                        .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
+                        .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
                     }
 
                     SettingsDivider(uiScale: uiScale)
@@ -210,7 +210,7 @@ struct SteamControllerSettingsPage: View {
                         Button("Open Mapping") {
                             showingControllerMapping = true
                         }
-                        .buttonStyle(MacForceNowCompactButtonStyle(uiScale: uiScale))
+                        .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
                     }
                 }
             }
@@ -318,7 +318,7 @@ struct GameplaySettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
                 SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while MacForce Now is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
+                SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
             }
 
             if viewModel.remoteCoOpPreferences.isAlphaOptedIn {
@@ -354,7 +354,7 @@ struct GameplaySettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(title: "Microphone Mode", subtitle: "Controls how voice input is sent to the stream.", options: OPNStreamPreferences.microphoneModeOptions.map(\.label), selectedIndex: selectedMicrophoneModeIndex, uiScale: uiScale, action: { viewModel.setMicrophoneMode(OPNStreamPreferences.microphoneModeOptions[$0].value) })
                 SettingsDivider(uiScale: uiScale)
-                SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for MacForce Now streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, uiScale: uiScale, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
+                SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for OpenNOW streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, uiScale: uiScale, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
             }
 
             SettingsCard(title: "Profile Maintenance", uiScale: uiScale) {
@@ -440,7 +440,7 @@ struct GameplayProfileOverview: View {
                     Text("Active streaming profile")
                         .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("These values are sent to MacForce Now when a new stream starts.")
+                    Text("These values are sent to OpenNOW when a new stream starts.")
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -475,7 +475,7 @@ struct GameplayProfileMetricTile: View {
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsNvidia(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? MacForceNowDesign.accent : .white.opacity(0.86))
+                .foregroundStyle(emphasized ? OpenNOWDesign.accent : .white.opacity(0.86))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -483,6 +483,6 @@ struct GameplayProfileMetricTile: View {
         .padding(.vertical, 11 * uiScale)
         .frame(width: width ?? ((emphasized ? 180 : 154) * uiScale), height: 72 * uiScale, alignment: .leading)
         .background(Color.white.opacity(emphasized ? 0.065 : 0.045))
-        .overlay { Rectangle().stroke(emphasized ? MacForceNowDesign.accent.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(emphasized ? OpenNOWDesign.accent.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -11,7 +11,7 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    private static let defaultWindowTitle = "MacForce Now"
+    private static let defaultWindowTitle = "OpenNOW"
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LoginAccount.lastLoginAt, order: .reverse) private var accounts: [LoginAccount]
@@ -19,7 +19,7 @@ struct ContentView: View {
     @Query private var devices: [LoginDeviceRegistration]
 
     @StateObject private var viewModel = LoginViewModel()
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @State private var windowTitle = Self.defaultWindowTitle
     @State private var didBootstrap = false
     @State private var isShowingStartupLoading = true
@@ -33,8 +33,8 @@ struct ContentView: View {
             .accessibilityHidden(isShowingStartupLoading)
 
             if isShowingStartupLoading {
-                MacForceNowStartupLoadingView(
-                    duration: usesQuickStartupIntro ? MacForceNowStartupAnimation.quickDuration : MacForceNowStartupAnimation.duration
+                OpenNOWStartupLoadingView(
+                    duration: usesQuickStartupIntro ? OpenNOWStartupAnimation.quickDuration : OpenNOWStartupAnimation.duration
                 )
                 .transition(.opacity)
                 .zIndex(100)
@@ -48,7 +48,7 @@ struct ContentView: View {
             .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: windowTitle))
-            .background(MacForceNowInterfaceScaleDensityBooster(scale: uiScale))
+            .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
             .task {
                 await bootstrapAppStartIfNeeded()
@@ -75,21 +75,21 @@ struct ContentView: View {
 
     private func dismissStartupLoading() async {
         let delay = usesQuickStartupIntro
-            ? MacForceNowStartupAnimation.quickDismissalDelayNanoseconds
-            : MacForceNowStartupAnimation.dismissalDelayNanoseconds
+            ? OpenNOWStartupAnimation.quickDismissalDelayNanoseconds
+            : OpenNOWStartupAnimation.dismissalDelayNanoseconds
         do {
             try await Task.sleep(nanoseconds: delay)
         } catch {
             isShowingStartupLoading = false
             return
         }
-        withAnimation(.easeInOut(duration: MacForceNowStartupAnimation.fadeDuration)) {
+        withAnimation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration)) {
             isShowingStartupLoading = false
         }
     }
 
     private func drainOpenedFiles() {
-        for url in MacForceNowFileOpenCoordinator.shared.drainPendingFileURLs() {
+        for url in OpenNOWFileOpenCoordinator.shared.drainPendingFileURLs() {
             viewModel.handleOpenedFile(url)
         }
     }
@@ -170,7 +170,7 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if #available(macOS 11.0, *) {
                 window.titlebarSeparatorStyle = .none
             }
-            if let fitted = MacForceNowWindowFitting.fittedFrame(for: window) {
+            if let fitted = OpenNOWWindowFitting.fittedFrame(for: window) {
                 window.setFrame(fitted, display: true)
             }
         }
@@ -186,7 +186,7 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
     }
 }
 
-enum MacForceNowWindowFitting {
+enum OpenNOWWindowFitting {
     static let targetFillRatio: CGFloat = 0.85
 
     @MainActor

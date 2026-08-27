@@ -1,5 +1,5 @@
 //  CatalogView.swift
-//  MacForceNow
+//  OpenNOW
 //
 //  Created by Jayian on 6/14/26.
 //
@@ -13,9 +13,9 @@ import ImageIO
 import SwiftUI
 
 enum CatalogVendorLayout {
-    static let appBarBackground = MacForceNowDesign.Surface.appBar
-    static let mallSurface = MacForceNowDesign.Surface.app
-    static let tileTray = MacForceNowDesign.Surface.tileTray
+    static let appBarBackground = OpenNOWDesign.Surface.appBar
+    static let mallSurface = OpenNOWDesign.Surface.app
+    static let tileTray = OpenNOWDesign.Surface.tileTray
     static let tileScaleFactor: CGFloat = 1.12
     static let heroAspectRatio: CGFloat = 0.3229
     static let detailPanelAspectRatio: CGFloat = 0.3229
@@ -76,48 +76,48 @@ enum CatalogVendorLayout {
         if viewportHeight > 0 {
             maximum = min(maximum, max(minimum, viewportHeight * 0.78))
         }
-        return MacForceNowDesign.clamped(width * detailPanelAspectRatio, minimum: minimum, maximum: maximum)
+        return OpenNOWDesign.clamped(width * detailPanelAspectRatio, minimum: minimum, maximum: maximum)
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
-        width > 0 ? MacForceNowDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
+        width > 0 ? OpenNOWDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
     }
 
     static func searchWidth(for width: CGFloat) -> CGFloat {
-        MacForceNowDesign.clamped(width * 0.46, minimum: 280, maximum: 640)
+        OpenNOWDesign.clamped(width * 0.46, minimum: 280, maximum: 640)
     }
 
     static func launchPanelWidth(for width: CGFloat) -> CGFloat {
-        MacForceNowDesign.clamped(width - 64, minimum: 360, maximum: 640)
+        OpenNOWDesign.clamped(width - 64, minimum: 360, maximum: 640)
     }
 
     static func heroTextLeading(for width: CGFloat) -> CGFloat {
-        MacForceNowDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
+        OpenNOWDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
     }
 
     static func heroTextWidth(for width: CGFloat) -> CGFloat {
-        MacForceNowDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
+        OpenNOWDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
     }
 }
 
 extension Font {
-    static func nvidia(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> Font {
-        MacForceNowNVIDIAFont.font(size: size, weight: weight)
+    static func nvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
 struct NvidiaFontModifier: ViewModifier {
     @Environment(\.opnUIScale) private var uiScale
     let size: CGFloat
-    let weight: MacForceNowNVIDIAFont.Weight
+    let weight: OpenNOWNVIDIAFont.Weight
 
     func body(content: Content) -> some View {
-        content.font(MacForceNowNVIDIAFont.font(size: size * uiScale, weight: weight))
+        content.font(OpenNOWNVIDIAFont.font(size: size * uiScale, weight: weight))
     }
 }
 
 extension View {
-    func nvidiaFont(size: CGFloat, weight: MacForceNowNVIDIAFont.Weight = .regular) -> some View {
+    func nvidiaFont(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> some View {
         modifier(NvidiaFontModifier(size: size, weight: weight))
     }
 }
@@ -132,8 +132,8 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
-    @AppStorage(MacForceNowInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
-    @AppStorage(MacForceNowInterfacePreferences.uiScaleKey) private var uiScale = MacForceNowInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -250,7 +250,7 @@ struct CatalogView: View {
             }
         }
         .ignoresSafeArea(edges: .all)
-        .background(MacForceNowDesign.Surface.app)
+        .background(OpenNOWDesign.Surface.app)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
         .task { @MainActor in
             viewModel.start()
@@ -290,7 +290,7 @@ struct CatalogView: View {
 
     private func consumePendingGameShortcut() {
         guard let shortcut = pendingGameShortcut else { return }
-        MacForceNowLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
+        OpenNOWLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }

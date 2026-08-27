@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 private func snapshot(leftPad: SteamControllerTrackpadState = SteamControllerTrackpadState(),
                       rightPad: SteamControllerTrackpadState = SteamControllerTrackpadState()) -> SteamControllerInputSnapshot {

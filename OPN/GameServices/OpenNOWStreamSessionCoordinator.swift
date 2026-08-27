@@ -1,6 +1,6 @@
 import Foundation
 
-private final class MacForceNowSessionStopCompletion: @unchecked Sendable {
+private final class OpenNOWSessionStopCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Error?, Never>?
 
@@ -68,7 +68,7 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     }
 }
 
-public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
+public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
     private static let maxBufferedIceCandidates = 120
 
     private let lock = NSLock()
@@ -91,7 +91,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
         guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
         }
         let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
         let launch = await prepareLaunch(configuration: configuration)
@@ -120,17 +120,17 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     public func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
         guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
         }
         let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
         guard profile.transportMode.value.caseInsensitiveCompare("nvst") == .orderedSame else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
         }
         let launch = await prepareLaunch(configuration: configuration)
         guard string(launch.settings["transportMode"]).caseInsensitiveCompare("nvst") == .orderedSame else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
         }
         let serverType: Int
         do {
@@ -247,14 +247,14 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     public func sendAnswer(_ answer: StreamAnswer, for session: StreamSessionDescriptor) async throws {
         guard let signaling = lock.withLock({ self.signaling }) else {
-            throw MacForceNowStreamSessionError.signalingUnavailable
+            throw OpenNOWStreamSessionError.signalingUnavailable
         }
         signaling.sendAnswerSdp(answer.sdp, nvstSdp: answer.metadata["nvstSdp"] ?? "")
     }
 
     public func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws {
         guard let signaling = lock.withLock({ self.signaling }) else {
-            throw MacForceNowStreamSessionError.signalingUnavailable
+            throw OpenNOWStreamSessionError.signalingUnavailable
         }
         signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, usernameFragment: candidate.usernameFragment, isEndOfCandidates: candidate.isEndOfCandidates))
     }
@@ -314,19 +314,19 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     }
 
     private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
-        let (success, info, error) = await sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "MacForceNow" : configuration.title, settings: settings)
+        let (success, info, error) = await sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title, settings: settings)
         if success {
             return AllocatedStreamSession(info)
         } else if info["isSessionLimitConflict"] as? Bool == true {
             let applicationID = self.string(info["appId"])
-            throw MacForceNowStreamSessionError.activeSessionConflict(StreamSessionConflict(
+            throw OpenNOWStreamSessionError.activeSessionConflict(StreamSessionConflict(
                 sessionID: self.string(info["sessionId"]),
                 applicationID: applicationID.isEmpty ? configuration.applicationID : applicationID,
                 serverAddress: self.string(info["serverIp"]),
                 isResumable: self.bool(info["isResumable"])
             ))
         } else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error)
+            throw OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error)
         }
     }
 
@@ -336,7 +336,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {
-                    continuation.resume(throwing: MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to resume stream session." : error))
+                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to resume stream session." : error))
                 }
             }
         }
@@ -345,7 +345,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
     private func waitForReadySession(_ initial: AllocatedStreamSession, configuration: StreamLaunchConfiguration) async throws -> AllocatedStreamSession {
         if initial.isReady { return initial }
         guard !initial.sessionId.isEmpty, !initial.serverIp.isEmpty else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("Cloud session is missing session id or server address.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Cloud session is missing session id or server address.")
         }
 
         var attempts = 0
@@ -369,14 +369,14 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
                 continue
             }
             if attempts >= 60, !lastPollWasPendingProgress {
-                throw MacForceNowStreamSessionError.sessionAllocationFailed("Session poll timeout")
+                throw OpenNOWStreamSessionError.sessionAllocationFailed("Session poll timeout")
             }
             if attempts >= 60, lastPollWasPendingProgress { attempts = 0 }
             attempts += 1
             try await Task.sleep(nanoseconds: pollDelayNanoseconds(attempt: attempts))
             latest = try await pollSession(sessionId: initial.sessionId, serverIp: initial.serverIp)
             if latest.status > 3, ![4, 5, 6].contains(latest.status) {
-                throw MacForceNowStreamSessionError.sessionAllocationFailed("Session in terminal error state")
+                throw OpenNOWStreamSessionError.sessionAllocationFailed("Session in terminal error state")
             }
             if requiredAdGateObserved { latest = latest.markingRequiredAdGateObserved() }
             lastPollWasPendingProgress = latest.isPendingProgress
@@ -388,10 +388,10 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func playRequiredAd(_ ad: AllocatedSessionAd, session: AllocatedStreamSession) async throws -> AllocatedStreamSession {
         guard !ad.mediaUrl.isEmpty else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but no playable ad media was returned.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but no playable ad media was returned.")
         }
         guard let adPresenter else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but the loading screen ad player is not available.")
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("GeForce NOW requires an ad before launch, but the loading screen ad player is not available.")
         }
         let startedSession = try await reportSessionAd(session: session, ad: ad, action: "start", watchedTimeInMs: -1, cancelReason: "")
         let playbackSession = startedSession.sessionId.isEmpty ? session : startedSession
@@ -429,7 +429,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         if success {
             return AllocatedStreamSession(info)
         } else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error)
+            throw OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to update required ad state." : error)
         }
     }
 
@@ -438,7 +438,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
         if success {
             return AllocatedStreamSession(info)
         } else {
-            throw MacForceNowStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to poll stream session." : error)
+            throw OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to poll stream session." : error)
         }
     }
 
@@ -542,7 +542,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
                     self.handleRemoteEnd(reason.isEmpty ? "Stream ended by remote peer." : reason)
                     return
                 }
-                self.resumeOffer(error: MacForceNowStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed before receiving an offer." : reason))
+                self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed before receiving an offer." : reason))
             }
 
             lock.withLock {
@@ -555,7 +555,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
                     self.startOfferTimeout(client: client, descriptor: descriptor)
                     return
                 }
-                self.resumeOffer(error: MacForceNowStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
+                self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
             }
         }
     }
@@ -567,7 +567,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
             let shouldFail = self.lock.withLock { self.signaling === client && self.offerContinuation != nil }
             guard shouldFail else { return }
             client.disconnect()
-            self.resumeOffer(error: MacForceNowStreamSessionError.signalingFailed("Signaling connected but no stream offer was received within 20 seconds for session \(descriptor.id)."))
+            self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed("Signaling connected but no stream offer was received within 20 seconds for session \(descriptor.id)."))
         }
     }
 
@@ -657,9 +657,9 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
 
     private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
         await withCheckedContinuation { continuation in
-            let completion = MacForceNowSessionStopCompletion(continuation: continuation)
+            let completion = OpenNOWSessionStopCompletion(continuation: continuation)
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 10) {
-                completion.resume(MacForceNowStreamSessionError.sessionStopFailed("Cloud session stop timed out."))
+                completion.resume(OpenNOWStreamSessionError.sessionStopFailed("Cloud session stop timed out."))
             }
             OPNActiveSessionService.stopSession(
                 accessToken: session.metadata["accessToken"] ?? "",
@@ -670,7 +670,7 @@ public final class MacForceNowStreamSessionCoordinator: StreamSessionProvider, S
                 if success || (session.metadata["accessToken"] ?? "").isEmpty {
                     completion.resume(nil)
                 } else {
-                    completion.resume(MacForceNowStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
+                    completion.resume(OpenNOWStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
                 }
             }
         }
@@ -781,7 +781,7 @@ private struct PreparedStreamLaunch {
 
 private enum StreamSessionLimitStartStore {
     private static let lock = NSLock()
-    private static let key = "MacForceNow.Stream.SessionLimitStartedAtEpochSeconds"
+    private static let key = "OpenNOW.Stream.SessionLimitStartedAtEpochSeconds"
     private static let maxStoredAgeSeconds: TimeInterval = 24 * 60 * 60
 
     static func startedAtEpochSeconds(for sessionId: String, now: Date = Date()) -> TimeInterval {
@@ -994,7 +994,7 @@ private struct AllocatedSessionAd: Equatable, Sendable {
     }
 }
 
-public enum MacForceNowStreamSessionError: LocalizedError, Sendable {
+public enum OpenNOWStreamSessionError: LocalizedError, Sendable {
     case activeSessionConflict(StreamSessionConflict)
     case sessionAllocationFailed(String)
     case sessionStopFailed(String)

@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoVideoDecoderCreationCodec")
+@_silgen_name("OpenNOWNativeNVSTGeronimoVideoDecoderCreationCodec")
 private func nativeVideoDecoderCreationCodec(_ requestedCodec: UInt32) -> UInt32
 
-@_silgen_name("MacForceNowNativeNVSTGeronimoAudioFrameTriggersRendererReopen")
+@_silgen_name("OpenNOWNativeNVSTGeronimoAudioFrameTriggersRendererReopen")
 private func nativeAudioFrameTriggersRendererReopen(_ configuredChannelCount: UInt32, _ incomingChannelCount: UInt32) -> Int32
 
 @Test func nativeVideoDecoderCreationUsesRequestedCodecEnum() {

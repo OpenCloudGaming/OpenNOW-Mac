@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MacForceNow
+@testable import OpenNOW
 
 @Suite(.serialized) @MainActor struct GamepadUINavigatorTests {
     private let activeDeviceID = InputDeviceID("steam-controller-test-device")

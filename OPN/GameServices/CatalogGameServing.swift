@@ -1,6 +1,6 @@
 //
 //  CatalogGameServing.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation

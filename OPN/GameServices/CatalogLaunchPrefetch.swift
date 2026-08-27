@@ -1,6 +1,6 @@
 //
 //  CatalogLaunchPrefetch.swift
-//  MacForceNow
+//  OpenNOW
 //
 
 import Foundation
@@ -68,7 +68,7 @@ final class CatalogLaunchPrefetch {
         startedAt = ContinuousClock.now
         // Also prewarms the vpcId lookup, which every catalog query waits on.
         gameService.configureCatalogSession(accessToken: accessToken, idToken: idToken, userId: accountIdentifier)
-        MacForceNowLog.info(.catalog, "Launch panel prefetch started")
+        OpenNOWLog.info(.catalog, "Launch panel prefetch started")
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
             self?.handle(kind: .marquee, success: success, panels: panels, error: error)
         }
@@ -122,7 +122,7 @@ final class CatalogLaunchPrefetch {
         case .main:
             mainPanels = panels
         }
-        MacForceNowLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(panels.flatMap(\.sections).count)")
+        OpenNOWLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(panels.flatMap(\.sections).count)")
         observer?(.panels(kind, panels))
         prefetchFirstFrameImages(for: kind)
     }
@@ -150,7 +150,7 @@ final class CatalogLaunchPrefetch {
             let message = error.isEmpty ? "No \(kind.rawValue) panels returned." : error
             setState(.failed, for: kind)
             guard storedPanels(for: kind).isEmpty else { return }
-            MacForceNowLog.warning(.catalog, "Launch panel prefetch failed kind=\(kind.rawValue) error=\(message)")
+            OpenNOWLog.warning(.catalog, "Launch panel prefetch failed kind=\(kind.rawValue) error=\(message)")
             observer?(.failed(kind, message))
             return
         }
@@ -165,7 +165,7 @@ final class CatalogLaunchPrefetch {
         if let startedAt {
             let elapsed = startedAt.duration(to: .now).components
             let elapsedMs = Int(elapsed.seconds * 1000) + Int(elapsed.attoseconds / 1_000_000_000_000_000)
-            MacForceNowLog.info(.catalog, "Launch panel prefetch delivered kind=\(kind.rawValue) elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
+            OpenNOWLog.info(.catalog, "Launch panel prefetch delivered kind=\(kind.rawValue) elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
         }
         observer?(.panels(kind, panels))
         prefetchFirstFrameImages(for: kind)
