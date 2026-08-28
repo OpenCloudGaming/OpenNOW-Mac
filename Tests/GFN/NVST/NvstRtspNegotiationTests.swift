@@ -344,8 +344,8 @@ import Testing
         #expect(body.contains("a=x-nv-video[0].clientViewportHt:2160"))
         #expect(body.contains("a=x-nv-vqos[0].bitStreamFormat:1"))
         #expect(body.contains("a=x-nv-video[0].framePacing.pid.minTargetFrameTimeUs:7936"))
-        #expect(body.contains("a=x-nv-video[0].framePacing.pid.targetFrameTimeUs:16666"))
-        #expect(body.contains("a=x-nv-video[0].framePacing.pid.maxTargetFrameTimeUs:16684"))
+        #expect(!body.contains("a=x-nv-video[0].framePacing.pid.targetFrameTimeUs:"))
+        #expect(!body.contains("a=x-nv-video[0].framePacing.pid.maxTargetFrameTimeUs:"))
         #expect(!body.contains("a=x-nv-vqos[0].avoidDuplicateGameFrames:"))
         #expect(!body.contains("a=x-nv-vqos[0].avoidDuplicateNonReflexGameFrames:"))
     }
@@ -388,8 +388,8 @@ import Testing
         // from the fps.
         #expect(lines.contains("a=x-nv-video[0].maxFPS:120"))
         #expect(lines.contains("a=x-nv-video[0].framePacing.pid.minTargetFrameTimeUs:7936"))
-        #expect(lines.contains("a=x-nv-video[0].framePacing.pid.targetFrameTimeUs:16666"))
-        #expect(lines.contains("a=x-nv-video[0].framePacing.pid.maxTargetFrameTimeUs:16684"))
+        #expect(!lines.contains("a=x-nv-video[0].framePacing.pid.targetFrameTimeUs:16666"))
+        #expect(!lines.contains("a=x-nv-video[0].framePacing.pid.maxTargetFrameTimeUs:16684"))
         #expect(lines.contains("a=x-nv-runtime.videoSrtp:1"))
         #expect(lines.contains("a=x-nv-runtime.encryptionKeyId:42"))
         #expect(lines.contains("a=x-nv-runtime.encryptionKey:\(String(repeating: "0A", count: 32))"))

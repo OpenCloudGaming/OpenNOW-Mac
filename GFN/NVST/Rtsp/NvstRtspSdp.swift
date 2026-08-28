@@ -306,8 +306,6 @@ public enum NvstRtspSdp {
         ("mtuPacketSizeControl", "1"),
         ("rtpNackMaxRetries", "3"),
         ("rtpNackVersion", "2"),
-        ("framePacing.pid.maxTargetFrameTimeUs", "16684"),
-        ("framePacing.pid.targetFrameTimeUs", "16666"),
         ("encoderPreset", "5"),
         ("encoderCscMode", "2"),
         ("encoderHdrCscMode", "4"),

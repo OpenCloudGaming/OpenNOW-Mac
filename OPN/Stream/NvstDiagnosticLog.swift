@@ -43,7 +43,7 @@ public final class NvstDiagnosticLog: @unchecked Sendable {
 
     public func append(_ line: String, at date: Date = Date()) {
         guard let handle else { return }
-        queue.async { [timestampFormatter] in
+        queue.async { [self] in
             let stamp = timestampFormatter.string(from: date)
             guard let data = "\(stamp) \(line)\n".data(using: .utf8) else { return }
             try? handle.write(contentsOf: data)
@@ -51,7 +51,7 @@ public final class NvstDiagnosticLog: @unchecked Sendable {
     }
 
     /// Only ever touched on the serial log queue.
-    private let timestampFormatter: ISO8601DateFormatter = {
+    private nonisolated(unsafe) let timestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
