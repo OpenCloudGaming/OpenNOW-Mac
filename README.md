@@ -12,7 +12,9 @@
 ![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)
 ![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC%20%2B%20NVST-orange)
 
-<br>
+**Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA.
+
+---
 
 > ### 🙏 Special Thanks
 > Huge thanks to **[@Jayian1890](https://github.com/Jayian1890)** — the main contributor of **all base and core functionality** of **openNOW-Mac**. This project stands on that foundation.
@@ -197,9 +199,3 @@ scripts/clean-spm-builds.sh        # reclaim disk space
 ## Contributing
 
 Pull requests welcome. Use conventional commit prefixes (`fix:`, `feat:`, `docs:`, `test:`, `refactor:`, `style:`, `chore:`), keep changes focused, and verify the relevant package tests or app build before submitting.
-
-## About
-
-OpenNOW began as a fork of [OpenNOW-Mac](https://github.com/OpenCloudGaming/OpenNOW-Mac) and is now maintained independently as the canonical continuation of the project, extended with Steam Controller 2026 support, a native NVST streaming path, and more. Licensed under [MIT](LICENSE).
-
-> **Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. Use your own GeForce NOW account and comply with the [GeForce NOW Terms of Use](https://www.nvidia.com/en-us/geforce-now/terms-of-use/).
