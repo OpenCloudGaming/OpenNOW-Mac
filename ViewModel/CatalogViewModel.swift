@@ -154,6 +154,10 @@ final class CatalogViewModel {
     var isLoading = false
     var isLoadingMoreCatalog = false
     var isLoadingPanels = false
+    /// The deferred library/favorites fetches run after the main grid. These hold a skeleton rail
+    /// in place while they do, so the rails do not silently pop in when they land.
+    var isLoadingLibrary = false { didSet { cachedCatalogSections = nil } }
+    var isLoadingFavorites = false { didSet { cachedCatalogSections = nil } }
     private var catalogEndCursor = ""
     var errorMessage = ""
     var launchMessage = ""
@@ -342,6 +346,10 @@ final class CatalogViewModel {
             sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .favorites))
             seenTitles.insert("My Favorites")
             seenIds.insert("remote-favorites")
+        } else if !isBrowseMode, isLoadingFavorites {
+            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: [], kind: .favorites, isPlaceholder: true))
+            seenTitles.insert("My Favorites")
+            seenIds.insert("remote-favorites")
         }
         for panel in mainPanels {
             for section in panel.sections where !section.games.isEmpty {
@@ -370,6 +378,9 @@ final class CatalogViewModel {
         if !isBrowseMode, !libraryGames.isEmpty {
             let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
             sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library), at: insertionIndex)
+        } else if !isBrowseMode, isLoadingLibrary {
+            let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
+            sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: [], kind: .library, isPlaceholder: true), at: insertionIndex)
         }
         let result = Array(sections.prefix(10))
         cachedCatalogSections = result
@@ -2165,8 +2176,10 @@ final class CatalogViewModel {
 
     private func loadLibrary() {
         configureCatalogService()
+        isLoadingLibrary = true
         gameService.fetchLibraryGameObjects { [weak self] success, games, error in
             guard let self else { return }
+            self.isLoadingLibrary = false
             if success {
                 self.libraryGames = games
                 self.schedulePatchingPollIfNeeded()
@@ -2178,8 +2191,10 @@ final class CatalogViewModel {
 
     private func loadFavorites() {
         configureCatalogService()
+        isLoadingFavorites = true
         gameService.fetchFavoriteGameObjects { [weak self] success, games, error in
             guard let self else { return }
+            self.isLoadingFavorites = false
             if success {
                 self.updateFavoriteGames(games)
                 self.schedulePatchingPollIfNeeded()
@@ -2774,6 +2789,8 @@ struct CatalogSectionModel: Identifiable, Equatable {
     let title: String
     let games: [OPNCatalogGameObject]
     let kind: Kind
+    /// A rail whose data is still loading: render a skeleton, no games yet.
+    var isPlaceholder = false
     var tiles: [OPNCatalogPanelTileObject] = []
     var seeMoreFilterIds: [String] = []
     var seeMoreSortId = ""
@@ -2784,6 +2801,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
         title: String,
         games: [OPNCatalogGameObject],
         kind: Kind,
+        isPlaceholder: Bool = false,
         tiles: [OPNCatalogPanelTileObject] = [],
         seeMoreFilterIds: [String] = [],
         seeMoreSortId: String = "",
@@ -2793,6 +2811,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
         self.title = title
         self.games = CatalogViewModel.dedupedByTitleGrouping(games)
         self.kind = kind
+        self.isPlaceholder = isPlaceholder
         self.tiles = tiles
         self.seeMoreFilterIds = seeMoreFilterIds
         self.seeMoreSortId = seeMoreSortId

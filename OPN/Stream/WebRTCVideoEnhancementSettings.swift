@@ -810,6 +810,8 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private var fastSpatialNV12Pipeline: (any MTLRenderPipelineState)?
     private var fastSpatialI420Pipeline: (any MTLRenderPipelineState)?
     private let pillarboxDetector = OPNPillarboxDetector()
+    private var lastLoggedFillMode: OPNPillarboxFillMode?
+    private var lastLoggedContentRect: OPNPillarboxContentRect?
     private var fillHistoryRGBPipeline: (any MTLRenderPipelineState)?
     private var fillHistoryNV12Pipeline: (any MTLRenderPipelineState)?
     private var fillHistoryI420Pipeline: (any MTLRenderPipelineState)?
@@ -1238,6 +1240,16 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let maxY = min(max(Float(cropRect.maxY), 0), 1)
         var crop = maxX > minX && maxY > minY ? SIMD4<Float>(minX, minY, maxX, maxY) : SIMD4<Float>(0, 0, 1, 1)
         var jitter = suppliedJitter
+        // One line whenever the fill mode or the measured bar geometry changes. The fill is easy to
+        // get silently wrong — a stale mode, or a detector that never finds the bars — and neither
+        // shows up as an error, so state it explicitly.
+        let fillModeNow = OPNPillarboxFillMode.from(settings.pillarboxFillMode)
+        let contentNow = pillarboxDetector.contentRect
+        if fillModeNow != lastLoggedFillMode || contentNow != lastLoggedContentRect {
+            lastLoggedFillMode = fillModeNow
+            lastLoggedContentRect = contentNow
+            OpenNOWLog.info(.stream, "Pillarbox fill mode=\(fillModeNow.label) content=[\(String(format: "%.4f", contentNow.left)), \(String(format: "%.4f", contentNow.right))] source=\(primaryTexture.width)x\(primaryTexture.height)")
+        }
         let uniforms = Self.pillarboxUniforms(
             mode: OPNPillarboxFillMode.from(settings.pillarboxFillMode),
             contentRect: pillarboxDetector.contentRect,

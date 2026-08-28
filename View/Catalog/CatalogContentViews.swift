@@ -549,6 +549,24 @@ struct CatalogRailView: View {
     private var canShowAll: Bool { section.canLoadFullList }
 
     var body: some View {
+        if section.isPlaceholder {
+            // Deferred library/favorites rail: keep its title and reserve the row with a skeleton
+            // so the layout does not jump when the games arrive a moment later.
+            VStack(alignment: .leading, spacing: 14) {
+                Text(section.title)
+                    .nvidiaFont(size: 20, weight: .medium)
+                    .foregroundStyle(.white.opacity(0.96))
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                CatalogRailSkeletonView()
+            }
+            .transition(.opacity)
+        } else {
+            loadedBody
+        }
+    }
+
+    private var loadedBody: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(section.title)

@@ -1,4 +1,5 @@
 @preconcurrency import Foundation
+import os
 import Combine
 import GameController
 import CoreHaptics
@@ -83,7 +84,7 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
             let charging = steamCharging[deviceID] ?? false
             batteries.append(ControllerBatteryInfo(id: deviceID.rawValue, label: "P\(index + 1)", level: level, charging: charging))
         }
-        let nativeControllers = GCController.controllers().filter { $0.extendedGamepad != nil }
+        let nativeControllers = NativeWebRTCGamepadMonitor.availableNativeControllers()
         let steamCount = activeIDs.count
         for (index, controller) in nativeControllers.enumerated() {
             let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
@@ -190,8 +191,65 @@ public final class NativeWebRTCGamepadMonitor {
         }
     }
 
+    /// The `GCController`s that are not a republished copy of a pad our HID monitor already owns.
+    ///
+    /// Measured on the Steam Controller 2 (Proteus dongle): it exposes ONLY Mouse (usage 1/2) and
+    /// vendor (65280/2) HID interfaces, no gamepad interface at all, so GameController never sees
+    /// it and it is never the duplicate. A second XInput device alongside it comes from somewhere
+    /// else — a real pad, or a VIRTUAL one such as the bridge-pad DriverKit extension, which
+    /// publishes a Microsoft-branded pad (045e:028e) fed from the same physical controller.
+    /// This filter is therefore a guard for pads that DO publish a gamepad interface under a
+    /// recognisable name; it deliberately cannot catch a virtual pad that identifies as an Xbox
+    /// controller, because nothing distinguishes that from a genuine Xbox controller.
+    nonisolated static func availableNativeControllers() -> [GCController] {
+        let all = GCController.controllers().filter { $0.extendedGamepad != nil }
+        logControllerIdentitiesOnce(all)
+        guard SteamControllerHIDMonitor.connectedControllerCount > 0 else { return all }
+        return all.filter { !isSteamControllerDuplicate($0) }
+    }
+
+    nonisolated static func isSteamControllerDuplicate(_ controller: GCController) -> Bool {
+        let identity = "\(controller.vendorName ?? "") \(controller.productCategory)"
+            .lowercased()
+            .trimmingCharacters(in: .whitespaces)
+        guard !identity.isEmpty else { return false }
+        // Primary test: the pad names itself the same as a device our HID monitor already owns.
+        // GameController normally reuses the HID product string ("Steam Controller Puck"), so this
+        // matches the real device rather than a guessed brand name.
+        for claimed in SteamControllerHIDMonitor.claimedProductNames
+        where identity.contains(claimed) || claimed.contains(identity) {
+            return true
+        }
+        // Fallback for a pad GameController renames.
+        return identity.contains("steam") || identity.contains("valve")
+    }
+
+    /// The identity strings are the only way to tell which `GCController` is the Steam Controller
+    /// duplicate, and they are not documented for this pad — so state them once per launch. If a
+    /// duplicate ever slips through again this line says exactly what to match on.
+    private nonisolated static func logControllerIdentitiesOnce(_ controllers: [GCController]) {
+        let identities = controllers
+            .map { "\($0.vendorName ?? "nil")|\($0.productCategory)" }
+            .sorted()
+        guard !identities.isEmpty else { return }
+        let key = identities.joined(separator: ",")
+        let isNew = loggedControllerIdentities.withLock { seen -> Bool in seen.insert(key).inserted }
+        guard isNew else { return }
+        WebRTCMediaTelemetry.capture(
+            "webrtc.input.gamepad.identities",
+            level: .info,
+            message: "GameController identities.",
+            attributes: [
+                "identities": key,
+                "steamClaimed": SteamControllerHIDMonitor.claimedProductNames.sorted().joined(separator: ","),
+            ]
+        )
+    }
+
+    private nonisolated static let loggedControllerIdentities = OSAllocatedUnfairLock(initialState: Set<String>())
+
     public nonisolated static func connectedGamepadCount() -> Int {
-        let nativeCount = GCController.controllers().filter { $0.extendedGamepad != nil }.count
+        let nativeCount = availableNativeControllers().count
         return min(4, nativeCount + SteamControllerHIDMonitor.connectedControllerCount)
     }
 
@@ -256,15 +314,22 @@ public final class NativeWebRTCGamepadMonitor {
     private func refreshControllerSlots() {
         let previousSteamSlots = pollState.steamControllerSlots
         let previousOccupiedSlots = Set(pollState.controllerSlots.values).union(pollState.steamControllerSlots.values)
-        let cachedControllers = Array(GCController.controllers().filter { $0.extendedGamepad != nil }.prefix(4))
-        var newControllerSlots: [ObjectIdentifier: Int] = [:]
-        for (index, controller) in cachedControllers.enumerated() {
-            newControllerSlots[ObjectIdentifier(controller)] = index
-        }
+        let cachedControllers = Array(Self.availableNativeControllers().prefix(4))
+        // Steam Controllers take the low player slots. GameController pads used to be numbered
+        // first, so anything else present — a real pad, or a VIRTUAL one like the bridge-pad
+        // DriverKit extension publishing a Microsoft-branded gamepad — pushed the Steam Controller
+        // to player 2. A game that only listens to player 1 then looks completely dead even though
+        // the pad is working and its packets are reaching the seat. This app exists to drive the
+        // Steam Controller, so it gets player 1 when it is connected.
         var newSteamSlots: [InputDeviceID: Int] = [:]
-        var nextSlot = cachedControllers.count
+        var nextSlot = 0
         for deviceID in SteamControllerHIDMonitor.shared.activeDeviceIDs where nextSlot < 4 {
             newSteamSlots[deviceID] = nextSlot
+            nextSlot += 1
+        }
+        var newControllerSlots: [ObjectIdentifier: Int] = [:]
+        for controller in cachedControllers where nextSlot < 4 {
+            newControllerSlots[ObjectIdentifier(controller)] = nextSlot
             nextSlot += 1
         }
         pollingQueue.sync {
@@ -492,9 +557,8 @@ private final class GamepadPollState {
     }
 
     private func pollAndEmit(onEvents: @escaping @Sendable ([UserInputEvent]) -> Void, onBatteryChange: @escaping @Sendable ([ControllerBatteryInfo]) -> Void) {
-        if NativeWebRTCGamepadMonitor.connectedGamepadCount() != controllerSlots.count + steamControllerSlots.count {
-            return
-        }
+        // No global count gate: it raced the slot maps and could bail every tick, killing the whole
+        // poll. The per-controller `controllerSlots[id]` lookup below already skips anything unslotted.
         var events: [UserInputEvent] = []
         var batteryChanges: [ControllerBatteryInfo] = []
         for controller in cachedControllers {

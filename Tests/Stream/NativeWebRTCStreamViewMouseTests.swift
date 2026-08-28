@@ -104,6 +104,36 @@ private struct MouseButtonTransition: Equatable {
     #expect(view.hidesCursorWhilePointerLocked)
 }
 
+@Test @MainActor func remoteCursorVisibilityTransitionsBetweenCapturedAndPointingModes() {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
+    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.cursorAssociationHandler = { _ in .success }
+    view.hidesCursorWhilePointerLocked = false
+    view.mouseInputMode = .absolute
+    window.contentView = view
+    defer { view.setPointerLocked(false) }
+
+    view.setRemoteCursorVisible(false)
+
+    #expect(view.mouseInputMode == .relative)
+    #expect(view.isPointerLocked)
+
+    view.setRemoteCursorVisible(true)
+
+    #expect(view.mouseInputMode == .absolute)
+    #expect(!view.isCursorCaptured)
+}
+
+@Test @MainActor func remoteCursorVisibilityKeepsPointingModeWithoutDirectMouseInput() {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.directMouseInputEnabled = false
+
+    view.setRemoteCursorVisible(false)
+
+    #expect(view.mouseInputMode == .absolute)
+    #expect(!view.isCursorCaptured)
+}
+
 @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamViewLeavesApplicationMenuKeyEquivalentsLocal() {
     #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent(.command))
     #expect(NativeWebRTCStreamView.reservesApplicationMenuKeyEquivalent([.command, .shift]))
@@ -138,13 +168,13 @@ private struct MouseButtonTransition: Equatable {
     view.layoutSubtreeIfNeeded()
     let timestamp = MediaTimestamp(nanoseconds: 1_000)
 
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 450, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 899, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 1, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 899, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 0, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: -100, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 450, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1700, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 450, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 899, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 1, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 899, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 0, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: -100, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
+    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1700, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
     #expect(view.absoluteMouseEvent(at: CGPoint(x: CGFloat.nan, y: 500), timestamp: timestamp) == nil)
 }
 
@@ -278,14 +308,14 @@ private struct MouseButtonTransition: Equatable {
     ]
 
     dispatcher.enqueue(events[0])
-    dispatcher.enqueueAbsoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp))
+    dispatcher.enqueueAbsoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
     events.dropFirst().forEach { dispatcher.enqueue($0) }
     await recorder.waitForCount(events.count + 1)
     await dispatcher.finish()
 
     #expect(await recorder.snapshot() == [
         .event(events[0]),
-        .absoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, timestamp: timestamp)),
+        .absoluteMove(NativeNVSTAbsoluteMouseEvent(x: 640, y: 360, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp)),
         .event(events[1]),
         .event(events[2]),
         .event(events[3]),

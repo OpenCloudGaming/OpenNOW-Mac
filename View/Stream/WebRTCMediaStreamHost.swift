@@ -360,13 +360,19 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private func startIfNeeded() {
         guard startTask == nil, path == nil, !didEnd else { return }
-        guard let nativeView, let nativeVideoSurfaceHandle = Self.nativeVideoSurfaceHandle(for: nativeView) else {
+        guard let nativeView, Self.nativeVideoSurfaceHandle(for: nativeView) != nil else {
             loadingStepIndex = StreamLaunchStep.checkNetworkRoute.rawValue
             return
         }
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        let resolvedStreamSettings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: webRTCMediaProfile(from: profile),
+            capabilities: webRTCMediaCapabilities(from: capabilities),
+            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
+        )
         microphoneMode = profile.microphoneMode.lowercased()
         let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume, mode: microphoneMode)
         microphoneAvailable = microphoneConfiguration.captureRequested
@@ -375,42 +381,48 @@ private struct NativeNVSTMediaStreamSurface: View {
         microphonePendingStates.removeAll()
         let initialMicrophoneEnabled = microphoneEnabled
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
-        networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(max(1, profile.maxBitrateMbps) * 1_000), l4sEnabled: profile.enableL4S)
+        networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
-        let transport = NativeNVSTBifrostTransport(
-            nativeVideoSurfaceHandle: nativeVideoSurfaceHandle,
-            cursorVisibilityHandler: { [weak nativeView] visible in
-                guard let nativeView else { return }
-                let mode: NativeStreamMouseInputMode = visible || !nativeView.directMouseInputEnabled ? .absolute : .relative
-                nativeView.mouseInputMode = mode
-                // When the game hides its cursor (relative mode), auto-capture so mouse-look is
-                // disassociated and never hits a screen edge; release capture when the cursor
-                // returns (menus/Steam) so the user can point again.
-                if mode == .relative {
-                    if nativeView.remoteInputEnabled { nativeView.setPointerLocked(true) }
-                } else {
-                    nativeView.setPointerLocked(false)
-                }
+        // Experimental: MacForce Now's own session core (Phase 2) replaces the Geronimo
+        // transport when enabled. Geronimo/SDL2 are not loaded; video frames are counted but
+        // not decoded until Phase 2C, so the surface stays blank while HUD and input work.
+        // Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir
+        // receiver + VideoToolbox decode, drawn on the shared Metal surface. Input/audio still
+        // need the ICE/DTLS bundle, so this stays opt-in until that lands.
+        let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps))).frameSink
+        // The only transport. The vendored NVIDIA path has been removed; there is no fallback, so
+        // a failure surfaces as a failed stream instead of silently using the old libraries.
+        // The unified log purges info-level lines within minutes, which has already cost one
+        // session's counter timeline mid-investigation; the diagnostic file is the durable copy.
+        let diagnosticLog = NvstDiagnosticLog()
+        if let logURL = diagnosticLog.url {
+            WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info,
+                                         message: "NVST diagnostic log at \(logURL.path)")
+        }
+        let transport: any NativeNVSTTransport = NvstBifrostFreeTransport(
+            pixelBufferSink: { pixelBuffer, presentationTime, isKeyframe in
+                bifrostFreeSink.render(pixelBuffer: pixelBuffer, presentationTime: presentationTime, isKeyframe: isKeyframe)
             },
-            prepareVideoSurfaceForShutdown: {
-                nativeView.prepareNativeNVSTRendererForShutdown()
-            },
-            restoreVideoSurfaceAfterRecovery: {
-                nativeView.setNativeNVSTVideoVisible(true)
-            },
-            hapticHandler: { [weak nativeView] command in
-                nativeView?.playHaptic(command)
-            },
-            hapticResetHandler: { [weak nativeView] in
-                nativeView?.stopHaptics()
-            },
-            localInputCaptureHandler: { [weak nativeView] in
-                nativeView?.localOverlayCapturesInput ?? false
+            configuredFps: resolvedStreamSettings.fps,
+            configuredMaxBitrateKbps: resolvedStreamSettings.maxBitrateMbps * 1_000,
+            logger: { message in
+                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
+                diagnosticLog.append(message)
             }
         )
+        // Match the local pointer to the game's: the seat stops compositing its own cursor as soon
+        // as it starts publishing cursor state, so from then on the only pointer is ours and it has
+        // to appear and disappear when the game's does.
+        if let bifrostFree = transport as? NvstBifrostFreeTransport {
+            Task {
+                await bifrostFree.setRemoteCursorVisibilityHandler { [weak nativeView] isVisible in
+                    nativeView?.setRemoteCursorVisible(isVisible)
+                }
+            }
+        }
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
         let inputDispatcher = NativeNVSTInputDispatcher { input in
             switch input {
@@ -508,7 +520,6 @@ private struct NativeNVSTMediaStreamSurface: View {
     }
 
     private func stopStream() {
-        OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(false)
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -1216,8 +1227,14 @@ private struct NativeNVSTMediaStreamSurface: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(latestNativeStats?.frameLoss), detail: nativeStatsTotal(latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
-                nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsCount(latestNativeStats?.packetLoss), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
+                // Percent over the last interval, matching what the WebRTC HUD shows; the running
+                // count stays alongside it as the detail.
+                nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsPercentage(latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
                 nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Jitter", value: nativeStatsMilliseconds(latestNativeStats?.jitterMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
+                // Client-side decode cost. It used to occupy the MS box, where it read as network
+                // latency and was not one.
+                nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(latestNativeStats?.decodeMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
                 nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
@@ -1234,8 +1251,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
-        .padding(.top, 5)
-        .padding(.trailing, 5)
+        .padding([.top, .trailing], OpenNOWDesign.Spacing.small)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(false)
     }
@@ -1309,7 +1325,7 @@ private struct NativeNVSTMediaStreamSurface: View {
 
     private var nativePacketLossColor: Color {
         guard let latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.packetLoss == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        return latestNativeStats.packetLossPercent <= 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
     }
 
     private func nativeStatsWholeNumber(_ value: Double?) -> String {
@@ -1330,6 +1346,17 @@ private struct NativeNVSTMediaStreamSurface: View {
     private func nativeStatsTotal(_ value: UInt64?) -> String {
         guard latestNativeStats?.available == true, let value else { return "(-- Total)" }
         return "(\(value) Total)"
+    }
+
+    private func nativeStatsPercentage(_ value: Double?) -> String {
+        guard latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        return String(format: "%.1f%%", value)
+    }
+
+    /// Sub-millisecond values are the normal case for decode, so one decimal rather than none.
+    private func nativeStatsMilliseconds(_ value: Double?) -> String {
+        guard latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        return String(format: "%.1f", value)
     }
 
     private func nativeStatsMegabits(_ value: Double?) -> String {

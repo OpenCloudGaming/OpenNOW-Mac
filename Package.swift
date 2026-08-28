@@ -20,8 +20,7 @@ let package = Package(
         .target(
             name: "OpenNOW",
             dependencies: [
-                .product(name: "Sentry", package: "sentry-cocoa"),
-                "OpenNOWNativeGeronimoShim"
+                .product(name: "Sentry", package: "sentry-cocoa")
             ],
             path: ".",
             exclude: [
@@ -36,7 +35,6 @@ let package = Package(
                 "OpenNOW.entitlements",
                 "OpenNOWApp.swift",
                 "OpenNOW.xcodeproj",
-                "OPN/NativeGeronimo",
                 "RemoteCoOp",
                 "Resources",
                 "Tests",
@@ -47,7 +45,6 @@ let package = Package(
                 "build",
                 "scripts",
                 "tools",
-                "vendor"
             ],
             sources: [
                 "App",
@@ -67,21 +64,15 @@ let package = Package(
                 .unsafeFlags(["-F", packageRoot, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", packageRoot])
             ]
         ),
-        .target(
-            name: "OpenNOWNativeGeronimoShim",
-            path: "OPN/NativeGeronimo",
-            sources: ["NativeNVSTGeronimoShim.mm"],
-            publicHeadersPath: "."
-        ),
         .testTarget(
             name: "OpenNOWTests",
             dependencies: ["OpenNOW"],
             path: "Tests",
+            // Read through `#filePath`, not `Bundle.module`, so they must not be bundled — but they
+            // do have to be declared, or every build warns about unhandled files.
+            exclude: ["GFN/NVST/Fixtures"],
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])
-            ],
-            linkerSettings: [
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(packageRoot)/vendor/gfn-runtime/Frameworks"])
             ]
         )
     ],

@@ -45,6 +45,12 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let totalFrameLoss: UInt64
     public let packetLoss: UInt64
     public let totalPacketLoss: UInt64
+    /// Loss over the last poll interval, as the WebRTC path reports it: lost / (received + lost).
+    /// Negative when it cannot be computed yet.
+    public let packetLossPercent: Double
+    /// Mean client-side decode cost per frame. Distinct from `latencyMilliseconds`, which is the
+    /// network round trip.
+    public let decodeMilliseconds: Double
     public let bitrateMegabitsPerSecond: Double
     public let bandwidthUtilizationPercent: Double
     public let resolution: String
@@ -60,6 +66,8 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 totalFrameLoss: UInt64,
                 packetLoss: UInt64,
                 totalPacketLoss: UInt64,
+                packetLossPercent: Double = -1,
+                decodeMilliseconds: Double = -1,
                 bitrateMegabitsPerSecond: Double,
                 bandwidthUtilizationPercent: Double,
                 resolution: String,
@@ -74,6 +82,8 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
         self.totalFrameLoss = totalFrameLoss
         self.packetLoss = packetLoss
         self.totalPacketLoss = totalPacketLoss
+        self.packetLossPercent = packetLossPercent
+        self.decodeMilliseconds = decodeMilliseconds
         self.bitrateMegabitsPerSecond = bitrateMegabitsPerSecond
         self.bandwidthUtilizationPercent = bandwidthUtilizationPercent
         self.resolution = resolution

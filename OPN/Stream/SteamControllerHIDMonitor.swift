@@ -66,6 +66,15 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         activeCount.withLock { $0 }
     }
 
+    /// Lowercased `kIOHIDProductKey` of every pad this monitor currently owns (e.g. "steam
+    /// controller puck"). GameController republishes the same physical device and usually reuses
+    /// the HID product string as its `vendorName`, so this is what lets the gamepad monitor spot
+    /// the duplicate without hardcoding a guess at the name.
+    public nonisolated static var claimedProductNames: Set<String> {
+        claimedNames.withLock { $0 }
+    }
+
+    private nonisolated static let claimedNames = OSAllocatedUnfairLock(initialState: Set<String>())
     private nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
     private static let heartbeatInterval: TimeInterval = 5.0
     private static let featureReportAttempts = 5
@@ -133,14 +142,36 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     }
 
     public var activeDeviceIDs: [InputDeviceID] {
-        devices.values
+        // A composite controller (e.g. Steam Controller 2 / Triton) exposes several HID interfaces
+        // that share one controllerID. Collapse them so one physical pad is one slot, not two.
+        var seen = Set<UInt64>()
+        return devices.values
             .filter(\.isActive)
+            // Within one controllerID keep the interface that carries the gamepad reports.
+            .sorted { ($0.controllerID, $0.gamepadDevice == nil ? 1 : 0) < ($1.controllerID, $1.gamepadDevice == nil ? 1 : 0) }
+            .filter { seen.insert($0.controllerID).inserted }
             .map(\.deviceID)
             .sorted { $0.rawValue < $1.rawValue }
     }
 
     public func snapshot(for deviceID: InputDeviceID) -> SteamControllerInputSnapshot? {
-        devices.values.first { $0.deviceID == deviceID }?.mergedSnapshot
+        // A composite controller's interfaces share a deviceID and its reports can land on any of
+        // them, so merge across all of them rather than trusting one — picking a single interface
+        // silently drops whichever half of the input arrives on the other.
+        let snapshots = devices.values.filter { $0.deviceID == deviceID }.map(\.mergedSnapshot)
+        guard !snapshots.isEmpty else { return nil }
+        let empty = SteamControllerInputSnapshot()
+        return snapshots.reduce(into: empty) { merged, snapshot in
+            merged.buttons.formUnion(snapshot.buttons)
+            merged.leftTrigger = max(merged.leftTrigger, snapshot.leftTrigger)
+            merged.rightTrigger = max(merged.rightTrigger, snapshot.rightTrigger)
+            if abs(snapshot.leftStickX) > abs(merged.leftStickX) { merged.leftStickX = snapshot.leftStickX }
+            if abs(snapshot.leftStickY) > abs(merged.leftStickY) { merged.leftStickY = snapshot.leftStickY }
+            if abs(snapshot.rightStickX) > abs(merged.rightStickX) { merged.rightStickX = snapshot.rightStickX }
+            if abs(snapshot.rightStickY) > abs(merged.rightStickY) { merged.rightStickY = snapshot.rightStickY }
+            if snapshot.leftPad != empty.leftPad { merged.leftPad = snapshot.leftPad }
+            if snapshot.rightPad != empty.rightPad { merged.rightPad = snapshot.rightPad }
+        }
     }
 
     /// Re-applies the capture configuration after the active mapping profile changes, so
@@ -616,6 +647,8 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
 
         let count = min(max(length, 0), SteamControllerReport.reportLength)
         let report = Array(UnsafeBufferPointer(start: reportBuffer, count: count))
+        // TEMP: raw report dump to locate the SC2 button bytes. Logs distinct reports (deduped by
+        // content) up to a cap so a button press is visible in the raw bytes.
         let isDeckStateReport = report.first == SteamControllerReport.deckStateReportID
         if isGamepad, !isDeckStateReport, report.first != 0 {
             OpenNOWLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
@@ -649,7 +682,11 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
                     OpenNOWLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(merged.buttons)")
                 } else if context.model == .triton, report.count >= 6 {
                     let bits = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
-                    OpenNOWLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(merged.buttons)")
+                    // INFO level, and dump the WHOLE report: our button parse only reads report[2..6],
+                    // but the report is longer, so a bit past byte 5 (grips, extra pads) would be
+                    // silently dropped. The full hex lets a one-button-at-a-time capture find it.
+                    let hex = report.map { String(format: "%02x", $0) }.joined()
+                    OpenNOWLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(merged.buttons) len=\(report.count) full=\(hex)")
                 } else {
                     OpenNOWLog.debug(.controller, "Buttons changed: \(merged.buttons)")
                 }
@@ -724,8 +761,12 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     }
 
     private func publishActiveCount() {
-        let count = devices.values.count(where: \.isActive)
+        let active = devices.values.filter(\.isActive)
+        let count = Set(active.map(\.controllerID)).count
         Self.activeCount.withLock { $0 = count }
+        let names = Set(active.compactMap { stringProperty($0.device, key: kIOHIDProductKey)?.lowercased() }
+            .filter { !$0.isEmpty })
+        Self.claimedNames.withLock { $0 = names }
         for consumer in consumers.values {
             consumer.controllersChanged()
         }
@@ -825,6 +866,10 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         guard let context = devices.values.first(where: { $0.deviceID == deviceID }) else { return }
         let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
         sendFeatureReport(report, to: context.device, attempts: 3)
+    }
+
+    private func stringProperty(_ device: IOHIDDevice, key: String) -> String? {
+        IOHIDDeviceGetProperty(device, key as CFString) as? String
     }
 
     private func intProperty(_ device: IOHIDDevice, key: String) -> Int? {

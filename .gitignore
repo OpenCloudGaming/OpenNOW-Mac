@@ -1,11 +1,4 @@
 vendor/*
-!vendor/gfn-runtime/
-!vendor/gfn-runtime/Frameworks/
-!vendor/gfn-runtime/Frameworks/libBifrost2.dylib
-!vendor/gfn-runtime/Frameworks/libGeronimo.dylib
-!vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib
-!vendor/gfn-runtime/Frameworks/SDL2.framework/
-!vendor/gfn-runtime/Frameworks/SDL2.framework/**
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
@@ -56,9 +49,6 @@ DerivedData/
 # Compiled Dynamic libraries
 *.so
 *.dylib
-!vendor/gfn-runtime/Frameworks/libBifrost2.dylib
-!vendor/gfn-runtime/Frameworks/libGeronimo.dylib
-!vendor/gfn-runtime/Frameworks/libGsAudioWebRTC.dylib
 *.dll
 *.so.*
 
@@ -120,3 +110,16 @@ RemoteCoOp/panel/state/*
 !RemoteCoOp/panel/state/.gitkeep
 RemoteCoOp/service/*.env
 RemoteCoOp/service/*.local
+
+# Unattended NVST experiment tooling (autopilot harness, frame dumper, one-shot experiment
+# runner). Env-gated at every entry point (OPN_NVST_AUTORUN_*, OPN_NVST_FRAME_DUMP_*) so it is
+# inert unless deliberately armed, but it is local debugging infrastructure, not shipping product
+# code — kept out of the tracked tree on purpose.
+OPN/Services/NvstAutopilot.swift
+OPN/Stream/NvstFrameDumper.swift
+Tests/Stream/NvstAutopilotTests.swift
+scripts/nvst-experiment.sh
+
+# NVST protocol reverse-engineering notes: investigation logs, disassembly findings, byte-level
+# wire-format observations. Kept locally for reference, not published in the tracked tree.
+docs/NVST/*

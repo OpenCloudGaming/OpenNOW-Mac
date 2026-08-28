@@ -163,6 +163,11 @@ public enum SteamControllerReport {
         static let east: UInt32 = 0x0000_0002
         static let west: UInt32 = 0x0000_0004
         static let north: UInt32 = 0x0000_0008
+        // HARDWARE WINS over the kernel table here. Linux hid-steam.c maps byte2 bit4 (0x10) to
+        // BTN_BASE (Steam) and byte4 bit0 (0x10000) to BTN_MODE ("..."), and we swapped ours to
+        // match — but on THIS dongle that was wrong and broke both buttons, so it is reverted.
+        // The Puck evidently does not emit these two bits the way the wired Ibex driver expects.
+        // Do not "fix" this against the kernel again without a raw capture of these two presses.
         static let quickAccess: UInt32 = 0x0000_0010
         static let rightStick: UInt32 = 0x0000_0020
         static let start: UInt32 = 0x0000_0040
@@ -175,6 +180,10 @@ public enum SteamControllerReport {
         static let leftStick: UInt32 = 0x0000_8000
         static let steam: UInt32 = 0x0001_0000
         static let leftShoulder: UInt32 = 0x0008_0000
+        // Digital full-pull of each trigger (we drive triggers from the analog axes, but the seat
+        // and some games read these bits): TR2 byte4 bit7, TL2 byte5 bit3.
+        static let rightTriggerFull: UInt32 = 0x0080_0000
+        static let leftTriggerFull: UInt32 = 0x0800_0000
         static let leftGrip: UInt32 = 0x0002_0000
         static let rightGrip: UInt32 = 0x0000_0080
         static let leftGrip2: UInt32 = 0x0004_0000
@@ -368,6 +377,10 @@ public enum SteamControllerReport {
             leftTrigger: max(0, axis(report, at: 6)),
             rightTrigger: max(0, axis(report, at: 8)),
             leftStickX: axis(report, at: 10),
+            // Stick Y is passed through un-negated on purpose. The Linux hid-steam Ibex axis table
+            // applies sign -1 to ABS_Y/ABS_RY, but only to match evdev's down-positive convention;
+            // XInput wants up-positive, and the raw report is already up-positive (confirmed on
+            // hardware: physical up -> +32767). Negating here to "match the kernel" would invert Y.
             leftStickY: axis(report, at: 12),
             rightStickX: axis(report, at: 14),
             rightStickY: axis(report, at: 16)
@@ -423,6 +436,15 @@ public enum SteamControllerReport {
         if bits & TritonButtonMask.start != 0 { buttons.insert(.start) }
         if bits & TritonButtonMask.leftStick != 0 { buttons.insert(.leftStick) }
         if bits & TritonButtonMask.rightStick != 0 { buttons.insert(.rightStick) }
+        // The Triton has NO physical D-pad: these four bits come from the LEFT TRACKPAD, which
+        // reports a direction the moment a thumb rests on it. These were briefly gated behind
+        // `leftPadClick`, to stop a character that walked on its own — but that walking turned out
+        // to be the MOUSE path (the trackpad maps to mouse by default, and a resting thumb emits
+        // continuous deltas), and gamepad input was dead at the time for an unrelated reason: the
+        // state packet's envelope was malformed. The gate therefore rested on nothing observed
+        // while silently dropping the only directions this pad can produce. If a real thumb-rest
+        // drift shows up now that state packets are well-formed, re-add the click requirement with
+        // that evidence rather than on the old premise.
         if bits & TritonButtonMask.dpadUp != 0 { buttons.insert(.dpadUp) }
         if bits & TritonButtonMask.dpadDown != 0 { buttons.insert(.dpadDown) }
         if bits & TritonButtonMask.dpadLeft != 0 { buttons.insert(.dpadLeft) }

@@ -66,9 +66,18 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var enhancementSettings = OPNVideoEnhancementSettings()
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
+    private var lastLoggedFallbackReason = ""
     private var adaptiveEnhancementPenalty = 0
     private var customDrawableRenderingEnabled = false
     nonisolated(unsafe) private weak var owner: OPNLibWebRTCStreamSession?
+    /// Enhancement/pillarbox settings for renderers with no libwebrtc session behind them. The
+    /// Bifrost-free NVST path owns its own decoder, so there is no `OPNLibWebRTCStreamSession` to
+    /// ask and every setting silently stayed at its default — which is why pillarbox fill did
+    /// nothing on that transport. When set this wins over `owner`; everything downstream (the
+    /// enhancement pass, the pillarbox detector, the fill shader) is shared, so NVST gets all the
+    /// same modes without a second implementation.
+    nonisolated(unsafe) private var enhancementOverride: (Int32, Int32, Int32, Int32, Int32, Int32, Int32)?
+    nonisolated(unsafe) private var enhancementOverrideLock = os_unfair_lock_s()
     nonisolated(unsafe) private var frameLock = os_unfair_lock_s()
     nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
     nonisolated(unsafe) private var cachedIsTenBitBiPlanar = false
@@ -299,7 +308,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
         let result = enhancementResult
-        if enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result) {
+        let enhancedOK = enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result)
+        if !enhancedOK, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
+            lastLoggedFallbackReason = result.fallbackReason
+            OpenNOWLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
+        }
+        if enhancedOK {
             diagnostics.pixelFormat = result.pixelFormat.isEmpty ? "unknown" : result.pixelFormat
             diagnostics.renderMode = result.renderMode.isEmpty ? "Upscaler" : result.renderMode
             diagnostics.frameSource = result.frameSource.isEmpty ? "processed frame" : result.frameSource
@@ -474,8 +488,28 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         )
     }
 
+    /// Supplies enhancement/pillarbox settings for an owner-less renderer. Safe from any thread;
+    /// the render pass reads it under the same lock.
+    nonisolated func setLocalVideoEnhancementOverride(mode: Int32,
+                                                      sharpness: Int32,
+                                                      denoise: Int32,
+                                                      targetHeight: Int32,
+                                                      pillarboxFillMode: Int32,
+                                                      pillarboxFillDim: Int32,
+                                                      pillarboxFillColor: Int32) {
+        os_unfair_lock_lock(&enhancementOverrideLock)
+        enhancementOverride = (mode, sharpness, denoise, targetHeight, pillarboxFillMode, pillarboxFillDim, pillarboxFillColor)
+        os_unfair_lock_unlock(&enhancementOverrideLock)
+    }
+
+    private func localVideoEnhancementOverride() -> (Int32, Int32, Int32, Int32, Int32, Int32, Int32)? {
+        os_unfair_lock_lock(&enhancementOverrideLock)
+        defer { os_unfair_lock_unlock(&enhancementOverrideLock) }
+        return enhancementOverride
+    }
+
     private func localVideoEnhancement() -> VideoEnhancement {
-        let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160, 0, 55, 0)
+        let values = localVideoEnhancementOverride() ?? owner?.localVideoEnhancement() ?? (0, 0, 0, 2160, 0, 55, 0)
         return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3, pillarboxFillMode: values.4, pillarboxFillDim: values.5, pillarboxFillColor: values.6)
     }
 

@@ -160,7 +160,7 @@ private final class DropdownSpaceProbe {
     private(set) var isConstrained = false
 
     func refresh() {
-        guard let probeView, let window = probeView.window else {
+        guard let probeView, probeView.window != nil else {
             isConstrained = false
             return
         }

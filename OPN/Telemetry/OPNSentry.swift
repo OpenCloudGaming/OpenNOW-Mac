@@ -254,10 +254,14 @@ final class OPNSentry {
         }
         guard let http = response as? HTTPURLResponse else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
         switch http.statusCode {
-        case 201:
-            return try diagnosticsPasteURL(from: responseData)
+        // 206 first: it is a success code, but a partial upload is not a usable paste.
         case 206:
             throw OPNSentryDiagnosticsUploadError.partialUpload
+        // Any other 2xx is a success. Accepting only 201 reported a completed upload as
+        // "Diagnostics upload failed with HTTP 200" — the paste service answers 200, and the body
+        // still carries the URL, so the log was uploaded and then thrown away.
+        case 200...299:
+            return try diagnosticsPasteURL(from: responseData)
         case 413:
             throw OPNSentryDiagnosticsUploadError.logTooLarge
         case 429:

@@ -315,11 +315,11 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         return 0
     }
 
-    private static func keyboardCodes(forMacKeyCode macKeyCode: UInt16) -> (keyCode: UInt16, scanCode: UInt16) {
+    static func keyboardCodes(forMacKeyCode macKeyCode: UInt16) -> (keyCode: UInt16, scanCode: UInt16) {
         keyboardCodeMap[macKeyCode] ?? (macKeyCode, macKeyCode)
     }
 
-    private static let keyboardCodeMap: [UInt16: (keyCode: UInt16, scanCode: UInt16)] = [
+    static let keyboardCodeMap: [UInt16: (keyCode: UInt16, scanCode: UInt16)] = [
         0: (65, 0x1e),
         1: (83, 0x1f),
         2: (68, 0x20),
@@ -373,6 +373,27 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         50: (192, 0x29),
         51: (8, 0x0e),
         53: (27, 0x01),
+        // Modifier keys. `flagsChanged` emits key events for mac codes 54-62; without entries they
+        // fell through to `(keyCode, keyCode)`, so Shift (56) went out as virtual key 0x38 (the '8'
+        // key), Control as ';', Option as ':'.
+        //
+        // Sided virtual keys, confirmed from a capture of the vendored client: left shift goes out
+        // as 0x00A0 (VK_LSHIFT) on the 0x206 wire. (libBifrost2 translates its own internal code
+        // 0x0302 to this VK; our path speaks the wire directly, so it sends the VK.) A generic-VK
+        // detour did not register at all.
+        //
+        // Command maps to Control on purpose: the Mac copy/paste/select-all muscle memory is
+        // Cmd+C/V/A, which on Windows is Ctrl+C/V/A. Mac Control also maps to Control, so either
+        // key drives a remote Ctrl.
+        54: (0xa2, 0x1d),     // right command  -> VK_LCONTROL
+        55: (0xa2, 0x1d),     // left command   -> VK_LCONTROL
+        56: (0xa0, 0x2a),     // left shift     -> VK_LSHIFT
+        57: (0x14, 0x3a),     // caps lock      -> VK_CAPITAL
+        58: (0xa4, 0x38),     // left option    -> VK_LMENU (Alt)
+        59: (0xa2, 0x1d),     // left control   -> VK_LCONTROL
+        60: (0xa1, 0x36),     // right shift    -> VK_RSHIFT
+        61: (0xa5, 0x38),     // right option   -> VK_RMENU (Alt)
+        62: (0xa3, 0x1d),     // right control  -> VK_RCONTROL
         65: (110, 0x53),
         67: (106, 0x37),
         69: (107, 0x4e),

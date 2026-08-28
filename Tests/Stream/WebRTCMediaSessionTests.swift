@@ -330,6 +330,16 @@ struct WebRTCStreamingPathTests {
         #expect(WebRTCMediaStreamSettingsResolver.resolve(profile: unconstrained, capabilities: capabilities).codec == "H265")
     }
 
+    @Test("power saver resolves the launch frame rate before transport setup")
+    func powerSaverResolvesLaunchFrameRateBeforeTransportSetup() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(fps: 120, enablePowerSaver: true),
+            capabilities: WebRTCMediaDeviceCapabilities(maxDisplayRefreshRate: 120)
+        )
+
+        #expect(settings.fps == 30)
+    }
+
     @Test("preserves high resolution and bitrate")
     func preservesHighResolutionAndBitrate() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(

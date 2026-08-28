@@ -179,3 +179,65 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
         return data.isEmpty ? nil : data
     }
 }
+
+/// The paste service answers **200**, not 201. Accepting only 201 sent the whole log, got a usable
+/// paste URL back, and then reported "Diagnostics upload failed with HTTP 200" — so the upload had
+/// in fact succeeded and the result was discarded.
+@Test func diagnosticsUploadAcceptsOkPasteResponse() async throws {
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-ok.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (200, Data("https://paste.c-net.org/ok-response".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+        let uploadURL = try #require(URL(string: "https://\(host)"))
+        let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line",
+                                                             session: diagnosticsUploadSession(),
+                                                             uploadURL: uploadURL)
+        #expect(result.absoluteString == "https://paste.c-net.org/ok-response")
+    }
+}
+
+/// Every other success code the service might answer with is also a success — except 206, which
+/// stays a partial upload and is covered separately.
+@Test func diagnosticsUploadAcceptsOtherSuccessCodes() async throws {
+    for status in [202, 204, 299] {
+        try await networkTestIsolationLock.withLock {
+            let host = "diagnostics-\(status).example.test"
+            DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+                (status, Data("https://paste.c-net.org/s\(status)".utf8))
+            }
+            defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+            let uploadURL = try #require(URL(string: "https://\(host)"))
+            let result = try await OPNSentry.uploadDiagnosticsLog("line",
+                                                                 session: diagnosticsUploadSession(),
+                                                                 uploadURL: uploadURL)
+            #expect(result.absoluteString == "https://paste.c-net.org/s\(status)")
+        }
+    }
+}
+
+/// A success code whose body is not a paste URL must still fail, so a silently empty upload cannot
+/// be reported as a link.
+@Test func diagnosticsUploadRejectsASuccessWithoutAPasteURL() async throws {
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-ok-nourl.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (200, Data("thanks".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+        let uploadURL = try #require(URL(string: "https://\(host)"))
+        do {
+            _ = try await OPNSentry.uploadDiagnosticsLog("line",
+                                                        session: diagnosticsUploadSession(),
+                                                        uploadURL: uploadURL)
+            Issue.record("Expected a non-paste body to fail")
+        } catch OPNSentryDiagnosticsUploadError.invalidResponse {
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+}

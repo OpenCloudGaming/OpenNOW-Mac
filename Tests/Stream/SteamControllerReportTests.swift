@@ -233,10 +233,17 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(parsedState(tritonReport(buttons: 0x0000_0100), model: .triton).buttons.contains(.rightGrip2))
     }
 
+    /// Hardware-confirmed on this Puck: 0x10 = quick-access "..." -> .quickAccess,
+    /// 0x10000 = Steam/Guide -> .mode. Note this is the OPPOSITE of the Linux hid-steam Ibex table
+    /// (BTN_BASE 2,4 / BTN_MODE 4,0); matching the kernel here broke both buttons on real hardware.
     @Test func mapsSteamAndQuickAccessButtons() {
-        let snapshot = parsedState(tritonReport(buttons: 0x0001_0010), model: .triton)
-        #expect(snapshot.buttons.contains(.mode))
-        #expect(snapshot.buttons.contains(.quickAccess))
+        let both = parsedState(tritonReport(buttons: 0x0001_0010), model: .triton)
+        #expect(both.buttons.contains(.mode))
+        #expect(both.buttons.contains(.quickAccess))
+
+        let quickAccessOnly = parsedState(tritonReport(buttons: 0x0000_0010), model: .triton)
+        #expect(quickAccessOnly.buttons.contains(.quickAccess))
+        #expect(quickAccessOnly.buttons.contains(.mode) == false)
 
         let steamOnly = parsedState(tritonReport(buttons: 0x0001_0000), model: .triton)
         #expect(steamOnly.buttons.contains(.mode))
@@ -283,16 +290,24 @@ private func tritonReport(reportID: UInt8 = 0x42,
         #expect(snapshot.rightPad.y == 1.0)
     }
 
+    /// The Triton has no physical D-pad — the four direction bits come from the left trackpad, which
+    /// reports a direction as soon as a thumb rests on it. They reach the wire on touch alone. A
+    /// click gate was tried and reverted: it was added to stop a character that walked by itself,
+    /// but that walking was the MOUSE path, so the gate dropped the only directions this pad has.
     @Test func mapsDpadMenuAndStickClicks() {
-        let snapshot = parsedState(tritonReport(buttons: 0x0000_fc60), model: .triton)
-        #expect(snapshot.buttons.contains(.dpadDown))
-        #expect(snapshot.buttons.contains(.dpadRight))
-        #expect(snapshot.buttons.contains(.dpadLeft))
-        #expect(snapshot.buttons.contains(.dpadUp))
-        #expect(snapshot.buttons.contains(.select))
-        #expect(snapshot.buttons.contains(.start))
-        #expect(snapshot.buttons.contains(.leftStick))
-        #expect(snapshot.buttons.contains(.rightStick))
+        let touchedOnly = parsedState(tritonReport(buttons: 0x0000_fc60), model: .triton)
+        #expect(touchedOnly.buttons.contains(.dpadDown))
+        #expect(touchedOnly.buttons.contains(.dpadUp))
+        #expect(touchedOnly.buttons.contains(.select))
+        #expect(touchedOnly.buttons.contains(.start))
+        #expect(touchedOnly.buttons.contains(.leftStick))
+        #expect(touchedOnly.buttons.contains(.rightStick))
+
+        let clicked = parsedState(tritonReport(buttons: 0x0400_fc60), model: .triton)
+        #expect(clicked.buttons.contains(.dpadDown))
+        #expect(clicked.buttons.contains(.dpadRight))
+        #expect(clicked.buttons.contains(.dpadLeft))
+        #expect(clicked.buttons.contains(.dpadUp))
     }
 
     @Test func mapsAnalogTriggersAndSticks() {

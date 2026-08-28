@@ -248,10 +248,8 @@ public final class NativeWebRTCStreamView: NSView {
     private var activeGamepadStates: [Int: GamepadState] = [:]
     private var streamContentSize = CGSize.zero
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
-    private let pillarboxOverlay = NativeNVSTPillarboxOverlayView()
     private var pillarboxFillMode: OPNPillarboxFillMode = .black
-    private var pillarboxContentLeft: Double = 0
-    private var pillarboxContentRight: Double = 1
+    private var pillarboxFillDim: Int = 55
     private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
         contentRect: .zero,
         styleMask: .borderless,
@@ -265,6 +263,7 @@ public final class NativeWebRTCStreamView: NSView {
     private var nativeNVSTRendererPreparedForShutdown = false
     private var nativeNVSTVideoVisible = false
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
+    private var nvstBifrostFreeRenderer: NvstBifrostFreeVideoRenderer?
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -274,13 +273,6 @@ public final class NativeWebRTCStreamView: NSView {
         // Clip the video layer when crop/stretch grows it past the surface edges so
         // the pushed-out bars are cropped instead of drawn beyond the picture.
         videoSurface.layer?.masksToBounds = true
-        // Above the video surface so the blur fill composites over Geronimo's baked
-        // black bars; hidden until a blur fill mode is selected.
-        pillarboxOverlay.isHidden = true
-        pillarboxOverlay.onContentRect = { [weak self] left, right in
-            self?.updatePillarboxContentRect(left: left, right: right)
-        }
-        addSubview(pillarboxOverlay)
         nativeNVSTRendererWindow.backgroundColor = .clear
         nativeNVSTRendererWindow.contentView = NativeWebRTCVideoSurfaceView(frame: .zero)
         nativeNVSTRendererWindow.hasShadow = false
@@ -373,75 +365,33 @@ public final class NativeWebRTCStreamView: NSView {
         needsLayout = true
     }
 
-    /// Selects the NVST pillarbox fill. Blur modes (mirror/zoom) enable the decoded-
-    /// frame tap and drive the overlay renderer; other modes leave the baked bars
-    /// as-is and stop the tap.
+    /// Selects the NVST pillarbox fill.
+    ///
+    /// Bifrost-free NVST decodes in-process and draws through the same `OPNMetalVideoView` as
+    /// WebRTC, so every mode is the shared fill shader now: the enhancement renderer's detector
+    /// measures the baked bars off the luma plane and the shader paints (mirror/zoom) or
+    /// reprojects (stretch/crop) them. The Geronimo-era overlay and layer-geometry paths are gone
+    /// with the vendored libraries — they depended on a decoded-frame tap that no longer exists,
+    /// which is why all four modes had silently stopped working.
     public func setPillarboxFill(mode: Int, dim: Int) {
-        let fill = OPNPillarboxFillMode.from(mode)
-        pillarboxFillMode = fill
-        // Blur and crop/stretch both need the decoded-frame tap: blur samples it,
-        // crop/stretch measure the content rect from it.
-        let needsCapture = fill == .blurredMirror || fill == .blurredZoom || fill == .cropFill || fill == .stretchEdges
-        OpenNOWNativeNVSTGeronimoSetFrameCaptureActive(needsCapture)
-        pillarboxOverlay.setFill(mode: fill, dim: dim)
-        applyPillarboxGeometry()
+        pillarboxFillMode = OPNPillarboxFillMode.from(mode)
+        pillarboxFillDim = dim
+        pushBifrostFreeVideoSettings()
     }
 
-    private func updatePillarboxContentRect(left: Double, right: Double) {
-        guard pillarboxContentLeft != left || pillarboxContentRight != right else { return }
-        pillarboxContentLeft = left
-        pillarboxContentRight = right
-        applyPillarboxGeometry()
+    /// Pushes the fill settings into the Bifrost-free renderer, which has no libwebrtc session to
+    /// pull them from. Also called on attach so a mode chosen before the stream starts applies.
+    private func pushBifrostFreeVideoSettings() {
+        OpenNOWLog.info(.stream, "Pillarbox fill selected mode=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
+        nvstBifrostFreeRenderer?.setVideoEnhancement(mode: 0,
+                                                     sharpness: 0,
+                                                     denoise: 0,
+                                                     targetHeight: 2160,
+                                                     pillarboxFillMode: pillarboxFillMode.rawValue,
+                                                     pillarboxFillDim: pillarboxFillDim,
+                                                     pillarboxFillColor: 0)
     }
 
-    /// Scales Geronimo's video layer so the picture content fills the surface for the
-    /// crop/stretch modes. Geronimo fills whatever drawable we hand it, so enlarging
-    /// the metal view centred pushes the baked bars off the (clipped) edges: uniform
-    /// for crop, horizontal-only for stretch. Every other mode uses the identity size.
-    private func applyPillarboxGeometry() {
-        guard let metalView = nativeNVSTMetalView else { return }
-        let bounds = videoSurface.bounds
-        guard bounds.width > 0, bounds.height > 0 else { return }
-
-        let contentWidth = pillarboxContentRight - pillarboxContentLeft
-        let isGeometry = contentWidth > 0.05 && contentWidth < 0.999
-        let scale = isGeometry ? 1.0 / contentWidth : 1.0
-
-        metalView.layer?.transform = CATransform3DIdentity
-
-        if pillarboxFillMode == .cropFill, isGeometry {
-            // Uniform: Geronimo fills the (same-aspect) enlarged drawable, so a bigger
-            // centred metal view scales the picture up and clips the bars off the edges.
-            let width = bounds.width * scale, height = bounds.height * scale
-            let frame = CGRect(x: (bounds.width - width) / 2, y: (bounds.height - height) / 2, width: width, height: height)
-            if metalView.frame != frame {
-                metalView.frame = frame
-                updateNativeNVSTMetalDrawableSize(metalView)
-            }
-            return
-        }
-
-        // Non-crop modes render at native size; stretch then scales the rendered layer
-        // horizontally. A drawable resize can't stretch (Geronimo aspect-fits it), so
-        // the non-uniform scale has to be a display-time layer transform.
-        if metalView.frame != bounds {
-            metalView.frame = bounds
-            updateNativeNVSTMetalDrawableSize(metalView)
-        }
-
-        if pillarboxFillMode == .stretchEdges, isGeometry, let layer = metalView.layer {
-            // Scale about the layer's geometric centre regardless of its anchor point.
-            let b = metalView.bounds
-            let anchor = layer.anchorPoint
-            let ax = Double(anchor.x * b.width), ay = Double(anchor.y * b.height)
-            let cx = Double(b.width) / 2, cy = Double(b.height) / 2
-            var t = CATransform3DIdentity
-            t = CATransform3DTranslate(t, CGFloat(cx - ax), CGFloat(cy - ay), 0)
-            t = CATransform3DScale(t, CGFloat(scale), 1, 1)
-            t = CATransform3DTranslate(t, CGFloat(ax - cx), CGFloat(ay - cy), 0)
-            layer.transform = t
-        }
-    }
 
     public var gamepadTopology: NativeWebRTCGamepadTopology {
         gamepadMonitor.topology
@@ -457,6 +407,22 @@ public final class NativeWebRTCStreamView: NSView {
 
     public func nativeVideoView() -> NSView {
         videoSurface
+    }
+
+    /// Attaches the Bifrost-free NVST renderer to the shared video surface. Unlike the Geronimo
+    /// path, this transport decodes in-process and draws through the same Metal view the WebRTC
+    /// path uses, so it needs no borderless renderer window.
+    public func attachNvstBifrostFreeRenderer(targetFps: Int32) -> NvstBifrostFreeVideoRenderer {
+        nvstBifrostFreeRenderer?.detach()
+        let renderer = NvstBifrostFreeVideoRenderer(parentView: videoSurface, targetFps: targetFps)
+        nvstBifrostFreeRenderer = renderer
+        pushBifrostFreeVideoSettings()
+        return renderer
+    }
+
+    public func detachNvstBifrostFreeRenderer() {
+        nvstBifrostFreeRenderer?.detach()
+        nvstBifrostFreeRenderer = nil
     }
 
     public func nativeNVSTVideoWindow() -> NSWindow? {
@@ -494,6 +460,10 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public var nativeNVSTRendererSurfaceReady: Bool {
+        // The Bifrost-free path draws through its own renderer, not the vendored NVST Metal view,
+        // so it reports its own surface's readiness. Without this the health monitor could never
+        // see a ready surface on that path and tore down a healthy stream.
+        if let renderer = nvstBifrostFreeRenderer { return renderer.isSurfaceReady }
         guard nativeNVSTRendererEnabled, nativeNVSTVideoVisible, !nativeNVSTRendererPreparedForShutdown,
               let metalView = nativeNVSTMetalView, metalView.superview === videoSurface,
               let metalLayer = metalView.layer as? CAMetalLayer else { return false }
@@ -523,14 +493,12 @@ public final class NativeWebRTCStreamView: NSView {
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
-        pillarboxOverlay.frame = videoSurface.frame
         nativeNVSTMetalView?.frame = videoSurface.bounds
         if nativeNVSTRendererEnabled {
             updateNativeNVSTRendererWindowFrame()
             updateNativeNVSTPresentation()
             if !nativeNVSTRendererPreparedForShutdown { _ = embedNativeNVSTMetalViewIfAvailable() }
         }
-        applyPillarboxGeometry()
     }
 
     private func updateNativeNVSTRendererWindowParent() {
@@ -602,7 +570,6 @@ public final class NativeWebRTCStreamView: NSView {
             nativeNVSTMetalView.isHidden = !nativeNVSTVideoVisible
             updateNativeNVSTMetalDrawableSize(nativeNVSTMetalView)
             updateNativeNVSTPresentation()
-            applyPillarboxGeometry()
             return true
         }
         guard nativeNVSTVideoVisible,
@@ -616,7 +583,6 @@ public final class NativeWebRTCStreamView: NSView {
         nativeNVSTMetalView = metalView
         updateNativeNVSTMetalDrawableSize(metalView)
         updateNativeNVSTPresentation()
-        applyPillarboxGeometry()
         return true
     }
 
@@ -784,7 +750,48 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard remoteInputEnabled else { return handleCommand(event) || super.performKeyEquivalent(with: event) }
-        return handlePasteShortcut(event) || handleCommand(event) || super.performKeyEquivalent(with: event)
+        // Order matters. App stream commands (quit, HUD) and paste are handled locally first; only
+        // then does a Command-shortcut get forwarded to the remote. Without the forward, macOS
+        // routes Cmd+C / Cmd+A to the Edit menu (or discards them) and they never reach `keyDown`,
+        // so the remote never sees the copy/select-all the user pressed.
+        return handlePasteShortcut(event) || handleCommand(event)
+            || forwardCommandShortcut(event) || super.performKeyEquivalent(with: event)
+    }
+
+    /// Forwards a Command-key shortcut to the remote as the equivalent Control chord — Cmd+C
+    /// becomes Ctrl+C — because macOS consumes Command shortcuts before they reach `keyDown`.
+    private func forwardCommandShortcut(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .numericPad, .function])
+        // Command must be held, and only Shift/Option may accompany it — a chord that also holds
+        // Control is already a Control chord and reaches the stream by the ordinary path.
+        guard modifiers.contains(.command), !modifiers.contains(.control) else { return false }
+        for stroke in Self.commandShortcutStrokes(keyCode: UInt16(event.keyCode),
+                                                   shift: modifiers.contains(.shift),
+                                                   option: modifiers.contains(.option)) {
+            onInputEvent?(.keyboard(KeyboardEvent(deviceID: "keyboard",
+                                                  keyCode: stroke.keyCode,
+                                                  scanCode: stroke.keyCode,
+                                                  isPressed: stroke.isPressed,
+                                                  timestamp: Self.timestamp())))
+        }
+        return true
+    }
+
+    /// The press/release sequence for a Command shortcut, expressed in mac key codes so the
+    /// transport's own table maps them (55 -> Control). Control wraps the whole chord; any extra
+    /// Shift/Option sits inside it, in a strict nesting so nothing is left held.
+    nonisolated static func commandShortcutStrokes(keyCode: UInt16, shift: Bool, option: Bool) -> [(keyCode: UInt16, isPressed: Bool)] {
+        var strokes: [(keyCode: UInt16, isPressed: Bool)] = [(55, true)]   // Command -> Control down
+        if shift { strokes.append((56, true)) }
+        if option { strokes.append((58, true)) }
+        strokes.append((keyCode, true))
+        strokes.append((keyCode, false))
+        if option { strokes.append((58, false)) }
+        if shift { strokes.append((56, false)) }
+        strokes.append((55, false))                                        // Control up
+        return strokes
     }
 
     private func emitMouseMove(_ event: NSEvent) {
@@ -900,6 +907,16 @@ public final class NativeWebRTCStreamView: NSView {
     private func notifyPointerLockChanged(_ locked: Bool) {
         onPointerLockChanged?(locked)
         WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
+    }
+
+    public func setRemoteCursorVisible(_ isVisible: Bool) {
+        let mode: NativeStreamMouseInputMode = isVisible || !directMouseInputEnabled ? .absolute : .relative
+        mouseInputMode = mode
+        if mode == .relative {
+            if remoteInputEnabled { setPointerLocked(true) }
+        } else {
+            setPointerLocked(false)
+        }
     }
 
     private func updatePointerLockCursorVisibility() {
@@ -1048,6 +1065,8 @@ public final class NativeWebRTCStreamView: NSView {
         return NativeNVSTAbsoluteMouseEvent(
             x: Int32(clamping: Int(min(max(0, x), contentFrame.width - 1))),
             y: Int32(clamping: Int(min(max(0, y), contentFrame.height - 1))),
+            viewportWidth: Int32(clamping: Int(contentFrame.width)),
+            viewportHeight: Int32(clamping: Int(contentFrame.height)),
             timestamp: timestamp
         )
     }

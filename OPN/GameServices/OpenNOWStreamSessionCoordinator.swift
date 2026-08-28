@@ -147,6 +147,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             throw CancellationError()
         }
         activeSession = descriptor
+        startNativeSignalingSniffer(sessionInfo: sessionInfo, descriptor: descriptor)
         return NativeNVSTSessionAllocation(
             session: descriptor,
             isResume: configuration.resumesExistingSession || sessionInfo.isResume,
@@ -291,6 +292,36 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             continuation.onTermination = { [weak self] _ in
                 self?.lock.withLock { self?.remoteEndContinuation = nil }
             }
+        }
+    }
+
+    /// Diagnostic only: connects the WebSocket signaling read-only on the native path to capture
+    /// the server's offer (which carries `nvstSdp`, the raw-SRTP video handoff), without answering
+    /// or disturbing the Bifrost/Geronimo client. Gated on OPNProtocolDebug logging.
+    private func startNativeSignalingSniffer(sessionInfo: AllocatedStreamSession, descriptor: StreamSessionDescriptor) {
+        guard OPNProtocolDebug.loggingEnabled() else { return }
+        let client = NVSTWebSocketSignalingClient(
+            signalingServer: sessionInfo.signalingServer,
+            sessionId: descriptor.id,
+            signalingUrl: sessionInfo.signalingUrl,
+            queryParameters: sessionInfo.signalingQueryParameters,
+            additionalSubprotocols: sessionInfo.signalingHeaders
+        )
+        client.onOffer = { offer in
+            if !offer.nvstSdp.isEmpty {
+                let handoff = (try? JSONSerialization.jsonObject(with: Data(offer.nvstSdp.utf8))) ?? offer.nvstSdp
+                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff", object: handoff)
+            } else {
+                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-offer-empty", object: ["sdpLength": offer.sdp.count])
+            }
+        }
+        client.onClosed = { _, _ in
+            OPNProtocolDebug.logJSONObject(label: "nvst-signaling-sniffer-closed", object: ["sessionId": descriptor.id])
+        }
+        client.connect { [weak client] _, _ in
+            // The sniffer holds no state; the client is retained for the offer's lifetime by
+            // the URLSession it owns; nothing further is required here.
+            _ = client
         }
     }
 
@@ -515,6 +546,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             let settingsJSON = jsonString(settings)
             client.onOffer = { [weak self] sessionOffer in
                 guard let self else { return }
+                // Capture the NVST video handoff (sanitized) for the Bifrost-free receiver.
+                if !sessionOffer.nvstSdp.isEmpty {
+                    let handoff = (try? JSONSerialization.jsonObject(with: Data(sessionOffer.nvstSdp.utf8))) ?? sessionOffer.nvstSdp
+                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff", object: handoff)
+                } else {
+                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff-empty", object: ["sdpLength": sessionOffer.sdp.count, "nvstServerOverrides": sessionOffer.nvstServerOverrides])
+                }
                 let metadata = self.offerMetadata(sessionInfo: sessionInfo, settingsJSON: settingsJSON, descriptor: descriptor)
                     .merging([
                         "nvstSdp": sessionOffer.nvstSdp,
