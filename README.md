@@ -14,6 +14,11 @@
 
 <br>
 
+> ### 🙏 Special Thanks
+> Huge thanks to **[@Jayian1890](https://github.com/Jayian1890)** — the main contributor of **all base and core functionality** of **openNOW-Mac**. This project stands on that foundation.
+
+<br>
+
 <img src="docs/screenshots/catalog.png" alt="OpenNOW catalog with GFN Thursday, Top Sellers, and Free-to-Play rails">
 
 </div>
