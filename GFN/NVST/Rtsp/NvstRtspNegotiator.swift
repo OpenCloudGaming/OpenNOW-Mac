@@ -284,7 +284,7 @@ public struct NvstRtspNegotiator: Sendable {
             // SETUP advertises the ping version; otherwise it falls back to the literal "PING"
             // keepalive and never arms the media relay to answer STUN.
             let baseSetupHeaders = common + [("Session", sessionIdentifier), ("x-nv-ping", describedPingVersion ?? "6")]
-            let legacyTransport = "unicast;X-GS-ClientPort=\(reservation.mjolnirPort)-\(reservation.mjolnirPort + 1)"
+            let legacyTransport = "unicast;X-GS-ClientPort=\(reservation.mjolnirPort)-\(Int(reservation.mjolnirPort) + 1)"
             // Transport forms to try, in order. The official cloud path sends a literally empty
             // Transport; the legacy form is the fallback so one run separates "wrong request-URI"
             // from "wrong Transport".
