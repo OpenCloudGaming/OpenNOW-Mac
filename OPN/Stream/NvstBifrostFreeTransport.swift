@@ -1202,8 +1202,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// rather than silently swallowed. Actually *enabling* capture is what fails, below.
     public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
 
+    /// There is no seat-side pause primitive on this path — RTSP TEARDOWN always ends the local
+    /// media session, same as `disconnect()`. What makes this a "pause" instead of a full end is
+    /// the caller: `NativeNVSTStreamingPath.pause` separately tells CloudMatch to keep the cloud
+    /// seat alive (`sessionProvider.finishSession(reason: .paused)`) so it can be resumed later.
     public func pause() async throws {
-        throw NativeNVSTError.transportFailed("Pause is not implemented on the Bifrost-free path.")
+        await teardown(reason: "pause")
     }
 
     /// Types `text` as key presses, holding shift only around the characters that need it.
