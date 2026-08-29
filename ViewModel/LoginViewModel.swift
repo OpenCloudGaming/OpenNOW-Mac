@@ -204,6 +204,8 @@ final class LoginViewModel: ObservableObject {
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
         for session in sessions where session.accountEmail == account.email {
+            // Deleting the row alone would orphan the keychain item it points at.
+            session.purgeTokens()
             modelContext.delete(session)
         }
         modelContext.delete(account)
@@ -412,12 +414,17 @@ final class LoginViewModel: ObservableObject {
 
     private func signOutCurrentSession() async {
         OpenNOWLog.info(.auth, "Signing out current session")
+        let signedOutEmails = Set(accounts.filter(\.isActive).map(\.email))
         for account in accounts {
             account.isActive = false
             account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
         }
         for session in sessions {
             session.isActive = false
+            // Signing out has to revoke the local grant, not just hide it: the refresh token
+            // outlives the access token by far, so leaving it behind means sign-out never happened.
+            // Other saved accounts keep their tokens — they were not the ones signed out.
+            if signedOutEmails.contains(session.accountEmail) { session.purgeTokens() }
         }
         clearPendingOAuthState()
         currentAuthorizationURL = ""

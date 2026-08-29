@@ -211,15 +211,21 @@ public struct NvstRtspResponse: Equatable, Sendable {
 
 public enum NvstRtspMessageError: LocalizedError, Equatable, Sendable {
     case invalidStatusLine(String)
+    case invalidContentLength(Int)
 
     public var errorDescription: String? {
         switch self {
         case .invalidStatusLine(let line): "Invalid RTSP status line: \(line)"
+        case .invalidContentLength(let length): "Invalid RTSP Content-Length: \(length)"
         }
     }
 }
 
 public enum NvstRtspMessage {
+    /// Ceiling for a declared `Content-Length`. The largest real body is an SDP of a few KB, so this
+    /// is far above anything legitimate while still bounding what a hostile seat can make us buffer.
+    static let maximumBodyByteLength = 4 * 1_024 * 1_024
+
     /// `Content-Length` is emitted only when a body exists; empty header values are preserved
     /// because the official SETUP sends a literally empty `Transport:` on the cloud path.
     public static func buildRequest(method: String,
@@ -284,7 +290,7 @@ public enum NvstRtspMessage {
         }
         guard let separator else { return nil }
         let headerText = String(text[text.startIndex..<separator.lowerBound])
-        let contentLength = headerText
+        let declaredLength = headerText
             .components(separatedBy: .newlines)
             .compactMap { line -> Int? in
                 let lower = line.lowercased()
@@ -292,6 +298,13 @@ public enum NvstRtspMessage {
                 return Int(line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces))
             }
             .first ?? 0
+        // A seat that answers with a negative or absurd Content-Length must not be able to drive
+        // `total` out of range: Data.prefix/removeFirst trap on negative counts, which turns one
+        // hostile response into a client crash.
+        guard declaredLength >= 0, declaredLength <= maximumBodyByteLength else {
+            throw NvstRtspMessageError.invalidContentLength(declaredLength)
+        }
+        let contentLength = declaredLength
         let headerByteLength = String(text[text.startIndex..<separator.upperBound]).utf8.count
         guard buffer.count - headerByteLength >= contentLength else { return nil }
         let total = headerByteLength + contentLength

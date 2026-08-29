@@ -482,7 +482,7 @@ public struct NvstRtspNegotiator: Sendable {
             // set be diffed against the official client's capture without spending a live run.
             let announceLines = announceBody.components(separatedBy: "\r\n").filter { !$0.isEmpty }
             logger?("NVST ANNOUNCE sdp lines=\(announceLines.count)")
-            for line in announceLines { logger?("NVST ANNOUNCE sdp \(line)") }
+            for line in announceLines { logger?("NVST ANNOUNCE sdp \(NvstRtspSdp.redactedForLog(line))") }
             let announce = try await connection.request(
                 method: "ANNOUNCE",
                 uri: officialCloudPath ? requestURI : "/",

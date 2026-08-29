@@ -111,6 +111,62 @@ import Testing
         }
     }
 
+    /// A negative length used to make `headerByteLength + contentLength` go negative, and both
+    /// `Data.prefix` and `Data.removeFirst` trap on that — one hostile response crashed the client.
+    @Test func responseExtractionRejectsNegativeContentLength() {
+        var buffer = Data("RTSP/1.0 200 OK\r\nContent-Length: -100000\r\n\r\nbody".utf8)
+        #expect(throws: NvstRtspMessageError.invalidContentLength(-100_000)) {
+            _ = try NvstRtspMessage.extractResponse(from: &buffer)
+        }
+    }
+
+    @Test func responseExtractionRejectsAbsurdContentLength() {
+        var buffer = Data("RTSP/1.0 200 OK\r\nContent-Length: 999999999\r\n\r\n".utf8)
+        #expect(throws: NvstRtspMessageError.self) {
+            _ = try NvstRtspMessage.extractResponse(from: &buffer)
+        }
+    }
+
+    /// The ANNOUNCE body is logged line by line into sinks that outlive the session (a file in
+    /// `~/Library/Logs`, the unified log, Sentry, the uploadable diagnostics bundle). The SRTP
+    /// master key and the ICE passwords must never reach them; the key ID and ufrag are not secret.
+    @Test func announceLogRedactionStripsKeyMaterialButKeepsIdentifiers() {
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-runtime.encryptionKey:8F3A2B1C4D5E6F708192A3B4C5D6E7F8")
+            == "a=x-nv-runtime.encryptionKey:[redacted-secret]")
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-general.icePasswordV2:Xy9pQz1aBc2d")
+            == "a=x-nv-general.icePasswordV2:[redacted-secret]")
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-general.iceUsernamePwd:Xy9pQz1aBc2d")
+            == "a=x-nv-general.iceUsernamePwd:[redacted-secret]")
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-runtime.encryptionKeyId:42")
+            == "a=x-nv-runtime.encryptionKeyId:42")
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-general.iceUsernameFragment:abcd")
+            == "a=x-nv-general.iceUsernameFragment:abcd")
+        #expect(NvstRtspSdp.redactedForLog("a=x-nv-video[0].maxFPS:120")
+            == "a=x-nv-video[0].maxFPS:120")
+    }
+
+    /// Every secret-bearing attribute the announce builder emits has to be covered by the redactor.
+    @Test func everySecretAnnounceAttributeIsRedacted() {
+        let key = "8F3A2B1C4D5E6F708192A3B4C5D6E7F8091A2B3C4D5E6F708192A3B4C5D6E7F8"
+        let password = "IcePasswordValue123"
+        // `officialCloudPath: false` so both the legacy `iceUsernamePwd` and `icePasswordV2` are
+        // emitted — the legacy line is the one that only exists on this branch.
+        let options = NvstRtspSdp.AnnounceOptions(
+            resolution: "1920x1080",
+            fps: 60,
+            encryptionKey: .init(aesKeyHex: key, keyID: 7),
+            iceCredentials: .init(usernameFragment: "ufragValue", password: password),
+            officialCloudPath: false
+        )
+        let redacted = NvstRtspSdp.buildAnnounceSdp(options)
+            .components(separatedBy: "\r\n")
+            .map(NvstRtspSdp.redactedForLog)
+            .joined(separator: "\n")
+        #expect(!redacted.localizedCaseInsensitiveContains(key))
+        #expect(!redacted.contains(password))
+        #expect(redacted.contains("ufragValue"))
+    }
+
     @Test func videoPeerComesFromTheSetupTransportHeader() {
         let peer = NvstRtspMessage.extractVideoPeer("unicast;X-GS-ClientPort=49000-49001;X-GS-ServerPort=48322;source=10.20.30.40")
         #expect(peer?.ip == "10.20.30.40")

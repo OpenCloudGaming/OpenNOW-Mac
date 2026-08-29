@@ -361,6 +361,22 @@ public enum NvstRtspSdp {
     ]
 
 
+    /// Strips key material out of a single SDP line so the ANNOUNCE body can still be diffed against
+    /// a vendor capture from the logs. The SRTP master key is the sole confidentiality and integrity
+    /// root for the whole video stream, and the ICE passwords authenticate the connectivity checks;
+    /// the sinks behind the negotiator's logger (`~/Library/Logs`, the unified log, Sentry, the
+    /// uploadable diagnostics bundle) all outlive the session, so neither may reach them.
+    /// The key *ID* and the ICE *ufrag* are not secret and stay readable.
+    public static func redactedForLog(_ line: String) -> String {
+        guard let colon = line.firstIndex(of: ":") else { return line }
+        let name = line[line.startIndex..<colon].lowercased()
+        let carriesSecret = name.hasSuffix("encryptionkey")
+            || name.contains("pwd")
+            || name.contains("password")
+        guard carriesSecret else { return line }
+        return "\(line[line.startIndex..<colon]):[redacted-secret]"
+    }
+
     public static func buildAnnounceSdp(_ options: AnnounceOptions) -> String {
         let (width, height) = parseResolution(options.resolution)
 
@@ -552,6 +568,8 @@ public enum NvstRtspSdp {
             lines.append("a=\(name):\(attributeValues[name] ?? "")")
         }
         lines.append("a=x-nv-runtime.videoSrtp:1")
+        // NOTE: everything below carries session key material. `redactedForLog` must keep pace with
+        // it — the ANNOUNCE body is logged line by line, and those sinks are durable.
         if let key = options.encryptionKey {
             lines.append("a=x-nv-runtime.encryptionKey:\(key.aesKeyHex.uppercased())")
             lines.append("a=x-nv-runtime.encryptionKeyId:\(key.keyID)")

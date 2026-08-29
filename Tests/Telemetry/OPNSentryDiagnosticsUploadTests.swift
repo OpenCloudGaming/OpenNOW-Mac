@@ -90,7 +90,8 @@ import Testing
         let text = String(decoding: body, as: UTF8.self)
         #expect(body.count <= 384 * 1024)
         #expect(text.contains("upload is limited to the most recent 384 KiB"))
-        #expect(text.contains("token=secret-value"))
+        // This body is posted to a public paste service, so credentials must not reach it.
+        #expect(!text.contains("secret-value"))
         #expect(!text.contains("10.1.2.3"))
     }
 }

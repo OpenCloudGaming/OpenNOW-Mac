@@ -54,4 +54,40 @@ import Testing
     #expect(session.clientTokenExpiresAt == Date(timeIntervalSince1970: 300))
     #expect(session.isActive)
     #expect(session.canContinueOffline)
+
+    session.purgeTokens()
+}
+
+/// The SwiftData store is an unencrypted SQLite file any process running as this user can read, so
+/// the tokens live in the keychain instead — keyed by the session id, under the `session.` prefix.
+@Test func loginSessionKeepsTokensInTheKeychainRatherThanTheModelStore() {
+    let identity = "session.keychain-backed-session-id"
+    GFNTokenStore.delete(forIdentity: identity)
+
+    let session = LoginSession(
+        id: "keychain-backed-session-id",
+        accountEmail: "user@example.com",
+        authMethod: "getSessionToken",
+        accessToken: "access-value",
+        clientToken: "client-value",
+        idToken: "id-value",
+        refreshToken: "refresh-value",
+        deviceId: "device",
+        expiresAt: Date(timeIntervalSince1970: 20),
+        clientTokenExpiresAt: Date(timeIntervalSince1970: 30)
+    )
+
+    let stored = GFNTokenStore.load(forIdentity: identity)
+    #expect(stored?.accessToken == "access-value")
+    #expect(stored?.refreshToken == "refresh-value")
+    #expect(stored?.idToken == "id-value")
+    #expect(stored?.clientToken == "client-value")
+    #expect(session.accessToken == "access-value")
+
+    // Signing out must leave nothing replayable behind — the refresh token above outlives the
+    // access token by far, so clearing only the active flag would not be a sign-out at all.
+    session.purgeTokens()
+    #expect(GFNTokenStore.load(forIdentity: identity) == nil)
+    #expect(session.accessToken.isEmpty)
+    #expect(session.refreshToken.isEmpty)
 }

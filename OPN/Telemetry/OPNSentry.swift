@@ -460,6 +460,15 @@ final class OPNSentry {
         event.logger = event.logger.map(sanitizedMessage)
         event.serverName = nil
         event.transaction = event.transaction.map(sanitizedMessage)
+        // The SDK's own HTTP instrumentation attaches the full request URL, which for the OIDC
+        // logout carries `id_token_hint`. Nothing else scrubs this field.
+        if let request = event.request {
+            request.url = request.url.map(sanitizedMessage)
+            request.queryString = request.queryString.map(sanitizedMessage)
+            request.fragment = request.fragment.map(sanitizedMessage)
+            request.cookies = nil
+            request.headers = request.headers.map(sanitizedStringDictionary)
+        }
         if let tags = event.tags {
             event.tags = sanitizedStringDictionary(tags)
         }
@@ -544,9 +553,23 @@ final class OPNSentry {
         return result
     }
 
+    /// Every log sink in the app funnels through here, and all of them are durable: stderr, the
+    /// diagnostics file that `uploadDiagnostics` can post to a public paste service, and Sentry.
+    /// So this has to strip credentials, not just addresses — a single leaked JWT or session key
+    /// in an uploaded bundle is a full account or stream compromise.
     private static func sanitizedMessage(_ message: String) -> String {
         var sanitized = message
         let replacements: [(String, String)] = [
+            // Credentials passed as query parameters — `id_token_hint` on the OIDC logout URL is the
+            // one that actually reaches here, via OPNNetworkLog's request summary.
+            (#"(?i)([?&](?:[a-z0-9_-]*token[a-z0-9_-]*|code|key|secret|password|pwd|assertion)=)[^&\s]+"#, "$1[redacted-secret]"),
+            // Bare JWTs (header.payload.signature), whatever field they arrive in.
+            (#"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+"#, "[redacted-jwt]"),
+            // Bearer/authorization values.
+            (#"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"#, "$1 [redacted-secret]"),
+            // `name=value` / `name: value` credential pairs, e.g. SDP key attributes and token logs.
+            // The lookahead keeps this from re-wrapping a value an earlier rule already replaced.
+            (#"(?i)\b([a-z0-9_.\[\]-]*(?:token|secret|password|pwd|apikey|encryptionkey)[a-z0-9_.\[\]-]*)\s*[:=]\s*(?!\[redacted)[^\s,;)\]}"']+"#, "$1=[redacted-secret]"),
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"(?i)\b(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|:(?:(?::[0-9a-f]{1,4}){1,7}|:))\b"#, "[redacted-ip]")
         ]
