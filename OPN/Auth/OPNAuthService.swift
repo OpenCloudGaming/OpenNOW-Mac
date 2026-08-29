@@ -307,7 +307,6 @@ public final class OPNAuthService: @unchecked Sendable {
 
     private func saveSession(_ session: OPNAuthSession, replacingIdentity: String?) {
         guard session.isAuthenticated, !session.accessToken.isEmpty else { return }
-        guard let identity = sessionIdentity(from: session), !identity.isEmpty else { return }
 
         Task { [jarvisAuthService, starfleetService] in
             await jarvisAuthService.setSession(session)
@@ -315,11 +314,23 @@ public final class OPNAuthService: @unchecked Sendable {
         }
 
         let existing = loadAccountDictionaries(activeUserId: nil)
+        // With no profile fields to key on, stay on the identity this account already has —
+        // re-keying on every refresh would leave an orphaned account and keychain item behind each
+        // time. The active id is only reused once it is confirmed to name a real account, so a
+        // stale access token left there by an older build can never become the identity.
+        let activeIdentity = Self.authUserDefaults().string(forKey: "OPN_ActiveUserId")
+        let reusableIdentity = existing.compactMap(sessionIdentity).first { $0 == activeIdentity }
+        let identity = sessionIdentity(from: session)
+            ?? replacingIdentity
+            ?? reusableIdentity
+            ?? Self.newAnonymousIdentity()
+        guard !identity.isEmpty else { return }
+
         var accounts = existing.filter {
             let existingIdentity = sessionIdentity(from: $0)
             return existingIdentity != identity && existingIdentity != replacingIdentity
         }
-        accounts.insert(dictionary(from: session), at: 0)
+        accounts.insert(dictionary(from: session, identity: identity), at: 0)
         saveAccountDictionaries(accounts, activeUserId: identity)
 
         let defaults = Self.authUserDefaults()
@@ -383,7 +394,12 @@ public final class OPNAuthService: @unchecked Sendable {
             return OPNAuthSession()
         }
         let legacy = loadLegacySingleSession()
-        if legacy.isAuthenticated { saveSession(legacy) }
+        if legacy.isAuthenticated {
+            saveSession(legacy)
+            // The session now lives in accounts.plist with its tokens in the keychain, so the
+            // legacy files are a second, plaintext copy of the same refresh token. Drop them.
+            removeLegacySessionFiles()
+        }
         return legacy
     }
 
@@ -442,7 +458,11 @@ public final class OPNAuthService: @unchecked Sendable {
 
     func clearSession() {
         let defaults = Self.authUserDefaults()
-        if let activeUserId = defaults.string(forKey: "OPN_ActiveUserId"), !activeUserId.isEmpty {
+        // Only take the per-account path when the stored id still names a real account. Builds
+        // before the identity change could leave an access token here, which matches nothing — and
+        // signing out would then clear neither the account nor its tokens.
+        if let activeUserId = defaults.string(forKey: "OPN_ActiveUserId"), !activeUserId.isEmpty,
+           loadAccountDictionaries(activeUserId: nil).contains(where: { sessionIdentity(from: $0) == activeUserId }) {
             removeSavedSession(userId: activeUserId)
             Task { [jarvisAuthService, starfleetService] in
                 await jarvisAuthService.clearSession()
@@ -706,8 +726,10 @@ public final class OPNAuthService: @unchecked Sendable {
 
     private func loadAccountDictionaries(activeUserId: UnsafeMutablePointer<String?>?) -> [NSDictionary] {
         let store = accountsFilePath().flatMap(loadPropertyListDictionary)
-        activeUserId?.pointee = store?["active_user_id"] as? String
-        return store?["accounts"] as? [NSDictionary] ?? []
+        let storedActiveUserId = store?["active_user_id"] as? String
+        activeUserId?.pointee = storedActiveUserId
+        let accounts = store?["accounts"] as? [NSDictionary] ?? []
+        return drainLegacyTokens(from: accounts, activeUserId: storedActiveUserId)
     }
 
     private func saveAccountDictionaries(_ accounts: [NSDictionary], activeUserId: String?) {
@@ -725,16 +747,30 @@ public final class OPNAuthService: @unchecked Sendable {
         return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? NSDictionary
     }
 
+    /// The profile fields only. The access token is deliberately NOT a fallback here: the identity
+    /// is written to UserDefaults, to `accounts.plist`, and to the keychain account name, so using
+    /// a token would scatter a live credential across all three. It also rotates on every refresh,
+    /// which orphaned a keychain item each time. `saveSession` mints a stable opaque id instead.
     private func sessionIdentity(from session: OPNAuthSession) -> String? {
-        [session.userId, session.email, session.displayName, session.accessToken].first { !$0.isEmpty }
+        [session.userId, session.email, session.displayName].first { !$0.isEmpty }
     }
 
+    /// `identity` first: an account whose profile fields are all blank still round-trips, which the
+    /// profile-only form could not do — the entry became unfindable and only the fallback path
+    /// reached it.
     private func sessionIdentity(from dictionary: NSDictionary) -> String? {
-        ["user_id", "email", "display_name"].compactMap { dictionary[$0] as? String }.first { !$0.isEmpty }
+        ["identity", "user_id", "email", "display_name"].compactMap { dictionary[$0] as? String }.first { !$0.isEmpty }
     }
 
-    private func dictionary(from session: OPNAuthSession) -> NSDictionary {
+    private static func newAnonymousIdentity() -> String {
+        "anon." + UUID().uuidString
+    }
+
+    private static let legacyTokenKeys = ["access_token", "id_token", "refresh_token", "client_token"]
+
+    private func dictionary(from session: OPNAuthSession, identity: String) -> NSDictionary {
         let dictionary = NSMutableDictionary()
+        put(identity, key: "identity", into: dictionary)
         put(session.userId, key: "user_id", into: dictionary)
         put(session.displayName, key: "display_name", into: dictionary)
         put(session.email, key: "email", into: dictionary)
@@ -745,16 +781,53 @@ public final class OPNAuthService: @unchecked Sendable {
         dictionary["client_token_expiry"] = session.clientTokenExpiry
         dictionary["client_token_expiry_length"] = session.clientTokenExpiryLength
         dictionary["id_token_expiry"] = session.idTokenExpiry
-        if let identity = sessionIdentity(from: session), !identity.isEmpty {
-            let tokens = GFNTokenStore.Tokens(
-                accessToken: session.accessToken,
-                idToken: session.idToken,
-                refreshToken: session.refreshToken,
-                clientToken: session.clientToken
-            )
-            GFNTokenStore.save(tokens, forIdentity: identity)
-        }
+        let tokens = GFNTokenStore.Tokens(
+            accessToken: session.accessToken,
+            idToken: session.idToken,
+            refreshToken: session.refreshToken,
+            clientToken: session.clientToken
+        )
+        GFNTokenStore.save(tokens, forIdentity: identity)
         return dictionary
+    }
+
+    /// Pre-keychain builds wrote the tokens straight into `accounts.plist`. Migrating them on read
+    /// is not enough on its own: the file keeps its plaintext copy — including the long-lived
+    /// refresh token — until something rewrites it, so strip them here, once.
+    ///
+    /// An entry is only stripped once the keychain is confirmed to hold its tokens. Stripping on a
+    /// failed keychain write would sign the user out and lose the refresh token entirely.
+    private func drainLegacyTokens(from accounts: [NSDictionary], activeUserId: String?) -> [NSDictionary] {
+        var didDrain = false
+        let scrubbed: [NSDictionary] = accounts.map { account in
+            guard Self.legacyTokenKeys.contains(where: { account[$0] != nil }) else { return account }
+            guard let identity = sessionIdentity(from: account), !identity.isEmpty else { return account }
+            if GFNTokenStore.load(forIdentity: identity) == nil {
+                let tokens = GFNTokenStore.Tokens(
+                    accessToken: account["access_token"] as? String ?? "",
+                    idToken: account["id_token"] as? String ?? "",
+                    refreshToken: account["refresh_token"] as? String ?? "",
+                    clientToken: account["client_token"] as? String ?? ""
+                )
+                guard !tokens.isEmpty else { return account }
+                GFNTokenStore.save(tokens, forIdentity: identity)
+                guard GFNTokenStore.load(forIdentity: identity) != nil else { return account }
+            }
+            let copy = NSMutableDictionary(dictionary: account)
+            Self.legacyTokenKeys.forEach { copy.removeObject(forKey: $0) }
+            didDrain = true
+            return copy
+        }
+        if didDrain { saveAccountDictionaries(scrubbed, activeUserId: activeUserId) }
+        return scrubbed
+    }
+
+    /// The single-session plists predate `accounts.plist` and hold plaintext tokens of their own.
+    /// Removed once the session they carried has been re-saved through the keychain path.
+    private func removeLegacySessionFiles() {
+        [sessionFilePath(), legacySessionFilePath()].forEach { path in
+            if let path { try? FileManager.default.removeItem(atPath: path) }
+        }
     }
 
     private func session(from dictionary: NSDictionary) -> OPNAuthSession {

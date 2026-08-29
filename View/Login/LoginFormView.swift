@@ -24,6 +24,8 @@ struct LoginFormView: View {
 
                 if isShowingSignIn {
                     SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: { isShowingSignIn = false })
+                        // Inset lives outside the panel's own background so it never paints it.
+                        .padding(OpenNOWDesign.Spacing.pageHorizontal)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background {
                             OpenNOWDesign.Surface.scrim
@@ -254,10 +256,6 @@ private struct SignInModal: View {
         max(min(520, availableSize.width - OpenNOWDesign.Spacing.pageHorizontal * 2), 280)
     }
 
-    private var panelMaxHeight: CGFloat {
-        max(availableSize.height - OpenNOWDesign.Spacing.pageHorizontal * 2, 320)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
@@ -281,8 +279,11 @@ private struct SignInModal: View {
             }
             .padding(OpenNOWDesign.Spacing.xLarge)
         }
+        // Height stays intrinsic. A finite `maxHeight` here would not cap the panel — it takes the
+        // proposed height clamped to the max, and the parent proposes the whole window — so the
+        // background and border painted a full-height panel with the content centred in it.
+        // Overflow is already handled by the `ViewThatFits` above, whose ScrollView branch expands.
         .frame(width: panelWidth)
-        .frame(maxHeight: panelMaxHeight)
         .background(OpenNOWDesign.Surface.panel)
         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
