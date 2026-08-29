@@ -82,6 +82,15 @@ import Testing
         #expect(NvstBifrostFreeTransport.sessionServerLocation(fromRawSessionJSON: #"{"serverLocation": "  "}"#) == nil)
     }
 
+    @Test func theServerLocationFallsBackToTheZoneEndpointNotAnIp() {
+        // CloudMatch leaves serverLocation/zoneName out of this path's session JSON, so the HUD
+        // used to fall through to the video peer IP. The region endpoint names the zone.
+        #expect(NvstBifrostFreeTransport.endpointLabel(forStreamingBaseURL: "https://np-tyo-01.cloudmatch.example/") == "np-tyo-01")
+        #expect(NvstBifrostFreeTransport.endpointLabel(forStreamingBaseURL: "np-sin-02.cloudmatch.example") == "np-sin-02")
+        #expect(NvstBifrostFreeTransport.endpointLabel(forStreamingBaseURL: "https://10.0.0.5/") == nil)
+        #expect(NvstBifrostFreeTransport.endpointLabel(forStreamingBaseURL: "") == nil)
+    }
+
     @Test func theNegotiatedProfileIsReadFromTheSessionJson() {
         let sessionInfo = #"{"negotiatedStreamProfile":{"resolution":"3840x2160","fps":120,"codec":"HEVC"}}"#
         let profile = NvstBifrostFreeTransport.streamProfile(from: allocation(rawSessionJSON: "{}", sessionInfoJSON: sessionInfo))

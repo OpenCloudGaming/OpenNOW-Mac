@@ -205,7 +205,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         guard !endpoints.isEmpty else {
             throw NativeNVSTError.transportFailed("This session provided no RTSPS control endpoint, so NVST cannot be negotiated.")
         }
-        sessionServerLocation = Self.sessionServerLocation(fromRawSessionJSON: allocation.rawSessionJSON)
+        sessionServerLocation = Self.sessionServerLocation(for: allocation)
         var profile = Self.streamProfile(from: allocation)
         // The configured fps wins: the app knows it directly, while the JSON parse is a fallback.
         if let configuredFps, configuredFps > 0 { profile.fps = configuredFps }
@@ -861,7 +861,23 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
 
     /// The session's server name from the CloudMatch allocation, mirroring how
     /// `NativeNVSTLaunchPayload` resolves it: `serverLocation` at the session or request level,
-    /// then `zoneName`.
+    /// then `zoneName`. CloudMatch omits all three on this path, so the zone the session was
+    /// allocated in is the practical answer: the streaming base URL is the region endpoint.
+    /// Reported as "np-tyo-01 (Japan)" — the seat's own name plus the human region `serverInfo`
+    /// gave it, dropping the parenthetical when the two are the same string.
+    static func sessionServerLocation(for allocation: NativeNVSTSessionAllocation) -> String? {
+        let server = sessionServerLocation(fromRawSessionJSON: allocation.rawSessionJSON)
+            ?? endpointLabel(forStreamingBaseURL: allocation.streamingBaseURL)
+        let region = regionName(forStreamingBaseURL: allocation.streamingBaseURL)
+        switch (server, region) {
+        case let (server?, region?):
+            return server.caseInsensitiveCompare(region) == .orderedSame ? server : "\(server) (\(region))"
+        case let (server?, nil): return server
+        case let (nil, region?): return region
+        case (nil, nil): return nil
+        }
+    }
+
     static func sessionServerLocation(fromRawSessionJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let rawSession = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -872,6 +888,27 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             }
         }
         return nil
+    }
+
+    /// The human region name behind the seat this session landed on — "Japan" for "np-tyo-01",
+    /// which the endpoint hostname alone cannot say (the region hostname is a DNS alias of it).
+    static func regionName(forStreamingBaseURL baseURL: String) -> String? {
+        let name = OPNStreamPreferences.regionName(forStreamingBaseUrl: baseURL)
+        return name.isEmpty ? nil : name
+    }
+
+    /// The endpoint's own subdomain label ("np-tyo-01"), which is the seat name the vendored client
+    /// showed. An address that is a bare IP has no name to give.
+    static func endpointLabel(forStreamingBaseURL baseURL: String) -> String? {
+        guard let host = endpointHost(baseURL) else { return nil }
+        let label = String(host.split(separator: ".").first ?? "")
+        guard !label.isEmpty, label.contains(where: { $0.isLetter }) else { return nil }
+        return label
+    }
+
+    private static func endpointHost(_ baseURL: String) -> String? {
+        guard let host = URLComponents(string: baseURL)?.host ?? host(from: baseURL), !host.isEmpty else { return nil }
+        return host
     }
 
     /// Tells the seat which frame the decoder could not use, so its encoder stops referencing it.

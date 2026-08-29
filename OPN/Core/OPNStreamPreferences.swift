@@ -743,6 +743,35 @@ public enum OPNStreamPreferences {
         return normalizedCachedRegions(regions)
     }
 
+    public static func saveDetectedLocalRegionName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { storage.removeObject(forKey: k.detectedLocalRegionName) }
+        else { storage.set(trimmed, forKey: k.detectedLocalRegionName) }
+        storage.synchronize()
+    }
+
+    public static func loadDetectedLocalRegionName() -> String {
+        storage.string(forKey: k.detectedLocalRegionName) ?? ""
+    }
+
+    /// The human region name for the endpoint a session was allocated on ("Japan"). CloudMatch
+    /// hands out seat-zone hostnames ("np-tyo-01") that are DNS aliases of the region hostnames the
+    /// region list carries ("ap-japan"), so a host match only works when the session stayed on the
+    /// listed endpoint. Otherwise the region the app itself asked for is the answer: the selected
+    /// region, or — on Automatic — the local region `serverInfo` detected.
+    public static func regionName(forStreamingBaseUrl baseUrl: String) -> String {
+        let regions = loadCachedRegions()
+        if let host = URLComponents(string: normalizedBaseUrl(baseUrl))?.host,
+           let matched = regions.first(where: { URLComponents(string: $0.url)?.host?.caseInsensitiveCompare(host) == .orderedSame }) {
+            return matched.name
+        }
+        let selected = loadSelectedRegionUrl()
+        if !selected.isEmpty, let chosen = cachedRegionChoice(regions: regions, selectedRegionUrl: selected) {
+            return chosen.name
+        }
+        return loadDetectedLocalRegionName()
+    }
+
     public static func saveCachedRegions(_ regions: [OPNStreamRegionOption]) {
         let items: [[String: Any]] = normalizedCachedRegions(regions).map { region in
             var item: [String: Any] = ["name": region.name, "url": region.url]
@@ -910,6 +939,7 @@ public enum OPNStreamPreferences {
                 return
             }
             let serverInfo = CloudMatchServerInfoParser.parse(json)
+            saveDetectedLocalRegionName(serverInfo.detectedLocalZone?.name ?? "")
             let regions = serverInfo.zones.values
                 .sorted { $0.name < $1.name }
                 .compactMap { zone -> OPNStreamRegionOption? in
@@ -1810,6 +1840,7 @@ public enum OPNStreamPreferences {
         static let microphonePushToTalkModifierMask = "OpenNOW.Stream.MicrophonePushToTalkModifierMask"
         static let selectedRegionUrl = "OpenNOW.Stream.RegionUrl"
         static let cachedRegions = "OpenNOW.Stream.CachedRegions"
+        static let detectedLocalRegionName = "OpenNOW.Stream.DetectedLocalRegionName"
         static let cachedCloudVariablesJSON = "OpenNOW.Stream.CloudVariablesJSON"
         static let cachedCloudVariablesTimestamp = "OpenNOW.Stream.CloudVariablesTimestamp"
         static let hdrEnabled = "OpenNOW.Stream.HDREnabled"
