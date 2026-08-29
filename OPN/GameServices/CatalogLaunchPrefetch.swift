@@ -5,32 +5,45 @@
 
 import Foundation
 
-/// Fetches the home panels at process launch, before the catalog view exists.
+/// Fetches everything the home screen needs at process launch, before the catalog view exists.
 ///
-/// Without this the first panel request cannot start until SwiftUI has built the
-/// scene, resolved the active session and mounted `CatalogView`, so the whole
-/// round trip happens after the splash screen instead of underneath it. The
-/// catalog view model adopts whatever this has (or has in flight) through
-/// `attach(accountIdentifier:onEvent:)` rather than issuing the same query again.
+/// Without this the first request cannot start until SwiftUI has built the scene, resolved the
+/// active session and mounted `CatalogView`, so the whole round trip happens after the splash
+/// screen instead of underneath it. The catalog view model adopts whatever this has (or has in
+/// flight) through `attach(accountIdentifier:onEvent:)` rather than issuing the same query again.
+///
+/// Two data shapes ride along here: panels (marquee hero, main rails) and flat game lists
+/// (favorites, library). Each shape has one generic fetch/attach/deliver path so adding a third
+/// home game list later - a "recently played" rail, say - is a new `GameListKind` case and one
+/// `gameService.fetch...` call in `start()`, not a new parallel set of state/handler plumbing.
 @MainActor
 final class CatalogLaunchPrefetch {
     static let shared = CatalogLaunchPrefetch()
 
-    enum PanelKind: String {
+    enum PanelKind: String, CaseIterable {
         case marquee
         case main
     }
 
+    enum GameListKind: String, CaseIterable {
+        case favorites
+        case library
+    }
+
     enum Event {
         case panels(PanelKind, [OPNCatalogPanelObject])
-        case failed(PanelKind, String)
+        case panelsFailed(PanelKind, String)
+        case games(GameListKind, [OPNCatalogGameObject])
+        case gamesFailed(GameListKind, String)
     }
 
     struct Attachment {
         var marquee = false
         var main = false
+        var favorites = false
+        var library = false
 
-        var isEmpty: Bool { !marquee && !main }
+        var isEmpty: Bool { !marquee && !main && !favorites && !library }
     }
 
     private enum FetchState {
@@ -44,10 +57,10 @@ final class CatalogLaunchPrefetch {
     private let imageCache = CatalogImageCache.shared
 
     private(set) var accountIdentifier = ""
-    private var marqueePanels: [OPNCatalogPanelObject] = []
-    private var mainPanels: [OPNCatalogPanelObject] = []
-    private var marqueeState = FetchState.idle
-    private var mainState = FetchState.idle
+    private var panels: [PanelKind: [OPNCatalogPanelObject]] = [:]
+    private var panelStates: [PanelKind: FetchState] = [:]
+    private var gameLists: [GameListKind: [OPNCatalogGameObject]] = [:]
+    private var gameListStates: [GameListKind: FetchState] = [:]
     private var observer: ((Event) -> Void)?
     private var startedAt: ContinuousClock.Instant?
     private var didPrefetchHeroImages = false
@@ -55,55 +68,70 @@ final class CatalogLaunchPrefetch {
 
     private init() {}
 
-    var hasHomePanels: Bool { !mainPanels.isEmpty }
+    var hasHomePanels: Bool { !(panels[.main] ?? []).isEmpty }
 
-    var isFetching: Bool { marqueeState == .inFlight || mainState == .inFlight }
+    var isFetching: Bool { isActiveState(panelStates[.marquee]) || isActiveState(panelStates[.main]) }
 
     func start(accountIdentifier: String, accessToken: String, idToken: String) {
-        guard marqueeState == .idle, mainState == .idle else { return }
+        guard (panelStates[.marquee] ?? .idle) == .idle, (panelStates[.main] ?? .idle) == .idle else { return }
         guard !accountIdentifier.isEmpty, !accessToken.isEmpty || !idToken.isEmpty else { return }
         self.accountIdentifier = accountIdentifier
-        marqueeState = .inFlight
-        mainState = .inFlight
+        for kind in PanelKind.allCases { panelStates[kind] = .inFlight }
+        for kind in GameListKind.allCases { gameListStates[kind] = .inFlight }
         startedAt = ContinuousClock.now
         // Also prewarms the vpcId lookup, which every catalog query waits on.
         gameService.configureCatalogSession(accessToken: accessToken, idToken: idToken, userId: accountIdentifier)
         OpenNOWLog.info(.catalog, "Launch panel prefetch started")
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
-            self?.handle(kind: .marquee, success: success, panels: panels, error: error)
+            self?.handlePanels(kind: .marquee, success: success, panels: panels, error: error)
         }
         gameService.fetchMainPanelObjects { [weak self] success, panels, error in
-            self?.handle(kind: .main, success: success, panels: panels, error: error)
+            self?.handlePanels(kind: .main, success: success, panels: panels, error: error)
+        }
+        // Favorites and library render nothing on the first frame, but they share the same
+        // control-plane session as the panels above, so they ride along under the splash screen
+        // the same way - instead of, previously, only starting once `CatalogViewModel` itself was
+        // built and its own gate (`scheduleSecondaryCatalogLoads`) let them through.
+        gameService.fetchFavoriteGameObjects { [weak self] success, games, error in
+            self?.handleGameList(kind: .favorites, success: success, games: games, error: error)
+        }
+        gameService.fetchLibraryGameObjects { [weak self] success, games, error in
+            self?.handleGameList(kind: .library, success: success, games: games, error: error)
         }
     }
 
-    /// Reports which panel kinds the caller can leave to this prefetch. A kind
-    /// that already failed (or was never started) is not adopted, so the caller
-    /// still fetches it itself.
+    /// Reports which kinds the caller can leave to this prefetch. A kind that already failed (or
+    /// was never started) is not adopted, so the caller still fetches it itself.
     func attach(accountIdentifier: String, onEvent: @escaping (Event) -> Void) -> Attachment {
         guard !accountIdentifier.isEmpty, accountIdentifier == self.accountIdentifier else { return Attachment() }
         var attachment = Attachment()
-        attachment.marquee = marqueeState == .inFlight || marqueeState == .delivered
-        attachment.main = mainState == .inFlight || mainState == .delivered
-        // Panels primed from the disk cache are still worth handing over even when
-        // the caller keeps ownership of the network fetch: they paint now.
-        let hasStoredPanels = !marqueePanels.isEmpty || !mainPanels.isEmpty
-        guard !attachment.isEmpty || hasStoredPanels else { return Attachment() }
+        attachment.marquee = isActiveState(panelStates[.marquee])
+        attachment.main = isActiveState(panelStates[.main])
+        attachment.favorites = isActiveState(gameListStates[.favorites])
+        attachment.library = isActiveState(gameListStates[.library])
+        // Data primed from disk cache is still worth handing over even when the caller keeps
+        // ownership of the network fetch: it paints now.
+        let hasStoredData = panels.values.contains { !$0.isEmpty } || gameLists.values.contains { !$0.isEmpty }
+        guard !attachment.isEmpty || hasStoredData else { return Attachment() }
         observer = onEvent
-        if !marqueePanels.isEmpty { onEvent(.panels(.marquee, marqueePanels)) }
-        if !mainPanels.isEmpty { onEvent(.panels(.main, mainPanels)) }
+        for kind in PanelKind.allCases {
+            if let stored = panels[kind], !stored.isEmpty { onEvent(.panels(kind, stored)) }
+        }
+        for kind in GameListKind.allCases {
+            if let stored = gameLists[kind], !stored.isEmpty { onEvent(.games(kind, stored)) }
+        }
         return attachment
     }
 
-    /// Paints from the panel disk cache without a usable token. A launch whose
-    /// stored session has expired has to refresh auth before it can fetch anything,
-    /// which is seconds of skeleton for data that is already on disk. States stay
-    /// idle so the catalog view model still runs its own fetch once auth is ready.
+    /// Paints from the panel disk cache without a usable token. A launch whose stored session has
+    /// expired has to refresh auth before it can fetch anything, which is seconds of skeleton for
+    /// data that is already on disk. States stay idle so the catalog view model still runs its own
+    /// fetch once auth is ready. Favorites/library have no disk cache of their own to prime from.
     func primeFromCache(accountIdentifier: String) {
         guard self.accountIdentifier.isEmpty || self.accountIdentifier == accountIdentifier else { return }
         guard !accountIdentifier.isEmpty else { return }
         self.accountIdentifier = accountIdentifier
-        for kind in [PanelKind.marquee, PanelKind.main] {
+        for kind in PanelKind.allCases {
             gameService.loadCachedPanels(cacheKind: kind.rawValue, accountIdentifier: accountIdentifier) { [weak self] cachedPanels in
                 guard let cachedPanels, !cachedPanels.isEmpty else { return }
                 let panels = cachedPanels.map(OPNCatalogPanelObject.init)
@@ -114,16 +142,11 @@ final class CatalogLaunchPrefetch {
         }
     }
 
-    private func applyCachedPanels(_ panels: [OPNCatalogPanelObject], for kind: PanelKind) {
-        guard storedPanels(for: kind).isEmpty else { return }
-        switch kind {
-        case .marquee:
-            marqueePanels = panels
-        case .main:
-            mainPanels = panels
-        }
-        OpenNOWLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(panels.flatMap(\.sections).count)")
-        observer?(.panels(kind, panels))
+    private func applyCachedPanels(_ cached: [OPNCatalogPanelObject], for kind: PanelKind) {
+        guard (panels[kind] ?? []).isEmpty else { return }
+        panels[kind] = cached
+        OpenNOWLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(cached.flatMap(\.sections).count)")
+        observer?(.panels(kind, cached))
         prefetchFirstFrameImages(for: kind)
     }
 
@@ -136,57 +159,58 @@ final class CatalogLaunchPrefetch {
     func invalidate() {
         observer = nil
         accountIdentifier = ""
-        marqueePanels = []
-        mainPanels = []
-        marqueeState = .idle
-        mainState = .idle
+        panels = [:]
+        panelStates = [:]
+        gameLists = [:]
+        gameListStates = [:]
         startedAt = nil
         didPrefetchHeroImages = false
         didPrefetchRailImages = false
     }
 
-    private func handle(kind: PanelKind, success: Bool, panels: [OPNCatalogPanelObject], error: String) {
-        guard success, !panels.isEmpty else {
+    private func handlePanels(kind: PanelKind, success: Bool, panels newPanels: [OPNCatalogPanelObject], error: String) {
+        guard success, !newPanels.isEmpty else {
             let message = error.isEmpty ? "No \(kind.rawValue) panels returned." : error
-            setState(.failed, for: kind)
-            guard storedPanels(for: kind).isEmpty else { return }
+            panelStates[kind] = .failed
+            guard (panels[kind] ?? []).isEmpty else { return }
             OpenNOWLog.warning(.catalog, "Launch panel prefetch failed kind=\(kind.rawValue) error=\(message)")
-            observer?(.failed(kind, message))
+            observer?(.panelsFailed(kind, message))
             return
         }
 
-        setState(.delivered, for: kind)
-        switch kind {
-        case .marquee:
-            marqueePanels = panels
-        case .main:
-            mainPanels = panels
-        }
-        if let startedAt {
-            let elapsed = startedAt.duration(to: .now).components
-            let elapsedMs = Int(elapsed.seconds * 1000) + Int(elapsed.attoseconds / 1_000_000_000_000_000)
-            OpenNOWLog.info(.catalog, "Launch panel prefetch delivered kind=\(kind.rawValue) elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
-        }
-        observer?(.panels(kind, panels))
+        panelStates[kind] = .delivered
+        panels[kind] = newPanels
+        logDelivered(label: "panel", kind: kind.rawValue, count: newPanels.flatMap(\.sections).count, unit: "sections")
+        observer?(.panels(kind, newPanels))
         prefetchFirstFrameImages(for: kind)
     }
 
-    private func setState(_ state: FetchState, for kind: PanelKind) {
-        switch kind {
-        case .marquee:
-            marqueeState = state
-        case .main:
-            mainState = state
+    // Unlike panels, an empty result is a legitimate outcome here (the account just has no
+    // favorites, or owns nothing yet) rather than something to retry as a failure.
+    private func handleGameList(kind: GameListKind, success: Bool, games: [OPNCatalogGameObject], error: String) {
+        guard success else {
+            gameListStates[kind] = .failed
+            guard (gameLists[kind] ?? []).isEmpty else { return }
+            OpenNOWLog.warning(.catalog, "Launch \(kind.rawValue) prefetch failed error=\(error)")
+            observer?(.gamesFailed(kind, error))
+            return
         }
+        gameListStates[kind] = .delivered
+        gameLists[kind] = games
+        logDelivered(label: kind.rawValue, kind: nil, count: games.count, unit: "games")
+        observer?(.games(kind, games))
     }
 
-    private func storedPanels(for kind: PanelKind) -> [OPNCatalogPanelObject] {
-        switch kind {
-        case .marquee:
-            return marqueePanels
-        case .main:
-            return mainPanels
-        }
+    private func logDelivered(label: String, kind: String?, count: Int, unit: String) {
+        guard let startedAt else { return }
+        let elapsed = startedAt.duration(to: .now).components
+        let elapsedMs = Int(elapsed.seconds * 1000) + Int(elapsed.attoseconds / 1_000_000_000_000_000)
+        let kindSuffix = kind.map { " kind=\($0)" } ?? ""
+        OpenNOWLog.info(.catalog, "Launch \(label) prefetch delivered\(kindSuffix) elapsed=\(elapsedMs)ms \(unit)=\(count)")
+    }
+
+    private func isActiveState(_ state: FetchState?) -> Bool {
+        state == .inFlight || state == .delivered
     }
 
     // Only the artwork the first frame shows is worth priority bandwidth: the
@@ -199,7 +223,7 @@ final class CatalogLaunchPrefetch {
         case .marquee:
             guard !didPrefetchHeroImages else { return }
             didPrefetchHeroImages = true
-            let games = marqueePanels.flatMap { $0.sections.flatMap(\.games) }
+            let games = (panels[.marquee] ?? []).flatMap { $0.sections.flatMap(\.games) }
             for game in games.prefix(3) {
                 append(game.bestMarqueeHeroImageURL, width: 1920, into: &urls, seen: &seen)
                 append(game.bestLogoImageURL, width: 620, into: &urls, seen: &seen)
@@ -208,7 +232,7 @@ final class CatalogLaunchPrefetch {
         case .main:
             guard !didPrefetchRailImages else { return }
             didPrefetchRailImages = true
-            let sections = mainPanels.flatMap(\.sections).filter { !$0.games.isEmpty }
+            let sections = (panels[.main] ?? []).flatMap(\.sections).filter { !$0.games.isEmpty }
             for section in sections.prefix(2) {
                 for game in section.games.prefix(8) {
                     append(game.bestWideImageURL, width: 768, into: &urls, seen: &seen)

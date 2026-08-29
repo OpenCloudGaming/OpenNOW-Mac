@@ -2086,11 +2086,23 @@ final class CatalogViewModel {
         case .panels(.main, let panels):
             isLoadingPanels = false
             applyMainPanels(panels)
-        case .failed(.marquee, _):
+        case .panelsFailed(.marquee, _):
             loadMarqueePanels()
-        case .failed(.main, let message):
+        case .panelsFailed(.main, let message):
             if errorMessage.isEmpty { errorMessage = message }
             loadMainPanels()
+        case .games(.favorites, let games):
+            isLoadingFavorites = false
+            updateFavoriteGames(games)
+            schedulePatchingPollIfNeeded()
+        case .gamesFailed(.favorites, _):
+            fetchFavoritesFromNetwork()
+        case .games(.library, let games):
+            isLoadingLibrary = false
+            libraryGames = games
+            schedulePatchingPollIfNeeded()
+        case .gamesFailed(.library, _):
+            fetchLibraryFromNetwork()
         }
     }
 
@@ -2177,6 +2189,19 @@ final class CatalogViewModel {
     private func loadLibrary() {
         configureCatalogService()
         isLoadingLibrary = true
+        // See `loadFavorites()`: the launch prefetch fires this alongside the home panels, under
+        // the splash screen, so it has often already arrived by the time this gate lets it through.
+        let attachment = CatalogLaunchPrefetch.shared.attach(accountIdentifier: catalogAccountIdentifier) { [weak self] event in
+            self?.handleLaunchPrefetchEvent(event)
+        }
+        guard !attachment.library else {
+            OpenNOWLog.info(.catalog, "Adopted launch library prefetch")
+            return
+        }
+        fetchLibraryFromNetwork()
+    }
+
+    private func fetchLibraryFromNetwork() {
         gameService.fetchLibraryGameObjects { [weak self] success, games, error in
             guard let self else { return }
             self.isLoadingLibrary = false
@@ -2192,6 +2217,21 @@ final class CatalogViewModel {
     private func loadFavorites() {
         configureCatalogService()
         isLoadingFavorites = true
+        // The launch prefetch fires this alongside the home panels, under the splash screen, so
+        // by the time the panels rail unblocks this call it has often already arrived (or arrives
+        // moments later through the same observer `loadPanels()` already registered). Adopt it
+        // instead of paying for a second, later round trip.
+        let attachment = CatalogLaunchPrefetch.shared.attach(accountIdentifier: catalogAccountIdentifier) { [weak self] event in
+            self?.handleLaunchPrefetchEvent(event)
+        }
+        guard !attachment.favorites else {
+            OpenNOWLog.info(.catalog, "Adopted launch favorites prefetch")
+            return
+        }
+        fetchFavoritesFromNetwork()
+    }
+
+    private func fetchFavoritesFromNetwork() {
         gameService.fetchFavoriteGameObjects { [weak self] success, games, error in
             guard let self else { return }
             self.isLoadingFavorites = false
@@ -2441,12 +2481,24 @@ final class CatalogViewModel {
     }
 
     private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
-        guard let selectedGame, Self.identity(for: selectedGame) == gameIdentity else { return }
-        for variant in selectedGame.variants where variant.id == variantId {
-            variant.inLibrary = inLibrary
-            variant.librarySelected = inLibrary
+        guard !gameIdentity.isEmpty else { return }
+        func apply(to game: OPNCatalogGameObject) {
+            for variant in game.variants where variant.id == variantId {
+                variant.inLibrary = inLibrary
+                variant.librarySelected = inLibrary
+            }
+            game.isInLibrary = Self.gameHasOwnedVariant(game)
         }
-        selectedGame.isInLibrary = Self.gameHasOwnedVariant(selectedGame)
+        func update(_ games: [OPNCatalogGameObject]) {
+            for game in games where Self.identity(for: game) == gameIdentity { apply(to: game) }
+        }
+        if let selectedGame, Self.identity(for: selectedGame) == gameIdentity { apply(to: selectedGame) }
+        update(catalogGames)
+        update(libraryGames)
+        update(favoriteGames)
+        update(marqueeGames)
+        update(mainPanelGames)
+        for games in fullSectionGames.values { update(games) }
     }
 
     private func updateGameFavoriteState(identity: String, isFavorited: Bool) {

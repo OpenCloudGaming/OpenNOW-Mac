@@ -11,6 +11,7 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     let imageURL: (OPNCatalogGameObject) -> URL?
     let onSelect: (OPNCatalogGameObject) -> Void
     let onPlay: (OPNCatalogGameObject) -> Void
+    let onMarkOwned: (OPNCatalogGameObject) -> Void
     let onQueueForPatching: (OPNCatalogGameObject) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -229,6 +230,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             scale: scale,
             onSelect: { [weak self] in self?.parent.onSelect(game) },
             onPlay: { [weak self] in self?.parent.onPlay(game) },
+            onMarkOwned: { [weak self] in self?.parent.onMarkOwned(game) },
             onQueueForPatching: { [weak self] in self?.parent.onQueueForPatching(game) }
         )
     }
@@ -274,6 +276,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         scale: CGFloat,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
+        onMarkOwned: @escaping () -> Void,
         onQueueForPatching: @escaping () -> Void
     ) {
         let tile = AnyView(
@@ -284,6 +287,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
                 isQueuedForPatching: isQueuedForPatching,
                 onSelect: onSelect,
                 onPlay: onPlay,
+                onMarkOwned: onMarkOwned,
                 onQueueForPatching: onQueueForPatching
             )
             .environment(\.opnUIScale, scale)
@@ -312,6 +316,7 @@ struct CatalogShowAllGridTile: View {
     let isQueuedForPatching: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
+    let onMarkOwned: () -> Void
     let onQueueForPatching: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
@@ -339,12 +344,27 @@ struct CatalogShowAllGridTile: View {
         }
     }
 
+    private var playButtonAction: () -> Void {
+        if game.isLaunchPatching { return onQueueForPatching }
+        return game.cardPrimaryActionIsLaunchable ? onPlay : onMarkOwned
+    }
+
+    private var playButtonTitle: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "QUEUED" : "QUEUE" }
+        return game.cardPrimaryActionIsLaunchable ? "PLAY" : "MARK OWNED"
+    }
+
+    private var playButtonIconName: String {
+        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "plus.circle.fill" }
+        return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
+    }
+
     private var playButton: some View {
-        Button(action: game.isLaunchPatching ? onQueueForPatching : onPlay) {
+        Button(action: playButtonAction) {
             HStack(spacing: 7) {
-                Image(systemName: game.isLaunchPatching ? (isQueuedForPatching ? "clock.fill" : "plus.circle.fill") : "play.fill")
+                Image(systemName: playButtonIconName)
                     .nvidiaFont(size: 10, weight: .bold)
-                Text(game.isLaunchPatching ? (isQueuedForPatching ? "QUEUED" : "QUEUE") : "PLAY")
+                Text(playButtonTitle)
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }

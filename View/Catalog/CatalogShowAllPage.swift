@@ -56,6 +56,10 @@ struct CatalogShowAllPage: View {
                     imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
                     onSelect: { viewModel.toggleGameSelection($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
                     onPlay: { viewModel.launch(game: $0) },
+                    onMarkOwned: { game in
+                        viewModel.selectGame(game, inSection: viewModel.selectedShowAllSection?.id ?? "")
+                        viewModel.handleUnownedSelectedVariantPrimaryAction()
+                    },
                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: $0) }
                 )
                 .opacity(viewModel.isRefetchingCatalog ? 0.45 : 1)
