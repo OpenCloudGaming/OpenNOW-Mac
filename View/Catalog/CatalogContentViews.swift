@@ -30,18 +30,18 @@ struct CatalogContentView: View {
                 let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
                 ScrollViewReader { proxy in
                     ScrollView {
-                        // Lazy: a plain VStack built every rail on the home page up front, so all
-                        // ten rails' worth of tiles (and their image requests) existed whether or
-                        // not they were ever scrolled to. Controller mode has always used a
-                        // LazyVStack here.
+                        // Deliberately eager. A LazyVStack here re-runs
+                        // `LazyStack.measureEstimates` on every scroll offset change, and
+                        // estimating a rail means applying its whole view list - every tile in
+                        // every rail, rebuilt and thrown away per layout pass. On the home page
+                        // that pinned the main thread at 100% CPU for the length of a scroll.
+                        // A plain VStack measures the rails once and keeps them.
                         //
-                        // Never attach `.animation(_:value:)` to this stack. A lazy stack tracks a
-                        // materialisation phase per item; an animated container makes every phase
-                        // change re-dirty layout, which recomputes the phases, which animates
-                        // again. That span the main thread at 100% CPU inside
-                        // `LazyLayoutViewCache.updateItemPhases`. Animate the model mutation or an
-                        // individual non-lazy child instead.
-                        LazyVStack(alignment: .leading, spacing: 26) {
+                        // If this ever goes lazy again, note also that `.animation(_:value:)` on a
+                        // lazy stack loops: each per-item materialisation phase change re-dirties
+                        // layout, which recomputes the phases, which animates again, inside
+                        // `LazyLayoutViewCache.updateItemPhases`.
+                        VStack(alignment: .leading, spacing: 26) {
                             if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
                                 VendorActiveSessionHomeBanner(
                                     title: viewModel.activeHomeSessionTitle,
