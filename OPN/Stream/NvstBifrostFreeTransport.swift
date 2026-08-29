@@ -148,15 +148,30 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// same reason as fps — a missing/nested field defaulted the announced cap and the stream
     /// parked low.
     private let configuredMaxBitrateKbps: Int?
+    /// The user's prefilter (server-side AI sharpen/denoise) selection. There is no session-JSON
+    /// fallback for these the way there is for fps/bitrate — the seat never echoes a negotiated
+    /// prefilter back — so the app's own configured value is the only source.
+    private let configuredPrefilterMode: Int?
+    private let configuredPrefilterSharpness: Int?
+    private let configuredPrefilterDenoise: Int?
+    private let configuredPrefilterModel: Int?
 
     public init(pixelBufferSink: PixelBufferSink? = nil,
                 configuredFps: Int? = nil,
                 configuredMaxBitrateKbps: Int? = nil,
+                configuredPrefilterMode: Int? = nil,
+                configuredPrefilterSharpness: Int? = nil,
+                configuredPrefilterDenoise: Int? = nil,
+                configuredPrefilterModel: Int? = nil,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20)) {
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps
+        self.configuredPrefilterMode = configuredPrefilterMode
+        self.configuredPrefilterSharpness = configuredPrefilterSharpness
+        self.configuredPrefilterDenoise = configuredPrefilterDenoise
+        self.configuredPrefilterModel = configuredPrefilterModel
         self.logger = logger
         self.controlTimeout = controlTimeout
     }
@@ -243,6 +258,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             codec: profile.codec,
             bitrateKbps: profile.bitrateKbps,
             maximumBitrateKbps: profile.maximumBitrateKbps,
+            prefilterMode: configuredPrefilterMode,
+            prefilterSharpness: configuredPrefilterSharpness,
+            prefilterDenoise: configuredPrefilterDenoise,
+            prefilterModel: configuredPrefilterModel,
             timeout: controlTimeout,
             // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
             // keeps feedback as SRTCP on the Mjolnir socket.

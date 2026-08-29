@@ -350,6 +350,36 @@ import Testing
         #expect(!body.contains("a=x-nv-vqos[0].avoidDuplicateNonReflexGameFrames:"))
     }
 
+    @Test func unsetPrefilterLeavesTheCapturedBaselineInPlace() {
+        let body = NvstRtspSdp.buildAnnounceSdp(.init())
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterMode:2"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
+    }
+
+    @Test func chosenPrefilterOverridesTheCapturedBaselineOnIndexZero() {
+        let body = NvstRtspSdp.buildAnnounceSdp(.init(prefilterMode: 3,
+                                                     prefilterSharpness: 8,
+                                                     prefilterDenoise: 2,
+                                                     prefilterModel: 4))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterMode:3"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.sharpnessLevel:8"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.denoiseLevel:2"))
+        // Only index 0 is actually decoded/displayed; the captured baseline's other indices are
+        // left alone, matching every other client-known override in this file (viewport, maxFPS).
+        #expect(body.contains("a=x-nv-video[1].prefilterParams.prefilterMode:2"))
+    }
+
+    @Test func prefilterOffZeroesSharpnessAndDenoiseInsteadOfLeavingTheCapturedLevels() {
+        let body = NvstRtspSdp.buildAnnounceSdp(.init(prefilterMode: 0))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterMode:0"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.sharpnessLevel:0"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.denoiseLevel:0"))
+        // Off does not touch prefilterModel: there is nothing to zero, and the captured default is
+        // harmless when the mode itself is off.
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
+    }
+
     /// The official client pings its RTSPS WebSocket every couple of seconds for the life of the
     /// session — captured from its own `SSL_write`. Nothing else travels on that connection after
     /// PLAY, so an idle one is how the seat sees a client that has gone away.

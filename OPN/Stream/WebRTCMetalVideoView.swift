@@ -265,8 +265,9 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         let boundsSize = metalView.bounds.size
         guard boundsSize.width > 0, boundsSize.height > 0 else { return }
         var drawableSize = CGSize(width: max(1, floor(boundsSize.width * scale)), height: max(1, floor(boundsSize.height * scale)))
-        if localVideoEnhancement().mode > 0 {
-            drawableSize = enhancementDrawableSize(for: boundsSize, scale: scale)
+        let enhancement = localVideoEnhancement()
+        if enhancement.mode > 0 {
+            drawableSize = Self.enhancementDrawableSize(boundsSize: boundsSize, scale: scale, targetHeight: Int(enhancement.targetHeight))
         }
         let currentSize = metalView.drawableSize
         if Int(currentSize.width.rounded()) != Int(drawableSize.width.rounded()) || Int(currentSize.height.rounded()) != Int(drawableSize.height.rounded()) {
@@ -276,8 +277,16 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         markDrawableSizeDirty(false)
     }
 
-    private func enhancementDrawableSize(for boundsSize: CGSize, scale: CGFloat) -> CGSize {
-        CGSize(width: max(1, floor(boundsSize.width * scale)), height: max(1, floor(boundsSize.height * scale)))
+    /// The enhancement drawable follows the window like the plain path, but never renders past
+    /// `targetHeight` pixels tall. A window smaller than the target is a no-op (min()) — this caps
+    /// upscaling cost, it never supersamples beyond what the window would already draw at.
+    nonisolated static func enhancementDrawableSize(boundsSize: CGSize, scale: CGFloat, targetHeight: Int) -> CGSize {
+        guard boundsSize.height > 0 else { return CGSize(width: max(1, boundsSize.width), height: 1) }
+        let uncappedHeight = max(1, floor(boundsSize.height * scale))
+        let cappedHeight = floor(min(uncappedHeight, CGFloat(max(1, targetHeight))))
+        let aspect = boundsSize.width / boundsSize.height
+        let width = max(1, floor(cappedHeight * aspect))
+        return CGSize(width: width, height: max(1, cappedHeight))
     }
 
     private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
@@ -548,10 +557,16 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
 }
 
+/// 2/3/4 are real tier codes (`renderEnhancedFrame`'s own switch: spatial/MetalFX/temporal) that a
+/// caller can now select explicitly. 1 predates tier selection — it only ever meant "some
+/// enhancement is on" — so it keeps resolving to MetalFX rather than becoming a new, unintended tier.
 private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
     switch mode {
     case 0: return 0
-    case 1...4: return 3
+    case 2: return 2
+    case 3: return 3
+    case 4: return 4
+    case 1: return 3
     default: return 0
     }
 }

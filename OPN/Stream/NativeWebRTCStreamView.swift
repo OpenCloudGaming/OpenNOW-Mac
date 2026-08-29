@@ -250,6 +250,10 @@ public final class NativeWebRTCStreamView: NSView {
     private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private var pillarboxFillMode: OPNPillarboxFillMode = .black
     private var pillarboxFillDim: Int = 55
+    private var upscalingMode: Int = 0
+    private var upscalingSharpness: Int = 0
+    private var upscalingDenoise: Int = 0
+    private var upscalingTargetHeight: Int = 2160
     private let nativeNVSTRendererWindow = NativeNVSTRendererWindow(
         contentRect: .zero,
         styleMask: .borderless,
@@ -379,14 +383,26 @@ public final class NativeWebRTCStreamView: NSView {
         pushBifrostFreeVideoSettings()
     }
 
-    /// Pushes the fill settings into the Bifrost-free renderer, which has no libwebrtc session to
-    /// pull them from. Also called on attach so a mode chosen before the stream starts applies.
+    /// Sets the MetalFX upscaling tier and target resolution for the Bifrost-free NVST path.
+    /// `targetHeight` caps the render drawable's height; the window still governs everything
+    /// below that cap, so this never forces supersampling past what the window would draw anyway.
+    public func setVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int) {
+        upscalingMode = mode
+        upscalingSharpness = sharpness
+        upscalingDenoise = denoise
+        upscalingTargetHeight = targetHeight
+        pushBifrostFreeVideoSettings()
+    }
+
+    /// Pushes the enhancement and fill settings into the Bifrost-free renderer, which has no
+    /// libwebrtc session to pull them from. Also called on attach so settings chosen before the
+    /// stream starts apply.
     private func pushBifrostFreeVideoSettings() {
-        OpenNOWLog.info(.stream, "Pillarbox fill selected mode=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
-        nvstBifrostFreeRenderer?.setVideoEnhancement(mode: 0,
-                                                     sharpness: 0,
-                                                     denoise: 0,
-                                                     targetHeight: 2160,
+        OpenNOWLog.info(.stream, "Video enhancement pushed mode=\(upscalingMode) target=\(upscalingTargetHeight) pillarbox=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
+        nvstBifrostFreeRenderer?.setVideoEnhancement(mode: upscalingMode,
+                                                     sharpness: upscalingSharpness,
+                                                     denoise: upscalingDenoise,
+                                                     targetHeight: upscalingTargetHeight,
                                                      pillarboxFillMode: pillarboxFillMode.rawValue,
                                                      pillarboxFillDim: pillarboxFillDim,
                                                      pillarboxFillColor: 0)

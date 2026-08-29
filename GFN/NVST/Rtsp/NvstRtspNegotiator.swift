@@ -100,6 +100,14 @@ public struct NvstRtspNegotiationInput: Sendable {
     public let bitrateKbps: Int?
     /// The configured ceiling, announced as `vqos[0].bw.maximumBitrateKbps`.
     public let maximumBitrateKbps: Int?
+    /// Server-side AI sharpen/denoise, announced as `x-nv-video[0].prefilterParams.*`. `mode` and
+    /// `model` are captured, verified attribute names; `sharpness`/`denoise` map to the client's
+    /// sliders but their wire key names (`sharpnessLevel`/`denoiseLevel`) are inferred from the
+    /// same param family, not confirmed against a live capture the way the rest of this file is.
+    public let prefilterMode: Int?
+    public let prefilterSharpness: Int?
+    public let prefilterDenoise: Int?
+    public let prefilterModel: Int?
     public let timeout: Duration
     /// `general.rtcpOnSctp`. True routes RTCP feedback onto the bundle's
     /// `rtcp_on_sctp_private` data channel; false keeps it as SRTCP on the Mjolnir socket,
@@ -125,6 +133,10 @@ public struct NvstRtspNegotiationInput: Sendable {
                 codec: String? = nil,
                 bitrateKbps: Int? = nil,
                 maximumBitrateKbps: Int? = nil,
+                prefilterMode: Int? = nil,
+                prefilterSharpness: Int? = nil,
+                prefilterDenoise: Int? = nil,
+                prefilterModel: Int? = nil,
                 timeout: Duration = .seconds(20),
                 rtcpOnSctp: Bool = true,
                 forcesLegacyPath: Bool = false,
@@ -139,6 +151,10 @@ public struct NvstRtspNegotiationInput: Sendable {
         self.resolution = resolution
         self.bitrateKbps = bitrateKbps
         self.maximumBitrateKbps = maximumBitrateKbps
+        self.prefilterMode = prefilterMode
+        self.prefilterSharpness = prefilterSharpness
+        self.prefilterDenoise = prefilterDenoise
+        self.prefilterModel = prefilterModel
         self.fps = fps
         self.codec = codec
         self.timeout = timeout
@@ -429,6 +445,10 @@ public struct NvstRtspNegotiator: Sendable {
             let announceOptions = NvstRtspSdp.AnnounceOptions(
                 resolution: input.resolution,
                 fps: input.fps,
+                prefilterMode: input.prefilterMode,
+                prefilterSharpness: input.prefilterSharpness,
+                prefilterDenoise: input.prefilterDenoise,
+                prefilterModel: input.prefilterModel,
                 encryptionKey: encryptionKey,
                 iceCredentials: localIce,
                 videoPort: videoPeer.port,

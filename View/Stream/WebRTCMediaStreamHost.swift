@@ -311,6 +311,13 @@ private struct NativeNVSTMediaStreamSurface: View {
     @State private var networkPathAvailable = true
     @State private var pointerLocked = false
     @State private var pillarboxFillModeIndex = 0
+    @State private var upscalingModeIndex = 0
+    @State private var upscalingTargetIndex = 1
+    @State private var upscalingSharpness = 10
+    @State private var upscalingDenoise = 0
+    @State private var nativeStreamResolutionText = ""
+    @State private var nativeStreamFrameRateText = ""
+    @State private var nativeStreamCodecText = ""
     @State private var controllerBatteries: [ControllerBatteryInfo] = []
     @State private var batteryAlertTracker = ControllerBatteryAlertTracker()
     @State private var showingControllerMapping = false
@@ -408,6 +415,10 @@ private struct NativeNVSTMediaStreamSurface: View {
             },
             configuredFps: resolvedStreamSettings.fps,
             configuredMaxBitrateKbps: resolvedStreamSettings.maxBitrateMbps * 1_000,
+            configuredPrefilterMode: resolvedStreamSettings.prefilterMode,
+            configuredPrefilterSharpness: resolvedStreamSettings.prefilterSharpness,
+            configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
+            configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)
@@ -483,6 +494,17 @@ private struct NativeNVSTMediaStreamSurface: View {
                     let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
                     pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
                     nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
+                    upscalingModeIndex = launchProfile.upscalingModeIndex
+                    upscalingTargetIndex = launchProfile.upscalingTargetIndex
+                    upscalingSharpness = launchProfile.upscalingSharpness
+                    upscalingDenoise = launchProfile.upscalingDenoise
+                    nativeStreamResolutionText = "\(launchProfile.resolution.width) x \(launchProfile.resolution.height)"
+                    nativeStreamFrameRateText = "\(launchProfile.fps) FPS"
+                    nativeStreamCodecText = launchProfile.codec.value.uppercased()
+                    nativeView.setVideoEnhancement(mode: launchProfile.upscalingMode,
+                                                   sharpness: launchProfile.upscalingSharpness,
+                                                   denoise: launchProfile.upscalingDenoise,
+                                                   targetHeight: launchProfile.upscalingTargetHeight)
                     onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
                     WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
                     return true
@@ -775,7 +797,53 @@ private struct NativeNVSTMediaStreamSurface: View {
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showStreamControls() }),
+            StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
+            StreamHUDFocusEntry(id: "upscaling-target", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTarget),
+            StreamHUDFocusEntry(id: "clarity", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeClarity),
+            StreamHUDFocusEntry(id: "noise-reduction", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeNoiseReduction),
+            StreamHUDFocusEntry(id: "pillarbox-fill", isDisabled: !isConnected, action: cycleNativePillarboxFill),
         ]
+    }
+
+    /// Single source of truth for the segmented Picker's display order and label text, and for
+    /// `cycleNativeUpscalingTier`'s gamepad wrap order - previously these were two independently
+    /// hardcoded `[0, 2, 3]` arrays with nothing tying them together.
+    private static let upscalingTierDisplayOrder: [(value: Int, label: String)] = [
+        (0, "Off"), (2, "Spatial"), (3, "MetalFX"),
+    ]
+
+    /// Each of these advances its control by one step per gamepad activate press, wrapping at the
+    /// end — the same one-action-per-press model every other HUD focus entry already uses, so a
+    /// slider or dropdown doesn't need a new interaction primitive to be gamepad-usable.
+    private func cycleNativeUpscalingTier() {
+        let currentValue = OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value
+        updateNativeUpscalingTier(value: wrappingNext(after: currentValue, in: Self.upscalingTierDisplayOrder.map(\.value)))
+    }
+
+    private func cycleNativeUpscalingTarget() {
+        let count = OPNStreamPreferences.upscalingTargetOptions.count
+        guard count > 0 else { return }
+        updateNativeUpscalingTarget(targetIndex: (upscalingTargetIndex + 1) % count)
+    }
+
+    private func cycleNativeClarity() {
+        updateNativeUpscalingClarity(sharpness: (upscalingSharpness + 1) % 16)
+    }
+
+    private func cycleNativeNoiseReduction() {
+        updateNativeUpscalingClarity(denoise: (upscalingDenoise + 1) % 21)
+    }
+
+    private func cycleNativePillarboxFill() {
+        updateNativePillarboxFill(modeIndex: wrappingNext(after: pillarboxFillModeIndex, in: OPNPillarboxFillMode.pickerCases.map(\.rawValue)))
+    }
+
+    /// Shared by every "cycle this control forward one step" gamepad handler that advances a value
+    /// within a fixed option list, rather than each control re-implementing its own index lookup.
+    private func wrappingNext<T: Equatable>(after current: T, in options: [T]) -> T {
+        guard !options.isEmpty else { return current }
+        let currentIndex = options.firstIndex(of: current) ?? 0
+        return options[(currentIndex + 1) % options.count]
     }
 
     private func handleHUDGamepad(_ state: GamepadState) {
@@ -1450,9 +1518,17 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
     }
 
+    /// Fixed rows of at most 4 buttons each, rather than the grid's adaptive wrap — the wrap could
+    /// pack 5 across on a wide sidebar (as seen with all 7 buttons: 5 then a stray 2), which reads
+    /// as an uneven long row instead of a deliberate grid.
+    /// Fixed 4 columns, not an adaptive wrap - the adaptive grid could pack 5 across on a wide
+    /// sidebar (5 then a stray 2 for these 7 buttons), which reads as an uneven long row instead of
+    /// a deliberate grid.
+    private static let nativeHUDControlsColumns = Array(repeating: GridItem(.fixed(42), spacing: 8), count: 4)
+
     private var nativeHUDControlsPanel: some View {
         StreamHUDSection(label: "CONTROLS", spacing: 8) {
-            StreamHUDWrappingRow(minimumItemWidth: 42, fixedItemWidth: 42) {
+            LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
                 StreamHUDActionRow(
                     title: microphoneEnabled ? "Mute microphone" : "Unmute microphone",
                     subtitle: nativeMicrophoneStatusText,
@@ -1573,30 +1649,64 @@ private struct NativeNVSTMediaStreamSurface: View {
         }
     }
 
+    /// Split into two boxes, matching how every other HUD group (MIC/REC/AFK, NETWORK) already
+    /// separates itself: one for controls you change, one for the stream's own read-only facts.
+    /// Previously this was one flat "VIDEO" box mixing both, with a static "Target" info row that
+    /// duplicated (and could visibly contradict) the "Target Resolution" control above it.
     private var nativeHUDVideoPanel: some View {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        return StreamHUDSection(label: "VIDEO") {
+        Group {
+            nativeHUDUpscalingPanel
+            nativeHUDStreamInfoPanel
+        }
+    }
+
+    private var nativeHUDUpscalingPanel: some View {
+        StreamHUDSection(label: "UPSCALING") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("MetalFX Upscaling", selection: Binding.constant(0)) {
-                    Text("Off").tag(0)
-                    Text("MetalFX").tag(3)
+                Picker("Upscaling", selection: Binding(
+                    get: { OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value },
+                    set: { updateNativeUpscalingTier(value: $0) }
+                )) {
+                    // Display order is independent of the stored option array's order, which
+                    // stays fixed for backward compatibility.
+                    ForEach(Self.upscalingTierDisplayOrder, id: \.value) { tier in
+                        Text(tier.label).tag(tier.value)
+                    }
                 }
                 .font(.streamNvidia(size: 12, weight: .medium))
                 .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
                 .disabled(!sidebarCapabilities.supports(.videoEnhancement))
+                .hudFocusRing(hudFocusID == "upscaling-tier")
+                StreamHUDDropdown(
+                    label: "Target Resolution",
+                    options: Array(OPNStreamPreferences.upscalingTargetOptions.enumerated().map { ($0.offset, $0.element.label) }),
+                    selection: upscalingTargetIndex,
+                    isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement),
+                    onSelect: { updateNativeUpscalingTarget(targetIndex: $0) },
+                    isFocused: hudFocusID == "upscaling-target"
+                )
+                nativeHUDSliderRow("Clarity", value: upscalingSharpness, range: 0...15, isFocused: hudFocusID == "clarity") { updateNativeUpscalingClarity(sharpness: $0) }
+                nativeHUDSliderRow("Noise Reduction", value: upscalingDenoise, range: 0...20, isFocused: hudFocusID == "noise-reduction") { updateNativeUpscalingClarity(denoise: $0) }
+            }
+        }
+    }
+
+    private var nativeHUDStreamInfoPanel: some View {
+        StreamHUDSection(label: "STREAM") {
+            VStack(alignment: .leading, spacing: 10) {
                 StreamHUDDropdown(
                     label: "Pillarbox Fill",
                     options: OPNPillarboxFillMode.pickerCases.map { ($0.rawValue, $0.label) },
                     selection: pillarboxFillModeIndex,
                     isDisabled: !isConnected,
-                    onSelect: { updateNativePillarboxFill(modeIndex: $0) }
+                    onSelect: { updateNativePillarboxFill(modeIndex: $0) },
+                    isFocused: hudFocusID == "pillarbox-fill"
                 )
-                nativeHUDDetailRow(label: "Active", value: "Native")
-                nativeHUDDetailRow(label: "Target", value: "Native")
-                nativeHUDDetailRow(label: "Resolution", value: "\(profile.resolution.width) x \(profile.resolution.height)")
-                nativeHUDDetailRow(label: "Frame Rate", value: "\(profile.fps) FPS")
-                nativeHUDDetailRow(label: "Codec", value: profile.codec.value.uppercased())
+                nativeHUDDetailRow(label: "Active", value: upscalingModeIndex == 0 ? "Native" : OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].label)
+                nativeHUDDetailRow(label: "Resolution", value: nativeStreamResolutionText)
+                nativeHUDDetailRow(label: "Frame Rate", value: nativeStreamFrameRateText)
+                nativeHUDDetailRow(label: "Codec", value: nativeStreamCodecText)
             }
         }
     }
@@ -1608,6 +1718,51 @@ private struct NativeNVSTMediaStreamSurface: View {
         let dim = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).pillarboxFillDim
         nativeView?.setPillarboxFill(mode: mode.rawValue, dim: dim)
         WebRTCMediaTelemetry.capture("nvst.ui.pillarbox.update", level: .info, message: "Native NVST pillarbox fill changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode.label])
+    }
+
+    /// Selection 0 is "Off"; selection N>0 is MetalFX targeting `upscalingTargetOptions[N-1]`. One
+    /// control instead of a separate mode toggle + target dropdown, so there is no way to have a
+    /// target picked while upscaling is off (that combination did nothing and looked like a bug).
+    private func updateNativeUpscalingTier(value: Int) {
+        let modeIndex = OPNStreamPreferences.upscalingModeOptions.firstIndex(where: { $0.value == value }) ?? 0
+        upscalingModeIndex = modeIndex
+        OPNStreamPreferences.saveUpscalingSettings(mode: value, sharpness: upscalingSharpness, denoise: upscalingDenoise, forGame: configuration.applicationID)
+        let targetHeight = OPNStreamPreferences.upscalingTargetOptions[upscalingTargetIndex].height
+        nativeView?.setVideoEnhancement(mode: value, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
+        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.tier", level: .info, message: "Native NVST upscaling tier changed.", attributes: ["applicationID": configuration.applicationID, "mode": String(value)])
+    }
+
+    private func updateNativeUpscalingTarget(targetIndex: Int) {
+        let clampedIndex = min(max(targetIndex, 0), OPNStreamPreferences.upscalingTargetOptions.count - 1)
+        upscalingTargetIndex = clampedIndex
+        OPNStreamPreferences.saveUpscalingTargetIndex(clampedIndex)
+        let targetHeight = OPNStreamPreferences.upscalingTargetOptions[clampedIndex].height
+        let mode = OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value
+        nativeView?.setVideoEnhancement(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
+        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.target", level: .info, message: "Native NVST upscaling target changed.", attributes: ["applicationID": configuration.applicationID, "targetHeight": String(targetHeight)])
+    }
+
+    /// Mirrors `WebRTCMediaStreamSurface.updateVideoEnhancement`'s sharpness/denoise handling for
+    /// the native NVST panel, which never got its own Clarity/Noise Reduction controls.
+    private func updateNativeUpscalingClarity(sharpness: Int? = nil, denoise: Int? = nil) {
+        if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
+        if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
+        let mode = OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value
+        let targetHeight = OPNStreamPreferences.upscalingTargetOptions[upscalingTargetIndex].height
+        OPNStreamPreferences.saveUpscalingSettings(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, forGame: configuration.applicationID)
+        nativeView?.setVideoEnhancement(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
+        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.clarity", level: .info, message: "Native NVST clarity/noise reduction changed.", attributes: ["applicationID": configuration.applicationID, "sharpness": String(upscalingSharpness), "denoise": String(upscalingDenoise)])
+    }
+
+    private func nativeHUDSliderRow(_ label: String, value: Int, range: ClosedRange<Int>, isFocused: Bool = false, action: @escaping (Int) -> Void) -> some View {
+        StreamHUDSliderRow(
+            label: label,
+            value: value,
+            range: range,
+            isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement),
+            isFocused: isFocused,
+            action: action
+        )
     }
 
     private func nativeHUDDetailRow(label: String, value: String) -> some View {

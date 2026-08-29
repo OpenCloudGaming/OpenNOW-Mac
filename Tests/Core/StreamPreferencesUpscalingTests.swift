@@ -7,11 +7,13 @@ import Testing
     private let upscalingModeIndexKey = "OpenNOW.Stream.UpscalingModeIndex"
     private let upscalingSharpnessKey = "OpenNOW.Stream.UpscalingSharpness"
     private let upscalingDenoiseKey = "OpenNOW.Stream.UpscalingDenoise"
+    private let upscalingTargetIndexKey = "OpenNOW.Stream.UpscalingTargetIndex"
     private let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
 
-    @Test func exposesOnlyOffAndMetalFXUpscalingModes() {
-        #expect(OPNStreamPreferences.upscalingModeOptions.map(\.label) == ["Off", "MetalFX"])
-        #expect(OPNStreamPreferences.upscalingModeOptions.map(\.value) == [0, 3])
+    @Test func exposesOffMetalFXAndSpatialUpscalingModes() {
+        // MetalFX stays at index 1: existing stored indices must not silently repoint at Spatial.
+        #expect(OPNStreamPreferences.upscalingModeOptions.map(\.label) == ["Off", "MetalFX", "Spatial"])
+        #expect(OPNStreamPreferences.upscalingModeOptions.map(\.value) == [0, 3, 2])
     }
 
     @Test func defaultsSixteenTenResolutionToNineteenTwentyByTwelveHundred() {
@@ -133,9 +135,11 @@ import Testing
         }
     }
 
-    @Test func mapsLegacyUpscalingIndicesToMetalFX() {
+    @Test func preservesStoredMetalFXIndexAndCoalescesOlderLegacyIndicesToIt() {
+        // Index 1 is real, current MetalFX — must round-trip unchanged. Indices 3/4 predate even
+        // the Off/MetalFX pair and still coalesce to MetalFX, same as before Spatial existed.
         withPreservedPreferences([upscalingModeIndexKey]) {
-            for legacyIndex in 1...4 {
+            for legacyIndex in [1, 3, 4] {
                 OPNAppPreferenceStorage.standard.set(legacyIndex, forKey: upscalingModeIndexKey)
 
                 let profile = OPNStreamPreferences.loadProfile()
@@ -144,6 +148,20 @@ import Testing
                 #expect(profile.upscalingMode == 3)
                 #expect(profile.upscalingModeOption.label == "MetalFX")
             }
+        }
+    }
+
+    @Test func indexTwoIsSpatialNotALegacyMetalFXAlias() {
+        // Index 2 was never a reachable stored value before this option existed, so it is free to
+        // mean Spatial going forward instead of joining the legacy MetalFX coalescing above.
+        withPreservedPreferences([upscalingModeIndexKey]) {
+            OPNAppPreferenceStorage.standard.set(2, forKey: upscalingModeIndexKey)
+
+            let profile = OPNStreamPreferences.loadProfile()
+
+            #expect(profile.upscalingModeIndex == 2)
+            #expect(profile.upscalingMode == 2)
+            #expect(profile.upscalingModeOption.label == "Spatial")
         }
     }
 
@@ -207,6 +225,55 @@ import Testing
             #expect(globalProfile.upscalingModeIndex == 0)
             #expect(globalProfile.upscalingSharpness == 10)
             #expect(globalProfile.upscalingDenoise == 0)
+        }
+    }
+
+    @Test func exposesTwoKFourKAndFiveKUpscalingTargets() {
+        #expect(OPNStreamPreferences.upscalingTargetOptions.map(\.label) == ["2K", "4K", "5K"])
+        #expect(OPNStreamPreferences.upscalingTargetOptions.map(\.height) == [1440, 2160, 2880])
+    }
+
+    @Test func persistsUpscalingTargetIndexAcrossLoads() {
+        withPreservedPreferences([upscalingTargetIndexKey]) {
+            removePreferenceValue(upscalingTargetIndexKey)
+
+            OPNStreamPreferences.saveUpscalingTargetIndex(2)
+
+            let profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.upscalingTargetIndex == 2)
+            #expect(profile.upscalingTargetOption.label == "5K")
+            #expect(profile.upscalingTargetHeight == 2880)
+        }
+    }
+
+    @Test func clampsOutOfRangeUpscalingTargetIndices() {
+        withPreservedPreferences([upscalingTargetIndexKey]) {
+            OPNStreamPreferences.saveUpscalingTargetIndex(99)
+            #expect(OPNStreamPreferences.loadProfile().upscalingTargetIndex == 2)
+
+            OPNStreamPreferences.saveUpscalingTargetIndex(-1)
+            #expect(OPNStreamPreferences.loadProfile().upscalingTargetIndex == 0)
+        }
+    }
+
+    @Test func runtimeUpscalingModeSaveDoesNotResetGameProfileTarget() {
+        withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey, upscalingDenoiseKey, upscalingTargetIndexKey, gameProfilesKey]) {
+            let appId = "target-preserving-game"
+            removePreferenceValue(gameProfilesKey)
+            var profile = OPNStreamPreferences.loadProfile()
+            profile.upscalingTargetIndex = 2
+            profile.upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[2]
+            profile.upscalingTargetHeight = 2880
+            OPNStreamPreferences.saveProfile(forGame: appId, profile: profile)
+
+            OPNStreamPreferences.saveUpscalingSettings(mode: 3, sharpness: 12, denoise: 7, forGame: appId)
+
+            guard let gameProfile = OPNStreamPreferences.loadProfile(forGame: appId) else {
+                Issue.record("Expected enabled game profile")
+                return
+            }
+            #expect(gameProfile.upscalingTargetIndex == 2)
+            #expect(gameProfile.upscalingTargetHeight == 2880)
         }
     }
 

@@ -21,6 +21,7 @@ struct StreamSidebarCapabilities: Equatable, Sendable {
         .floatingStats,
         .networkHealth,
         .sessionLimit,
+        .videoEnhancement,
     ])
 
     var visibleFeatures: [StreamSidebarFeature] {

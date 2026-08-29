@@ -382,13 +382,17 @@ public enum OPNStreamPreferences {
         OPNStreamPrefilterModeOption(label: "Auto", value: 1),
         OPNStreamPrefilterModeOption(label: "Custom", value: 2)
     ]
+    // Appended, not inserted: MetalFX must stay at index 1 so an existing stored index doesn't
+    // silently repoint at a different tier after this file starts shipping a third option.
     public static let upscalingModeOptions = [
         OPNStreamUpscalingModeOption(label: "Off", value: 0),
-        OPNStreamUpscalingModeOption(label: "MetalFX", value: 3)
+        OPNStreamUpscalingModeOption(label: "MetalFX", value: 3),
+        OPNStreamUpscalingModeOption(label: "Spatial", value: 2)
     ]
     public static let upscalingTargetOptions = [
         OPNStreamUpscalingTargetOption(label: "2K", height: 1440),
-        OPNStreamUpscalingTargetOption(label: "4K", height: 2160)
+        OPNStreamUpscalingTargetOption(label: "4K", height: 2160),
+        OPNStreamUpscalingTargetOption(label: "5K", height: 2880)
     ]
     public static let microphoneModeOptions = [
         OPNStreamMicrophoneModeOption(label: "Disabled", value: "disabled"),
@@ -997,7 +1001,7 @@ public enum OPNStreamPreferences {
     public static func savePrefilterSharpness(_ value: Int) { saveCanonicalInt(k.prefilterSharpness, clamp(value, 0, 10)) }
     public static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
     public static func saveUpscalingModeIndex(_ value: Int) { storage.set(normalizedUpscalingModeIndex(value), forKey: k.upscalingModeIndex) }
-    public static func saveUpscalingTargetIndex(_: Int) { storage.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
+    public static func saveUpscalingTargetIndex(_ value: Int) { storage.set(clamp(value, 0, upscalingTargetOptions.count - 1), forKey: k.upscalingTargetIndex) }
     public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 15), forKey: k.upscalingSharpness) }
     public static func saveUpscalingDenoise(_ value: Int) { storage.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
     public static func saveUpscalingSettings(mode: Int, sharpness: Int, denoise: Int, forGame appId: String = "") {
@@ -1100,7 +1104,9 @@ public enum OPNStreamPreferences {
         profile.upscalingModeIndex = storedUpscalingModeIndex(dictionary)
         profile.upscalingModeOption = upscalingModeOptions[profile.upscalingModeIndex]
         profile.upscalingMode = profile.upscalingModeOption.value
-        applyDefaultUpscalingTarget(&profile)
+        profile.upscalingTargetIndex = storedUpscalingTargetIndex(dictionary)
+        profile.upscalingTargetOption = upscalingTargetOptions[profile.upscalingTargetIndex]
+        profile.upscalingTargetHeight = profile.upscalingTargetOption.height
         profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 10, 16)
         profile.upscalingDenoise = clampedInt(dictionary, k.upscalingDenoise, 0, 21)
         profile.pillarboxFillModeIndex = storedPillarboxFillModeIndex(dictionary)
@@ -1261,29 +1267,33 @@ public enum OPNStreamPreferences {
         storage.set(preset.powerSaverEnabled, forKey: k.powerSaverEnabled)
     }
 
-    private static func applyDefaultUpscalingTarget(_ profile: inout OPNStreamPreferenceProfile) {
-        let index = clamp(defaultUpscalingTargetIndex, 0, upscalingTargetOptions.count - 1)
-        profile.upscalingTargetIndex = index
-        profile.upscalingTargetOption = upscalingTargetOptions[index]
-        profile.upscalingTargetHeight = profile.upscalingTargetOption.height
+    private static func storedUpscalingTargetIndex(_ dictionary: [String: Any]?) -> Int {
+        clamp(int(value(dictionary, k.upscalingTargetIndex), defaultUpscalingTargetIndex), 0, upscalingTargetOptions.count - 1)
     }
 
     private static func storedUpscalingModeIndex(_ dictionary: [String: Any]?) -> Int {
         normalizedUpscalingModeIndex(int(value(dictionary, k.upscalingModeIndex), 0))
     }
 
+    /// `index` here is the stored array index, not a mode value. Index 2 (Spatial) is new — it was
+    /// never reachable before this file added a third option, so there is no old stored data to
+    /// protect there. Indices 3/4 predate even the Off/MetalFX pair and still coalesce to MetalFX.
     private static func normalizedUpscalingModeIndex(_ index: Int) -> Int {
         switch index {
         case 0: return 0
-        case 1...4: return 1
+        case 1: return 1
+        case 2: return 2
+        case 3, 4: return 1
         default: return 0
         }
     }
 
+    /// `mode` here is the raw enhancement mode value (0/2/3), not an array index.
     private static func normalizedUpscalingModeIndex(forMode mode: Int) -> Int {
         switch mode {
         case 0: return 0
-        case 1...4: return 1
+        case 2: return 2
+        case 1, 3, 4: return 1
         default: return 0
         }
     }
@@ -1293,7 +1303,6 @@ public enum OPNStreamPreferences {
         profile.upscalingModeIndex = modeIndex
         profile.upscalingModeOption = upscalingModeOptions[modeIndex]
         profile.upscalingMode = profile.upscalingModeOption.value
-        applyDefaultUpscalingTarget(&profile)
         profile.upscalingSharpness = clamp(sharpness, 0, 15)
         profile.upscalingDenoise = clamp(denoise, 0, 20)
     }

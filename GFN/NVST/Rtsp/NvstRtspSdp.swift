@@ -211,6 +211,14 @@ public enum NvstRtspSdp {
     public struct AnnounceOptions: Sendable {
         public var resolution: String?
         public var fps: Int?
+        /// Server-side AI sharpen/denoise (GFN's "Clarity"/"Noise Reduction"). The captured base
+        /// announce hardcodes `prefilterMode:2`/`prefilterModel:4` on every video index; these
+        /// override index 0 the same way `bitrateKbps`/viewport do below. `nil` leaves the captured
+        /// value in place.
+        public var prefilterMode: Int?
+        public var prefilterSharpness: Int?
+        public var prefilterDenoise: Int?
+        public var prefilterModel: Int?
         public var encryptionKey: NvstRuntimeEncryptionKey?
         public var iceCredentials: NvstRtspIceCredentials?
         public var videoPort: UInt16
@@ -252,6 +260,10 @@ public enum NvstRtspSdp {
 
         public init(resolution: String? = nil,
                     fps: Int? = nil,
+                    prefilterMode: Int? = nil,
+                    prefilterSharpness: Int? = nil,
+                    prefilterDenoise: Int? = nil,
+                    prefilterModel: Int? = nil,
                     encryptionKey: NvstRuntimeEncryptionKey? = nil,
                     iceCredentials: NvstRtspIceCredentials? = nil,
                     videoPort: UInt16 = 0,
@@ -281,6 +293,10 @@ public enum NvstRtspSdp {
             self.maximumBitrateKbps = maximumBitrateKbps
             self.resolution = resolution
             self.fps = fps
+            self.prefilterMode = prefilterMode
+            self.prefilterSharpness = prefilterSharpness
+            self.prefilterDenoise = prefilterDenoise
+            self.prefilterModel = prefilterModel
             self.encryptionKey = encryptionKey
             self.iceCredentials = iceCredentials
             self.videoPort = videoPort
@@ -409,6 +425,26 @@ public enum NvstRtspSdp {
         }
 
         // Client-only knowledge, applied last so neither our defaults nor the offer can override it.
+        // The captured base always sends prefilterMode:2/prefilterModel:4 on every index; a chosen
+        // mode overrides index 0 the same way viewport/bitrate do. Off (0) also zeroes the levels so
+        // the seat does not keep applying the captured defaults underneath an unset sharpen/denoise.
+        if let prefilterMode = options.prefilterMode {
+            set("x-nv-video[0].prefilterParams.prefilterMode", String(prefilterMode))
+            if prefilterMode == 0 {
+                set("x-nv-video[0].prefilterParams.sharpnessLevel", "0")
+                set("x-nv-video[0].prefilterParams.denoiseLevel", "0")
+            } else {
+                if let prefilterModel = options.prefilterModel {
+                    set("x-nv-video[0].prefilterParams.prefilterModel", String(prefilterModel))
+                }
+                if let prefilterSharpness = options.prefilterSharpness {
+                    set("x-nv-video[0].prefilterParams.sharpnessLevel", String(prefilterSharpness))
+                }
+                if let prefilterDenoise = options.prefilterDenoise {
+                    set("x-nv-video[0].prefilterParams.denoiseLevel", String(prefilterDenoise))
+                }
+            }
+        }
         set("x-nv-video[0].clientViewportWd", String(width))
         set("x-nv-video[0].clientViewportHt", String(height))
         // The seat's DESCRIBE is a 720p60 BASELINE (captured live: it offers clientViewport 1280x720
