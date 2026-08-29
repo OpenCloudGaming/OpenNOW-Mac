@@ -36,7 +36,7 @@ struct LoginView: View {
             } else {
                 loginWindow
                     .padding(.top, 10)
-                    .macForceNowInterfaceScale(uiScale)
+                    .opnInterfaceScale(uiScale)
                     .environment(\.opnUIScale, 1)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }

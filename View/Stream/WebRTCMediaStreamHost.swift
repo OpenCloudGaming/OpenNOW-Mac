@@ -393,7 +393,7 @@ private struct NativeNVSTMediaStreamSurface: View {
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
-        // Experimental: MacForce Now's own session core (Phase 2) replaces the Geronimo
+        // Experimental: OpenNOW's own session core (Phase 2) replaces the Geronimo
         // transport when enabled. Geronimo/SDL2 are not loaded; video frames are counted but
         // not decoded until Phase 2C, so the surface stays blank while HUD and input work.
         // Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir
@@ -1236,7 +1236,7 @@ private struct NativeNVSTMediaStreamSurface: View {
             if !networkPathAvailable && !streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }
-        .macForceNowInterfaceScale(uiScale)
+        .opnInterfaceScale(uiScale)
     }
 
     private var nativeNetworkRecoveryOverlay: some View {

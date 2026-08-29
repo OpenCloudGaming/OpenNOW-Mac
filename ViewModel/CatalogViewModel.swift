@@ -822,7 +822,7 @@ final class CatalogViewModel {
     }
 
     func queuePatchingLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        guard Self.isPatching(game) else { return }
+        guard CatalogPatchStatusLogic.isPatching(game) else { return }
         queuedPatchingLaunchIdentity = Self.identity(for: game)
         queuedPatchingLaunchVariantIndex = variantIndex ?? selectedVariantIndexIfMatching(game) ?? Self.preferredVariantIndex(for: game)
         queuedPatchingLaunchGameTitle = game.title.isEmpty ? "GeForce NOW" : game.title
@@ -1539,7 +1539,7 @@ final class CatalogViewModel {
         ownershipFlowStage = .resyncing
         isStorePickerVisible = true
         ownershipFlowMessage = syncingOwnershipMessage(for: selectedGame)
-        let stores = Self.uniqueNonEmpty(selectedGame.variants.map(\.appStore))
+        let stores = CatalogAccountParsing.uniqueNonEmpty(selectedGame.variants.map(\.appStore))
         let syncableStores = stores.filter { accountStatus(forStore: $0)?.hasAccountSyncingData == true }
         guard let store = syncableStores.first else {
             ownershipFlowStage = .storeSelection
@@ -1780,286 +1780,6 @@ final class CatalogViewModel {
         return ""
     }
 
-    var streamingQualityProfileAllowsCustomization: Bool {
-        streamProfile.allowsStreamingCustomization
-    }
-
-    private func canEditStreamingQualitySettings() -> Bool {
-        streamingQualityProfileAllowsCustomization
-    }
-
-    func setAspectIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveAspectIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setResolutionIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveResolutionIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setFpsIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveFpsIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setCodecIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveCodecIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setBitrateIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveBitrateIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setColorQualityIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveColorQualityIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setNVSTTransportEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
-        actionMessage = enabled ? "Native/NVST stream transport selected." : "WebRTC stream transport selected."
-        loadSettingsPreferences()
-    }
-
-    func setStreamingQualityProfileIndex(_ index: Int) {
-        OPNStreamPreferences.saveStreamingQualityProfileIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setCloudGsyncEnabled(_ enabled: Bool) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveCloudGsyncEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setFallbackToLogicalResolution(_ enabled: Bool) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveFallbackToLogicalResolution(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setHudStreamingModeIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveHudStreamingModeIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setSDRColorSpaceIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveSDRColorSpaceIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setHDRColorSpaceIndex(_ index: Int) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveHDRColorSpaceIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setPrefilterModeIndex(_ index: Int) {
-        OPNStreamPreferences.savePrefilterModeIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setPrefilterSharpness(_ value: Double) {
-        OPNStreamPreferences.savePrefilterSharpness(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setPrefilterDenoise(_ value: Double) {
-        OPNStreamPreferences.savePrefilterDenoise(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setUpscalingModeIndex(_ index: Int) {
-        OPNStreamPreferences.saveUpscalingModeIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setUpscalingSharpness(_ value: Double) {
-        OPNStreamPreferences.saveUpscalingSharpness(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setUpscalingDenoise(_ value: Double) {
-        OPNStreamPreferences.saveUpscalingDenoise(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setPillarboxFillModeIndex(_ index: Int) {
-        OPNStreamPreferences.savePillarboxFillModeIndex(index)
-        loadSettingsPreferences()
-    }
-
-    func setPillarboxFillColor(_ hex: String) {
-        OPNStreamPreferences.savePillarboxFillColor(hex)
-        loadSettingsPreferences()
-    }
-
-    func setPillarboxFillDim(_ value: Double) {
-        OPNStreamPreferences.savePillarboxFillDim(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setL4SEnabled(_ enabled: Bool) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveL4SEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setHDREnabled(_ enabled: Bool) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.saveHDREnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setPowerSaverEnabled(_ enabled: Bool) {
-        guard canEditStreamingQualitySettings() else { return }
-        OPNStreamPreferences.savePowerSaverEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setSuppressInputWhenInactive(_ enabled: Bool) {
-        OPNStreamPreferences.saveSuppressInputWhenInactive(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setDirectMouseInputEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveDirectMouseInputEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setAntiAFKMouseMovementEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled)
-        actionMessage = enabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled."
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpEnabled(_ enabled: Bool) {
-        OPNRemoteCoOpPreferencesStore.setEnabled(enabled)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        actionMessage = enabled ? "Remote Co-Op enabled. Reserved guest slots apply to newly launched streams." : "Remote Co-Op disabled."
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpAlphaOptedIn(_ optedIn: Bool) {
-        OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(optedIn)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        actionMessage = optedIn ? "Remote Co-Op alpha access enabled. Configure Remote Co-Op from Gameplay settings." : "Remote Co-Op alpha access disabled. Remote Co-Op settings are hidden."
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpReservedGuestSlots(_ index: Int) {
-        OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(index)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        actionMessage = index > 0 ? "Remote Co-Op will reserve \(index) guest controller slot(s) on newly launched streams." : "Remote Co-Op guest controller slots disabled."
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpTransportModeIndex(_ index: Int) {
-        let modes = OPNRemoteCoOpTransportMode.allCases
-        guard modes.indices.contains(index) else { return }
-        OPNRemoteCoOpPreferencesStore.setTransportMode(modes[index])
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpQualityPresetIndex(_ index: Int) {
-        let presets = OPNRemoteCoOpQualityPreset.allCases
-        guard presets.indices.contains(index) else { return }
-        OPNRemoteCoOpPreferencesStore.setQualityPreset(presets[index])
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpLatencyModeIndex(_ index: Int) {
-        let modes = OPNRemoteCoOpLatencyMode.allCases
-        guard modes.indices.contains(index) else { return }
-        OPNRemoteCoOpPreferencesStore.setLatencyMode(modes[index])
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpRequireHostApproval(_ required: Bool) {
-        OPNRemoteCoOpPreferencesStore.setRequireHostApproval(required)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpSignalingServerURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setSignalingServerURL(url)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpGuestJoinBaseURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setGuestJoinBaseURL(url)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
-
-    func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
-        OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        actionMessage = hidden ? "Remote Co-Op guest invites will hide game details." : "Remote Co-Op guest invites will show game details."
-        loadSettingsPreferences()
-    }
-
-    func setPreventDisplaySleepWhileStreaming(_ enabled: Bool) {
-        OPNStreamPreferences.savePreventDisplaySleepWhileStreaming(enabled)
-        actionMessage = enabled ? "Display sleep prevention enabled for active streams." : "Display sleep prevention disabled for active streams."
-        loadSettingsPreferences()
-    }
-
-    func setRecordingVideoBitrateMbps(_ value: Double) {
-        OPNStreamPreferences.saveRecordingVideoBitrateMbps(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setRecordingAudioBitrateKbps(_ value: Double) {
-        OPNStreamPreferences.saveRecordingAudioBitrateKbps(Int(value.rounded()))
-        loadSettingsPreferences()
-    }
-
-    func setRecordingEnhancedVideoEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveRecordingEnhancedVideoEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
-    func setGameVolume(_ value: Double) {
-        OPNStreamPreferences.saveGameVolume(value)
-        loadSettingsPreferences()
-    }
-
-    func setMicrophoneVolume(_ value: Double) {
-        OPNStreamPreferences.saveMicrophoneVolume(value)
-        loadSettingsPreferences()
-    }
-
-    func setMicrophoneMode(_ mode: String) {
-        OPNStreamPreferences.saveMicrophoneMode(mode)
-        loadSettingsPreferences()
-    }
-
-    func setMicrophoneDeviceId(_ deviceId: String) {
-        OPNStreamPreferences.saveMicrophoneDeviceId(deviceId)
-        loadSettingsPreferences()
-    }
-
-    func restoreStreamingProfileDefaults() {
-        OPNStreamPreferences.restoreStreamingProfileDefaults()
-        actionMessage = "Streaming profile defaults restored."
-        loadSettingsPreferences()
-    }
 
     func refreshCatalogImageCacheSummary() {
         Task { @MainActor in
@@ -2294,8 +2014,8 @@ final class CatalogViewModel {
         gameService.fetchUserAccount { [weak self] success, account, error in
             guard let self else { return }
             if success {
-                self.accountStores = Self.parseStoreAccounts(account)
-                self.accountSubscriptions = Self.parseAccountSubscriptions(account)
+                self.accountStores = CatalogAccountParsing.parseStoreAccounts(account)
+                self.accountSubscriptions = CatalogAccountParsing.parseAccountSubscriptions(account)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.accountStores = []
                 self.accountSubscriptions = []
@@ -2303,11 +2023,11 @@ final class CatalogViewModel {
         }
         gameService.fetchStoreDefinitions { [weak self] success, definitions, _ in
             guard let self else { return }
-            if success { self.storeDefinitions = definitions.map(Self.parseStoreDefinition) }
+            if success { self.storeDefinitions = definitions.map(CatalogAccountParsing.parseStoreDefinition) }
         }
         gameService.fetchSubscriptionDefinitions { [weak self] success, definitions, _ in
             guard let self else { return }
-            if success { self.subscriptionDefinitions = definitions.map(Self.parseSubscriptionDefinition) }
+            if success { self.subscriptionDefinitions = definitions.map(CatalogAccountParsing.parseSubscriptionDefinition) }
         }
         let userId = session.userId.isEmpty ? account.userId : session.userId
         guard !userId.isEmpty else {
@@ -2328,7 +2048,7 @@ final class CatalogViewModel {
         }
     }
 
-    private func loadSettingsPreferences() {
+    func loadSettingsPreferences() {
         settingsPreferencesGeneration += 1
         let generation = settingsPreferencesGeneration
         settingsPreferencesTask?.cancel()
@@ -2404,7 +2124,7 @@ final class CatalogViewModel {
         let libraryResult = await fetchLibraryPatchStatuses()
         let targetedResult = await fetchAppPatchStatuses(appIds: appIds)
         var mergedStatuses = libraryResult.statuses
-        Self.mergePatchStatuses(targetedResult.statuses, into: &mergedStatuses)
+        CatalogPatchStatusLogic.mergePatchStatuses(targetedResult.statuses, into: &mergedStatuses)
         if !mergedStatuses.isEmpty {
             applyPatchingStatuses(mergedStatuses)
         }
@@ -2431,72 +2151,31 @@ final class CatalogViewModel {
     }
 
     private func patchingPollAppIds() -> [String] {
-        let ids = allKnownGames.filter(Self.isPatching).compactMap(Self.patchStatusAppId)
+        let ids = allKnownGames.filter(CatalogPatchStatusLogic.isPatching).compactMap(CatalogPatchStatusLogic.patchStatusAppId)
         return Array(Set(ids)).sorted()
     }
 
     private func applyPatchingStatuses(_ statuses: [String: OPNAppPatchStatus]) {
         guard !statuses.isEmpty else { return }
-        updatePatchingStatuses(in: &catalogGames, statuses: statuses)
-        updatePatchingStatuses(in: &libraryGames, statuses: statuses)
-        updatePatchingStatuses(in: &favoriteGames, statuses: statuses)
-        updatePatchingStatuses(in: &marqueePanels, statuses: statuses)
-        updatePatchingStatuses(in: &mainPanels, statuses: statuses)
-        if let selectedGame, let status = Self.patchStatus(for: selectedGame, statuses: statuses) {
-            applyPatchingStatus(status, to: selectedGame)
+        CatalogPatchStatusLogic.updatePatchingStatuses(in: &catalogGames, statuses: statuses)
+        CatalogPatchStatusLogic.updatePatchingStatuses(in: &libraryGames, statuses: statuses)
+        CatalogPatchStatusLogic.updatePatchingStatuses(in: &favoriteGames, statuses: statuses)
+        CatalogPatchStatusLogic.updatePatchingStatuses(in: &marqueePanels, statuses: statuses)
+        CatalogPatchStatusLogic.updatePatchingStatuses(in: &mainPanels, statuses: statuses)
+        if let selectedGame, let status = CatalogPatchStatusLogic.patchStatus(for: selectedGame, statuses: statuses) {
+            CatalogPatchStatusLogic.applyPatchingStatus(status, to: selectedGame)
         }
         launchQueuedPatchingGameIfReady()
     }
 
-    private func updatePatchingStatuses(in games: inout [OPNCatalogGameObject], statuses: [String: OPNAppPatchStatus]) {
-        for game in games {
-            guard let status = Self.patchStatus(for: game, statuses: statuses) else { continue }
-            applyPatchingStatus(status, to: game)
-        }
-    }
 
-    private func updatePatchingStatuses(in panels: inout [OPNCatalogPanelObject], statuses: [String: OPNAppPatchStatus]) {
-        for panel in panels {
-            for section in panel.sections {
-                for game in section.games {
-                    guard let status = Self.patchStatus(for: game, statuses: statuses) else { continue }
-                    applyPatchingStatus(status, to: game)
-                }
-            }
-        }
-    }
 
-    private func applyPatchingStatus(_ status: OPNAppPatchStatus, to game: OPNCatalogGameObject) {
-        for variant in game.variants {
-            if let isPatching = status.variantPatchingById[variant.id] {
-                variant.isPatching = isPatching
-                variant.patchStatusPrimaryText = isPatching ? status.primaryTextByVariantId[variant.id] ?? variant.patchStatusPrimaryText : ""
-                variant.patchStatusSecondaryText = isPatching ? status.secondaryTextByVariantId[variant.id] ?? variant.patchStatusSecondaryText : ""
-            }
-        }
-        game.isPatching = status.isPatching || game.variants.contains { $0.isPatching }
-        game.patchStatusPrimaryText = game.isPatching ? game.variants.first { !$0.patchStatusPrimaryText.isEmpty }?.patchStatusPrimaryText ?? status.primaryTextByVariantId.values.first ?? "Patching" : ""
-        game.patchStatusSecondaryText = game.isPatching ? game.variants.first { !$0.patchStatusSecondaryText.isEmpty }?.patchStatusSecondaryText ?? status.secondaryTextByVariantId.values.first ?? "" : ""
-    }
 
-    private static func mergePatchStatuses(_ source: [String: OPNAppPatchStatus], into target: inout [String: OPNAppPatchStatus]) {
-        for (appId, status) in source {
-            guard var existing = target[appId] else {
-                target[appId] = status
-                continue
-            }
-            existing.isPatching = existing.isPatching || status.isPatching
-            existing.variantPatchingById.merge(status.variantPatchingById) { _, new in new }
-            existing.primaryTextByVariantId.merge(status.primaryTextByVariantId) { _, new in new }
-            existing.secondaryTextByVariantId.merge(status.secondaryTextByVariantId) { _, new in new }
-            target[appId] = existing
-        }
-    }
 
     private func launchQueuedPatchingGameIfReady() {
         guard !queuedPatchingLaunchIdentity.isEmpty else { return }
         guard let game = allKnownGames.first(where: { Self.identity(for: $0) == queuedPatchingLaunchIdentity }) else { return }
-        guard !Self.isPatching(game) else { return }
+        guard !CatalogPatchStatusLogic.isPatching(game) else { return }
         let variantIndex = queuedPatchingLaunchVariantIndex
         let title = queuedPatchingLaunchGameTitle.isEmpty ? (game.title.isEmpty ? "GeForce NOW" : game.title) : queuedPatchingLaunchGameTitle
         queuedPatchingLaunchIdentity = ""
@@ -2582,21 +2261,8 @@ final class CatalogViewModel {
         return candidate.variants.count > current.variants.count
     }
 
-    private static func isPatching(_ game: OPNCatalogGameObject) -> Bool {
-        game.isPatching || game.variants.contains { $0.isPatching }
-    }
 
-    private static func patchStatusAppId(_ game: OPNCatalogGameObject) -> String? {
-        for value in [game.uuid, game.id, game.launchAppId] where !value.isEmpty { return value }
-        return nil
-    }
 
-    private static func patchStatus(for game: OPNCatalogGameObject, statuses: [String: OPNAppPatchStatus]) -> OPNAppPatchStatus? {
-        for key in [game.uuid, game.id, game.launchAppId] where !key.isEmpty {
-            if let status = statuses[key] { return status }
-        }
-        return nil
-    }
 
     private static func hasMarqueeHeroArtwork(_ game: OPNCatalogGameObject) -> Bool {
         for key in ["MARQUEE_HERO_IMAGE", "marquee_hero_image"] {
@@ -2606,20 +2272,10 @@ final class CatalogViewModel {
     }
 
     private func syncingOwnershipMessage(for game: OPNCatalogGameObject) -> String {
-        let stores = Self.uniqueNonEmpty(game.variants.map { displayName(forStore: $0.appStore) })
+        let stores = CatalogAccountParsing.uniqueNonEmpty(game.variants.map { displayName(forStore: $0.appStore) })
         if stores.isEmpty { return "Syncing connected game libraries..." }
         if stores.count == 1 { return "Syncing \(stores[0]) game library..." }
         return "Syncing \(stores.dropLast().joined(separator: ", ")) and \(stores.last ?? "") game libraries..."
-    }
-
-    private static func uniqueNonEmpty(_ values: [String]) -> [String] {
-        var result: [String] = []
-        for value in values {
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, !result.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { continue }
-            result.append(trimmed)
-        }
-        return result
     }
 
     private func matchingGame(for shortcut: GFNGameShortcut, in games: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
@@ -2813,7 +2469,7 @@ final class CatalogViewModel {
     }
 
     static func visibleSubscriptionIds(for variant: OPNCatalogGameVariantObject) -> [String] {
-        uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).filter { $0.caseInsensitiveCompare("NONE") != .orderedSame }
+        CatalogAccountParsing.uniqueNonEmpty([variant.librarySubscription] + variant.subscriptionIds).filter { $0.caseInsensitiveCompare("NONE") != .orderedSame }
     }
 
     static func variantIsUnavailable(_ variant: OPNCatalogGameVariantObject) -> Bool {
@@ -2821,293 +2477,8 @@ final class CatalogViewModel {
         return status.contains("not") || status.contains("unavailable") || status.contains("unsupported")
     }
 
-    private static func parseAccountSubscriptions(_ account: OPNUserAccountInfo) -> [String] {
-        uniqueNonEmpty(account.subscriptions)
-    }
-
-    private static func parseStoreAccounts(_ account: OPNUserAccountInfo) -> [CatalogStoreAccount] {
-        account.stores.map { store in
-            CatalogStoreAccount(
-                store: store.store,
-                userDisplayName: store.userDisplayName,
-                expiresIn: store.expiresIn,
-                userIdentifier: store.userIdentifier,
-                hasAccountLinkingData: store.hasAccountLinkingData,
-                hasAccountSyncingData: store.hasAccountSyncingData,
-                totalSyncedGames: store.syncing.totalNumberOfSyncedGfnGames,
-                syncState: store.syncing.syncState,
-                syncDate: store.syncing.syncDate
-            )
-        }
-    }
-
-    private static func parseStoreDefinition(_ definition: OPNStoreDefinition) -> CatalogStoreDefinition {
-        CatalogStoreDefinition(
-            store: definition.store,
-            label: definition.label,
-            smallImageUrl: definition.smallImageUrl,
-            isAccountLinkingSupported: definition.accountLinkingMetadata.isSupported,
-            isAccountLinkingRequired: definition.accountLinkingMetadata.isRequired,
-            accountLinkingLabel: definition.accountLinkingMetadata.label
-        )
-    }
-
-    private static func parseSubscriptionDefinition(_ definition: OPNSubscriptionDefinition) -> CatalogSubscriptionDefinition {
-        CatalogSubscriptionDefinition(
-            subscription: definition.subscription,
-            label: definition.label,
-            logoURL: definition.logoURL,
-            primaryStore: definition.primaryStore
-        )
-    }
 }
 
-struct CatalogSectionModel: Identifiable, Equatable {
-    enum Kind: Equatable {
-        case catalog
-        case library
-        case favorites
-        case panel
-    }
-
-    let id: String
-    let title: String
-    let games: [OPNCatalogGameObject]
-    let kind: Kind
-    /// A rail whose data is still loading: render a skeleton, no games yet.
-    var isPlaceholder = false
-    var tiles: [OPNCatalogPanelTileObject] = []
-    var seeMoreFilterIds: [String] = []
-    var seeMoreSortId = ""
-    var seeMoreTitle = ""
-
-    init(
-        id: String,
-        title: String,
-        games: [OPNCatalogGameObject],
-        kind: Kind,
-        isPlaceholder: Bool = false,
-        tiles: [OPNCatalogPanelTileObject] = [],
-        seeMoreFilterIds: [String] = [],
-        seeMoreSortId: String = "",
-        seeMoreTitle: String = ""
-    ) {
-        self.id = id
-        self.title = title
-        self.games = CatalogViewModel.dedupedByTitleGrouping(games)
-        self.kind = kind
-        self.isPlaceholder = isPlaceholder
-        self.tiles = tiles
-        self.seeMoreFilterIds = seeMoreFilterIds
-        self.seeMoreSortId = seeMoreSortId
-        self.seeMoreTitle = seeMoreTitle
-    }
-
-    var canLoadFullList: Bool {
-        if kind == .library || kind == .favorites { return true }
-        return !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty
-    }
-
-    func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {
-        expanded ? games : Array(games.prefix(18))
-    }
-}
-
-struct CatalogGameRevealRequest: Equatable {
-    let sectionId: String
-    let gameIdentity: String
-    let sequence: Int
-}
-
-struct CatalogStoreAccount: Identifiable, Equatable {
-    var id: String { store }
-    let store: String
-    let userDisplayName: String
-    let expiresIn: String
-    let userIdentifier: String
-    let hasAccountLinkingData: Bool
-    let hasAccountSyncingData: Bool
-    let totalSyncedGames: Int
-    let syncState: String
-    let syncDate: String
-}
-
-struct CatalogStoreDefinition: Identifiable, Equatable {
-    var id: String { store }
-    let store: String
-    let label: String
-    let smallImageUrl: String
-    let isAccountLinkingSupported: Bool
-    let isAccountLinkingRequired: Bool
-    let accountLinkingLabel: String
-}
-
-struct CatalogSubscriptionDefinition: Identifiable, Equatable {
-    var id: String { subscription }
-    let subscription: String
-    let label: String
-    let logoURL: String
-    let primaryStore: String
-}
-
-struct CatalogPlatformOption: Identifiable {
-    let id: String
-    let variantIndex: Int
-    let variant: OPNCatalogGameVariantObject
-    let title: String
-    let iconURL: String
-    let store: String
-    let subscriptionIds: [String]
-    let primaryStore: String
-    let isSubscription: Bool
-    let isOwned: Bool
-    let hasSubscriptionEntitlement: Bool
-    let hasAccess: Bool
-    let isSelected: Bool
-    let isUnavailable: Bool
-    let canLink: Bool
-    let canSync: Bool
-    let accountDisplayName: String
-    let status: String
-
-    var accountStore: String { primaryStore.isEmpty ? store : primaryStore }
-}
-
-struct CatalogPlaytimeStatistics: Codable, Equatable {
-    private static let storagePrefix = "OpenNOW.Catalog.PlaytimeStatistics"
-
-    static let empty = CatalogPlaytimeStatistics(totalSeconds: 0, sessionCount: 0, lastSessionSeconds: 0, longestSessionSeconds: 0, lastPlayedTitle: "", lastPlayedAt: nil)
-
-    private(set) var totalSeconds: Double
-    private(set) var sessionCount: Int
-    private(set) var lastSessionSeconds: Double
-    private(set) var longestSessionSeconds: Double
-    private(set) var lastPlayedTitle: String
-    private(set) var lastPlayedAt: Date?
-
-    var averageSessionSeconds: Double {
-        sessionCount > 0 ? totalSeconds / Double(sessionCount) : 0
-    }
-
-    mutating func record(title: String, durationSeconds: Double, endedAt: Date) {
-        let duration = max(0, durationSeconds.isFinite ? durationSeconds : 0)
-        guard duration > 0 else { return }
-        totalSeconds += duration
-        sessionCount += 1
-        lastSessionSeconds = duration
-        longestSessionSeconds = max(longestSessionSeconds, duration)
-        lastPlayedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        lastPlayedAt = endedAt
-    }
-
-    static func load(accountIdentifier: String) -> CatalogPlaytimeStatistics {
-        guard let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
-              let statistics = try? JSONDecoder().decode(CatalogPlaytimeStatistics.self, from: data) else {
-            return .empty
-        }
-        return statistics
-    }
-
-    func save(accountIdentifier: String) {
-        guard let data = try? JSONEncoder().encode(self) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
-    }
-
-    private static func storageKey(accountIdentifier: String) -> String {
-        "\(storagePrefix).\(accountIdentifier)"
-    }
-}
-
-struct CatalogSubscriptionStatus: Equatable {
-    static let unavailable = CatalogSubscriptionStatus(membershipTier: "Performance", remainingPlaytimeText: "Unavailable", usageText: "Playtime refresh pending", isAvailable: false)
-
-    let membershipTier: String
-    let remainingPlaytimeText: String
-    let usageText: String
-    let isAvailable: Bool
-
-    var isFreeTierAccount: Bool {
-        OPNCatalogGameObject.isFreeMembershipTier(membershipTier)
-    }
-
-    init(membershipTier: String, remainingPlaytimeText: String, usageText: String, isAvailable: Bool) {
-        self.membershipTier = membershipTier.isEmpty ? "Performance" : membershipTier
-        self.remainingPlaytimeText = remainingPlaytimeText
-        self.usageText = usageText
-        self.isAvailable = isAvailable
-    }
-
-    init(subscription: OPNSubscriptionInfo) {
-        let tier = subscription.membershipTier.isEmpty ? "Performance" : subscription.membershipTier.capitalized
-        if subscription.isUnlimited {
-            self.init(membershipTier: tier, remainingPlaytimeText: "Unlimited", usageText: "No monthly playtime cap", isAvailable: true)
-            return
-        }
-        let remaining = Self.hoursText(subscription.remainingHours)
-        let used = Self.hoursText(subscription.usedHours)
-        let total = Self.hoursText(subscription.totalHours)
-        let usage = subscription.totalHours > 0 ? "\(used) used of \(total)" : "\(used) used"
-        self.init(membershipTier: tier, remainingPlaytimeText: "\(remaining) left", usageText: usage, isAvailable: true)
-    }
-
-    private static func hoursText(_ hours: Double) -> String {
-        let totalMinutes = max(0, Int((hours * 60).rounded()))
-        let wholeHours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        if wholeHours > 0, minutes > 0 { return "\(wholeHours)h \(minutes)m" }
-        if wholeHours > 0 { return "\(wholeHours)h" }
-        return "\(minutes)m"
-    }
-}
-
-struct CatalogPreviousGameSession: Codable, Equatable {
-    private static let storageKey = "OpenNOW.Catalog.PreviousGameSession"
-
-    let title: String
-    let appId: String
-    let store: String
-    let result: String
-    let endedAt: Date
-    let launchTime: String
-    let averageLatency: String
-    let averageBitrate: String
-    let droppedFrames: String
-
-    init(configuration: StreamLaunchConfiguration, success: Bool, message: String, report: StreamReport?) {
-        let reportTitle = report?.title ?? ""
-        title = reportTitle.isEmpty ? (configuration.title.isEmpty ? "GeForce NOW" : configuration.title) : reportTitle
-        appId = configuration.applicationID
-        store = configuration.selectedStore
-        if success {
-            result = report?.success == false ? "Ended with warnings" : "Ended normally"
-        } else {
-            result = message.isEmpty ? "Ended with error" : message
-        }
-        endedAt = Date()
-        launchTime = report.map { Self.durationText(seconds: $0.durationSeconds) } ?? "Unknown"
-        averageLatency = report?.metadata["averageLatency"] ?? "Unknown"
-        averageBitrate = report?.metadata["averageBitrate"] ?? "Unknown"
-        droppedFrames = report?.metadata["droppedFrames"] ?? "Unknown"
-    }
-
-    private static func durationText(seconds: Double) -> String {
-        let totalSeconds = max(0, Int(seconds.rounded()))
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        if minutes > 0 { return "\(minutes)m \(seconds)s" }
-        return "\(seconds)s"
-    }
-
-    static func load() -> CatalogPreviousGameSession? {
-        guard let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey) else { return nil }
-        return try? JSONDecoder().decode(CatalogPreviousGameSession.self, from: data)
-    }
-
-    func save() {
-        guard let data = try? JSONEncoder().encode(self) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey)
-    }
-}
 
 private extension OPNCatalogPanelSectionObject {
     func sectionIdentity(fallbackPanelId: String) -> String {

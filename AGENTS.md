@@ -51,6 +51,18 @@ git diff main...HEAD --name-only -- 'View/**/*.swift' | xargs rg -n '\.(frame|pa
 
 Review each hit; not every unscaled value is wrong (stroke widths, 1pt dividers, and deliberate fixed sizes are fine), but any constant paired with scaled siblings in the same layout expression is a bug.
 
+# Vendor Protocol Surface
+
+`GFN/CloudMatch`, `GFN/GDN`, and `GFN/NesAuth` model the vendor HTTP protocols. Their request
+factories, endpoint enums, and error types are used by the app; the generic `CloudMatchService`,
+`GDNService`, and `NesAuthService` wrappers are exercised only by their test suites. That is
+deliberate — they are the executable specification of the reverse-engineered protocol and the
+seam their tests inject a transport through. Do not delete them as dead code.
+
+`WebRTC.framework/Headers/sdk` is likewise load-bearing despite looking like a vendored source
+dump: the shipped public headers `#import "sdk/objc/base/RTCMacros.h"`, so stripping that tree
+breaks the umbrella header rather than merely shrinking the checkout.
+
 # Merge & Build Pitfalls
 
 - **Never use `git checkout --theirs` or `--ours` on a conflicted file.** It silently discards the other side's features. In one past sync, `--theirs` wiped the quickAccess HUD interception in `NativeWebRTCStreamView.swift` and ~985 lines of pillarbox/Steam-mapping/uiScale code in `WebRTCMediaStreamSurface.swift`. Resolve hunk by hunk; for heavily diverged files use `git merge-file` and review every conflict.

@@ -113,7 +113,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             hudChrome
-                .macForceNowInterfaceScale(uiScale)
+                .opnInterfaceScale(uiScale)
         }
         .background(Color.black)
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])

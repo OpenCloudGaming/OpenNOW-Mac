@@ -150,7 +150,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 
 - **Token**: `OpenNOWInterfacePreferences.uiScale` (`OpenNOW.Interface.UIScale`),
   Double in 0.75–2.0, default 1.0. Always read/write through `clampedUIScale(_:)`.
-- **Mechanism**: `.macForceNowInterfaceScale(_:)` (`View/OpenNOWDesign.swift`) lays
+- **Mechanism**: `.opnInterfaceScale(_:)` (`View/OpenNOWDesign.swift`) lays
   content out in a reduced logical space, then applies `scaleEffect` so chrome reflows
   larger instead of cropping. Never apply plain `scaleEffect` to chrome without the
   compensating frame, and never scale the video surface itself.

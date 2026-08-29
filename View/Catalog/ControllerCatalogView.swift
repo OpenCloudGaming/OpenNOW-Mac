@@ -473,8 +473,8 @@ struct ControllerCatalogView: View {
     private func handleActionMenuInput(_ command: ControllerInputCommand) {
         let items = actionMenuItems
         switch command {
-        case .move(.up): controllerViewModel.actionMenuIndex = max(controllerViewModel.actionMenuIndex - 1, 0)
-        case .move(.down): controllerViewModel.actionMenuIndex = min(controllerViewModel.actionMenuIndex + 1, max(items.count - 1, 0))
+        case .move(.up): controllerViewModel.moveActionMenuIndex(delta: -1, itemCount: items.count)
+        case .move(.down): controllerViewModel.moveActionMenuIndex(delta: 1, itemCount: items.count)
         case .confirm:
             guard items.indices.contains(controllerViewModel.actionMenuIndex) else { return }
             executeActionMenuItem(items[controllerViewModel.actionMenuIndex])
@@ -493,8 +493,8 @@ struct ControllerCatalogView: View {
             return
         }
         switch command {
-        case .move(.up): controllerViewModel.searchRowIndex = max(controllerViewModel.searchRowIndex - 1, 0)
-        case .move(.down): controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex + 1, max(searchRowCount - 1, 0))
+        case .move(.up): controllerViewModel.moveSearchRowIndex(delta: -1, rowCount: searchRowCount)
+        case .move(.down): controllerViewModel.moveSearchRowIndex(delta: 1, rowCount: searchRowCount)
         case .move(.left): moveSearchSelection(delta: -1)
         case .move(.right): moveSearchSelection(delta: 1)
         case .confirm: confirmSearchSelection()
@@ -524,8 +524,8 @@ struct ControllerCatalogView: View {
         guard let game = viewModel.selectedGame else { return }
         let actions = detailActions(for: game)
         switch command {
-        case .move(.left), .move(.up): controllerViewModel.detailActionIndex = max(controllerViewModel.detailActionIndex - 1, 0)
-        case .move(.right), .move(.down): controllerViewModel.detailActionIndex = min(controllerViewModel.detailActionIndex + 1, max(actions.count - 1, 0))
+        case .move(.left), .move(.up): controllerViewModel.moveDetailActionIndex(delta: -1, actionCount: actions.count)
+        case .move(.right), .move(.down): controllerViewModel.moveDetailActionIndex(delta: 1, actionCount: actions.count)
         case .confirm:
             guard actions.indices.contains(controllerViewModel.detailActionIndex) else { return }
             executeDetailAction(actions[controllerViewModel.detailActionIndex])
@@ -537,28 +537,10 @@ struct ControllerCatalogView: View {
     }
 
     private func moveFocus(_ direction: ControllerInputDirection) {
-        switch controllerViewModel.focusArea {
-        case .navigation:
-            switch direction {
-            case .left: controllerViewModel.selectedNavigationIndex = max(controllerViewModel.selectedNavigationIndex - 1, 0)
-            case .right: controllerViewModel.selectedNavigationIndex = min(controllerViewModel.selectedNavigationIndex + 1, max(navigationItems.count - 1, 0))
-            case .down: controllerViewModel.focusArea = .search
-            case .up: break
-            }
-        case .search:
-            switch direction {
-            case .up: controllerViewModel.focusArea = .navigation
-            case .down: controllerViewModel.focusArea = .content
-            case .left, .right: break
-            }
-        case .content:
-            switch direction {
-            case .left: moveGame(delta: -1)
-            case .right: moveGame(delta: 1)
-            case .up:
-                if controllerViewModel.selectedRailIndex == 0 { controllerViewModel.focusArea = .search } else { moveRail(delta: -1) }
-            case .down: moveRail(delta: 1)
-            }
+        switch controllerViewModel.moveFocus(direction, navigationItemCount: navigationItems.count) {
+        case .none: break
+        case .moveRail(let delta): moveRail(delta: delta)
+        case .moveGame(let delta): moveGame(delta: delta)
         }
     }
 
@@ -632,9 +614,7 @@ struct ControllerCatalogView: View {
     }
 
     private func moveRail(delta: Int) {
-        let sections = viewModel.catalogSections
-        guard !sections.isEmpty else { return }
-        controllerViewModel.selectedRailIndex = min(max(controllerViewModel.selectedRailIndex + delta, 0), sections.count - 1)
+        controllerViewModel.moveRail(delta: delta, sectionCount: viewModel.catalogSections.count)
     }
 
     private func moveGame(delta: Int) {

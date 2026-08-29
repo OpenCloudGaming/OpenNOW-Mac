@@ -175,7 +175,7 @@ extension View {
         }
     }
 
-    func macForceNowInterfaceScale(_ scale: CGFloat) -> some View {
+    func opnInterfaceScale(_ scale: CGFloat) -> some View {
         modifier(OpenNOWInterfaceScaleModifier(scale: scale))
     }
 }
