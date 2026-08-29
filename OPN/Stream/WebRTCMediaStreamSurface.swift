@@ -1252,19 +1252,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, step: Int = 1, action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            Spacer(minLength: 8)
-            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range, step: step) {
-                Text(String(value))
-                    .font(.streamNvidia(size: 11, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                    .frame(minWidth: 28, alignment: .trailing)
-            }
-            .disabled(!isStreamReady)
-        }
+        StreamHUDSliderRow(label: label, value: value, range: range, step: step, isDisabled: !isStreamReady, action: action)
     }
 
 
@@ -1278,7 +1266,7 @@ public struct WebRTCMediaStreamSurface: View {
             message: "Video enhancement settings updated.",
             attributes: [
                 "mode": String(runtimeSettings.upscalingMode),
-                "enhancementPreset": runtimeSettings.upscalingMode == 3 ? "metalfx_m1" : "off",
+                "enhancementPreset": runtimeSettings.upscalingMode == 3 ? "metalfx_m1" : (runtimeSettings.upscalingMode == 2 ? "spatial" : "off"),
                 "sharpness": String(runtimeSettings.upscalingSharpness),
                 "denoise": String(runtimeSettings.upscalingDenoise),
                 "targetHeight": String(runtimeSettings.upscalingTargetHeight),

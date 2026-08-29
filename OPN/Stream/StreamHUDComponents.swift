@@ -156,6 +156,7 @@ struct StreamHUDDropdown: View {
     let selection: Int
     let isDisabled: Bool
     let onSelect: (Int) -> Void
+    var isFocused = false
     @State private var isExpanded = false
     @State private var isHovering = false
 
@@ -185,7 +186,7 @@ struct StreamHUDDropdown: View {
                 .background(Color.white.opacity(isHovering ? 0.14 : 0.075))
                 .overlay {
                     Rectangle()
-                        .stroke(isExpanded ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                        .stroke((isExpanded || isFocused) ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
             }
@@ -533,5 +534,55 @@ private struct WebRTCMediaSessionLimit: Equatable {
 
     func remainingSeconds(at now: Date) -> Int {
         max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
+    }
+}
+
+extension View {
+    /// Focus indicator for HUD controls with no built-in `isFocused` styling of their own (a
+    /// segmented `Picker`, a `Slider` row) — matches the accent-stroke language `StreamHUDActionRow`
+    /// and `StreamHUDDropdown` already use for gamepad focus.
+    func hudFocusRing(_ isFocused: Bool) -> some View {
+        padding(4)
+            .overlay {
+                if isFocused {
+                    Rectangle().stroke(WebRTCMediaStreamTheme.accent, lineWidth: 2)
+                }
+            }
+    }
+}
+
+/// Shared label/value/slider row for HUD panels - used by both the WebRTC and native NVST stream
+/// HUDs (Clarity, Noise Reduction, Fill Dim), which previously each re-typed this same layout.
+struct StreamHUDSliderRow: View {
+    let label: String
+    let value: Int
+    let range: ClosedRange<Int>
+    var step: Int = 1
+    let isDisabled: Bool
+    var isFocused = false
+    let action: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                Spacer(minLength: 8)
+                Text(String(value))
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .frame(minWidth: 28, alignment: .trailing)
+            }
+            Slider(
+                value: Binding(get: { Double(value) }, set: { action(Int($0.rounded())) }),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+            .tint(WebRTCMediaStreamTheme.accent)
+            .disabled(isDisabled)
+        }
+        .hudFocusRing(isFocused)
+        .opacity(isDisabled ? 0.46 : 1)
     }
 }

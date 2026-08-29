@@ -19,6 +19,7 @@ struct StreamRuntimeSettings: Equatable {
     static let upscalingModes = [
         VideoEnhancementMode(label: "Off", value: 0),
         VideoEnhancementMode(label: "MetalFX", value: 3),
+        VideoEnhancementMode(label: "Spatial", value: 2),
     ]
 
     var resolutionWidth = 1920
