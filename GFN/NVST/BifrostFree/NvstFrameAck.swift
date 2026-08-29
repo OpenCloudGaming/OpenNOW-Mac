@@ -14,7 +14,7 @@ import Foundation
 /// bytes across the capture against the 2,925,246 the QoS report's own cumulative counter
 /// reports, and the millisecond clock at `+12` advances 16.653 ms per frame, which is 60.05 fps.
 public struct NvstFrameAck: Equatable, Sendable {
-    public static let commandCode: UInt16 = 0x204
+    public static let commandCode = NvstControlCommandCode.frameDecodedStats
     public static let payloadLength = 102
     /// Constant in every captured report.
     static let version: UInt16 = 1
@@ -34,10 +34,13 @@ public struct NvstFrameAck: Equatable, Sendable {
     public let interFrameMicroseconds: UInt32
     /// Five non-decreasing per-frame latency marks in milliseconds: the capture holds a rising
     /// series like 29.31, 31.01, 31.40, 31.45, 33.34 for one frame, so these are pipeline stage
-    /// times measured from the same frame origin.
+    /// times measured from the same frame origin. The payload always writes exactly five: a
+    /// longer array is truncated to the first five, a shorter one repeats its last value so no
+    /// stage reads as instantaneous, and an empty one reports five zeros.
     public let stageMilliseconds: [Float]
     /// The remaining per-frame float measurements, in payload order at +20, +24, +52, +56, +60
-    /// and +64. The capture's ranges are small millisecond figures.
+    /// and +64. The capture's ranges are small millisecond figures. The payload always writes
+    /// exactly six: a longer array is truncated, a shorter one is zero-padded.
     public let auxiliaryMilliseconds: [Float]
 
     public init(frameNumber: UInt32,
@@ -55,44 +58,36 @@ public struct NvstFrameAck: Equatable, Sendable {
     }
 
     public var payload: Data {
-        var data = Data(repeating: 0, count: Self.payloadLength)
-        func put16(_ value: UInt16, at offset: Int) {
-            data[offset] = UInt8(truncatingIfNeeded: value)
-            data[offset + 1] = UInt8(truncatingIfNeeded: value >> 8)
-        }
-        func put32(_ value: UInt32, at offset: Int) {
-            for byte in 0..<4 { data[offset + byte] = UInt8(truncatingIfNeeded: value >> UInt32(byte * 8)) }
-        }
-        func putFloat(_ value: Float, at offset: Int) { put32(value.bitPattern, at: offset) }
-        func putDouble(_ value: Double, at offset: Int) {
-            let bits = value.bitPattern
-            for byte in 0..<8 { data[offset + byte] = UInt8(truncatingIfNeeded: bits >> UInt64(byte * 8)) }
-        }
-
-        put16(Self.version, at: 0)
-        put16(Self.fieldCount, at: 2)
-        put32(frameNumber, at: 4)
-        putDouble(clientTimeMilliseconds, at: 12)
+        var writer = NvstByteWriter(capacity: Self.payloadLength)
+        writer.u16LE(Self.version)
+        writer.u16LE(Self.fieldCount)
+        writer.u32LE(frameNumber)
+        writer.zeroes(4)
+        writer.float64LE(clientTimeMilliseconds)
 
         let aux = auxiliaryMilliseconds + Array(repeating: 0, count: max(0, 6 - auxiliaryMilliseconds.count))
-        putFloat(aux[0], at: 20)
-        putFloat(aux[1], at: 24)
+        writer.float32LE(aux[0])
+        writer.float32LE(aux[1])
 
         // Five rising stage marks. A short series repeats its last value rather than reporting a
         // stage as instantaneous, which would read as a pipeline that skipped it.
         var stages = stageMilliseconds
         if stages.isEmpty { stages = [0] }
-        for index in 0..<5 { putFloat(stages[min(index, stages.count - 1)], at: 28 + index * 4) }
+        for index in 0..<5 { writer.float32LE(stages[min(index, stages.count - 1)]) }
 
-        putFloat(-1, at: 48)
-        putFloat(aux[2], at: 52)
-        putFloat(aux[3], at: 56)
-        putFloat(aux[4], at: 60)
-        putFloat(aux[5], at: 64)
-        put32(frameBytes, at: 72)
-        put32(Self.constantAt84, at: 84)
-        put32(interFrameMicroseconds, at: 96)
-        return data
+        writer.float32LE(-1)
+        writer.float32LE(aux[2])
+        writer.float32LE(aux[3])
+        writer.float32LE(aux[4])
+        writer.float32LE(aux[5])
+        writer.zeroes(4)
+        writer.u32LE(frameBytes)
+        writer.zeroes(8)
+        writer.u32LE(Self.constantAt84)
+        writer.zeroes(8)
+        writer.u32LE(interFrameMicroseconds)
+        writer.zeroes(2)
+        return writer.data
     }
 
     public var command: NvstControlCommand {

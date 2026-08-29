@@ -93,28 +93,25 @@ public enum NvstWebSocketFrame {
     static func encode(opcode: UInt8, payload: Data) -> Data {
         var mask = [UInt8](repeating: 0, count: 4)
         for index in mask.indices { mask[index] = UInt8.random(in: 0...255) }
-        var frame = Data()
-        frame.append(0x80 | opcode)
+        var writer = NvstByteWriter(capacity: 14 + payload.count)
+        writer.u8(0x80 | opcode)
         let length = payload.count
         if length < 126 {
-            frame.append(UInt8(0x80 | length))
+            writer.u8(UInt8(0x80 | length))
         } else if length < 65_536 {
-            frame.append(0x80 | 126)
-            frame.append(UInt8((length >> 8) & 0xff))
-            frame.append(UInt8(length & 0xff))
+            writer.u8(0x80 | 126)
+            writer.u16BE(UInt16(length))
         } else {
-            frame.append(0x80 | 127)
-            for shift in stride(from: 56, through: 0, by: -8) {
-                frame.append(UInt8((length >> shift) & 0xff))
-            }
+            writer.u8(0x80 | 127)
+            writer.u64BE(UInt64(length))
         }
-        frame.append(contentsOf: mask)
+        writer.bytes(mask)
         var masked = Data(capacity: length)
         for (offset, byte) in payload.enumerated() {
             masked.append(byte ^ mask[offset % 4])
         }
-        frame.append(masked)
-        return frame
+        writer.bytes(masked)
+        return writer.data
     }
 }
 
@@ -152,36 +149,36 @@ public struct NvstWebSocketFrameReader: Sendable {
         buffer.append(chunk)
         var messages: [Data] = []
         while true {
-            guard buffer.count >= 2 else { break }
-            let bytes = [UInt8](buffer)
-            let masked = (bytes[1] & 0x80) != 0
-            var payloadLength = Int(bytes[1] & 0x7f)
-            var offset = 2
+            var reader = NvstByteReader(buffer)
+            guard reader.remaining >= 2,
+                  let firstByte = try? reader.u8(),
+                  let secondByte = try? reader.u8() else { break }
+            let masked = (secondByte & 0x80) != 0
+            var payloadLength = Int(secondByte & 0x7f)
             if payloadLength == 126 {
-                guard bytes.count >= 4 else { break }
-                payloadLength = Int(bytes[2]) << 8 | Int(bytes[3])
-                offset = 4
+                guard let extended = try? reader.u16BE() else { break }
+                payloadLength = Int(extended)
             } else if payloadLength == 127 {
-                guard bytes.count >= 10 else { break }
-                var value = 0
-                for index in 2..<10 {
-                    value = (value << 8) | Int(bytes[index])
-                    if value > Int(Int32.max) { throw NvstWebSocketFrameError.frameTooLarge }
-                }
-                payloadLength = value
-                offset = 10
+                guard let extended = try? reader.u64BE() else { break }
+                guard extended <= UInt64(Int(Int32.max)) else { throw NvstWebSocketFrameError.frameTooLarge }
+                payloadLength = Int(extended)
             }
             let maskLength = masked ? 4 : 0
-            guard bytes.count >= offset + maskLength + payloadLength else { break }
-            let opcode = bytes[0] & 0x0f
-            var payload = Data(bytes[(offset + maskLength)..<(offset + maskLength + payloadLength)])
+            guard reader.remaining >= maskLength + payloadLength else { break }
+            let opcode = firstByte & 0x0f
+            var mask = Data()
             if masked {
-                let mask = Array(bytes[offset..<(offset + 4)])
+                guard let frameMask = try? reader.bytes(4) else { break }
+                mask = frameMask
+            }
+            guard var payload = try? reader.bytes(payloadLength) else { break }
+            if masked {
+                let maskBytes = [UInt8](mask)
                 for index in payload.indices {
-                    payload[index] ^= mask[(index - payload.startIndex) % 4]
+                    payload[index] ^= maskBytes[(index - payload.startIndex) % 4]
                 }
             }
-            buffer.removeFirst(offset + maskLength + payloadLength)
+            buffer = reader.unread
             if opcode == 0x1 || opcode == 0x2 {
                 messages.append(payload)
             } else if opcode == 0x8 {

@@ -55,6 +55,9 @@ public enum NvstRtpParseError: LocalizedError, Equatable, Sendable {
     case notRtp
     case missingGsExtension
     case badExtensionLength
+    /// The replay window has already seen this packet's index: a security decision, kept apart
+    /// from parse failures so stats can tell replays from malformed or unauthenticated packets.
+    case replayed
 
     public var errorDescription: String? {
         switch self {
@@ -62,59 +65,98 @@ public enum NvstRtpParseError: LocalizedError, Equatable, Sendable {
         case .notRtp: "NVST RTP parse: not an RTP v2 packet."
         case .missingGsExtension: "NVST RTP parse: missing the 0x4753 GS extension."
         case .badExtensionLength: "NVST RTP parse: GS extension length is not 16 bytes."
+        case .replayed: "NVST SRTP packet rejected by the replay window."
         }
     }
 }
 
 public enum NvstVideoPacketParser {
+    /// The RTP wire header every media leg shares. The extension header itself stays unread:
+    /// video validates it as the GS extension, SRTP only needs its length to find the payload.
+    public struct RtpHeader: Sendable, Equatable {
+        public var firstByte: UInt8
+        public var payloadType: UInt8
+        public var sequenceNumber: UInt16
+        public var timestamp: UInt32
+        public var ssrc: UInt32
+        public var hasExtension: Bool
+        /// Byte offset just past the fixed header and CSRC list: the extension header if
+        /// `hasExtension`, otherwise the payload.
+        public var extensionOffset: Int
+    }
+
+    /// Reads the fixed RTP header and skips any CSRC list, leaving the reader at the extension
+    /// header (or the payload). Both `NvstVideoReceiver.unprotect` and `parse` consume this, so
+    /// a packet is never header-parsed twice.
+    public static func readHeader(_ reader: inout NvstByteReader) throws -> RtpHeader {
+        guard reader.remaining >= 12 else { throw NvstRtpParseError.truncated("RTP header") }
+        let first = try reader.u8()
+        guard first & 0xc0 == 0x80 else { throw NvstRtpParseError.notRtp }
+        let payloadType = try reader.u8() & 0x7f
+        let sequenceNumber = try reader.u16BE()
+        let timestamp = try reader.u32BE()
+        let ssrc = try reader.u32BE()
+        let csrcCount = Int(first & 0x0f)
+        guard reader.remaining >= csrcCount * 4 else { throw NvstRtpParseError.truncated("RTP CSRC list") }
+        try reader.skip(csrcCount * 4)
+        return RtpHeader(firstByte: first, payloadType: payloadType, sequenceNumber: sequenceNumber,
+                         timestamp: timestamp, ssrc: ssrc, hasExtension: first & 0x10 != 0,
+                         extensionOffset: reader.offset)
+    }
+
     /// Parses one decrypted SRTP RTP datagram (12-byte header + 20-byte GS extension + payload).
     public static func parse(_ packet: Data) throws -> NvstRtpVideoPacket {
-        guard packet.count >= 12 else { throw NvstRtpParseError.truncated("RTP header") }
-        let first = packet[0]
-        guard first & 0xc0 == 0x80 else { throw NvstRtpParseError.notRtp }
-        guard first & 0x10 != 0 else { throw NvstRtpParseError.missingGsExtension }
+        var reader = NvstByteReader(packet)
+        let header = try readHeader(&reader)
+        return try parseAfterHeader(&reader, header: header)
+    }
 
-        let payloadType = packet[1] & 0x7f
-        let sequenceNumber = UInt16(packet[2]) << 8 | UInt16(packet[3])
-        let timestamp = readUInt32BE(packet, 4)
-        let ssrc = readUInt32BE(packet, 8)
+    /// Parses a packet whose RTP wire header was already read — the position the SRTP receiver
+    /// is in after unprotecting, where re-reading the header would be pure waste.
+    public static func parse(_ packet: Data, header: RtpHeader) throws -> NvstRtpVideoPacket {
+        var reader = NvstByteReader(packet)
+        try reader.skip(header.extensionOffset)
+        return try parseAfterHeader(&reader, header: header)
+    }
 
-        guard packet.count >= 16 else { throw NvstRtpParseError.truncated("GS extension header") }
-        let profile = readUInt16BE(packet, 12)
-        let lengthWords = Int(readUInt16BE(packet, 14))
-        let extensionLength = lengthWords * 4
+    private static func parseAfterHeader(_ reader: inout NvstByteReader, header: RtpHeader) throws -> NvstRtpVideoPacket {
+        guard header.hasExtension else { throw NvstRtpParseError.missingGsExtension }
+
+        guard reader.remaining >= 4 else { throw NvstRtpParseError.truncated("GS extension header") }
+        let profile = try reader.u16BE()
+        let extensionLength = Int(try reader.u16BE()) * 4
         guard profile == NvstRtpVideoPacket.gsExtensionProfile else { throw NvstRtpParseError.missingGsExtension }
         guard extensionLength == 16 else { throw NvstRtpParseError.badExtensionLength }
-        guard packet.count >= 16 + extensionLength else { throw NvstRtpParseError.truncated("GS extension") }
+        guard reader.remaining >= extensionLength else { throw NvstRtpParseError.truncated("GS extension") }
 
-        let gs = 16
-        let sequenceWord = readUInt32LE(packet, gs)
+        let sequenceWord = try reader.u32LE()
         let streamSequence = (sequenceWord >> 8) & 0x00ff_ffff
-        let frameIndex = readUInt32LE(packet, gs + 4)
-        // Flags live in the low nibble of the little-endian word at extension offset 8.
-        let flags = NvstRtpVideoPacket.NVSTVideoFlag(rawValue: packet[gs + 8] & 0x0f)
+        let frameIndex = try reader.u32LE()
+        // Flags live in the low nibble of the little-endian word at extension offset 8; the
+        // multi-FEC-block counters share that word's top byte.
+        let flagsWord = try reader.u32LE()
+        let flags = NvstRtpVideoPacket.NVSTVideoFlag(rawValue: UInt8(flagsWord & 0x0f))
+        let multiFecBlocks = UInt8((flagsWord >> 24) & 0xff)
         // FEC group coordinates: a repair packet is one whose index within the group is at or past
         // the source-packet count, while the group carries a non-zero repair percentage.
-        let fecWord = readUInt32LE(packet, gs + 12)
+        let fecWord = try reader.u32LE()
         let fecPercentage = (fecWord >> 4) & 0xff
         let fecIndex = (fecWord >> 12) & 0x3ff
         let fecSourcePackets = (fecWord >> 22) & 0x3ff
         let isFec = fecPercentage != 0 && fecIndex >= fecSourcePackets
-        // The multi-FEC-block counters share the top byte of the flags word.
-        let multiFecBlocks = packet[gs + 11]
 
-        let payloadOffset = gs + 16
-        var end = packet.count
-        if first & 0x20 != 0, let padding = packet.last, padding > 0, padding <= packet.count - payloadOffset {
-            end -= Int(padding)
+        var payload = reader.unread
+        // `<=` is deliberate: RFC 3550 lets the padding count equal the whole remaining region,
+        // and an all-padding payload then fails the start-code gate below like any empty one.
+        if header.firstByte & 0x20 != 0, let padding = payload.last, padding > 0, Int(padding) <= payload.count {
+            payload = payload.prefix(payload.count - Int(padding))
         }
-        let payload = Data(packet[payloadOffset..<max(payloadOffset, end)])
 
         return NvstRtpVideoPacket(
-            payloadType: payloadType,
-            sequenceNumber: sequenceNumber,
-            timestamp: timestamp,
-            ssrc: ssrc,
+            payloadType: header.payloadType,
+            sequenceNumber: header.sequenceNumber,
+            timestamp: header.timestamp,
+            ssrc: header.ssrc,
             streamSequence: streamSequence,
             frameIndex: frameIndex,
             flags: flags,
@@ -124,19 +166,7 @@ public enum NvstVideoPacketParser {
             fecIndex: fecIndex,
             fecSourcePackets: fecSourcePackets,
             fecPercentage: fecPercentage,
-            payload: payload
+            payload: Data(payload)
         )
-    }
-
-    static func readUInt16BE(_ data: Data, _ offset: Int) -> UInt16 {
-        UInt16(data[offset]) << 8 | UInt16(data[offset + 1])
-    }
-
-    static func readUInt32BE(_ data: Data, _ offset: Int) -> UInt32 {
-        UInt32(data[offset]) << 24 | UInt32(data[offset + 1]) << 16 | UInt32(data[offset + 2]) << 8 | UInt32(data[offset + 3])
-    }
-
-    static func readUInt32LE(_ data: Data, _ offset: Int) -> UInt32 {
-        UInt32(data[offset]) | UInt32(data[offset + 1]) << 8 | UInt32(data[offset + 2]) << 16 | UInt32(data[offset + 3]) << 24
     }
 }

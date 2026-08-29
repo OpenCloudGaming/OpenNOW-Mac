@@ -49,7 +49,7 @@ struct NvstMjolnirReceiverTests {
         let headerLength = 32 // 12-byte RTP header + 4-byte extension header + 16-byte GS block
         let aad = packet.prefix(headerLength)
         let plaintext = packet.dropFirst(headerLength)
-        let iv = SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequence)
+        let iv = try SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequence)
         let sealed = try cipher.seal(iv: iv, aad: Data(aad), plaintext: Data(plaintext), tagLength: handoff.srtpProfile.authenticationTagLength)
         return Data(aad) + sealed
     }
@@ -514,9 +514,12 @@ struct NvstMjolnirReceiverTests {
         #expect(receiver.stats.authenticatedPackets == 0)
     }
 
-    @Test func peerAddressConversionRoundTrips() {
-        let network = NvstMjolnirReceiver.inetAddr("10.20.30.40")
+    @Test func peerAddressConversionRoundTrips() throws {
+        let network = try #require(NvstMjolnirReceiver.inetAddr("10.20.30.40"))
         #expect(NvstMjolnirReceiver.dottedQuad(network) == "10.20.30.40")
+        #expect(NvstMjolnirReceiver.inetAddr("10.20.30") == nil)
+        #expect(NvstMjolnirReceiver.inetAddr("10.20.30.40.50") == nil)
+        #expect(NvstMjolnirReceiver.inetAddr("10.20.30.999") == nil)
     }
 }
 

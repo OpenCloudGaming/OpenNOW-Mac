@@ -11,7 +11,7 @@ import Foundation
 /// It shares the `0x20d` code and `[0x23][BE u64 µs]` prefix with the device descriptor in
 /// `NvstInputActivation`; the gamepad form is four bytes longer and carries a sequence counter.
 public struct NvstGamepadPacket: Equatable, Sendable {
-    public static let commandCode: UInt16 = 0x20d
+    public static let commandCode = NvstControlCommandCode.gamepadEvent
     /// 1 header byte + 8 outer timestamp + 6 partially-reliable wrapper + 3 length prefix + 38
     /// event bytes. Was 52: the two length bytes were missing, see `capturedBody` below.
     public static let payloadLength = 54
@@ -56,7 +56,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     /// announces gamepads 0 AND 1, which was the "two controllers in Steam" symptom.
     /// 0x0101 = pad 0 connected, XInput-style.
     static let connectedBitmapOffset = 8
-    static let connectedBitmap: UInt16 = 0x0101
+    public static let connectedBitmap: UInt16 = 0x0101
     static let buttonsOffset = 12
     static let triggersOffset = 14
     static let leftStickXOffset = 16
@@ -162,19 +162,16 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     /// path, where the gamepad worked. The `0x21` tag and its two length bytes are the part that was
     /// missing; see `capturedBody`.
     public var payload: Data {
-        var payload = Data([GeronimoInputEnvelope.headerByte])
-        for shift in stride(from: 56, through: 0, by: -8) {
-            payload.append(UInt8(truncatingIfNeeded: timestampMicroseconds >> UInt64(shift)))
-        }
-        payload.append(GeronimoInputEnvelope.partiallyReliablePayloadTag)
-        payload.append(UInt8(truncatingIfNeeded: Self.gamepadDeviceIndex & 0x03))
-        payload.append(UInt8(truncatingIfNeeded: sequence >> 8))
-        payload.append(UInt8(truncatingIfNeeded: sequence))
-        payload.append(GeronimoInputEnvelope.lengthPrefixedPayloadTag)
-        payload.append(UInt8(truncatingIfNeeded: Self.eventLength >> 8))
-        payload.append(UInt8(truncatingIfNeeded: Self.eventLength))
-        payload.append(contentsOf: event)
-        return payload
+        var writer = NvstByteWriter(capacity: Self.payloadLength)
+        writer.u8(GeronimoInputEnvelope.headerByte)
+        writer.u64BE(timestampMicroseconds)
+        writer.u8(GeronimoInputEnvelope.partiallyReliablePayloadTag)
+        writer.u8(UInt8(truncatingIfNeeded: Self.gamepadDeviceIndex & 0x03))
+        writer.u16BE(sequence)
+        writer.u8(GeronimoInputEnvelope.lengthPrefixedPayloadTag)
+        writer.u16BE(UInt16(Self.eventLength))
+        writer.bytes(event)
+        return writer.data
     }
 
     public var command: NvstControlCommand {

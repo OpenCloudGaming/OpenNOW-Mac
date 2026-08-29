@@ -9,6 +9,7 @@ import Foundation
 public enum NvstReceiveDrop: Sendable, Equatable {
     case reassembly(NvstReassemblyDrop)
     case unprotectFailed
+    case replayed
     case malformedPacket
     case unexpectedSSRC(UInt32)
     case staleSequence(UInt64)
@@ -18,6 +19,7 @@ public enum NvstReceiveDrop: Sendable, Equatable {
         switch self {
         case .reassembly(let drop): drop.localizedDescription
         case .unprotectFailed: "NVST packet failed SRTP authentication."
+        case .replayed: "NVST packet was a replay."
         case .malformedPacket: "NVST packet could not be parsed."
         case .unexpectedSSRC(let ssrc): "unexpected SSRC \(ssrc)"
         case .staleSequence(let index): "stale RTP packet \(index)"
@@ -42,6 +44,19 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var authenticatedPackets: UInt64 = 0
     public var fecPackets: UInt64 = 0
     public var droppedPackets: UInt64 = 0
+    /// Packets that arrived ahead of the delivery head — a lower sequence was still missing.
+    /// Feeds the client RTP stats report's out-of-order field.
+    public var outOfOrderPackets: UInt64 = 0
+    /// Packets whose sequence slot was already delivered or finalized when they arrived.
+    public var latePackets: UInt64 = 0
+    /// Packets received twice; the second copy is dropped.
+    public var duplicatePackets: UInt64 = 0
+    /// Packets rebuilt by FEC recovery and injected back into the reorder path.
+    public var recoveredPackets: UInt64 = 0
+    /// The largest single finalized-loss range, in packets.
+    public var maxLossBurst: UInt32 = 0
+    /// The deepest the reorder buffer has been, in packets.
+    public var maxReorderDepth: UInt32 = 0
     public var framesEmitted: UInt64 = 0
     public var keyframesEmitted: UInt64 = 0
     public var recoveries: UInt64 = 0
@@ -61,12 +76,10 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var highestFecLastBlock: UInt8 = 0
     /// Frames abandoned mid-assembly when the next start-of-frame arrived.
     public var abandonedFrames: UInt64 = 0
-    /// Receiver reports that could not be sealed, and why. A dead feedback plane is otherwise
-    /// indistinguishable from a sender that simply sends little.
-    /// How many times `frameIndex` changed between consecutive accepted packets, and a census of
-    /// the raw GS flag nibble. The native stack's own QoS reports say it sees 60 frames per second
-    /// on the same title where we assemble 15; these two numbers separate "the seat sends fewer
-    /// frames" from "we mis-read the frame boundary".
+    /// How many times `frameIndex` changed between consecutive accepted packets. The native
+    /// stack's own QoS reports say it sees 60 frames per second on the same title where we
+    /// assemble 15; this number separates "the seat sends fewer frames" from "we mis-read the
+    /// frame boundary".
     public var frameIndexChanges: UInt64 = 0
     /// Assembled frame bytes per whole second of the session. A screen that never changes encodes
     /// to a flat series; a UI reacting to a click spikes. With no view of the remote framebuffer
@@ -94,6 +107,8 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var lastFractionLost: UInt8 = 0
     public var lastCumulativeLost: UInt32 = 0
     public var lastJitter: UInt32 = 0
+    /// Receiver reports that could not be sealed, and why. A dead feedback plane is otherwise
+    /// indistinguishable from a sender that simply sends little.
     public var receiverReportFailures: UInt64 = 0
     public var lastReceiverReportFailure: String?
 }
@@ -292,30 +307,29 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             stageNanoseconds.cpu += Self.threadCpuNanoseconds() - cpuStart
         }
 
-        let plaintext: Data
-        let payloadOffset: Int
-        let extendedIndex: UInt64
+        let unprotected: Unprotected
         do {
-            let unprotected = try unprotect(datagram)
+            unprotected = try unprotect(datagram)
             stageNanoseconds.unprotect += DispatchTime.now().uptimeNanoseconds - stageStart
-            plaintext = unprotected.plaintext
-            payloadOffset = unprotected.payloadOffset
-            extendedIndex = unprotected.index
+        } catch NvstRtpParseError.replayed {
+            stats.droppedPackets += 1
+            return [.dropped(.replayed)]
         } catch {
             stats.droppedPackets += 1
             return [.dropped(.unprotectFailed)]
         }
+        let plaintext = unprotected.plaintext
+        let extendedIndex = unprotected.index
 
         let parseStart = DispatchTime.now().uptimeNanoseconds
         let packet: NvstRtpVideoPacket
         do {
-            packet = try NvstVideoPacketParser.parse(plaintext)
+            packet = try NvstVideoPacketParser.parse(plaintext, header: unprotected.header)
             stageNanoseconds.parse += DispatchTime.now().uptimeNanoseconds - parseStart
         } catch {
             stats.droppedPackets += 1
             return [.dropped(.malformedPacket)]
         }
-        _ = payloadOffset
 
         if handoff.rtpSSRC != 0, packet.ssrc != handoff.rtpSSRC {
             stats.droppedPackets += 1
@@ -338,6 +352,7 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         for recoveredPlaintext in fecRecovery.observe(plaintext: plaintext, packet: packet) {
             guard let repaired = try? NvstVideoPacketParser.parse(recoveredPlaintext),
                   repaired.ssrc == boundSSRC else { continue }
+            stats.recoveredPackets += 1
             arrivals.append((replay.estimatedIndex(for: repaired.sequenceNumber), repaired))
         }
         if lastSeenFrameIndex != packet.frameIndex {
@@ -363,9 +378,6 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             if candidate.isStartOfFrame { stats.startOfFrameAccepted += 1 }
             if candidate.fecLastBlock > 0 { stats.multiBlockPackets += 1 }
             stats.highestFecLastBlock = max(stats.highestFecLastBlock, candidate.fecLastBlock)
-            stats.abandonedFrames = reassembler.abandonedFrameCount
-            stats.receiverReportFailures = reportFailures
-            stats.lastReceiverReportFailure = lastReportFailure
             do {
                 let pushStart = DispatchTime.now().uptimeNanoseconds
                 let pushed = try reassembler.push(candidate)
@@ -402,6 +414,11 @@ public final class NvstVideoReceiver: @unchecked Sendable {
                 events.append(.dropped(.malformedPacket))
             }
         }
+        // Snapshots of counters owned elsewhere, taken once per batch instead of once per packet:
+        // the reassembler's lock and these running totals only change on frame/report boundaries.
+        stats.abandonedFrames = reassembler.abandonedFrameCount
+        stats.receiverReportFailures = reportFailures
+        stats.lastReceiverReportFailure = lastReportFailure
         return events
     }
 
@@ -430,13 +447,14 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// An SRTCP Receiver Report for the raw Mjolnir socket, at most once per interval and only
     /// once the media SSRC is known. This is the feedback path used when the seat is not given
     /// an SCTP feedback channel (`general.rtcpOnSctp:0`).
-    public func pollReceiverReport(now: Date = Date(), interval: TimeInterval = 1.0) -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
+    /// The RFC 3550 reception statistics both RTCP paths report, computed against the highest
+    /// extended sequence received. Reporting zeros describes a receiver that has never seen a
+    /// packet, which is not the same thing as a healthy one. Advances the interval window the
+    /// fraction-lost figure is computed over; returns nil until an SSRC binds and again until
+    /// `interval` elapses. Caller holds the lock.
+    private func computeReportBlock(now: Date, interval: TimeInterval) -> NvstRtcpReportBlock? {
         guard let mediaSSRC = boundSSRC else { return nil }
         if let lastReportAt, now.timeIntervalSince(lastReportAt) < interval { return nil }
-        // Real reception statistics, as RFC 3550 defines them. Reporting zeros describes a receiver
-        // that has never seen a packet, which is not the same thing as a healthy one.
         let highest = stats.highestSequence
         let expected = baseSequence.map { highest >= $0 ? highest - $0 + 1 : 0 } ?? 0
         let received = UInt32(truncatingIfNeeded: stats.authenticatedPackets)
@@ -450,13 +468,19 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         priorExpected = expected
         priorReceived = received
 
-        let block = NvstRtcpReportBlock(
+        return NvstRtcpReportBlock(
             sourceSSRC: mediaSSRC,
             fractionLost: fractionLost,
             cumulativeLost: cumulativeLost,
             extendedHighestSequence: highest,
             interarrivalJitter: UInt32(interarrivalJitter)
         )
+    }
+
+    public func pollReceiverReport(now: Date = Date(), interval: TimeInterval = 1.0) -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let block = computeReportBlock(now: now, interval: interval) else { return nil }
         // Our own SSRC, never the sender's. SRTCP derives its context and its replay window from
         // the packet's SSRC, so reporting under the seat's SSRC put our index-0,1,2... reports into
         // the context the seat uses for its *own* outbound RTCP, where they read as replays of
@@ -469,7 +493,7 @@ public final class NvstVideoReceiver: @unchecked Sendable {
                 rtcpPacket: rtcp,
                 masterKey: srtcpMasterKey,
                 masterSalt: srtcpMasterSalt,
-                senderSSRC: mediaSSRC,
+                senderSSRC: block.sourceSSRC,
                 srtcpIndex: srtcpIndex
             )
         } catch {
@@ -482,18 +506,32 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         srtcpIndex &+= 1
         lastReportAt = now
         stats.receiverReportsSent += 1
-        stats.lastFractionLost = fractionLost
-        stats.lastCumulativeLost = cumulativeLost
-        stats.lastJitter = UInt32(interarrivalJitter)
+        stats.lastFractionLost = block.fractionLost
+        stats.lastCumulativeLost = block.cumulativeLost
+        stats.lastJitter = block.interarrivalJitter
         return sealed
+    }
+
+    /// The bundle feedback path's form of the same statistics: the report block itself, for
+    /// plain RTCP over SCTP, instead of an SRTCP seal. The two paths share the interval window,
+    /// and only one is active in a session.
+    public func receiverReportBlock(now: Date = Date(), interval: TimeInterval = 1.0) -> NvstRtcpReportBlock? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let block = computeReportBlock(now: now, interval: interval) else { return nil }
+        lastReportAt = now
+        stats.lastFractionLost = block.fractionLost
+        stats.lastCumulativeLost = block.cumulativeLost
+        stats.lastJitter = block.interarrivalJitter
+        return block
     }
 
     // MARK: - SRTP
 
     struct Unprotected {
         let plaintext: Data
-        let payloadOffset: Int
         let index: UInt64
+        let header: NvstVideoPacketParser.RtpHeader
     }
 
     /// RFC 7714 §9.1: the AAD is the RTP header including its extension, the payload is the
@@ -502,33 +540,43 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         guard datagram.count >= 12 + tagLength else {
             throw NvstRtpParseError.truncated("SRTP datagram")
         }
-        let bytes = [UInt8](datagram)
-        guard bytes[0] & 0xc0 == 0x80 else { throw NvstRtpParseError.notRtp }
-        let csrcCount = Int(bytes[0] & 0x0f)
-        var offset = 12 + csrcCount * 4
-        guard datagram.count > offset else { throw NvstRtpParseError.truncated("RTP CSRC list") }
-        if bytes[0] & 0x10 != 0 {
-            guard datagram.count >= offset + 4 else { throw NvstRtpParseError.truncated("RTP extension header") }
-            let words = Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
-            offset += 4 + words * 4
+        // The header comes from the shared reader and rides along with the result, so the parse
+        // step after decryption never reads it a second time. The reader indexes the datagram's
+        // own storage: the intermediate `[UInt8](datagram)` this used to build was one
+        // full-packet copy on the hottest path in the receiver.
+        var reader = NvstByteReader(datagram)
+        let header = try NvstVideoPacketParser.readHeader(&reader)
+        var payloadOffset = header.extensionOffset
+        if header.hasExtension {
+            guard reader.remaining >= 4 else { throw NvstRtpParseError.truncated("RTP extension header") }
+            try reader.skip(2)
+            payloadOffset += 4 + Int(try reader.u16BE()) * 4
         }
-        guard datagram.count >= offset + tagLength else { throw NvstRtpParseError.truncated("SRTP payload") }
+        guard datagram.count >= payloadOffset + tagLength else { throw NvstRtpParseError.truncated("SRTP payload") }
 
-        let sequenceNumber = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
-        let ssrc = (UInt32(bytes[8]) << 24) | (UInt32(bytes[9]) << 16) | (UInt32(bytes[10]) << 8) | UInt32(bytes[11])
+        let sequenceNumber = header.sequenceNumber
+        let ssrc = header.ssrc
         let extendedIndex = replay.estimatedIndex(for: sequenceNumber)
+        // RFC 3711: reject replays before paying the GCM cost. The window only advances after
+        // authentication below, so a forged packet cannot age real ones out of the window.
+        guard replay.wouldAccept(extendedIndex) else {
+            throw NvstRtpParseError.replayed
+        }
         let rolloverCounter = UInt32(extendedIndex >> 16)
-        let iv = SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequenceNumber)
-        let aad = Data(bytes[0..<offset])
-        let tag = Data(bytes[(bytes.count - tagLength)...])
-        let ciphertext = Data(bytes[offset..<(bytes.count - tagLength)])
+        let iv = try SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequenceNumber)
+        // Slices share the datagram's storage, so the AAD, ciphertext and tag reach the cipher
+        // without three more per-packet copies; only the re-glued plaintext allocates.
+        let base = datagram.startIndex
+        let aad = datagram[base ..< base + payloadOffset]
+        let tag = datagram[base + datagram.count - tagLength ..< base + datagram.count]
+        let ciphertext = datagram[base + payloadOffset ..< base + datagram.count - tagLength]
         let payload = try cipher.decrypt(iv: iv, aad: aad, ciphertext: ciphertext, authenticationTag: tag)
         guard replay.accept(extendedIndex) else {
-            throw NvstRtpParseError.truncated("SRTP replay rejected")
+            throw NvstRtpParseError.replayed
         }
-        var plaintext = aad
+        var plaintext = Data(aad)
         plaintext.append(payload)
-        return Unprotected(plaintext: plaintext, payloadOffset: offset, index: extendedIndex)
+        return Unprotected(plaintext: plaintext, index: extendedIndex, header: header)
     }
 
     // MARK: - Reorder
@@ -538,14 +586,17 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         if nextIndex == nil { nextIndex = index }
         if index < expected {
             stats.droppedPackets += 1
+            stats.latePackets += 1
             events.append(.dropped(.staleSequence(index)))
             return []
         }
         if reorder[index] != nil {
             stats.droppedPackets += 1
+            stats.duplicatePackets += 1
             events.append(.dropped(.duplicateSequence(index)))
             return []
         }
+        if index > expected { stats.outOfOrderPackets += 1 }
         if index - expected >= UInt64(reorderWindow),
            // With FEC armed, a gap must outlive the chance of repair before it is loss: the
            // block's parity packets arrive after all of its sources, which at 5K is up to ~1000
@@ -565,6 +616,7 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             nextIndex = firstAvailable
         }
         reorder[index] = packet
+        stats.maxReorderDepth = max(stats.maxReorderDepth, UInt32(clamping: reorder.count))
 
         var ready: [NvstRtpVideoPacket] = []
         while let cursor = nextIndex, let next = reorder.removeValue(forKey: cursor) {
@@ -577,7 +629,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     private func recordRecovery(first: UInt64, last: UInt64, events: inout [NvstReceiveEvent]) {
         reassembler.reset()
         stats.recoveries += 1
-        if last >= first { stats.finalizedLossPackets += last - first + 1 }
+        if last >= first {
+            stats.finalizedLossPackets += last - first + 1
+            stats.maxLossBurst = max(stats.maxLossBurst, UInt32(clamping: last - first + 1))
+        }
         events.append(.recoveryNeeded(firstMissingIndex: first, lastMissingIndex: last))
     }
 }

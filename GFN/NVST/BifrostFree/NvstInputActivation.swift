@@ -14,19 +14,19 @@ import Foundation
 /// are byte-identical to the native stack's and the seat still never reacted to them, so this
 /// pair is the missing prerequisite rather than the encoding.
 public enum NvstInputActivation {
-    public static let deviceCommandCode: UInt16 = 0x20d
-    public static let enableCommandCode: UInt16 = 0x20b
+    public static let deviceCommandCode = NvstControlCommandCode.gamepadEvent
+    public static let enableCommandCode = NvstControlCommandCode.rtpNackToggle
     /// `0x308` is NOT a "ready" ping — it is MOUSE CURSOR CAPTURE, and its one payload byte is a
     /// boolean. We had it as `ready` sending a zero byte, which told the seat to STOP compositing
     /// its cursor into the video while we carried on drawing our own: the double-cursor bug.
     /// OpenNOW's native client made the same misreading and corrected it; NVIDIA's own client
     /// enables capture for startup, waits for the first cursor notification, then disables it and
     /// renders the reported cursor locally.
-    public static let mouseCursorCaptureCode: UInt16 = 0x308
+    public static let mouseCursorCaptureCode = NvstControlCommandCode.mouseCursorCapture
     /// NVB feature type 8, "track remote cursor image" — distinct from capture. Bifrost keeps this
     /// on after turning capture back off so the seat keeps publishing cursor shape and mode
     /// changes. We were never sending it, so the seat had no reason to publish them at all.
-    public static let trackRemoteCursorImageCode: UInt16 = 0x30d
+    public static let mimicRemoteCursorCode = NvstControlCommandCode.mimicRemoteCursor
 
     /// The body of `0x20d` after its 9-byte `[0x23][BE u64 µs]` prefix, held byte for byte as
     /// captured. Every byte of it is identical across four samples taken from two different
@@ -47,16 +47,17 @@ public enum NvstInputActivation {
 
     /// `0x20d`, the device descriptor. `0x23` then the session-relative microsecond clock as a
     /// big-endian 64-bit value — the same "versioned" prefix the remote-input path uses.
-    public static func deviceDescriptor(timestampMicroseconds: UInt64, connectedBitmap: UInt16 = 2) -> NvstControlCommand {
-        var payload = Data([0x23])
-        for shift in stride(from: 56, through: 0, by: -8) {
-            payload.append(UInt8(truncatingIfNeeded: timestampMicroseconds >> UInt64(shift)))
-        }
+    /// The bitmap defaults to the gamepad state packet's own value, because the seat drops input
+    /// from a device whose descriptor bitmap differs from the state packets it later receives.
+    public static func deviceDescriptor(timestampMicroseconds: UInt64, connectedBitmap: UInt16 = NvstGamepadPacket.connectedBitmap) -> NvstControlCommand {
         var body = capturedDeviceBody
         body[descriptorIndexOffset] = UInt8(truncatingIfNeeded: connectedBitmap)
         body[descriptorIndexOffset + 1] = UInt8(truncatingIfNeeded: connectedBitmap >> 8)
-        payload.append(contentsOf: body)
-        return NvstControlCommand(code: deviceCommandCode, payload: payload)
+        var writer = NvstByteWriter(capacity: 1 + 8 + body.count)
+        writer.u8(GeronimoInputEnvelope.headerByte)
+        writer.u64BE(timestampMicroseconds)
+        writer.bytes(body)
+        return NvstControlCommand(code: deviceCommandCode, payload: writer.data)
     }
 
     /// Whether the seat composites its own cursor into the encoded video.
@@ -64,21 +65,20 @@ public enum NvstInputActivation {
         NvstControlCommand(code: mouseCursorCaptureCode, payload: Data([isEnabled ? 1 : 0]))
     }
 
-    /// Whether the seat publishes cursor shape/mode notifications to us.
-    public static func trackRemoteCursorImage(isEnabled: Bool) -> NvstControlCommand {
-        NvstControlCommand(code: trackRemoteCursorImageCode, payload: Data([isEnabled ? 1 : 0]))
+    /// Whether the seat publishes cursor shape/mode notifications to us. Official symbol
+    /// `sendServerMimicRemoteCursor`.
+    public static func mimicRemoteCursor(isEnabled: Bool) -> NvstControlCommand {
+        NvstControlCommand(code: mimicRemoteCursorCode, payload: Data([isEnabled ? 1 : 0]))
     }
 
     /// `0x20b`: three little-endian words. The captured samples are `[0, 1, 0]` early in a session
     /// and `[0, 122, 1]` / `[0, 124, 1]` immediately before input starts, so the last word reads as
     /// the enable and the middle one as a counter at the point it is sent.
     public static func enableInput(counter: UInt32, isEnabled: Bool = true) -> NvstControlCommand {
-        var payload = Data()
-        for word: UInt32 in [0, counter, isEnabled ? 1 : 0] {
-            for shift in stride(from: 0, through: 24, by: 8) {
-                payload.append(UInt8(truncatingIfNeeded: word >> UInt32(shift)))
-            }
-        }
-        return NvstControlCommand(code: enableCommandCode, payload: payload)
+        var writer = NvstByteWriter(capacity: 12)
+        writer.u32LE(0)
+        writer.u32LE(counter)
+        writer.u32LE(isEnabled ? 1 : 0)
+        return NvstControlCommand(code: enableCommandCode, payload: writer.data)
     }
 }

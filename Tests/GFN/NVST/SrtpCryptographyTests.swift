@@ -74,8 +74,8 @@ struct SrtpCryptographyTests {
         #expect(try SrtpKeyDerivation.derive(key: masterKey, salt: salt, label: 0x02, length: 12).count == 12)
     }
 
-    @Test func gcmIvConstructionMatchesRfc7714() {
-        let iv = SrtpKeyDerivation.gcmIV(sessionSalt: hex("00000000000000009ECA935E"), ssrc: 0x1122_3344, rolloverCounter: 1, sequenceNumber: 0xabcd)
+    @Test func gcmIvConstructionMatchesRfc7714() throws {
+        let iv = try SrtpKeyDerivation.gcmIV(sessionSalt: hex("00000000000000009ECA935E"), ssrc: 0x1122_3344, rolloverCounter: 1, sequenceNumber: 0xabcd)
         let bytes = [UInt8](iv)
         #expect(iv.count == 12)
         #expect(bytes[0] == 0 && bytes[1] == 0)

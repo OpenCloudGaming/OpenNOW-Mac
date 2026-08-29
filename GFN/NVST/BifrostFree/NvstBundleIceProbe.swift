@@ -30,7 +30,7 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     private let handoff: NVSTVideoHandoff
     private let credentials: NVSTHandoffIceCredentials
     private let logger: (@Sendable (String) -> Void)?
-    private let queue = DispatchQueue(label: "com.macforcenow.nvst.bundle")
+    private let queue = DispatchQueue(label: "com.opennow.nvst.bundle")
     private let lock = NSLock()
     private var descriptor: Int32
     private var readSource: DispatchSourceRead?
@@ -160,10 +160,11 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
 
     private func send(_ data: Data) {
         guard descriptor >= 0 else { return }
+        guard let address = NvstMjolnirReceiver.inetAddr(handoff.videoPeerIP) else { return }
         var destination = sockaddr_in()
         destination.sin_family = sa_family_t(AF_INET)
         destination.sin_port = handoff.videoPeerPort.bigEndian
-        destination.sin_addr.s_addr = NvstMjolnirReceiver.inetAddr(handoff.videoPeerIP)
+        destination.sin_addr.s_addr = address
         data.withUnsafeBytes { bytes in
             withUnsafePointer(to: &destination) { pointer in
                 pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in

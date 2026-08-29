@@ -156,6 +156,7 @@ struct NvstVideoPipelineTests {
             decoder: decoder,
             clock: NvstSessionClock(),
             frameTimeMicroseconds: 8333,
+            displayVsyncMicroseconds: 16000,
             logger: nil,
             mediaSink: nil,
             onKeyframeNeeded: { keyframeAsked.raise() },

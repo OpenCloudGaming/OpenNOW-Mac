@@ -144,7 +144,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
 
     /// Below the receive loop's `.userInteractive` deliberately: decode falling a frame behind
     /// costs latency, while the receive loop falling behind costs packets.
-    private let queue = DispatchQueue(label: "com.macforcenow.nvst.decode", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.opennow.nvst.decode", qos: .userInitiated)
     private let lock = NSLock()
     /// The video receiver is armed at SETUP, before the ICE/DTLS bundle exists — the bundle needs
     /// SETUP's own ping payload — so the ack channel arrives later than this object does.
@@ -188,7 +188,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     public init(decoder: NvstVideoToolboxDecoder,
                 clock: NvstSessionClock,
                 frameTimeMicroseconds: UInt32,
-                displayVsyncMicroseconds: UInt32 = 16000,
+                displayVsyncMicroseconds: UInt32,
                 logger: (@Sendable (String) -> Void)?,
                 mediaSink: (@Sendable (NvstAccessUnit) -> Void)?,
                 onKeyframeNeeded: @escaping @Sendable () -> Void,
@@ -371,13 +371,20 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     /// per second against the native stack's 60.05 on the same title: the pacer had no cadence to
     /// open up against.
     private func sendFrameAck(unit: NvstAccessUnit, decodedAt: UInt64, timings: inout StageTimings) {
+        let now = Date()
+        let nowMicroseconds = clock.elapsedMicroseconds(now: now)
+        // The ack bookkeeping moves under the same lock as the channel reference: decode
+        // completion callbacks are not guaranteed to arrive serialized, and the frame number and
+        // inter-frame baseline are a read-modify-write pair that must not interleave.
         lock.lock()
         let channel = bundle
-        lock.unlock()
-        guard let bundle = channel else { return }
-        let now = Date()
         frameAckNumber += 1
         lastFrameAckAt = now
+        let measuredInterFrame = lastAckElapsedMicroseconds.map { UInt32(clamping: nowMicroseconds &- $0) }
+            ?? frameTimeMicroseconds
+        lastAckElapsedMicroseconds = nowMicroseconds
+        lock.unlock()
+        guard let bundle = channel else { return }
         // The capture documents this field as the MEASURED interval since the previous frame —
         // the pacer's view of the cadence the client actually sustains (15905 µs on a 60 fps
         // session, not the nominal 16667). Sending the constant target here claimed a perfect
@@ -388,10 +395,6 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         // match a ~2x-at-120fps shape observed in a captured official-client session. No effect on
         // stream fps in testing, and it makes this diagnostic value less accurate for its own
         // purpose (a real per-ack interval), so reverted to the direct measurement.
-        let nowMicroseconds = clock.elapsedMicroseconds(now: now)
-        let measuredInterFrame = lastAckElapsedMicroseconds.map { UInt32(clamping: nowMicroseconds &- $0) }
-            ?? frameTimeMicroseconds
-        lastAckElapsedMicroseconds = nowMicroseconds
         // What we can actually measure: how long this frame spent between leaving the reassembler
         // and finishing decode. The capture's five marks are a rising series from one frame origin,
         // so a single measured latency repeated across them is the honest reading of it.

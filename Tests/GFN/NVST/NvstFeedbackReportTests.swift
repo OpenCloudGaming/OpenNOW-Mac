@@ -70,6 +70,7 @@ struct NvstFeedbackReportTests {
             frameNumber: 1,
             targetFrameTimeMicroseconds: 13338,
             measuredFrameTimeMicroseconds: 16000,
+            displayVsyncMicroseconds: 16000, // the capture's `+16`
             groupCount: 2
         )
         #expect(report.payload == captured)
@@ -85,6 +86,7 @@ struct NvstFeedbackReportTests {
             frameNumber: 18,
             targetFrameTimeMicroseconds: 8333,
             measuredFrameTimeMicroseconds: 24186,
+            displayVsyncMicroseconds: 16000, // `+16` stays 16000 regardless of negotiated fps
             groupCount: 7
         )
         #expect(report.payload == captured)
@@ -230,8 +232,8 @@ struct NvstInputActivationTests {
         #expect(NvstInputActivation.mouseCursorCapture(isEnabled: true).code == 0x308)
         #expect(NvstInputActivation.mouseCursorCapture(isEnabled: true).payload == Data([1]))
         #expect(NvstInputActivation.mouseCursorCapture(isEnabled: false).payload == Data([0]))
-        #expect(NvstInputActivation.trackRemoteCursorImage(isEnabled: true).code == 0x30d)
-        #expect(NvstInputActivation.trackRemoteCursorImage(isEnabled: true).payload == Data([1]))
+        #expect(NvstInputActivation.mimicRemoteCursor(isEnabled: true).code == 0x30d)
+        #expect(NvstInputActivation.mimicRemoteCursor(isEnabled: true).payload == Data([1]))
     }
 
     /// Three little-endian words: stream index, state, frame number. The active window state is 19;
@@ -290,12 +292,12 @@ struct NvstInputActivationTests {
 @Suite
 struct NvstKeyboardAndGamepadTests {
 
-    /// Byte-exact against a captured key-down and key-up of `A` from the native stack. The pair
-    /// shares its first microsecond value and differs in the second, so both are supplied.
+    /// Byte-exact against a captured key-down and key-up of `A` from the native stack.
     @Test func aKeyDownAndUpMatchTheCapturedEvents() {
+        let timestamp: UInt64 = 0x0000_0000_015b_15b1
         let down = NvstRemoteInput.framed(
             NvstRemoteInput.keyboard(virtualKey: 0x41, isPressed: true),
-            framing: .enveloped, sequence: 0, timestampMicroseconds: 0x0000_0000_015b_15b1
+            framing: .enveloped, sequence: 0, timestampMicroseconds: timestamp
         )
         #expect(down.count == 48)
         // Inner type 3 is key down; the body is the virtual key big-endian.
@@ -303,12 +305,17 @@ struct NvstKeyboardAndGamepadTests {
         #expect(down[16] == 0x00 && down[17] == 0x41)
         let up = NvstRemoteInput.framed(
             NvstRemoteInput.keyboard(virtualKey: 0x41, isPressed: false),
-            framing: .enveloped, sequence: 0, timestampMicroseconds: 0x0000_0000_015b_15b1
+            framing: .enveloped, sequence: 0, timestampMicroseconds: timestamp
         )
         #expect(up[12] == 4)
-        // Both timestamps present, so the packet is 48 bytes rather than the pointer form's 40.
+        // A key packet is 48 bytes: the 22-byte inner, zero padding out to the timestamp's slot,
+        // and the single little-endian microsecond timestamp in the last 8 bytes. Earlier reads
+        // of the captures mistook the stable padding for a second timestamp; `SendPacket` writes
+        // one clock value, and the padding region is stale buffer content the official client
+        // does not zero.
         #expect(up.count == 48)
-        #expect(Array(up[32..<40]) == Array(up[40..<48]))
+        #expect(Array(up[30..<40]) == Array(repeating: 0, count: 10))
+        #expect(Array(up[40..<48]) == withUnsafeBytes(of: timestamp.littleEndian) { Array($0) })
     }
 
     @Test func aPointerMoveStillCarriesOneTimestamp() {
@@ -458,8 +465,10 @@ struct NvstAbsolutePointerAndWheelTests {
         // Compared up to the padding only: the capture's padding carries stale buffer content.
         #expect(framed.map { String(format: "%02x", $0) }.joined().hasPrefix(
             "0000002c0e0000000000000e05000000065f02af0800066002b0"))
-        // Absolute positions carry the clock twice, like key events.
-        #expect(Array(framed[32..<40]) == Array(framed[40..<48]))
+        // The canonical encoding zeros the padding and puts the single timestamp last, as
+        // `SendPacket` lays it out.
+        #expect(Array(framed[30..<40]) == Array(repeating: 0, count: 10))
+        #expect(Array(framed[40..<48]) == withUnsafeBytes(of: UInt64(0x0000_0000_0167_b3d6).littleEndian) { Array($0) })
     }
 
     @Test func theAbsoluteFlagAndViewportAreInTheBody() {
@@ -630,61 +639,6 @@ struct NvstAnnouncedBitrateTests {
 }
 
 @Suite
-struct NvstTextInputTests {
-
-    /// Plain ASCII typing reaches the transport as key events, but paste, IME composition,
-    /// Option-modified and non-ASCII characters all arrive as `text` — which had no encoding and
-    /// was swallowed by the `try?` at the call site. Typing it is a fallback, not the protocol's
-    /// own answer, so what it cannot represent must be reported rather than approximated.
-    @Test func lowercaseAndDigitsNeedNoShift() {
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: "abc190")
-        #expect(unmappable.isEmpty)
-        #expect(strokes.map(\.virtualKey) == [0x41, 0x42, 0x43, 0x31, 0x39, 0x30])
-        #expect(strokes.allSatisfy { !$0.needsShift })
-    }
-
-    @Test func uppercaseAndSymbolsNeedShiftOnTheSameKeys() {
-        let upper = NvstTextInput.keystrokes(for: "AZ").strokes
-        #expect(upper.map(\.virtualKey) == [0x41, 0x5a])
-        #expect(upper.allSatisfy { $0.needsShift })
-        // A shifted symbol reuses its unshifted key: '!' is shift+'1' (0x31), '_' is shift+'-'
-        // (NVST 0x2d, not the Windows OEM VK 0xbd).
-        let bang = NvstTextInput.keystrokes(for: "!").strokes
-        #expect(bang == [NvstTextInput.Keystroke(virtualKey: 0x31, needsShift: true)])
-        let underscore = NvstTextInput.keystrokes(for: "_").strokes
-        #expect(underscore == [NvstTextInput.Keystroke(virtualKey: 0xbd, needsShift: true)])
-    }
-
-    /// A realistic paste: a password with mixed case, digits and punctuation.
-    @Test func aMixedPasswordMapsEntirely() {
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: "Tr0ub4dor&3!")
-        #expect(unmappable.isEmpty)
-        #expect(strokes.count == 12)
-        #expect(strokes.first == NvstTextInput.Keystroke(virtualKey: 0x54, needsShift: true))
-    }
-
-    @Test func whitespaceAndReturnAreMapped() {
-        #expect(NvstTextInput.keystrokes(for: " ").strokes.first?.virtualKey == 0x20)
-        #expect(NvstTextInput.keystrokes(for: "\t").strokes.first?.virtualKey == 0x09)
-        #expect(NvstTextInput.keystrokes(for: "\n").strokes.first?.virtualKey == 0x0d)
-    }
-
-    /// Characters a US layout cannot produce are reported, not guessed at — and the rest still gets
-    /// typed rather than the whole string being lost.
-    @Test func unmappableCharactersAreReportedAndTheRestSurvives() {
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: "aé日b")
-        #expect(unmappable == ["é", "日"])
-        #expect(strokes.map(\.virtualKey) == [0x41, 0x42])
-    }
-
-    @Test func anEmptyStringProducesNothing() {
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: "")
-        #expect(strokes.isEmpty)
-        #expect(unmappable.isEmpty)
-    }
-}
-
-@Suite
 struct NvstTransportLifecycleTests {
 
     /// The host applies the microphone configuration *before* `start`, in the same `do` block, so a
@@ -746,26 +700,6 @@ struct NvstStreamHealthMonitorTests {
         #expect(monitor.observe(snapshot: snapshot, rendererReady: false) == nil)
         #expect(monitor.observe(snapshot: snapshot, rendererReady: false) == nil)
         #expect(monitor.observe(snapshot: snapshot, rendererReady: false) == .rendererUnavailable)
-    }
-}
-
-@Suite
-struct NvstTypedTextShiftTests {
-
-    /// Shift must never be left held. The release used to sit after the loop, so a send that threw
-    /// partway through a string exited with shift still down and nothing on the remote to release
-    /// it. The mapping is the part that can be asserted here; the release itself is a `defer`.
-    @Test func aStringMixingShiftedAndUnshiftedKeysAlternatesCleanly() {
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: "aAbB")
-        #expect(unmappable.isEmpty)
-        #expect(strokes.map { $0.needsShift } == [false, true, false, true])
-    }
-
-    /// A string ending on a shifted character is the case that leaves shift held at the end of the
-    /// loop, so it must be represented as such for the release to be exercised.
-    @Test func aStringEndingShiftedStillNeedsARelease() {
-        let strokes = NvstTextInput.keystrokes(for: "ab!").strokes
-        #expect(strokes.last?.needsShift == true)
     }
 }
 

@@ -26,14 +26,21 @@ public final class NvstAudioPlayer: @unchecked Sendable {
     private var filled = 0
     private var isPriming = true
 
-    public private(set) var enqueuedFrames: UInt64 = 0
-    public private(set) var renderedFrames: UInt64 = 0
+    private var enqueuedFrameCount: UInt64 = 0
+    private var renderedFrameCount: UInt64 = 0
     /// Frames the render callback had to invent because the ring was empty. This is our own
     /// concealment, and unlike NetEq's it is visible and attributable.
-    public private(set) var silenceFrames: UInt64 = 0
-    public private(set) var underruns: UInt64 = 0
-    public private(set) var overflowFrames: UInt64 = 0
+    private var silenceFrameCount: UInt64 = 0
+    private var underrunCount: UInt64 = 0
+    private var overflowFrameCount: UInt64 = 0
     public private(set) var startFailure: String?
+
+    /// Written under `lock` by the enqueue and render threads, so the reads take it too.
+    public var enqueuedFrames: UInt64 { lock.lock(); defer { lock.unlock() }; return enqueuedFrameCount }
+    public var renderedFrames: UInt64 { lock.lock(); defer { lock.unlock() }; return renderedFrameCount }
+    public var silenceFrames: UInt64 { lock.lock(); defer { lock.unlock() }; return silenceFrameCount }
+    public var underruns: UInt64 { lock.lock(); defer { lock.unlock() }; return underrunCount }
+    public var overflowFrames: UInt64 { lock.lock(); defer { lock.unlock() }; return overflowFrameCount }
 
     private static func frames(milliseconds: Int) -> Int {
         Int(sampleRate) * milliseconds / 1000
@@ -81,20 +88,33 @@ public final class NvstAudioPlayer: @unchecked Sendable {
         guard !samples.isEmpty else { return }
         lock.lock()
         defer { lock.unlock() }
-        for sample in samples {
-            if filled == ring.count {
-                // Drop a whole frame, never a single sample: the render side reads
-                // `ring[readIndex + channel]`, so `readIndex` has to stay on a frame boundary.
-                // Advancing it by one sample would swap left and right for the rest of the session.
-                readIndex = (readIndex + Self.channels) % ring.count
-                filled -= Self.channels
-                overflowFrames += 1
-            }
-            ring[writeIndex] = sample
-            writeIndex = (writeIndex + 1) % ring.count
-            filled += 1
+        if filled + samples.count > ring.count {
+            // Drop a whole frame, never a single sample: the render side reads
+            // `ring[readIndex + channel]`, so `readIndex` has to stay on a frame boundary.
+            // Advancing it by one sample would swap left and right for the rest of the session.
+            let excess = filled + samples.count - ring.count
+            let droppedFrames = (excess + Self.channels - 1) / Self.channels
+            let droppedSamples = droppedFrames * Self.channels
+            readIndex = (readIndex + droppedSamples) % ring.count
+            filled -= droppedSamples
+            overflowFrameCount += UInt64(droppedFrames)
         }
-        enqueuedFrames += UInt64(samples.count / Self.channels)
+        // Copy in at most two chunks (one per side of the wrap) instead of a per-sample loop:
+        // ~480 samples a packet at ~200 packets a second made the loop the hot side of the lock.
+        ring.withUnsafeMutableBufferPointer { destination in
+            samples.withUnsafeBufferPointer { source in
+                var copied = 0
+                while copied < samples.count {
+                    let chunk = min(ring.count - writeIndex, samples.count - copied)
+                    destination.baseAddress!.advanced(by: writeIndex)
+                        .update(from: source.baseAddress!.advanced(by: copied), count: chunk)
+                    writeIndex = (writeIndex + chunk) % ring.count
+                    copied += chunk
+                }
+            }
+        }
+        filled += samples.count
+        enqueuedFrameCount += UInt64(samples.count / Self.channels)
         if isPriming, filled >= Self.frames(milliseconds: Self.targetMilliseconds) * Self.channels {
             isPriming = false
         }
@@ -117,7 +137,7 @@ public final class NvstAudioPlayer: @unchecked Sendable {
         // result is worse than the silence a skipped quantum costs.
         guard lock.try() else {
             silence(from: 0)
-            silenceFrames += UInt64(frameCount)
+            silenceFrameCount += UInt64(frameCount)
             return
         }
         defer { lock.unlock() }
@@ -125,7 +145,7 @@ public final class NvstAudioPlayer: @unchecked Sendable {
         // immediately under-running.
         guard !isPriming else {
             silence(from: 0)
-            silenceFrames += UInt64(frameCount)
+            silenceFrameCount += UInt64(frameCount)
             return
         }
         var frame = 0
@@ -137,11 +157,11 @@ public final class NvstAudioPlayer: @unchecked Sendable {
             filled -= Self.channels
             frame += 1
         }
-        renderedFrames += UInt64(frame)
+        renderedFrameCount += UInt64(frame)
         if frame < frameCount {
             silence(from: frame)
-            silenceFrames += UInt64(frameCount - frame)
-            underruns += 1
+            silenceFrameCount += UInt64(frameCount - frame)
+            underrunCount += 1
             // Re-prime so playout resumes from a healthy depth instead of stuttering per callback.
             isPriming = true
         }
@@ -151,8 +171,8 @@ public final class NvstAudioPlayer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let buffered = filled / Self.channels * 1000 / Int(Self.sampleRate)
-        return "enq=\(enqueuedFrames) rendered=\(renderedFrames) silence=\(silenceFrames)"
-            + " underruns=\(underruns) overflow=\(overflowFrames) buffered=\(buffered)ms"
+        return "enq=\(enqueuedFrameCount) rendered=\(renderedFrameCount) silence=\(silenceFrameCount)"
+            + " underruns=\(underrunCount) overflow=\(overflowFrameCount) buffered=\(buffered)ms"
             + (startFailure.map { " startErr=\($0)" } ?? "")
     }
 }

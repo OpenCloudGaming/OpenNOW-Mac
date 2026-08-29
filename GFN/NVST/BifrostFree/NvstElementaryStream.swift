@@ -46,7 +46,7 @@ public enum NvstElementaryStream {
             prepared.sample = accessUnit
             return prepared
         }
-        prepared.sample.reserveCapacity(accessUnit.count)
+        var writer = NvstByteWriter(capacity: accessUnit.count)
         accessUnit.withUnsafeBytes { raw in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
             let count = raw.count
@@ -75,11 +75,11 @@ public enum NvstElementaryStream {
                 case .av1:
                     break
                 }
-                var length32 = UInt32(length).bigEndian
-                withUnsafeBytes(of: &length32) { prepared.sample.append(contentsOf: $0) }
-                prepared.sample.append(contentsOf: unit)
+                writer.u32BE(UInt32(length))
+                writer.bytes(unit)
             }
         }
+        prepared.sample = writer.data
         return prepared
     }
 
@@ -161,15 +161,15 @@ public enum NvstElementaryStream {
     /// Converts Annex-B to length-prefixed (AVCC/HVCC) form with a 4-byte big-endian length per
     /// NAL unit — the `nal_length_size` VideoToolbox is configured with.
     public static func lengthPrefixed(_ nalUnits: [Data], lengthSize: Int = 4) -> Data {
-        var output = Data()
+        var writer = NvstByteWriter(capacity: nalUnits.reduce(0) { $0 + $1.count + lengthSize })
         for unit in nalUnits {
             let length = UInt32(unit.count)
             for shift in stride(from: (lengthSize - 1) * 8, through: 0, by: -8) {
-                output.append(UInt8((length >> UInt32(shift)) & 0xff))
+                writer.u8(UInt8((length >> UInt32(shift)) & 0xff))
             }
-            output.append(unit)
+            writer.bytes(unit)
         }
-        return output
+        return writer.data
     }
 
     /// Full conversion for one access unit: the picture NAL units in length-prefixed form.

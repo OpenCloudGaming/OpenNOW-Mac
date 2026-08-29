@@ -33,14 +33,24 @@ public final class NvstAudioReceiver: @unchecked Sendable {
 
     private let descriptor: Int32
     private var peer = sockaddr_in()
-    private let queue = DispatchQueue(label: "com.macforcenow.nvst.audio")
+    private let queue = DispatchQueue(label: "com.opennow.nvst.audio")
     private var readSource: DispatchSourceRead?
     private var punchTimer: DispatchSourceTimer?
     private let lock = NSLock()
     private var counters = Counters()
-    private var lastSequence: UInt16?
     private var lastTimestamp: UInt32?
     private var handoff: NVSTVideoHandoff?
+    private var drainBuffer = [UInt8](repeating: 0, count: 4096)
+
+    /// Reorder window, run only on `queue` so it needs no lock. Reordered packets used to be
+    /// counted and discarded, and gaps played through with an audible click; the window holds
+    /// early packets keyed by unwrapped sequence and delivers them in order once the hole fills,
+    /// force-flushing from the lowest held packet when it overflows so sustained loss costs at
+    /// most the window's depth of latency.
+    private let reorderWindow = 8
+    private var nextDelivery: Int64?
+    private var lastSeen: Int64?
+    private var pending: [Int64: (payload: Data, timestamp: UInt32)] = [:]
     /// Checked by the punch timer: cancellation is asynchronous, so a handler already in flight
     /// could otherwise `sendto` a descriptor the read source's cancel handler has closed — and a
     /// closed descriptor number can be reused by something else.
@@ -102,6 +112,10 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     private var closesDescriptorOnDeinit = true
 
     deinit {
+        // Cancelling here covers deallocation after `start()` without `stop()`: the cancel
+        // handler owns the close, and without this it would never run and the descriptor leaked.
+        punchTimer?.cancel()
+        readSource?.cancel()
         if closesDescriptorOnDeinit { close(descriptor) }
     }
 
@@ -112,12 +126,16 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     ///     punch the video socket uses. A literal "PING" leaves the relay silent, which is exactly
     ///     what happened before this.
     public func start(peerIP: String, peerPort: UInt16, handoff: NVSTVideoHandoff) {
-        self.handoff = handoff
         var target = sockaddr_in()
         target.sin_family = sa_family_t(AF_INET)
         target.sin_port = peerPort.bigEndian
         target.sin_addr.s_addr = inet_addr(peerIP)
+        // start/stop run on the caller's thread while punch/drain run on `queue`, so the state
+        // they exchange rides the same lock as the counters.
+        lock.lock()
+        self.handoff = handoff
         peer = target
+        lock.unlock()
         player.start()
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
         source.setEventHandler { [weak self] in self?.drain() }
@@ -138,7 +156,9 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     }
 
     public func stop() {
+        lock.lock()
         isStopped = true
+        lock.unlock()
         punchTimer?.cancel()
         punchTimer = nil
         readSource?.cancel()
@@ -147,9 +167,13 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     }
 
     private func punch() {
-        guard !isStopped else { return }
+        lock.lock()
+        let stopped = isStopped
         var target = peer
-        guard let handoff, let credentials = handoff.iceCredentials,
+        let currentHandoff = handoff
+        lock.unlock()
+        guard !stopped else { return }
+        guard let handoff = currentHandoff, let credentials = handoff.iceCredentials,
               let payload = NvstStunHolePunch.buildNattHolePunchRequest(
                   localUfrag: credentials.localUsernameFragment,
                   pingPayload: handoff.pingPayload,
@@ -167,11 +191,10 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     }
 
     private func drain() {
-        var buffer = [UInt8](repeating: 0, count: 4096)
         for _ in 0..<64 {
-            let received = recv(descriptor, &buffer, buffer.count, 0)
+            let received = recv(descriptor, &drainBuffer, drainBuffer.count, 0)
             if received <= 0 { return }
-            handle(Data(buffer[0..<received]))
+            handle(Data(drainBuffer[0..<received]))
         }
     }
 
@@ -181,46 +204,88 @@ public final class NvstAudioReceiver: @unchecked Sendable {
         counters.bytes += UInt64(datagram.count)
         lock.unlock()
 
-        // RTP: version 2, and enough room for a header.
-        guard datagram.count > 12, datagram[0] >> 6 == 2 else {
+        // The RTP header comes from the shared reader so the truncation rules cannot drift from
+        // the video path. A header-only datagram still counts as non-RTP, as it did before.
+        guard datagram.count > 12 else {
             lock.lock(); counters.nonRtp += 1; lock.unlock()
             return
         }
-        let csrcCount = Int(datagram[0] & 0x0f)
-        var offset = 12 + csrcCount * 4
-        if datagram[0] & 0x10 != 0 {
-            guard datagram.count >= offset + 4 else { return }
-            let words = Int(datagram[offset + 2]) << 8 | Int(datagram[offset + 3])
-            offset += 4 + words * 4
+        var reader = NvstByteReader(datagram)
+        guard let header = try? NvstVideoPacketParser.readHeader(&reader) else {
+            lock.lock(); counters.nonRtp += 1; lock.unlock()
+            return
+        }
+        var offset = header.extensionOffset
+        if header.hasExtension {
+            guard reader.remaining >= 4 else { return }
+            try? reader.skip(2)
+            guard let words = try? reader.u16BE() else { return }
+            offset += 4 + Int(words) * 4
         }
         guard datagram.count > offset else { return }
 
-        let payloadType = datagram[1] & 0x7f
-        let sequence = UInt16(datagram[2]) << 8 | UInt16(datagram[3])
-        let timestamp = (UInt32(datagram[4]) << 24) | (UInt32(datagram[5]) << 16)
-            | (UInt32(datagram[6]) << 8) | UInt32(datagram[7])
+        let payloadType = header.payloadType
+        let sequence = header.sequenceNumber
+        let timestamp = header.timestamp
 
         lock.lock()
         counters.rtpPackets += 1
         counters.payloadTypes[payloadType, default: 0] += 1
+        lock.unlock()
+
+        let unwrapped = unwrap(sequence)
+        if let seen = lastSeen {
+            lastSeen = max(seen, unwrapped)
+        } else {
+            lastSeen = unwrapped
+        }
+        let next = nextDelivery ?? unwrapped
+        if unwrapped < next {
+            lock.lock(); counters.duplicates += 1; lock.unlock()
+            return
+        }
+        let payload = Data(datagram[offset...])
+        if unwrapped == next {
+            deliver(payload, timestamp: timestamp)
+            nextDelivery = unwrapped + 1
+            drainPending()
+        } else if pending[unwrapped] != nil {
+            lock.lock(); counters.duplicates += 1; lock.unlock()
+        } else {
+            pending[unwrapped] = (payload, timestamp)
+            lock.lock(); counters.reordered += 1; lock.unlock()
+            if pending.count > reorderWindow, let lowest = pending.keys.min() {
+                if let delivery = nextDelivery, lowest > delivery {
+                    nextDelivery = lowest
+                    lock.lock(); counters.gaps += 1; lock.unlock()
+                }
+                drainPending()
+            }
+        }
+    }
+
+    private func unwrap(_ sequence: UInt16) -> Int64 {
+        guard let reference = lastSeen else { return Int64(sequence) }
+        let delta = Int16(bitPattern: sequence &- UInt16(truncatingIfNeeded: reference))
+        return reference + Int64(delta)
+    }
+
+    private func drainPending() {
+        guard var sequence = nextDelivery else { return }
+        while let entry = pending.removeValue(forKey: sequence) {
+            deliver(entry.payload, timestamp: entry.timestamp)
+            sequence += 1
+        }
+        nextDelivery = sequence
+    }
+
+    private func deliver(_ payload: Data, timestamp: UInt32) {
+        lock.lock()
         if let previous = lastTimestamp {
             counters.timestampSteps[timestamp &- previous, default: 0] += 1
         }
-        var accept = true
-        if let previous = lastSequence {
-            let delta = Int16(bitPattern: sequence &- previous)
-            if delta == 0 { counters.duplicates += 1; accept = false }
-            else if delta < 0 { counters.reordered += 1; accept = false }
-            else if delta > 1 { counters.gaps += 1 }
-        }
-        if accept {
-            lastSequence = sequence
-            lastTimestamp = timestamp
-        }
+        lastTimestamp = timestamp
         lock.unlock()
-        guard accept else { return }
-
-        let payload = Data(datagram[offset...])
         do {
             if let pcm = try decoder.decode(payload) { player.enqueue(pcm) }
         } catch {
@@ -236,7 +301,7 @@ public final class NvstAudioReceiver: @unchecked Sendable {
 
     public var diagnosticSummary: String {
         "\(snapshot.summary) decoded=\(decoder.decodedPackets) decodeFailed=\(decoder.failedPackets)"
-            + " frames=\(decoder.framesPerPacketSummary) \(player.summary)"
+            + " oversized=\(decoder.oversizedPackets) frames=\(decoder.framesPerPacketSummary) \(player.summary)"
     }
 }
 

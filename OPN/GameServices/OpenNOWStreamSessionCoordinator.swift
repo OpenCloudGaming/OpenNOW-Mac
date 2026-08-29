@@ -183,8 +183,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
-        lock.withLock {
-            signaling?.disconnect()
+        let disconnected = lock.withLock { () -> NVSTWebSocketSignalingClient? in
+            let client = signaling
             signaling = nil
             iceContinuation?.finish()
             iceContinuation = nil
@@ -194,7 +194,9 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             pendingRemoteEndMessage = nil
             offerContinuation = nil
             if activeSession?.id == session.id { activeSession = nil }
+            return client
         }
+        if let disconnected { await disconnected.disconnect() }
         guard shouldReportFinishedSession(reason) else { return }
         let stopError = await stopCloudMatchSession(session)
         if stopError == nil { StreamSessionLimitStartStore.clear(sessionId: session.id) }
@@ -225,8 +227,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     public func cancelSessionStart() async {
-        let cancelled = lock.withLock { () -> (CheckedContinuation<StreamOffer, Error>?, StreamSessionDescriptor?) in
-            signaling?.disconnect()
+        let cancelled = lock.withLock { () -> (CheckedContinuation<StreamOffer, Error>?, StreamSessionDescriptor?, NVSTWebSocketSignalingClient?) in
+            let client = signaling
             signaling = nil
             iceContinuation?.finish()
             iceContinuation = nil
@@ -238,9 +240,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             offerContinuation = nil
             let session = activeSession
             activeSession = nil
-            return (continuation, session)
+            return (continuation, session, client)
         }
         cancelled.0?.resume(throwing: CancellationError())
+        if let client = cancelled.2 { await client.disconnect() }
         if let session = cancelled.1 {
             try? await finishSession(session, reason: .userRequested)
         }
@@ -250,14 +253,14 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         guard let signaling = lock.withLock({ self.signaling }) else {
             throw OpenNOWStreamSessionError.signalingUnavailable
         }
-        signaling.sendAnswerSdp(answer.sdp, nvstSdp: answer.metadata["nvstSdp"] ?? "")
+        await signaling.sendAnswerSdp(answer.sdp, nvstSdp: answer.metadata["nvstSdp"] ?? "")
     }
 
     public func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws {
         guard let signaling = lock.withLock({ self.signaling }) else {
             throw OpenNOWStreamSessionError.signalingUnavailable
         }
-        signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, usernameFragment: candidate.usernameFragment, isEndOfCandidates: candidate.isEndOfCandidates))
+        await signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, usernameFragment: candidate.usernameFragment, isEndOfCandidates: candidate.isEndOfCandidates))
     }
 
     public func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
@@ -300,28 +303,30 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     /// or disturbing the Bifrost/Geronimo client. Gated on OPNProtocolDebug logging.
     private func startNativeSignalingSniffer(sessionInfo: AllocatedStreamSession, descriptor: StreamSessionDescriptor) {
         guard OPNProtocolDebug.loggingEnabled() else { return }
-        let client = NVSTWebSocketSignalingClient(
-            signalingServer: sessionInfo.signalingServer,
-            sessionId: descriptor.id,
-            signalingUrl: sessionInfo.signalingUrl,
-            queryParameters: sessionInfo.signalingQueryParameters,
-            additionalSubprotocols: sessionInfo.signalingHeaders
-        )
-        client.onOffer = { offer in
-            if !offer.nvstSdp.isEmpty {
-                let handoff = (try? JSONSerialization.jsonObject(with: Data(offer.nvstSdp.utf8))) ?? offer.nvstSdp
-                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff", object: handoff)
-            } else {
-                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-offer-empty", object: ["sdpLength": offer.sdp.count])
+        Task { @MainActor in
+            let client = NVSTWebSocketSignalingClient(
+                signalingServer: sessionInfo.signalingServer,
+                sessionId: descriptor.id,
+                signalingUrl: sessionInfo.signalingUrl,
+                queryParameters: sessionInfo.signalingQueryParameters,
+                additionalSubprotocols: sessionInfo.signalingHeaders
+            )
+            client.onOffer = { offer in
+                if !offer.nvstSdp.isEmpty {
+                    let handoff = (try? JSONSerialization.jsonObject(with: Data(offer.nvstSdp.utf8))) ?? offer.nvstSdp
+                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff", object: handoff)
+                } else {
+                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-offer-empty", object: ["sdpLength": offer.sdp.count])
+                }
             }
-        }
-        client.onClosed = { _, _ in
-            OPNProtocolDebug.logJSONObject(label: "nvst-signaling-sniffer-closed", object: ["sessionId": descriptor.id])
-        }
-        client.connect { [weak client] _, _ in
-            // The sniffer holds no state; the client is retained for the offer's lifetime by
-            // the URLSession it owns; nothing further is required here.
-            _ = client
+            client.onClosed = { _, _ in
+                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-sniffer-closed", object: ["sessionId": descriptor.id])
+            }
+            client.connect { [weak client] _, _ in
+                // The sniffer holds no state; the client is retained for the offer's lifetime by
+                // the URLSession it owns; nothing further is required here.
+                _ = client
+            }
         }
     }
 
@@ -536,15 +541,27 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func connectSignaling(sessionInfo: AllocatedStreamSession, settings: [String: Any], descriptor: StreamSessionDescriptor) async throws -> StreamOffer {
         try await withCheckedThrowingContinuation { continuation in
-            let client = NVSTWebSocketSignalingClient(
-                signalingServer: sessionInfo.signalingServer,
-                sessionId: descriptor.id,
-                signalingUrl: sessionInfo.signalingUrl,
-                queryParameters: sessionInfo.signalingQueryParameters,
-                additionalSubprotocols: sessionInfo.signalingHeaders
-            )
+            // Store the continuation synchronously so a concurrent `cancelSessionStart` always
+            // finds and resumes it; the main-actor client work follows and refuses to connect if
+            // the continuation was already taken.
+            lock.withLock {
+                offerContinuation = continuation
+            }
+            // Serialize before the main-actor hop: the raw dictionary is not Sendable.
             let settingsJSON = jsonString(settings)
-            client.onOffer = { [weak self] sessionOffer in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                let client = NVSTWebSocketSignalingClient(
+                    signalingServer: sessionInfo.signalingServer,
+                    sessionId: descriptor.id,
+                    signalingUrl: sessionInfo.signalingUrl,
+                    queryParameters: sessionInfo.signalingQueryParameters,
+                    additionalSubprotocols: sessionInfo.signalingHeaders
+                )
+                client.onOffer = { [weak self] sessionOffer in
                 guard let self else { return }
                 // Capture the NVST video handoff (sanitized) for the Bifrost-free receiver.
                 if !sessionOffer.nvstSdp.isEmpty {
@@ -562,7 +579,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 let offer = StreamOffer(session: descriptor, sdp: sessionOffer.sdp, metadata: metadata)
                 self.resumeOffer(offer)
             }
-            client.onIceCandidate = { [weak self] candidate in
+                client.onIceCandidate = { [weak self] candidate in
                 guard let self else { return }
                 self.handleRemoteIceCandidate(StreamIceCandidate(
                     sdp: candidate.candidate,
@@ -572,7 +589,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                     isEndOfCandidates: candidate.isEndOfCandidates
                 ))
             }
-            client.onClosed = { [weak self] clean, reason in
+                client.onClosed = { [weak self] clean, reason in
                 guard let self else { return }
                 let isWaitingForOffer = self.lock.withLock { self.offerContinuation != nil }
                 guard !clean || isWaitingForOffer else { return }
@@ -583,17 +600,20 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed before receiving an offer." : reason))
             }
 
-            lock.withLock {
-                signaling = client
-                offerContinuation = continuation
-            }
-            client.connect { [weak self] success, error in
-                guard let self else { return }
-                if success {
-                    self.startOfferTimeout(client: client, descriptor: descriptor)
-                    return
+                let installed = self.lock.withLock { () -> Bool in
+                    guard self.offerContinuation != nil else { return false }
+                    self.signaling = client
+                    return true
                 }
-                self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
+                guard installed else { return }
+                client.connect { [weak self] success, error in
+                    guard let self else { return }
+                    if success {
+                        self.startOfferTimeout(client: client, descriptor: descriptor)
+                        return
+                    }
+                    self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
+                }
             }
         }
     }

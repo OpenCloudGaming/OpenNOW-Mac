@@ -147,15 +147,17 @@ public enum NvstAnnexB {
         // consumer GameStream layout.
         if codec == .av1 {
             switch bytes.first {
-            case 0x01: return bytes.count > shortFrameHeaderBytes ? Data(bytes.dropFirst(shortFrameHeaderBytes)) : nil
-            case 0x81: return bytes.count > gfnExtendedFrameHeaderBytes ? Data(bytes.dropFirst(gfnExtendedFrameHeaderBytes)) : nil
+            case 0x01: return bytes.count > shortFrameHeaderBytes ? bytes.dropFirst(shortFrameHeaderBytes) : nil
+            case 0x81: return bytes.count > gfnExtendedFrameHeaderBytes ? bytes.dropFirst(gfnExtendedFrameHeaderBytes) : nil
             default: return nil
             }
         }
         let windowLength = min(bytes.count, maxPictureHeaderBytes)
         let window = bytes.prefix(windowLength)
         guard let (offset, _) = findStartCode(window) else { return nil }
-        return Data(bytes.dropFirst(offset))
+        // A slice sharing the packet's storage: the payload is otherwise discarded after push,
+        // so this spares one copy of up to ~1.4 KB per frame start.
+        return bytes.dropFirst(offset)
     }
 
     /// GFN cloud NVST AV1 frame-header sizes, selected by the payload's first byte.

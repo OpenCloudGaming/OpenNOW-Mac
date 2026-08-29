@@ -230,7 +230,9 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
                 await self?.failPending(ConnectionError.timedOut(method))
                 throw ConnectionError.timedOut(method)
             }
-            let response = try await group.next()!
+            guard let response = try await group.next() else {
+                throw ConnectionError.timedOut(method)
+            }
             group.cancelAll()
             return response
         }
@@ -259,7 +261,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
 
     // MARK: - Internals
 
-    private static let queue = DispatchQueue(label: "com.macforcenow.nvst.rtsp")
+    private static let queue = DispatchQueue(label: "com.opennow.nvst.rtsp")
 
     private func tlsOptions() -> NWProtocolTLS.Options {
         let options = NWProtocolTLS.Options()

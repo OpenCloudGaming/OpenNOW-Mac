@@ -130,4 +130,20 @@ struct NvstAnnexBTests {
         #expect(!sets.isComplete)
         #expect(NvstElementaryStream.pictureNalUnits(in: delta, codec: .h264) == [Data([0x41, 0x9a])])
     }
+
+    /// `prepare` is the single copy-free pass the decoder actually runs, so it must agree with
+    /// the split helpers: parameter sets and the AUD lifted out, the IDR length-prefixed.
+    @Test func prepareSplitsParameterSetsAndLengthPrefixesThePictureInOnePass() {
+        let prepared = NvstElementaryStream.prepare(Self.h264AccessUnit, codec: .h264)
+        #expect(prepared.parameterSets.sequenceParameterSets == [Data([0x67, 0x42, 0xe0])])
+        #expect(prepared.parameterSets.pictureParameterSets == [Data([0x68, 0xce])])
+        #expect(prepared.sample == Data([0x00, 0x00, 0x00, 0x03, 0x65, 0x88, 0x84]))
+    }
+
+    @Test func preparePassesAv1ThroughUntouched() {
+        let unit = Data([0x12, 0x00, 0x0a, 0x0b, 0x0c])
+        let prepared = NvstElementaryStream.prepare(unit, codec: .av1)
+        #expect(prepared.sample == unit)
+        #expect(!prepared.parameterSets.isComplete)
+    }
 }

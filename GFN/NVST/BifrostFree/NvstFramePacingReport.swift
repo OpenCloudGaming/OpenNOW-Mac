@@ -35,7 +35,7 @@ import Foundation
 /// genuine 120 Hz display this should be ~8333 us, and the seat's `framePacing.mode:1` (which this
 /// codebase already announces) paces its own frame generation to match it.
 public struct NvstFramePacingReport: Equatable, Sendable {
-    public static let commandCode: UInt16 = 0x203
+    public static let commandCode = NvstControlCommandCode.clientProcessingTimes
     public static let payloadLength = 28
     static let version: UInt32 = 5
     /// The captured client reports one of these roughly every 6-8 frames.
@@ -55,10 +55,13 @@ public struct NvstFramePacingReport: Equatable, Sendable {
     /// Frames since the previous report — the wire's `+8`.
     public let groupCount: UInt32
 
+    /// `displayVsyncMicroseconds` has no default on purpose: it must be the client's real
+    /// display vsync or the seat's pacer targets the wrong cadence (see the type doc's
+    /// Experiment F), and a default silently reintroduced that bug once before.
     public init(frameNumber: UInt32,
                 targetFrameTimeMicroseconds: UInt32,
                 measuredFrameTimeMicroseconds: UInt32,
-                displayVsyncMicroseconds: UInt32 = 16000,
+                displayVsyncMicroseconds: UInt32,
                 groupCount: UInt32 = framesPerReport) {
         self.frameNumber = frameNumber
         self.targetFrameTimeMicroseconds = targetFrameTimeMicroseconds
@@ -68,17 +71,15 @@ public struct NvstFramePacingReport: Equatable, Sendable {
     }
 
     public var payload: Data {
-        var data = Data(repeating: 0, count: Self.payloadLength)
-        func put32(_ value: UInt32, at offset: Int) {
-            for byte in 0..<4 { data[offset + byte] = UInt8(truncatingIfNeeded: value >> UInt32(byte * 8)) }
-        }
-        put32(Self.version, at: 0)
-        put32(groupCount, at: 8)
-        put32(frameNumber, at: 12)
-        put32(displayVsyncMicroseconds, at: 16)
-        put32(measuredFrameTimeMicroseconds, at: 20)
-        put32(targetFrameTimeMicroseconds, at: 24)
-        return data
+        var writer = NvstByteWriter(capacity: Self.payloadLength)
+        writer.u32LE(Self.version)
+        writer.zeroes(4)
+        writer.u32LE(groupCount)
+        writer.u32LE(frameNumber)
+        writer.u32LE(displayVsyncMicroseconds)
+        writer.u32LE(measuredFrameTimeMicroseconds)
+        writer.u32LE(targetFrameTimeMicroseconds)
+        return writer.data
     }
 
     public var command: NvstControlCommand {

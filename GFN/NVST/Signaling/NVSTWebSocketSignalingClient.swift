@@ -1,8 +1,11 @@
-import Darwin
-import Darwin
 import Foundation
 
-public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+/// All mutable state lives on the main actor. The URLSession delegate callbacks arrive on the
+/// session's private queue, so they stay `nonisolated` and hop to the main actor before touching
+/// anything — the class used to be `@unchecked Sendable` with the same hops scattered inside,
+/// which hid the main-actor requirement of the public API from the compiler.
+@MainActor
+public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate {
     public var onOffer: ((NVSTSessionOffer) -> Void)?
     public var onIceCandidate: ((NVSTIceCandidate) -> Void)?
     public var onClosed: ((Bool, String) -> Void)?
@@ -103,7 +106,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         sendPeerMessage(candidate.dictionary)
     }
 
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+    nonisolated public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
@@ -117,7 +120,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         }
     }
 
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -141,7 +144,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         }
     }
 
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+    nonisolated public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         Task { @MainActor [weak self] in
             guard let self else { return }

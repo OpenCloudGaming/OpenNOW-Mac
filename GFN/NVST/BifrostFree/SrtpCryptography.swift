@@ -15,17 +15,21 @@ import Foundation
 ///   sequence at 10..12).
 /// - AAD is the RTP header + the 16-byte "GS" extension (everything before ciphertext).
 ///
-/// AES block/CTR use CommonCrypto. The truncated-tag GCM AEAD step is exercised in
-/// `SrtpGcm` once the GHASH convention is finalized; the byte-level IV/key geometry lives here.
+/// AES block/CTR use CommonCrypto. The truncated-tag GCM AEAD step lives in `SrtpGcm8`; the
+/// `GHash` below is a test-only reference implementation of the GHASH convention.
 
 public enum SrtpCryptoError: LocalizedError, Equatable, Sendable {
     case invalidKeyLength
+    case invalidNonce
+    case invalidTagLength
     case cryptorError(String)
     case authenticationFailed
 
     public var errorDescription: String? {
         switch self {
         case .invalidKeyLength: "SRTP key must be 16 or 32 bytes."
+        case .invalidNonce: "SRTP nonce must be 12 bytes."
+        case .invalidTagLength: "SRTP authentication tag must be 4 to 16 bytes."
         case .cryptorError(let reason): "Crypto error: \(reason)"
         case .authenticationFailed: "SRTP authentication tag mismatch."
         }
@@ -104,33 +108,18 @@ public struct SrtpGcm8 {
         return Data(block)
     }
 
-    private func s0(iv: Data) throws -> Data {
-        try SrtpCryptor.blockEncrypt(key: key, block: Self.j0(iv: iv))
-    }
-
-    /// Counter keystream for GCM payload, starting at J0 + 1.
-    private func counterStream(iv: Data, length: Int) throws -> Data {
-        var counter = [UInt8](Self.j0(iv: iv))
-        var carry = true
-        var index = counter.count - 1
-        while carry && index >= 0 {
-            if counter[index] == 0xff { counter[index] = 0; index -= 1 } else { counter[index] &+= 1; carry = false }
-        }
-        return try SrtpCryptor.counterKeystream(key: key, counter: Data(counter), length: length)
-    }
-
     /// CTR keystream for the GCM counter starting at J0+1, length bytes.
     ///
     /// Sealing zeroes yields the keystream itself, which keeps this on the CPU's AES instructions
     /// and out of CommonCrypto's per-call cryptor setup.
     public func mask(iv: Data, length: Int) throws -> Data {
-        guard iv.count == 12 else { throw SrtpCryptoError.invalidKeyLength }
+        guard iv.count == 12 else { throw SrtpCryptoError.invalidNonce }
         return try hardwareSeal(iv: iv, aad: Data(), plaintext: Data(count: length)).ciphertext
     }
 
     /// Full 16-byte GCM authentication tag for the given nonce/AAD/ciphertext.
     public func authenticationTag(iv: Data, aad: Data, ciphertext: Data) throws -> Data {
-        guard iv.count == 12 else { throw SrtpCryptoError.invalidKeyLength }
+        guard iv.count == 12 else { throw SrtpCryptoError.invalidNonce }
         let plaintext = try decryptWithoutAuthenticating(iv: iv, ciphertext: ciphertext)
         return try hardwareSeal(iv: iv, aad: aad, plaintext: plaintext).tag
     }
@@ -178,7 +167,7 @@ public struct SrtpGcm8 {
 
     /// Encrypts plaintext with the truncated tag appended (tests and diagnostics).
     public func seal(iv: Data, aad: Data, plaintext: Data, tagLength: Int = 8) throws -> Data {
-        guard iv.count == 12 else { throw SrtpCryptoError.invalidKeyLength }
+        guard iv.count == 12 else { throw SrtpCryptoError.invalidNonce }
         let sealed = try hardwareSeal(iv: iv, aad: aad, plaintext: plaintext)
         return sealed.ciphertext + sealed.tag.prefix(tagLength)
     }
@@ -186,9 +175,19 @@ public struct SrtpGcm8 {
     /// Decrypts ciphertext (without the tag) and authenticates the truncated tag. NVIDIA's
     /// Mjolnir policy uses an 8-byte tag; a seat that advertises the plain `AEAD_AES_*_GCM`
     /// profile uses RFC 7714's 16.
+    ///
+    /// The two passes are structural, not laziness: CryptoKit's `AES.GCM.open` demands a full
+    /// 16-byte tag, and neither CryptoKit nor any Apple API exposes GHASH or a truncated-tag
+    /// open, so authenticating an 8-byte tag means regenerating the tag by re-sealing the
+    /// recovered plaintext (one CTR pass per direction). CommonCrypto's one-shot GCM would take
+    /// a single pass but measured ~129 µs per packet here — its per-call cryptor setup costs
+    /// more than both CryptoKit passes together — and `GHash` in portable Swift is three
+    /// orders of magnitude slower still. The regenerated-ciphertext comparison is a redundant
+    /// check (the tag already authenticates the ciphertext) but a free one, so it stays.
     public func decrypt(iv: Data, aad: Data, ciphertext: Data, authenticationTag: Data) throws -> Data {
         let tagLength = authenticationTag.count
-        guard iv.count == 12, (4...16).contains(tagLength) else { throw SrtpCryptoError.invalidKeyLength }
+        guard iv.count == 12 else { throw SrtpCryptoError.invalidNonce }
+        guard (4...16).contains(tagLength) else { throw SrtpCryptoError.invalidTagLength }
         let plaintext = try decryptWithoutAuthenticating(iv: iv, ciphertext: ciphertext)
         let sealed = try hardwareSeal(iv: iv, aad: aad, plaintext: plaintext)
         guard sealed.ciphertext == ciphertext,
@@ -274,7 +273,8 @@ public enum SrtpKeyDerivation {
     }
 
     /// RFC 7714 §9.1: 12-byte nonce = session salt XOR (SSRC at 2..6, ROC at 6..10, seq at 10..12).
-    public static func gcmIV(sessionSalt: Data, ssrc: UInt32, rolloverCounter: UInt32, sequenceNumber: UInt16) -> Data {
+    public static func gcmIV(sessionSalt: Data, ssrc: UInt32, rolloverCounter: UInt32, sequenceNumber: UInt16) throws -> Data {
+        guard sessionSalt.count == 12 else { throw SrtpCryptoError.invalidNonce }
         var iv = [UInt8](sessionSalt)
         let ssrcBytes = Self.bigEndianBytes(ssrc)
         let rocBytes = Self.bigEndianBytes(rolloverCounter)
@@ -309,6 +309,17 @@ public struct SrtpReplayWindow {
             return ((roc &- 1) << 16) | UInt64(sequenceNumber)
         }
         return (roc << 16) | UInt64(sequenceNumber)
+    }
+
+    /// Whether `accept` would take this index, without advancing the window. RFC 3711 §3.3.2:
+    /// the replay check runs before decryption so replays never pay the GCM cost, but the list
+    /// must not update until the packet authenticates — a forged packet must not be able to
+    /// advance the window and age out real ones.
+    public func wouldAccept(_ index: UInt64) -> Bool {
+        guard let highest = highestIndex else { return true }
+        if index > highest { return true }
+        let age = highest - index
+        return age < 64 && (seen & (1 << age)) == 0
     }
 
     public mutating func accept(_ index: UInt64) -> Bool {

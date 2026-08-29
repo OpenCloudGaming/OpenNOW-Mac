@@ -77,8 +77,11 @@ public struct NvstInboundCounters: Equatable, Sendable {
             return
         }
         let messageType = (UInt16(datagram[datagram.startIndex]) << 8) | UInt16(datagram[datagram.startIndex + 1])
+        // RFC 5389 message class lives in bits 4 and 8: 0x0000 request, 0x0010 indication,
+        // 0x0100 success, 0x0110 error. Indications fold into the request bucket so the error
+        // bucket only ever counts real error responses.
         switch messageType & 0x0110 {
-        case 0x0000: stunRequests += 1
+        case 0x0000, 0x0010: stunRequests += 1
         case 0x0100: stunSuccessResponses += 1
         default: stunErrorResponses += 1
         }

@@ -102,20 +102,21 @@ public enum NvstStunHolePunch {
                                          attributes: [(UInt16, Data)],
                                          integrityKey: Data) -> Data? {
         guard transactionID.count == 12 else { return nil }
-        var header = Data()
-        header.appendBigEndian(messageType)
-        header.appendBigEndian(UInt16(0)) // length placeholder
-        header.append(contentsOf: [UInt8(0x21), UInt8(0x12), UInt8(0xa4), UInt8(0x42)])
-        header.append(transactionID)
+        var headerWriter = NvstByteWriter(capacity: 20)
+        headerWriter.u16BE(messageType)
+        headerWriter.u16BE(0) // length placeholder
+        headerWriter.bytes([0x21, 0x12, 0xa4, 0x42])
+        headerWriter.bytes(transactionID)
+        var header = headerWriter.data
 
         var body = Data()
         for (type, value) in attributes {
-            body.appendAttribute(type: type, value: value)
+            appendAttribute(to: &body, type: type, value: value)
         }
         let integrityPlaceholder = [UInt8](repeating: 0, count: 20)
-        body.appendAttribute(type: NvstStunAttribute.messageIntegrity, value: Data(integrityPlaceholder))
+        appendAttribute(to: &body, type: NvstStunAttribute.messageIntegrity, value: Data(integrityPlaceholder))
 
-        header.replaceSubrange(2..<4, with: UInt16(body.count).bigEndianBytes())
+        header.replaceSubrange(2..<4, with: lengthField(UInt16(body.count)))
 
         // HMAC covers the message up to the start of MESSAGE-INTEGRITY (its 4-byte header and
         // 20-byte value are both excluded).
@@ -129,11 +130,13 @@ public enum NvstStunHolePunch {
         }
         body.replaceSubrange((body.count - 20)..<body.count, with: hmac)
 
-        header.replaceSubrange(2..<4, with: UInt16(body.count + 8).bigEndianBytes())
+        header.replaceSubrange(2..<4, with: lengthField(UInt16(body.count + 8)))
         var fingerprintInput = header
         fingerprintInput.append(body)
         let fingerprint = NvstCrc32.crc32(fingerprintInput) ^ fingerprintXor
-        body.appendAttribute(type: NvstStunAttribute.fingerprint, value: fingerprint.bigEndianBytes())
+        var fingerprintValue = NvstByteWriter(capacity: 4)
+        fingerprintValue.u32BE(fingerprint)
+        appendAttribute(to: &body, type: NvstStunAttribute.fingerprint, value: fingerprintValue.data)
 
         var packet = header
         packet.append(body)
@@ -142,10 +145,14 @@ public enum NvstStunHolePunch {
 
     /// The 12-byte transaction id of an inbound STUN message, when it is a Binding Request.
     public static func bindingRequestTransactionID(_ packet: Data) -> Data? {
-        guard packet.count >= 20,
-              packet.readUInt32BE(at: 4) == stunMagicCookie,
-              packet.readUInt16BE(at: 0) == stunBindingRequest else { return nil }
-        return Data(packet[(packet.startIndex + 8)..<(packet.startIndex + 20)])
+        guard packet.count >= 20 else { return nil }
+        var reader = NvstByteReader(packet)
+        guard let messageType = try? reader.u16BE(),
+              messageType == stunBindingRequest,
+              (try? reader.skip(2)) != nil,
+              let cookie = try? reader.u32BE(),
+              cookie == stunMagicCookie else { return nil }
+        return try? reader.bytes(12)
     }
 
     /// NATT hole punch: USERNAME = `pingPayload:localUfrag`, HMAC keyed by the remote password.
@@ -154,53 +161,44 @@ public enum NvstStunHolePunch {
         return buildBindingRequest(transactionID: transactionID, username: username, integrityKey: remotePassword)
     }
 
-    /// Validates FINGERPRINT + MESSAGE-INTEGRITY and extracts the XOR-MAPPED-ADDRESS.
+    /// Validates FINGERPRINT + MESSAGE-INTEGRITY and extracts the XOR-MAPPED-ADDRESS. A
+    /// non-success message type returns nil, indistinguishable from unrelated traffic — callers
+    /// that need to tell a seat's STUN error from noise should classify with
+    /// `validateBindingResponse` first.
     public static func parseBindingResponse(_ packet: Data, integrityKey: Data, transactionID: Data) throws -> NvstSocketEndpoint? {
-        guard packet.count >= 20,
-              UInt32(packet[0]) != 0 || (packet[0] & 0xc0) == 0 else { throw NvstStunError.notStun }
-        guard packet.readUInt32BE(at: 4) == stunMagicCookie else { throw NvstStunError.notStun }
-        let messageType = packet.readUInt16BE(at: 0)
+        guard packet.count >= 20 else { throw NvstStunError.notStun }
+        var reader = NvstByteReader(packet)
+        guard let messageType = try? reader.u16BE(),
+              let declaredLength = try? reader.u16BE(),
+              let cookie = try? reader.u32BE() else { throw NvstStunError.notStun }
+        guard cookie == stunMagicCookie else { throw NvstStunError.notStun }
         if messageType != stunBindingSuccessResponse { return nil }
-        guard packet.count == 20 + Int(packet.readUInt16BE(at: 2)) else { throw NvstStunError.malformed("length") }
-        guard packet[8..<20].elementsEqual(transactionID) else { throw NvstStunError.malformed("transaction id") }
+        guard packet.count == 20 + Int(declaredLength) else { throw NvstStunError.malformed("length") }
+        guard let transaction = try? reader.bytes(12), transaction == transactionID else { throw NvstStunError.malformed("transaction id") }
 
         // FINGERPRINT covers everything before it.
-        guard let (fingerprintOffset, fingerprintValue) = attribute(packet, type: NvstStunAttribute.fingerprint) else {
-            throw NvstStunError.malformed("missing fingerprint")
-        }
-        guard fingerprintValue.count == 4 else { throw NvstStunError.malformed("fingerprint length") }
-        let expected = NvstCrc32.crc32(packet[..<fingerprintOffset]) ^ fingerprintXor
-        guard fingerprintValue.readUInt32BE(at: 0) == expected else { throw NvstStunError.invalidFingerprint }
-
+        guard fingerprintMatches(packet) == true else { throw NvstStunError.invalidFingerprint }
         // MESSAGE-INTEGRITY covers the message through its own attribute, with length adjusted.
-        guard let (integrityOffset, integrity) = attribute(packet, type: NvstStunAttribute.messageIntegrity), integrity.count == 20 else {
-            throw NvstStunError.invalidIntegrity
-        }
-        var adjusted = packet[..<(integrityOffset + 24)]
-        adjusted.replaceSubrange(2..<4, with: UInt16(integrityOffset + 24 - 20).bigEndianBytes())
-        var hmac = [UInt8](repeating: 0, count: 20)
-        integrityKey.withUnsafeBytes { keyBytes in
-            adjusted.withUnsafeBytes { inputBytes in
-                CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA1), keyBytes.baseAddress, integrityKey.count, inputBytes.baseAddress, inputBytes.count, &hmac)
-            }
-        }
-        guard hmac.elementsEqual(integrity) else { throw NvstStunError.invalidIntegrity }
+        guard integrityMatches(packet, key: integrityKey) == true else { throw NvstStunError.invalidIntegrity }
 
         guard let mappedAttribute = attribute(packet, type: NvstStunAttribute.xorMappedAddress) else {
             throw NvstStunError.missingMappedAddress
         }
         let mapped = mappedAttribute.value
         guard mapped.count >= 8 else { throw NvstStunError.missingMappedAddress }
-        let family = mapped[1]
-        let port = mapped.readUInt16BE(at: 2) ^ UInt16(truncatingIfNeeded: stunMagicCookie >> 16)
+        var mappedReader = NvstByteReader(mapped)
+        guard (try? mappedReader.skip(1)) != nil,
+              let family = try? mappedReader.u8(),
+              let xorPort = try? mappedReader.u16BE() else { throw NvstStunError.missingMappedAddress }
+        let port = xorPort ^ UInt16(truncatingIfNeeded: stunMagicCookie >> 16)
         var host = "?"
         if family == 0x01, mapped.count >= 8 {
-            let address = mapped.readUInt32BE(at: 4) ^ stunMagicCookie
+            let address = ((try? mappedReader.u32BE()) ?? 0) ^ stunMagicCookie
             host = "\(address >> 24 & 0xff).\(address >> 16 & 0xff).\(address >> 8 & 0xff).\(address & 0xff)"
-        } else if family == 0x02, mapped.count >= 20 {
+        } else if family == 0x02, mapped.count >= 20, transactionID.count >= 12 {
             var addr = [UInt8](repeating: 0, count: 16)
-            for index in 0..<4 { addr[index] = mapped[4 + index] ^ UInt8((stunMagicCookie >> (8 * (3 - index))) & 0xff) }
-            for index in 0..<12 { addr[4 + index] = mapped[8 + index] ^ transactionID[index] }
+            for index in 0..<4 { addr[index] = mapped[mapped.startIndex + 4 + index] ^ UInt8((stunMagicCookie >> (8 * (3 - index))) & 0xff) }
+            for index in 0..<12 { addr[4 + index] = mapped[mapped.startIndex + 8 + index] ^ transactionID[transactionID.startIndex + index] }
             host = Self.formatIPv6(addr)
         }
         return NvstSocketEndpoint(host: host, port: port)
@@ -208,30 +206,90 @@ public enum NvstStunHolePunch {
 
     /// Builds a XOR-MAPPED-ADDRESS STUN value (family byte + x-port + x-address).
     public static func xorMappedAddress(host: String, port: UInt16, transactionID: Data) -> Data? {
-        var value = Data([0x00, 0x01]) // IPv4
         let addr = host.split(separator: ".").compactMap { UInt8($0) }
-        if addr.count == 4 {
-            value.appendBigEndian(port ^ UInt16(truncatingIfNeeded: stunMagicCookie >> 16))
-            let address = UInt32(addr[0]) << 24 | UInt32(addr[1]) << 16 | UInt32(addr[2]) << 8 | UInt32(addr[3])
-            value.appendBigEndian(address ^ stunMagicCookie)
-            return value
+        guard addr.count == 4 else { return nil }
+        var writer = NvstByteWriter(capacity: 12)
+        writer.bytes([0x00, 0x01]) // IPv4
+        writer.u16BE(port ^ UInt16(truncatingIfNeeded: stunMagicCookie >> 16))
+        let address = UInt32(addr[0]) << 24 | UInt32(addr[1]) << 16 | UInt32(addr[2]) << 8 | UInt32(addr[3])
+        writer.u32BE(address ^ stunMagicCookie)
+        return writer.data
+    }
+
+    /// FINGERPRINT validity, or nil when the attribute is absent.
+    private static func fingerprintMatches(_ packet: Data) -> Bool? {
+        guard let (offset, value) = attribute(packet, type: NvstStunAttribute.fingerprint) else { return nil }
+        guard value.count == 4 else { return false }
+        let expected = NvstCrc32.crc32(packet[..<offset]) ^ fingerprintXor
+        var reader = NvstByteReader(value)
+        return (try? reader.u32BE()) == expected
+    }
+
+    /// MESSAGE-INTEGRITY validity, or nil when the attribute is absent.
+    private static func integrityMatches(_ packet: Data, key: Data) -> Bool? {
+        guard let (offset, value) = attribute(packet, type: NvstStunAttribute.messageIntegrity) else { return nil }
+        guard value.count == 20 else { return false }
+        var adjusted = packet[..<(offset + 24)]
+        adjusted.replaceSubrange(2..<4, with: lengthField(UInt16(offset + 24 - 20)))
+        var hmac = [UInt8](repeating: 0, count: 20)
+        key.withUnsafeBytes { keyBytes in
+            adjusted.withUnsafeBytes { inputBytes in
+                CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA1), keyBytes.baseAddress, key.count, inputBytes.baseAddress, inputBytes.count, &hmac)
+            }
+        }
+        return hmac.elementsEqual(value)
+    }
+
+    /// Validates a Binding Success as far as its own attributes allow: magic cookie, declared
+    /// length and transaction ID always; MESSAGE-INTEGRITY and FINGERPRINT whenever present. ICE
+    /// mandates integrity on responses, but a seat that omits an optional attribute must not
+    /// silence the RTT feed, so absence degrades to the transaction match rather than failing —
+    /// while a present-but-wrong attribute still rejects the packet.
+    public static func validateBindingResponse(_ packet: Data, integrityKey: Data, transactionID: Data) -> Bool {
+        guard packet.count >= 20 else { return false }
+        var reader = NvstByteReader(packet)
+        guard let messageType = try? reader.u16BE(),
+              let declaredLength = try? reader.u16BE(),
+              let cookie = try? reader.u32BE() else { return false }
+        guard cookie == stunMagicCookie, messageType == stunBindingSuccessResponse else { return false }
+        guard packet.count == 20 + Int(declaredLength) else { return false }
+        guard let transaction = try? reader.bytes(12), transaction == transactionID else { return false }
+        if let valid = fingerprintMatches(packet), !valid { return false }
+        if let valid = integrityMatches(packet, key: integrityKey), !valid { return false }
+        return true
+    }
+
+    private static func attribute(_ packet: Data, type: UInt16) -> (offset: Int, value: Data)? {
+        var reader = NvstByteReader(packet)
+        guard (try? reader.skip(20)) != nil else { return nil }
+        while reader.remaining >= 4 {
+            let attributeOffset = packet.count - reader.remaining
+            guard let attributeType = try? reader.u16BE(),
+                  let length = try? reader.u16BE(),
+                  let value = try? reader.bytes(Int(length)) else { return nil }
+            if attributeType == type {
+                return (attributeOffset, value)
+            }
+            let padded = (Int(length) + 3) & ~3
+            guard (try? reader.skip(padded - Int(length))) != nil else { return nil }
         }
         return nil
     }
 
-    private static func attribute(_ packet: Data, type: UInt16) -> (offset: Int, value: Data)? {
-        var offset = 20
-        while offset + 4 <= packet.count {
-            let attributeType = packet.readUInt16BE(at: offset)
-            let length = Int(packet.readUInt16BE(at: offset + 2))
-            let valueStart = offset + 4
-            guard valueStart + length <= packet.count else { return nil }
-            if attributeType == type {
-                return (offset, Data(packet[valueStart..<(valueStart + length)]))
-            }
-            offset = valueStart + ((length + 3) & ~3)
-        }
-        return nil
+    /// One TLV attribute with RFC 5389's 4-byte padding.
+    private static func appendAttribute(to data: inout Data, type: UInt16, value: Data) {
+        var writer = NvstByteWriter(capacity: 4 + value.count + 3)
+        writer.u16BE(type)
+        writer.u16BE(UInt16(value.count))
+        writer.bytes(value)
+        writer.zeroes(((value.count + 3) & ~3) - value.count)
+        data.append(writer.data)
+    }
+
+    private static func lengthField(_ value: UInt16) -> Data {
+        var writer = NvstByteWriter(capacity: 2)
+        writer.u16BE(value)
+        return writer.data
     }
 
     private static func formatIPv6(_ octets: [UInt8]) -> String {
@@ -243,40 +301,4 @@ public enum NvstStunHolePunch {
     }
 }
 
-private extension Data {
-    mutating func appendBigEndian(_ value: UInt16) {
-        append(contentsOf: value.bigEndianBytes())
-    }
 
-    mutating func appendBigEndian(_ value: UInt32) {
-        append(contentsOf: value.bigEndianBytes())
-    }
-
-    mutating func appendAttribute(type: UInt16, value: Data) {
-        appendBigEndian(type)
-        appendBigEndian(UInt16(value.count))
-        append(contentsOf: value)
-        let padded = (value.count + 3) & ~3
-        if padded > value.count { append(contentsOf: [UInt8](repeating: 0, count: padded - value.count)) }
-    }
-
-    func readUInt16BE(at offset: Int) -> UInt16 {
-        UInt16(self[offset]) << 8 | UInt16(self[offset + 1])
-    }
-
-    func readUInt32BE(at offset: Int) -> UInt32 {
-        UInt32(self[offset]) << 24 | UInt32(self[offset + 1]) << 16 | UInt32(self[offset + 2]) << 8 | UInt32(self[offset + 3])
-    }
-}
-
-private extension UInt16 {
-    func bigEndianBytes() -> Data {
-        Data([UInt8(self >> 8), UInt8(self & 0xff)])
-    }
-}
-
-private extension UInt32 {
-    func bigEndianBytes() -> Data {
-        Data([UInt8(self >> 24), UInt8(self >> 16 & 0xff), UInt8(self >> 8 & 0xff), UInt8(self & 0xff)])
-    }
-}

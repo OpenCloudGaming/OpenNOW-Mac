@@ -43,19 +43,31 @@ public enum NvstReedSolomon {
 
     static func inverse(_ a: UInt8) -> UInt8 { tables.inv[Int(a)] }
 
-    /// destination ^= coefficient * source, element-wise.
+    /// destination ^= coefficient * source, element-wise, through raw buffers: the inner loop
+    /// runs the length of a shard, and dropping the per-index bounds checks is a measurable win
+    /// on exactly the path that runs when the network is already stressed.
     private static func addScaled(_ destination: inout [UInt8], _ source: [UInt8], by coefficient: UInt8) {
         guard coefficient != 0 else { return }
+        let length = min(destination.count, source.count)
+        guard length > 0 else { return }
         if coefficient == 1 {
-            for index in 0..<min(destination.count, source.count) { destination[index] ^= source[index] }
+            destination.withUnsafeMutableBufferPointer { dst in
+                source.withUnsafeBufferPointer { src in
+                    for index in 0..<length { dst[index] ^= src[index] }
+                }
+            }
             return
         }
         let logC = Int(tables.log[Int(coefficient)])
         let exp = tables.exp
         let log = tables.log
-        for index in 0..<min(destination.count, source.count) {
-            let value = source[index]
-            if value != 0 { destination[index] ^= exp[logC + Int(log[Int(value)])] }
+        destination.withUnsafeMutableBufferPointer { dst in
+            source.withUnsafeBufferPointer { src in
+                for index in 0..<length {
+                    let value = src[index]
+                    if value != 0 { dst[index] ^= exp[logC + Int(log[Int(value)])] }
+                }
+            }
         }
     }
 
@@ -92,7 +104,11 @@ public enum NvstReedSolomon {
     /// `shards` holds `dataCount + parityCount` slots in shard order (data first), `nil` where the
     /// shard never arrived. Every present shard must be `size` bytes. Returns the recovered data
     /// shards keyed by data index, or nil when too few shards survive.
-    public static func recover(shards: [[UInt8]?], dataCount: Int, parityCount: Int, size: Int) -> [Int: [UInt8]]? {
+    ///
+    /// The array is `inout` so consumed shards are moved out rather than copied: Gauss-Jordan
+    /// mutates every shard it touches, and a shard still referenced by the caller's array would
+    /// copy-on-write on each mutation. Consumed slots are left `nil`.
+    public static func recover(shards: inout [[UInt8]?], dataCount: Int, parityCount: Int, size: Int) -> [Int: [UInt8]]? {
         guard dataCount > 0, parityCount > 0, dataCount + parityCount <= maximumShards,
               shards.count == dataCount + parityCount else { return nil }
         let missingData = (0..<dataCount).filter { shards[$0] == nil }
@@ -105,6 +121,7 @@ public enum NvstReedSolomon {
         var values: [[UInt8]] = []
         for dataIndex in 0..<dataCount {
             guard let shard = shards[dataIndex], shard.count == size else { continue }
+            shards[dataIndex] = nil
             var row = [UInt8](repeating: 0, count: dataCount)
             row[dataIndex] = 1
             rows.append(row)
@@ -112,6 +129,7 @@ public enum NvstReedSolomon {
         }
         for parityIndex in 0..<parityCount where rows.count < dataCount {
             guard let shard = shards[dataCount + parityIndex], shard.count == size else { continue }
+            shards[dataCount + parityIndex] = nil
             var row = [UInt8](repeating: 0, count: dataCount)
             for dataIndex in 0..<dataCount {
                 row[dataIndex] = parityCoefficient(parityCount: parityCount, dataIndex: dataIndex, parityIndex: parityIndex)

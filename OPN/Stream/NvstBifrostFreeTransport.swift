@@ -3,7 +3,7 @@ import CoreMedia
 import CoreVideo
 import Foundation
 
-/// NVST transport with **no NVIDIA libraries**: MacForce Now's own RTSP control plane, raw-SRTP
+/// NVST transport with **no NVIDIA libraries**: OpenNOW's own RTSP control plane, raw-SRTP
 /// Mjolnir video receiver, and VideoToolbox decode.
 ///
 /// Pipeline, in the order the official client establishes it:
@@ -15,10 +15,12 @@ import Foundation
 /// 4. Access units decode through VideoToolbox and are published as `NativeNVSTVideoFrame`s and
 ///    decoded `CVPixelBuffer`s.
 ///
-/// Scope limit worth stating plainly: input, audio and microphone ride the ICE/DTLS bundle's SCTP
-/// data channels, which this transport does not bring up yet. Until it does, the feedback plane
-/// stays on the Mjolnir socket's SRTCP (`general.rtcpOnSctp:0`) and input calls fail loudly rather
-/// than silently dropping events.
+/// Input, audio and the RTCP feedback plane ride the ICE/DTLS bundle's SCTP data channels, which
+/// this transport brings up through `NvstWebRtcBundle` when the seat negotiates the official
+/// cloud path; the bare Mjolnir socket keeps carrying video and its own SRTCP reports on the
+/// legacy shape. Microphone capture is the remaining scope limit: its configuration is accepted
+/// (the host applies it before `start`, so throwing there would kill every launch) but enabling
+/// capture is not implemented.
 /// This is the only transport. `OPN_NVST_BIFROST_FREE` and the
 /// `OPNNVSTBifrostFreeTransportEnabled` default selected it back when the vendored NVIDIA
 /// frameworks still shipped alongside it; `vendor/gfn-runtime/` is gone, so there is nothing left to
@@ -116,7 +118,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
     }
     private(set) var textCharactersTyped = 0
-    private(set) var textCharactersDropped = 0
+    private(set) var textBytesDropped = 0
     private var gamepadSequence: UInt16 = 0
     private var didRegisterGamepad = false
     private(set) var gamepadPacketsSent = 0
@@ -124,6 +126,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     private var didActivateInput = false
     private(set) var qosReportsSent = 0
     private(set) var qosReportFailures = 0
+    private(set) var rtpStatsReportsSent = 0
+    private(set) var controlStatsReportsSent = 0
+    private var lastRtpStatsFrame: UInt64 = 0
+    private var controlStatsLastSentAt: Date?
     private var lastIdrRequestAt: Date?
     private var idrRequestsSent = 0
     private var lastInvalidationAt: Date?
@@ -136,8 +142,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// Set once the bundle comes up; owned by the shared clock so the off-actor video pipeline
     /// stamps its acks from the same origin.
     private var sessionStartedAt: Date? { clock.startDate }
-    private var inputHeartbeatTask: Task<Void, Never>?
-    private var inputHeartbeatsSent = 0
+    /// Set the moment teardown begins, so a late channel-open callback cannot restart a feedback
+    /// loop teardown has just cancelled.
+    private var isTornDown = false
 
     /// The frame rate the user configured, passed in from the view that already holds it reliably.
     /// The allocation JSON is re-parsed as a fallback, but that has proven fragile — when its fps
@@ -339,7 +346,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         logger?("NVST audio tracks=\(bundle?.remoteAudioTrackCount ?? 0) pktIn=\(audio?.packets ?? 0) bytesIn=\(audio?.bytes ?? 0)"
                 + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0)")
         let video = videoPipeline?.snapshot ?? NvstVideoPipeline.Counters()
-        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDropped=\(textCharactersDropped) inputHb=\(inputHeartbeatsSent) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
+        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
         // Which pipeline stage a latency spike lives in. `peak*` are per-stage session maxima, so a
         // single 500 ms stall is still visible after the average has recovered.
         logger?(String(format: "NVST frame stages slow=%d frames=%llu resyncs=%d skipped=%d abandoned=%d lastLatency=%.1fms inputSendTotal=%.0fms inputSendPeak=%.1fms",
@@ -376,7 +383,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
         if let sender = feedbackSender, let ssrc = receiver.stats.boundSSRC {
             sender.updateMediaSSRC(ssrc)
-            sender.updateMediaState(highestExtendedSequence: receiver.stats.highestSequence, cumulativeLost: 0)
+            sender.updateMediaState(highestExtendedSequence: receiver.stats.highestSequence,
+                                    cumulativeLost: receiver.stats.lastCumulativeLost,
+                                    fractionLost: receiver.stats.lastFractionLost,
+                                    interarrivalJitter: receiver.stats.lastJitter)
         }
     }
 
@@ -543,6 +553,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 senderSSRC: 0x4f4e_4f57,
                 mediaSSRC: 0
             )
+            // RR values straight from the receiver on each emit, so the seat's congestion
+            // controller sees real loss and jitter rather than the flat zeros of an
+            // updateMediaState snapshot that only refreshes on the log cadence.
+            sender.setReportProvider { [weak receiver] in receiver?.receiverReportBlock() }
             clock.start()
             bundle.onInputProtocolNegotiated = { [weak self] version in
                 Task { await self?.inputDidNegotiate(version) }
@@ -634,7 +648,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// command `0x200` every 3 s; the first one goes out immediately, because the seat's timer is
     /// already running by the time the association is up.
     private func startControlKeepAlive() {
-        guard controlKeepAliveTask == nil else { return }
+        guard !isTornDown, controlKeepAliveTask == nil else { return }
         logger?("NVST control keepalive started (\(Int(NvstControlCommand.pingBackIntervalSeconds))s)")
         controlKeepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -679,12 +693,14 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// the same title. The captured client sends command `0x207` on
     /// `control_channel_partially_reliable` at about 18 Hz.
     private func startQosFeedback() {
-        guard qosFeedbackTask == nil else { return }
+        guard !isTornDown, qosFeedbackTask == nil else { return }
         logger?("NVST QoS feedback started (\(String(format: "%.0f", 1 / NvstQosReport.interval))/s)")
         qosFeedbackTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.sendQosReport()
+                await self.sendRtpStatsIfNeeded()
+                await self.sendControlChannelStatsIfNeeded()
                 try? await Task.sleep(for: .seconds(NvstQosReport.interval))
             }
         }
@@ -747,10 +763,61 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
     }
 
+    /// The client's RTP receive statistics (`0x208`) with its NACK statistics companion
+    /// (`0x20a`), sent together every `NvstRtpStatsReport.frameInterval` emitted frames — the
+    /// frame-gated cadence of the official `sendRtpStats` builder. The fields carry what this
+    /// pipeline actually measures; the NACK report is all zeros because this client does not
+    /// send NACKs, exactly the payload the official client sends before its receiver exists.
+    private func sendRtpStatsIfNeeded() {
+        guard let bundle, let receiver else { return }
+        let stats = receiver.stats
+        let frame = stats.framesEmitted
+        guard frame >= lastRtpStatsFrame + NvstRtpStatsReport.frameInterval else { return }
+        lastRtpStatsFrame = frame
+        let frameNumber = UInt32(truncatingIfNeeded: frame)
+        let report = NvstRtpStatsReport(
+            frameNumber: frameNumber,
+            totalReceivedPackets: stats.authenticatedPackets,
+            outOfOrderPackets: UInt32(clamping: stats.outOfOrderPackets),
+            dropEvents: UInt32(clamping: stats.recoveries),
+            latePackets: UInt32(clamping: stats.latePackets),
+            droppedPackets: UInt32(clamping: stats.droppedPackets),
+            recoveredPackets: UInt32(clamping: stats.recoveredPackets),
+            maxDropBurstLength: stats.maxLossBurst,
+            maxWaitingQueueDepth: stats.maxReorderDepth,
+            duplicatePackets: UInt32(clamping: stats.duplicatePackets))
+        let nackStats = NvstRtpNackStatsReport(frameNumber: frameNumber)
+        if bundle.sendPartiallyReliableControl(report.command),
+           bundle.sendPartiallyReliableControl(nackStats.command) {
+            rtpStatsReportsSent += 1
+        }
+    }
+
+    /// Control-channel statistics (`0x313`) on the interval our own announce declares, sent by
+    /// stream 0 only — the official client transmits no control-channel stats from any other
+    /// stream. The timestamp is session-elapsed microseconds, the closest honest analog to the
+    /// official library's steady-clock-epoch microseconds.
+    private func sendControlChannelStatsIfNeeded() {
+        guard let bundle, sessionStartedAt != nil else { return }
+        let now = Date()
+        if let last = controlStatsLastSentAt,
+           now.timeIntervalSince(last) < NvstControlChannelStatsReport.transmitInterval { return }
+        let counters = bundle.controlChannelStats
+        let report = NvstControlChannelStatsReport(
+            timestampMicroseconds: sessionElapsedMicroseconds(),
+            totalMessagesSent: counters.totalSent,
+            totalMessagesFailed: counters.totalFailed,
+            totalBytesSent: counters.totalBytes,
+            commands: counters.commands)
+        guard bundle.sendPartiallyReliableControl(report.command) else { return }
+        controlStatsLastSentAt = now
+        controlStatsReportsSent += 1
+    }
+
     /// The seat's cursor notifications: the first one means it is publishing cursor state, so its
     /// composited pointer is no longer needed and capture is turned back off. Leaving both on is
     /// the double-cursor bug — the seat's pointer baked into the video underneath our own.
-    /// `trackRemoteCursorImage` stays enabled, so notifications keep coming after capture stops.
+    /// `mimicRemoteCursor` stays enabled, so notifications keep coming after capture stops.
     private func handleRemoteCursor(_ cursor: NvstRemoteCursor) {
         if !didDisableCursorCapture, let bundle {
             didDisableCursorCapture = true
@@ -901,30 +968,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // capture is turned back off (see `handleRemoteCursorNotification`) and the pointer becomes
         // ours to draw — the seat keeps publishing because tracking stays on.
         sent.append("cursorCapture=\(bundle.sendControl(NvstInputActivation.mouseCursorCapture(isEnabled: true)))")
-        sent.append("cursorTrack=\(bundle.sendControl(NvstInputActivation.trackRemoteCursorImage(isEnabled: true)))")
+        sent.append("cursorTrack=\(bundle.sendControl(NvstInputActivation.mimicRemoteCursor(isEnabled: true)))")
         sent.append("window=\(bundle.sendControl(.windowStateChange()))")
         sent.append("system=\(bundle.sendControl(.systemStateChange()))")
         sent.append("enableOn=\(bundle.sendControl(NvstInputActivation.enableInput(counter: UInt32((videoPipeline?.snapshot.frameAcksSent ?? 0) + 1))))")
         logger?("NVST input activation sent (\(sent.joined(separator: " ")))")
-    }
-
-    /// The reliable input channel wants a 4-byte keepalive every two seconds; upstream's transport
-    /// sends the same bytes on the same cadence.
-    private func startInputHeartbeat() {
-        guard inputHeartbeatTask == nil else { return }
-        logger?("NVST input heartbeat started")
-        inputHeartbeatTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.sendInputHeartbeat()
-                try? await Task.sleep(for: .seconds(NvstRemoteInput.heartbeatInterval))
-            }
-        }
-    }
-
-    private func sendInputHeartbeat() {
-        guard let bundle, bundle.sendInputHeartbeat() else { return }
-        inputHeartbeatsSent += 1
     }
 
     private func sendControlKeepAlive() {
@@ -978,7 +1026,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         )))
     }
 
-    // MARK: - Unsupported until the ICE/DTLS bundle lands
+    // MARK: - Input, text, and session controls
 
     public func send(_ event: UserInputEvent) async throws {
         guard let bundle, bundle.isInputReady else {
@@ -1020,7 +1068,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             // malformed and both were dead, which proved nothing about the channel; sid 10 is what
             // the official client uses, so that is what we send.
             let padSendStart = DispatchTime.now().uptimeNanoseconds
-            let delivered = bundle.sendInput(packet.command.encoded)
+            let delivered = (try? packet.command.encoded).map(bundle.sendInput) ?? false
             noteInputSend(from: padSendStart)
             if delivered { gamepadPacketsSent += 1 } else { gamepadSendFailures += 1 }
             guard delivered else {
@@ -1033,7 +1081,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // composition, Option-modified and non-ASCII characters, and for paste — which would
         // otherwise vanish into the `try?` at the call site.
         if case .text(_, let value, _) = event {
-            try sendAsKeystrokes(value)
+            try sendAsUtf8Text(value)
             return
         }
         guard let packet = Self.remoteInputPacket(for: event) else {
@@ -1041,20 +1089,28 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             // sending a packet whose shape is a guess.
             throw NativeNVSTError.transportFailed("No NVST remote-input encoding for \(event) yet.")
         }
+        try sendFramedRemoteInput(packet)
+    }
+
+    /// Frames one remote-input packet in the session's timestamp envelope and writes it to the
+    /// control channel as command `0x206`, counting the event and the write's cost. Microseconds
+    /// since the session began, not since the epoch: the captured client sends ~25.9 s into a
+    /// 26 s session, and an epoch timestamp is ~1.7e15 — a seat that sanity-checks it against
+    /// session time discards the packet.
+    private func sendFramedRemoteInput(_ packet: Data) throws {
+        guard let bundle, bundle.isInputReady else {
+            throw NativeNVSTError.transportFailed("NVST input is not negotiated yet.")
+        }
         inputSequence &+= 1
-        // Microseconds since the session began, not since the epoch. The captured client sends
-        // ~25.9 s into a 26 s session; an epoch timestamp is ~1.7e15 and a seat that sanity-checks
-        // it against session time discards the packet.
         let framed = NvstRemoteInput.framed(packet,
                                             framing: .enveloped,
                                             sequence: inputSequence,
                                             timestampMicroseconds: sessionElapsedMicroseconds())
-        let command = NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed)
         let sendStart = DispatchTime.now().uptimeNanoseconds
-        let accepted = bundle.sendControl(command)
+        let accepted = bundle.sendControl(NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed))
         noteInputSend(from: sendStart)
         guard accepted else {
-            throw NativeNVSTError.transportFailed("The NVST control channel rejected the input event.")
+            throw NativeNVSTError.transportFailed("The NVST control channel rejected the input packet.")
         }
         inputEventsSent += 1
     }
@@ -1121,8 +1177,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         lastSnapshotAt = now
         lastSnapshotFrames = counters.framesEmitted
         lastSnapshotBytes = counters.bytesReceived
-
-        if firstRtpTimestampSeen == 0 { firstRtpTimestampSeen = counters.lastRtpTimestamp }
 
         // Loss over the interval, computed the way the WebRTC path computes it, so the two HUDs
         // report the same quantity rather than one percent and one running count.
@@ -1196,7 +1250,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     private var peakIntervalMbps: Double = 0
     private var lastSummaryFrames: UInt64 = 0
     private var lastSummaryMediaSeconds: Double = 0
-    private var firstRtpTimestampSeen: UInt32 = 0
     private var negotiatedResolution: String?
     private var negotiatedCodec: String?
 
@@ -1229,43 +1282,24 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         await teardown(reason: "pause")
     }
 
-    /// Types `text` as key presses, holding shift only around the characters that need it.
-    private func sendAsKeystrokes(_ text: String) throws {
-        guard let bundle, bundle.isInputReady else {
-            throw NativeNVSTError.transportFailed("NVST input is not negotiated yet.")
-        }
-        let (strokes, unmappable) = NvstTextInput.keystrokes(for: text)
-        guard !strokes.isEmpty else {
+    /// Sends `text` as raw UTF-8 text packets (RI type 23), chunked at code point boundaries —
+    /// the encoding the official client's `sendUnicodeEvent` uses for IME commits and pastes. It
+    /// replaces the old virtual-keystroke fallback, which could not represent anything a US
+    /// layout cannot type.
+    private func sendAsUtf8Text(_ text: String) throws {
+        let (packets, droppedBytes) = NvstRemoteInput.utf8TextPackets(forText: text)
+        guard !packets.isEmpty else {
             throw NativeNVSTError.transportFailed(
-                "No NVST encoding for text \"\(text.prefix(16))\": none of it maps to a US-layout key.")
+                "No NVST encoding for text \"\(text.prefix(16))\": it produced no UTF-8 bytes.")
         }
-        if !unmappable.isEmpty {
-            textCharactersDropped += unmappable.count
-            logger?("NVST text dropped \(unmappable.count) unmappable character(s); typing the rest")
+        if droppedBytes > 0 {
+            textBytesDropped += droppedBytes
+            logger?("NVST text dropped \(droppedBytes) unchunkable UTF-8 byte(s); sending the rest")
         }
-
-        // Shift travels in the packet's modifier field, not as a separate key press — the same
-        // field that makes physical held-shift capitalize. A shifted glyph is one packet with the
-        // shift bit set.
-        func send(virtualKey: UInt16, modifiers: UInt16, isPressed: Bool) throws {
-            let packet = NvstRemoteInput.keyboard(virtualKey: virtualKey, modifiers: modifiers, isPressed: isPressed)
-            inputSequence &+= 1
-            let framed = NvstRemoteInput.framed(packet,
-                                                framing: .enveloped,
-                                                sequence: inputSequence,
-                                                timestampMicroseconds: sessionElapsedMicroseconds())
-            guard bundle.sendControl(NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed)) else {
-                throw NativeNVSTError.transportFailed("The NVST control channel rejected a typed key.")
-            }
-            inputEventsSent += 1
+        for packet in packets {
+            try sendFramedRemoteInput(packet)
         }
-
-        for stroke in strokes {
-            let modifiers: UInt16 = stroke.needsShift ? UInt16(KeyboardModifiers.shift.rawValue) : 0
-            try send(virtualKey: stroke.virtualKey, modifiers: modifiers, isPressed: true)
-            try send(virtualKey: stroke.virtualKey, modifiers: modifiers, isPressed: false)
-        }
-        textCharactersTyped += strokes.count
+        textCharactersTyped += text.count
     }
 
     /// The absolute cursor position. This never arrives as a `UserInputEvent` — the stream view
@@ -1282,15 +1316,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             viewportWidth: UInt16(clamping: event.viewportWidth),
             viewportHeight: UInt16(clamping: event.viewportHeight)
         )
-        inputSequence &+= 1
-        let framed = NvstRemoteInput.framed(packet,
-                                            framing: .enveloped,
-                                            sequence: inputSequence,
-                                            timestampMicroseconds: sessionElapsedMicroseconds())
-        guard bundle.sendControl(NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed)) else {
-            throw NativeNVSTError.transportFailed("The NVST control channel rejected the absolute pointer move.")
-        }
-        inputEventsSent += 1
+        try sendFramedRemoteInput(packet)
     }
 
     /// Our button set as XInput's mask, which is what the wire carries.
@@ -1383,6 +1409,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     // MARK: - Teardown
 
     private func teardown(reason: String) async {
+        isTornDown = true
         heartbeatTask?.cancel()
         heartbeatTask = nil
         controlKeepAliveTask?.cancel()
@@ -1391,21 +1418,21 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         qosFeedbackTask = nil
         audioReceiver?.stop()
         audioReceiver = nil
-        inputHeartbeatTask?.cancel()
-        inputHeartbeatTask = nil
         await logCounters()
         feedbackSender?.stop()
         feedbackSender = nil
-        bundle?.close()
-        bundle = nil
-        bundleProbe?.stop()
-        bundleProbe = nil
+        // The media receivers and pipeline stop before the bundle closes, so in-flight frame acks
+        // and feedback packets do not fail-and-log against a closing control channel.
         receiver?.stop()
         receiver = nil
         // Stops before the decoder is invalidated: an in-flight access unit must not reach a
         // torn-down session.
         videoPipeline?.stop()
         videoPipeline = nil
+        bundle?.close()
+        bundle = nil
+        bundleProbe?.stop()
+        bundleProbe = nil
         mediaFrameContinuation?.finish()
         mediaFrameContinuation = nil
         mediaForwardingTask?.cancel()

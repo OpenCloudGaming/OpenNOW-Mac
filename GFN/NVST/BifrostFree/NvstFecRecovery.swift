@@ -47,7 +47,10 @@ public final class NvstFecRecovery: @unchecked Sendable {
     private static let retainedBlocks = 3
 
     private struct Block {
-        var shards: [UInt32: [UInt8]] = [:]
+        /// Stored as `Data` so the per-packet observe shares the decrypt path's buffer instead of
+        /// copying ~1.4 KB into a fresh `[UInt8]`; the byte arrays are only materialized when a
+        /// block is actually verified or recovered.
+        var shards: [UInt32: Data] = [:]
         var sourceCount: Int
         var parityCount: Int
         var percentage: UInt32
@@ -106,15 +109,19 @@ public final class NvstFecRecovery: @unchecked Sendable {
                 }
             }
         }
-        guard var block = blocks[key], block.sourceCount == sourceCount, block.parityCount == parityCount else { return [] }
-        block.shards[packet.fecIndex] = [UInt8](plaintext)
+        // Removed from the dictionary for the duration of the mutation: while it is out, the
+        // block's shard storage is uniquely owned, so the insert below updates in place instead
+        // of copying the whole shards dictionary (a CoW of every shard seen so far, per packet).
+        guard var block = blocks.removeValue(forKey: key) else { return [] }
+        defer { blocks[key] = block }
+        guard block.sourceCount == sourceCount, block.parityCount == parityCount else { return [] }
+        block.shards[packet.fecIndex] = plaintext
         if block.templateHeader == nil, packet.fecIndex < UInt32(sourceCount) {
             block.templateHeader = [UInt8](plaintext.prefix(Self.headerLength))
             block.templateFecIndex = packet.fecIndex
             block.templateSequence = packet.sequenceNumber
             block.templateStreamSequence = packet.streamSequence
         }
-        defer { blocks[key] = block }
 
         verifyIfComplete(&block)
 
@@ -128,11 +135,12 @@ public final class NvstFecRecovery: @unchecked Sendable {
         guard size > Self.headerLength else { return [] }
         var slots = [[UInt8]?](repeating: nil, count: sourceCount + parityCount)
         for (index, shard) in block.shards {
-            slots[Int(index)] = shard.count == size
-                ? shard
-                : shard + [UInt8](repeating: 0, count: size - shard.count)
+            let bytes = [UInt8](shard)
+            slots[Int(index)] = bytes.count == size
+                ? bytes
+                : bytes + [UInt8](repeating: 0, count: size - bytes.count)
         }
-        guard let recovered = NvstReedSolomon.recover(shards: slots, dataCount: sourceCount,
+        guard let recovered = NvstReedSolomon.recover(shards: &slots, dataCount: sourceCount,
                                                       parityCount: parityCount, size: size),
               !recovered.isEmpty else {
             findings.failedRecoveries += 1
@@ -196,8 +204,9 @@ public final class NvstFecRecovery: @unchecked Sendable {
 
         let size = block.shards.values.map(\.count).max() ?? 0
         guard size > Self.headerLength else { return }
-        func padded(_ shard: [UInt8]) -> [UInt8] {
-            shard.count == size ? shard : shard + [UInt8](repeating: 0, count: size - shard.count)
+        func padded(_ shard: Data) -> [UInt8] {
+            let bytes = [UInt8](shard)
+            return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
         }
         let data = (0..<block.sourceCount).compactMap { block.shards[UInt32($0)].map(padded) }
         let parity = (0..<block.parityCount).compactMap { block.shards[UInt32(block.sourceCount + $0)].map(padded) }

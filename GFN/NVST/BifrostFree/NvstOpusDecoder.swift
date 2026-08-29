@@ -35,27 +35,36 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     private let lock = NSLock()
     private var output: [Float]
 
-    public private(set) var decodedPackets: UInt64 = 0
-    public private(set) var decodedFrames: UInt64 = 0
-    public private(set) var failedPackets: UInt64 = 0
-    public private(set) var lastFailure: OSStatus = 0
+    private var decodedPacketCount: UInt64 = 0
+    private var decodedFrameCount: UInt64 = 0
+    private var failedPacketCount: UInt64 = 0
+    private var oversizedPacketCount: UInt64 = 0
+    private var lastFailureStatus: OSStatus = 0
     /// Frames produced per packet, which is how the seat's real frame duration is observed rather
     /// than assumed.
-    public private(set) var framesPerPacketSeen: [Int: UInt64] = [:]
+    private var framesPerPacketCounts: [Int: UInt64] = [:]
+
+    /// Every counter is written under `lock` on the decode queue and read from telemetry threads,
+    /// so the reads take the lock too.
+    public var decodedPackets: UInt64 { lock.lock(); defer { lock.unlock() }; return decodedPacketCount }
+    public var decodedFrames: UInt64 { lock.lock(); defer { lock.unlock() }; return decodedFrameCount }
+    public var failedPackets: UInt64 { lock.lock(); defer { lock.unlock() }; return failedPacketCount }
+    public var oversizedPackets: UInt64 { lock.lock(); defer { lock.unlock() }; return oversizedPacketCount }
+    public var lastFailure: OSStatus { lock.lock(); defer { lock.unlock() }; return lastFailureStatus }
+    public var framesPerPacketSeen: [Int: UInt64] { lock.lock(); defer { lock.unlock() }; return framesPerPacketCounts }
 
     /// RFC 7845's identification header: magic, version, channel count, pre-skip, input sample
     /// rate, output gain, channel-mapping family.
     static func opusHeadCookie(channels: UInt8, sampleRate: UInt32) -> Data {
-        var cookie = Data("OpusHead".utf8)
-        cookie.append(1)
-        cookie.append(channels)
-        cookie.append(contentsOf: [0, 0])
-        for shift in stride(from: 0, through: 24, by: 8) {
-            cookie.append(UInt8(truncatingIfNeeded: sampleRate >> UInt32(shift)))
-        }
-        cookie.append(contentsOf: [0, 0])
-        cookie.append(0)
-        return cookie
+        var writer = NvstByteWriter(capacity: 19)
+        writer.bytes(Data("OpusHead".utf8))
+        writer.u8(1)
+        writer.u8(channels)
+        writer.zeroes(2)
+        writer.u32LE(sampleRate)
+        writer.zeroes(2)
+        writer.u8(0)
+        return writer.data
     }
 
     public let framesPerPacket: Int
@@ -125,7 +134,10 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     /// because the converter never asked twice within one call.
     private final class Queue {
         var packets: [Data] = []
-        var description = AudioStreamPacketDescription()
+        var consumedPackets: UInt64 = 0
+        /// The converter keeps this pointer for the whole fill, so it must outlive the input
+        /// callback: a dedicated allocation instead of a pointer into a closure scope.
+        let description = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: 1)
         let scratch: UnsafeMutablePointer<UInt8>
         let capacity: Int
 
@@ -134,7 +146,10 @@ public final class NvstOpusDecoder: @unchecked Sendable {
             scratch = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
         }
 
-        deinit { scratch.deallocate() }
+        deinit {
+            scratch.deallocate()
+            description.deallocate()
+        }
     }
 
     /// An Opus packet cannot exceed 1275 bytes per frame; the seat's measure about 51.
@@ -146,7 +161,15 @@ public final class NvstOpusDecoder: @unchecked Sendable {
         guard !packet.isEmpty else { return nil }
         lock.lock()
         defer { lock.unlock() }
+        // Truncating to fit the scratch buffer would hand the decoder garbage. Nothing this stream
+        // sends approaches the capacity — the seat's packets measure ~51 bytes — so a packet this
+        // big is dropped and counted rather than mangled.
+        guard packet.count <= queue.capacity else {
+            oversizedPacketCount += 1
+            return nil
+        }
 
+        let consumedBefore = queue.consumedPackets
         queue.packets.append(packet)
         var produced: [Float] = []
 
@@ -171,9 +194,10 @@ public final class NvstOpusDecoder: @unchecked Sendable {
                             return NvstOpusDecoder.noDataAvailable
                         }
                         let next = queue.packets.removeFirst()
-                        let count = min(next.count, queue.capacity)
+                        queue.consumedPackets += 1
+                        let count = next.count
                         next.copyBytes(to: queue.scratch, count: count)
-                        queue.description = AudioStreamPacketDescription(
+                        queue.description.pointee = AudioStreamPacketDescription(
                             mStartOffset: 0,
                             mVariableFramesInPacket: 0,
                             mDataByteSize: UInt32(count)
@@ -182,7 +206,7 @@ public final class NvstOpusDecoder: @unchecked Sendable {
                         data.pointee.mBuffers.mDataByteSize = UInt32(count)
                         data.pointee.mBuffers.mNumberChannels = NvstOpusDecoder.channels
                         data.pointee.mNumberBuffers = 1
-                        descriptions?.pointee = withUnsafeMutablePointer(to: &queue.description) { $0 }
+                        descriptions?.pointee = queue.description
                         packetCount.pointee = 1
                         return noErr
                     },
@@ -193,19 +217,21 @@ public final class NvstOpusDecoder: @unchecked Sendable {
                 )
             }
             if frames > 0 {
-                decodedPackets += 1
-                decodedFrames += UInt64(frames)
-                framesPerPacketSeen[Int(frames), default: 0] += 1
+                decodedFrameCount += UInt64(frames)
+                framesPerPacketCounts[Int(frames), default: 0] += 1
                 produced.append(contentsOf: output[0..<(Int(frames) * Int(Self.channels))])
             }
             if status == Self.noDataAvailable { break }
             if status != noErr {
-                failedPackets += 1
-                lastFailure = status
+                failedPacketCount += 1
+                lastFailureStatus = status
                 break
             }
             if frames == 0 { break }
         }
+        // Count what the converter actually consumed. With the decoder's priming delay, counting
+        // output chunks instead lags the input by a packet.
+        decodedPacketCount += queue.consumedPackets - consumedBefore
         return produced.isEmpty ? nil : produced
     }
 

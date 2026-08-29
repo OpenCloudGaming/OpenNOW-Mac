@@ -26,10 +26,14 @@ public enum NvstSrtcp {
     public static func seal(rtcpPacket: Data, masterKey: Data, masterSalt: Data, senderSSRC: UInt32, srtcpIndex: UInt32) throws -> Data {
         guard rtcpPacket.count > 8 else { throw SrtpCryptoError.cryptorError("RTCP packet has no encrypted payload.") }
         let material = try material(masterKey: masterKey, masterSalt: masterSalt)
-        let iv = NvstRtcp.srtcpGcmIV(sessionSalt: material.salt, ssrc: senderSSRC, srtcpIndex: srtcpIndex)
+        let iv = try NvstRtcp.srtcpGcmIV(sessionSalt: material.salt, ssrc: senderSSRC, srtcpIndex: srtcpIndex)
 
         let header = rtcpPacket.prefix(8)
         var payload = [UInt8](rtcpPacket.dropFirst(8))
+        // §7.2's AAD takes the first 8 octets of ciphertext: a shorter encrypted region would
+        // silently shorten the AAD and seal a packet the seat cannot open. Only RRs are sealed
+        // today, and their encrypted region is well over 8 bytes.
+        guard payload.count >= 8 else { throw SrtpCryptoError.cryptorError("SRTCP payload too short for the 8-octet AAD.") }
         payload[0] |= srtcpEncryptedFlag
         let keystream = try material.cipher.mask(iv: iv, length: payload.count)
         let ksBytes = [UInt8](keystream)
@@ -52,11 +56,12 @@ public enum NvstSrtcp {
         let header = srtcpPacket.prefix(8)
         let ciphertext = srtcpPacket.dropFirst(8).dropLast(4).dropLast(8)
         let tag = srtcpPacket.dropFirst(8).dropLast(4).suffix(8)
-        let indexWord = srtcpPacket.readUInt32BE(at: srtcpPacket.count - 4)
-        let index = indexWord & 0x7fff_ffff
+        var trailer = NvstByteReader(srtcpPacket.suffix(4))
+        let index = ((try? trailer.u32BE()) ?? 0) & 0x7fff_ffff
 
+        guard ciphertext.count >= 8 else { throw SrtpCryptoError.cryptorError("SRTCP payload too short for the 8-octet AAD.") }
         let material = try material(masterKey: masterKey, masterSalt: masterSalt)
-        let iv = NvstRtcp.srtcpGcmIV(sessionSalt: material.salt, ssrc: senderSSRC, srtcpIndex: index)
+        let iv = try NvstRtcp.srtcpGcmIV(sessionSalt: material.salt, ssrc: senderSSRC, srtcpIndex: index)
         let aad = header + ciphertext.prefix(8)
         let expectedTag = try material.cipher.authenticationTag(iv: iv, aad: Data(aad), ciphertext: Data(ciphertext)).prefix(8)
         guard expectedTag.elementsEqual(tag) else { throw SrtpCryptoError.authenticationFailed }
@@ -70,11 +75,5 @@ public enum NvstSrtcp {
         var rtcp = Data(header)
         rtcp.append(contentsOf: payload)
         return (rtcp, index)
-    }
-}
-
-private extension Data {
-    func readUInt32BE(at offset: Int) -> UInt32 {
-        UInt32(self[offset]) << 24 | UInt32(self[offset + 1]) << 16 | UInt32(self[offset + 2]) << 8 | UInt32(self[offset + 3])
     }
 }

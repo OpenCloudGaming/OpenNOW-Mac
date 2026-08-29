@@ -47,9 +47,9 @@ struct NvstRtcpTests {
         #expect(plain == Data([0x00, 0x00, 0x00, 0x01]))
     }
 
-    @Test func srtcpGcmIvMatchesRfc7714() {
+    @Test func srtcpGcmIvMatchesRfc7714() throws {
         let salt = Data(repeating: 0, count: 12)
-        let iv = NvstRtcp.srtcpGcmIV(sessionSalt: salt, ssrc: 0x1122_3344, srtcpIndex: 0x5566_7788)
+        let iv = try NvstRtcp.srtcpGcmIV(sessionSalt: salt, ssrc: 0x1122_3344, srtcpIndex: 0x5566_7788)
         #expect(iv.count == 12)
         let bytes = [UInt8](iv)
         #expect(bytes[0] == 0)

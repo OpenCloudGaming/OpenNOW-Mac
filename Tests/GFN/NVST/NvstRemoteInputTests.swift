@@ -80,20 +80,20 @@ struct NvstRemoteInputTests {
     /// Byte-for-byte against a packet captured from the official client's own `SSL_write`:
     /// command 0x206, envelope type 0x0e, inner type 7 relative motion, dx/dy +24, flags 0,
     /// padded to the slot boundary, then a microseconds-since-session-start timestamp.
-    @Test func reproducesACapturedOfficialMousePacket() {
+    @Test func reproducesACapturedOfficialMousePacket() throws {
         let captured = "06022800000000240e0000000000000a07000000001800180000000000000000000000003013860100000000"
         let inner = NvstRemoteInput.mouseMove(deltaX: 24, deltaY: 24)
         let framed = NvstRemoteInput.framed(inner,
                                             framing: .enveloped,
                                             sequence: 0,
                                             timestampMicroseconds: 0x0186_1330)
-        let wire = NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed).encoded
+        let wire = try NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed).encoded
         #expect(wire.map { String(format: "%02x", $0) }.joined() == captured)
     }
 
     /// Byte-for-byte against captured official click packets: press is type 8, release type 9,
     /// body `[button][0]`, enveloped with a session-relative timestamp.
-    @Test func reproducesCapturedOfficialClickPackets() {
+    @Test func reproducesCapturedOfficialClickPackets() throws {
         let cases: [(Bool, UInt64, String)] = [
             (true,  0x0186_18b8, "06022800000000240e000000000000060800000001000000000000000000000000000000b818860100000000"),
             (false, 0x0186_18ef, "06022800000000240e000000000000060900000001000000000000000000000000000000ef18860100000000"),
@@ -101,9 +101,91 @@ struct NvstRemoteInputTests {
         for (isPressed, timestamp, expected) in cases {
             let inner = NvstRemoteInput.mouseButton(.left, isPressed: isPressed)
             let framed = NvstRemoteInput.framed(inner, framing: .enveloped, sequence: 0, timestampMicroseconds: timestamp)
-            let wire = NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed).encoded
+            let wire = try NvstControlCommand(code: NvstRemoteInput.commandCode, payload: framed).encoded
             #expect(wire.map { String(format: "%02x", $0) }.joined() == expected)
         }
+    }
+
+    /// A text packet is the raw UTF-8 bytes under RI type 23 — the body `sendUnicodeEvent`
+    /// memcpys in, with the standard `[BE length][LE type]` header.
+    @Test func aTextPacketCarriesRawUtf8UnderType23() {
+        let text = "héllo ☺"
+        let utf8 = Data(text.utf8)
+        let (packets, droppedBytes) = NvstRemoteInput.utf8TextPackets(forText: text)
+        #expect(droppedBytes == 0)
+        #expect(packets.count == 1)
+        let packet = packets[0]
+        #expect(packet.count == 8 + utf8.count)
+        #expect(UInt32(packet[3]) == UInt32(4 + utf8.count))
+        #expect(packet[4] == 23)
+        #expect(Data(packet.suffix(utf8.count)) == utf8)
+    }
+
+    /// The official chunker admits 1017 bytes and then cuts back at a code point boundary by
+    /// probing 1016, 1015, 1014, 1013 in order, so a chunk is never longer than 1016 bytes and
+    /// never splits a code point.
+    @Test func textChunksCutAtCodePointBoundariesAsTheOfficialChunkerDoes() {
+        func chunkSizes(_ text: String) -> [Int] {
+            let (bodies, droppedBytes) = NvstRemoteInput.utf8TextBodies(Data(text.utf8))
+            #expect(droppedBytes == 0)
+            return bodies.map(\.count)
+        }
+        // Byte 1016 is the é's leader byte, so the cut lands at 1016.
+        #expect(chunkSizes(String(repeating: "a", count: 1016) + "é") == [1016, 2])
+        // Byte 1016 is the é's continuation; the probe backs up to its leader at 1015.
+        #expect(chunkSizes(String(repeating: "a", count: 1015) + "é" + "bbbbb") == [1015, 7])
+        // A four-byte emoji starting at 1014 pushes the probe back two continuation bytes.
+        #expect(chunkSizes(String(repeating: "a", count: 1014) + "😀" + String(repeating: "b", count: 10)) == [1014, 14])
+        // ASCII never needs the probe: every cut lands exactly at 1016.
+        #expect(chunkSizes(String(repeating: "a", count: 3000)) == [1016, 1016, 968])
+        // At or under the cap the text is one packet; just over it, two.
+        #expect(chunkSizes(String(repeating: "a", count: 1016)) == [1016])
+        #expect(chunkSizes(String(repeating: "a", count: 1017)) == [1016, 1])
+        #expect(chunkSizes("hi") == [2])
+        #expect(NvstRemoteInput.utf8TextBodies(Data()).bodies.isEmpty)
+    }
+
+    /// A tail whose four probe positions are all continuation bytes is unchunkable; the
+    /// official client logs and drops it rather than splitting a code point.
+    @Test func anUnchunkableTailIsDroppedAsTheOfficialClientDoes() {
+        let invalid = Data(repeating: 0x80, count: 1020)
+        let (bodies, droppedBytes) = NvstRemoteInput.utf8TextBodies(invalid)
+        #expect(bodies.isEmpty)
+        #expect(droppedBytes == 1020)
+    }
+
+    /// An IME hotkey is a one-byte body under type 20, as `sendImeControlEvent` writes it.
+    @Test func anImeHotkeyIsASingleByteUnderType20() {
+        #expect([UInt8](NvstRemoteInput.imeHotkey(0xab)) ==
+                [0x00, 0x00, 0x00, 0x05, 0x14, 0x00, 0x00, 0x00, 0xab])
+    }
+
+    /// The envelope's slot arithmetic per `SendPacket`: the timestamp gets its own 8-byte slot,
+    /// so the padding between inner packet and timestamp is at least 8 bytes.
+    @Test func theEnvelopeKeepsItsOfficialSlotArithmetic() {
+        #expect(NvstRemoteInput.envelopePaddedLength(innerLength: 14) == 24)   // pointer: 40 on the wire
+        #expect(NvstRemoteInput.envelopePaddedLength(innerLength: 22) == 32)   // key: 48 on the wire
+        let keyed = NvstRemoteInput.framed(
+            NvstRemoteInput.keyboard(virtualKey: 0x41, isPressed: true),
+            framing: .enveloped, sequence: 0, timestampMicroseconds: 0x0102030405060708)
+        #expect(keyed.count == 48)
+        #expect([UInt8](keyed.dropFirst(30).prefix(10)) == Array(repeating: 0, count: 10))
+        #expect([UInt8](keyed.suffix(8)) == [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01])
+    }
+
+    /// `SendPacket` sends packets bare when the envelope's slot count would reach `0x7f` — a
+    /// 1000-byte text body is the first to skip the envelope.
+    @Test func oversizedPacketsSkipTheEnvelopeAsSendPacketDoes() {
+        #expect(NvstRemoteInput.envelopeMaxInnerLength == 1007)
+        let fits = NvstRemoteInput.utf8TextPackets(forText: String(repeating: "a", count: 999)).packets[0]
+        let enveloped = NvstRemoteInput.framed(fits, framing: .enveloped, sequence: 0, timestampMicroseconds: 7)
+        #expect(enveloped.count == 1032)
+        #expect(enveloped[4] == 0x0e)
+        let bare = NvstRemoteInput.utf8TextPackets(forText: String(repeating: "a", count: 1000)).packets[0]
+        #expect(NvstRemoteInput.framed(bare, framing: .enveloped, sequence: 0, timestampMicroseconds: 7) == bare)
+        // A maximum 1016-byte chunk always travels bare, like the official client's.
+        let maxChunk = NvstRemoteInput.utf8TextPackets(forText: String(repeating: "a", count: 1016)).packets[0]
+        #expect(NvstRemoteInput.framed(maxChunk, framing: .enveloped, sequence: 0, timestampMicroseconds: 7) == maxChunk)
     }
 
     /// The channel/framing sweep is gone: measurement settled it. Input goes out as command
@@ -149,6 +231,6 @@ struct NvstRemoteInputTests {
 
     @Test func theCommandCodeIsTheRemoteInputChannelCommand() {
         #expect(NvstRemoteInput.commandCode == 0x206)
-        #expect(NvstControlCommand.name(for: 0x206) == "cursor-detail")
+        #expect(NvstControlCommandCode(rawValue: 0x206).name == "ri-command")
     }
 }

@@ -159,6 +159,15 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     private var inputSendFailures = 0
     private var controlSendFailures = 0
     private var controlMessagesSent = 0
+    /// Per-command counters for the `0x313` control-channel statistics report, keyed by command
+    /// code. The official client aggregates the same figures in its `ControlStatsManager`.
+    private var controlCommandStats: [UInt16: ControlCommandCounters] = [:]
+
+    struct ControlCommandCounters: Equatable, Sendable {
+        var messagesSent: UInt64 = 0
+        var messagesFailed: UInt64 = 0
+        var aggregatedBytes: UInt64 = 0
+    }
     private var hostCandidateContinuation: CheckedContinuation<[RTCIceCandidate], Error>?
     private var hostCandidates: [RTCIceCandidate] = []
     private var gatheringComplete = false
@@ -425,15 +434,54 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         lock.lock()
         let channel = openControlChannel
         lock.unlock()
-        guard let channel, channel.readyState == .open else {
-            lock.withLock { controlSendFailures += 1 }
+        guard let encoded = try? command.encoded else {
+            lock.withLock {
+                controlSendFailures += 1
+                recordControlAttempt(code: command.code.rawValue,
+                                     bytes: UInt64(command.payload.count + NvstControlCommand.headerLength),
+                                     sent: false)
+            }
             return false
         }
-        let sent = channel.sendData(RTCDataBuffer(data: command.encoded, isBinary: true))
+        guard let channel, channel.readyState == .open else {
+            lock.withLock {
+                controlSendFailures += 1
+                recordControlAttempt(code: command.code.rawValue, bytes: UInt64(encoded.count), sent: false)
+            }
+            return false
+        }
+        let sent = channel.sendData(RTCDataBuffer(data: encoded, isBinary: true))
         lock.withLock {
             if sent { controlMessagesSent += 1 } else { controlSendFailures += 1 }
+            recordControlAttempt(code: command.code.rawValue, bytes: UInt64(encoded.count), sent: sent)
         }
         return sent
+    }
+
+    /// Call with `lock` held.
+    private func recordControlAttempt(code: UInt16, bytes: UInt64, sent: Bool) {
+        var counters = controlCommandStats[code] ?? ControlCommandCounters()
+        if sent { counters.messagesSent += 1 } else { counters.messagesFailed += 1 }
+        counters.aggregatedBytes += bytes
+        controlCommandStats[code] = counters
+    }
+
+    /// The control-channel counters as the `0x313` report wants them: totals plus one record per
+    /// command, in ascending code order.
+    public var controlChannelStats: (totalSent: UInt32, totalFailed: UInt32, totalBytes: UInt64,
+                                     commands: [NvstControlChannelCommandStats]) {
+        lock.withLock {
+            let commands = controlCommandStats
+                .sorted { $0.key < $1.key }
+                .map { NvstControlChannelCommandStats(commandCode: $0.key,
+                                                      messagesSent: UInt32(clamping: $0.value.messagesSent),
+                                                      messagesFailed: UInt32(clamping: $0.value.messagesFailed),
+                                                      aggregatedBytes: $0.value.aggregatedBytes) }
+            return (UInt32(clamping: controlMessagesSent),
+                    UInt32(clamping: controlSendFailures),
+                    commands.reduce(0) { $0 + $1.aggregatedBytes },
+                    commands)
+        }
     }
 
     /// Writes one remote-input packet to `input_channel_partially_reliable`. The channel is one of
@@ -474,8 +522,8 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         lock.lock()
         let channel = openPartiallyReliableControlChannel
         lock.unlock()
-        guard let channel, channel.readyState == .open else { return false }
-        return channel.sendData(RTCDataBuffer(data: command.encoded, isBinary: true))
+        guard let channel, channel.readyState == .open, let encoded = try? command.encoded else { return false }
+        return channel.sendData(RTCDataBuffer(data: encoded, isBinary: true))
     }
 
     public var isInputChannelOpen: Bool {
@@ -510,15 +558,6 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         let sent = channel.sendData(RTCDataBuffer(data: payload, isBinary: true))
         lock.withLock { if sent { inputMessagesSent += 1 } else { inputSendFailures += 1 } }
         return sent
-    }
-
-    /// The 4-byte keepalive the client sends on the reliable input channel every two seconds.
-    public func sendInputHeartbeat() -> Bool {
-        lock.lock()
-        let channel = openReliableInputChannel
-        lock.unlock()
-        guard let channel, channel.readyState == .open else { return false }
-        return channel.sendData(RTCDataBuffer(data: NvstRemoteInput.heartbeat, isBinary: true))
     }
 
     public var isControlChannelOpen: Bool {
@@ -767,7 +806,9 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
                 self?.finishHostCandidateWait()
                 throw BundleError.noHostCandidate
             }
-            let candidates = try await group.next()!
+            guard let candidates = try await group.next() else {
+                throw BundleError.noHostCandidate
+            }
             group.cancelAll()
             return candidates
         }
@@ -902,7 +943,7 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         // The seat's remote-input messages are JSON, and their schema is what the client has to
         // answer in kind, so log the text rather than a truncated hex prefix.
         for command in commands where command.isTextual {
-            logger?("NVST bundle inbound text \(String(format: "0x%04x", command.code)): \(command.text(limit: 600))")
+            logger?("NVST bundle inbound text \(String(format: "0x%04x", command.code.rawValue)): \(command.text(limit: 600))")
         }
         // The seat's QoS and frame-pacing messages are the only place it states its own rate
         // decision, and a 32-byte prefix cuts them off mid-record, so those two log in full.
@@ -958,13 +999,13 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     }
 
     /// Fires when the seat's audio track lands.
-    /// The seat's cursor shape/mode notifications, once `trackRemoteCursorImage` is enabled.
+    /// The seat's cursor shape/mode notifications, once `mimicRemoteCursor` is enabled.
     /// Logs one line per *change* in what the seat says about the pointer, with the bytes it said
     /// it in. Unchanged repeats are counted rather than logged: the seat repeats the same
     /// notification many times a second.
     private func describeCursorCommand(_ command: NvstControlCommand, decision: Bool) {
         let hex = command.payload.prefix(16).map { String(format: "%02x", $0) }.joined()
-        let key = "\(command.code)/\(hex)/\(decision)"
+        let key = "\(command.code.rawValue)/\(hex)/\(decision)"
         let shouldLog: Bool = lock.withLock {
             cursorNotificationCount += 1
             guard key != lastCursorNotification else { return false }
@@ -973,7 +1014,7 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         }
         guard shouldLog else { return }
         logger?(String(format: "NVST cursor notify code=0x%04x len=%d visible=%@ payload=%@ seen=%d",
-                       command.code, command.payload.count, decision ? "y" : "n", hex, cursorNotificationCount))
+                       command.code.rawValue, command.payload.count, decision ? "y" : "n", hex, cursorNotificationCount))
     }
 
     /// A cursor-shaped command the parse refused. `0x0110` is the standing ambiguity — OpenNOW
@@ -989,7 +1030,7 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         }
         guard shouldLog else { return }
         logger?(String(format: "NVST cursor unparsed code=0x%04x len=%d payload=%@",
-                       command.code, command.payload.count, hex))
+                       command.code.rawValue, command.payload.count, hex))
     }
 
     private var lastCursorNotification: String?
@@ -1039,21 +1080,6 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
             reception.discarded += number("packetsDiscarded")
         }
         return sawAudio ? reception : nil
-    }
-
-    public func audioReceiveStatistics() async -> (packets: UInt64, bytes: UInt64)? {
-        guard let connection = currentPeerConnection() else { return nil }
-        let report = await withCheckedContinuation { continuation in
-            connection.statistics { continuation.resume(returning: $0) }
-        }
-        var packets: UInt64 = 0
-        var bytes: UInt64 = 0
-        for (_, statistics) in report.statistics
-        where statistics.type == "inbound-rtp" && (statistics.values["kind"] as? String) == "audio" {
-            packets += (statistics.values["packetsReceived"] as? NSNumber)?.uint64Value ?? 0
-            bytes += (statistics.values["bytesReceived"] as? NSNumber)?.uint64Value ?? 0
-        }
-        return (packets, bytes)
     }
 
     /// Fires when `control_channel_partially_reliable` opens, so QoS feedback can start.

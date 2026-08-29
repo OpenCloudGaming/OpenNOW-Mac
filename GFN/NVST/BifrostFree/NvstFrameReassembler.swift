@@ -114,10 +114,15 @@ public final class NvstFrameReassembler: @unchecked Sendable {
             // Repair packets were skipped, so a break in the stream sequence is a real hole in the
             // picture data. `dropped` counts nothing here because the reorder buffer saw no
             // reordering — the packet simply never arrived.
-            if let previous = lastStreamPacketIndex, packet.streamSequence != previous &+ 1 {
-                let expected = previous &+ 1
-                resetLocked()
-                throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence)
+            if let previous = lastStreamPacketIndex {
+                // `streamSequence` is a 24-bit GS field, so compare it modulo 2^24: otherwise the
+                // 0xff_ffff -> 0x000000 rollover (~every 2^24 packets, ~half an hour of streaming)
+                // reads as a gap and forces a needless keyframe.
+                let expected = (previous &+ 1) & 0x00ff_ffff
+                if packet.streamSequence != expected {
+                    resetLocked()
+                    throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence)
+                }
             }
             guard packet.payload.count <= maxAccessUnitBytes - bytes.count else {
                 resetLocked()

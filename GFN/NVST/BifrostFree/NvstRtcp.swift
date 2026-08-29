@@ -40,32 +40,34 @@ public enum NvstRtcp {
 
     /// RFC 3550 Receiver Report (compound RR with no embedded SDES).
     public static func receiverReport(ssrc: UInt32, blocks: [NvstRtcpReportBlock]) -> Data {
-        var packet = Data()
+        // The RC field is 5 bits wide, so more than 31 blocks cannot be expressed on the wire.
+        let blocks = Array(blocks.prefix(31))
         let wordCount = 2 + blocks.count * 6 // header (2 words incl sender ssrc) + 6 words/block
-        let length = UInt16(wordCount - 1)
-        packet.append(contentsOf: [0x80 | UInt8(blocks.count), receiverReportPayloadType])
-        packet.appendBigEndian(length)
-        packet.appendBigEndian(ssrc)
+        var writer = NvstByteWriter(capacity: wordCount * 4)
+        writer.u8(0x80 | UInt8(blocks.count))
+        writer.u8(receiverReportPayloadType)
+        writer.u16BE(UInt16(wordCount - 1))
+        writer.u32BE(ssrc)
         for block in blocks {
-            packet.appendBigEndian(block.sourceSSRC)
-            let first = (UInt32(block.fractionLost) << 24) | block.cumulativeLost
-            packet.appendBigEndian(first)
-            packet.appendBigEndian(block.extendedHighestSequence)
-            packet.appendBigEndian(block.interarrivalJitter)
-            packet.appendBigEndian(block.lastSenderReportTimestamp)
-            packet.appendBigEndian(block.delaySinceLastSenderReport)
+            writer.u32BE(block.sourceSSRC)
+            writer.u32BE((UInt32(block.fractionLost) << 24) | block.cumulativeLost)
+            writer.u32BE(block.extendedHighestSequence)
+            writer.u32BE(block.interarrivalJitter)
+            writer.u32BE(block.lastSenderReportTimestamp)
+            writer.u32BE(block.delaySinceLastSenderReport)
         }
-        return packet
+        return writer.data
     }
 
     /// RFC 4585 PT=206 FMT=1 (PLI) feedback packet.
     public static func pictureLossIndication(senderSSRC: UInt32, mediaSSRC: UInt32) -> Data {
-        var packet = Data()
-        packet.append(contentsOf: [0x81, payloadSpecificFeedbackPayloadType])
-        packet.appendBigEndian(UInt16(2)) // length = sender SSRC + media SSRC
-        packet.appendBigEndian(senderSSRC)
-        packet.appendBigEndian(mediaSSRC)
-        return packet
+        var writer = NvstByteWriter(capacity: 12)
+        writer.u8(0x81)
+        writer.u8(payloadSpecificFeedbackPayloadType)
+        writer.u16BE(2) // length = sender SSRC + media SSRC
+        writer.u32BE(senderSSRC)
+        writer.u32BE(mediaSSRC)
+        return writer.data
     }
 
     /// RFC 4585 PT=205 FMT=1: Generic NACK, asking the sender to retransmit specific packets.
@@ -76,7 +78,12 @@ public enum NvstRtcp {
     /// id plus a 16-bit mask of the packets following it, so a 17-packet run needs one entry.
     ///
     /// `missing` is taken in RTP sequence order; entries are emitted greedily.
+    /// RFC 4585 PT=206 FMT=1 (Generic NACK) feedback packet. Duplicate sequence numbers are
+    /// collapsed, and losses beyond `maximumNackEntries` are deliberately not named — a burst
+    /// that large is what the keyframe path recovers from faster.
     public static func genericNack(senderSSRC: UInt32, mediaSSRC: UInt32, missing: [UInt16]) -> Data? {
+        var seen = Set<UInt16>()
+        let missing = missing.filter { seen.insert($0).inserted }
         guard !missing.isEmpty else { return nil }
         var entries: [(pid: UInt16, blp: UInt16)] = []
         var index = missing.startIndex
@@ -93,18 +100,19 @@ public enum NvstRtcp {
             entries.append((pid, blp))
             index = next
         }
-        var packet = Data()
+        var writer = NvstByteWriter(capacity: 12 + entries.count * 4)
         // V=2, P=0, FMT=1 (Generic NACK).
-        packet.append(contentsOf: [0x81, transportFeedbackPayloadType])
+        writer.u8(0x81)
+        writer.u8(transportFeedbackPayloadType)
         // Length in 32-bit words minus one: 2 SSRC words plus one word per FCI entry.
-        packet.appendBigEndian(UInt16(2 + entries.count))
-        packet.appendBigEndian(senderSSRC)
-        packet.appendBigEndian(mediaSSRC)
+        writer.u16BE(UInt16(2 + entries.count))
+        writer.u32BE(senderSSRC)
+        writer.u32BE(mediaSSRC)
         for entry in entries {
-            packet.appendBigEndian(entry.pid)
-            packet.appendBigEndian(entry.blp)
+            writer.u16BE(entry.pid)
+            writer.u16BE(entry.blp)
         }
-        return packet
+        return writer.data
     }
 
     /// A NACK naming more than this is a loss burst a keyframe recovers from faster than
@@ -112,36 +120,25 @@ public enum NvstRtcp {
     public static let maximumNackEntries = 8
 
     /// RFC 7714 §9.2 SRTCP GCM IV: salt XOR (SSRC at bytes 2..6, SRTCP index at 6..10).
-    public static func srtcpGcmIV(sessionSalt: Data, ssrc: UInt32, srtcpIndex: UInt32) -> Data {
+    public static func srtcpGcmIV(sessionSalt: Data, ssrc: UInt32, srtcpIndex: UInt32) throws -> Data {
+        guard sessionSalt.count == 12 else { throw SrtpCryptoError.invalidNonce }
         var iv = [UInt8](sessionSalt)
-        let ssrcBytes = bigEndianBytes(ssrc)
-        let indexBytes = bigEndianBytes(srtcpIndex)
-        for index in 0..<4 { iv[2 + index] ^= ssrcBytes[index] }
-        for index in 0..<4 { iv[6 + index] ^= indexBytes[index] }
+        var words = NvstByteWriter(capacity: 8)
+        words.u32BE(ssrc)
+        words.u32BE(srtcpIndex)
+        let wordBytes = [UInt8](words.data)
+        for index in 0..<4 { iv[2 + index] ^= wordBytes[index] }
+        for index in 0..<4 { iv[6 + index] ^= wordBytes[4 + index] }
         return Data(iv)
     }
 
     /// RFC 3711 SRTCP index trailer: 4 bytes with the encrypted-flag (`S`) as the MSB and the
     /// 31-bit SRTCP index in the remaining bits.
     public static func srtcpIndexTrailer(index: UInt32, encrypted: Bool) -> Data {
-        let masked = index & 0x7fff_ffff
-        var value = masked
+        var value = index & 0x7fff_ffff
         if encrypted { value |= 0x8000_0000 }
-        return Data(bigEndianBytes(value))
-    }
-
-    private static func bigEndianBytes<T: FixedWidthInteger>(_ value: T) -> [UInt8] {
-        var big = value.bigEndian
-        return withUnsafeBytes(of: &big) { Array($0) }
-    }
-}
-
-private extension Data {
-    mutating func appendBigEndian(_ value: UInt16) {
-        append(UInt8(value >> 8)); append(UInt8(value & 0xff))
-    }
-
-    mutating func appendBigEndian(_ value: UInt32) {
-        append(UInt8(value >> 24)); append(UInt8((value >> 16) & 0xff)); append(UInt8((value >> 8) & 0xff)); append(UInt8(value & 0xff))
+        var writer = NvstByteWriter(capacity: 4)
+        writer.u32BE(value)
+        return writer.data
     }
 }

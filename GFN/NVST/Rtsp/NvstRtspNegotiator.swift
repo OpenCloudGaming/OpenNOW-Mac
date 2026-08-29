@@ -118,8 +118,8 @@ public struct NvstRtspNegotiationInput: Sendable {
     /// `nativeRtcOnBundlePort`. The legacy path needs no DTLS at all, so it isolates "video needs
     /// the bundle" from "video needs something else".
     public let forcesLegacyPath: Bool
-    /// `OPN_NVST_OWD_CC=1` keeps the seat's one-way-delay controller, which needs QoS feedback we
-    /// do not send yet.
+    /// The seat's one-way-delay rate controller stays on by default; its OWD evidence rides the
+    /// `0x207` QoS reports this client sends. `OPN_NVST_OWD_CC=0` disables it.
     public let disablesOwdCongestionControl: Bool
     /// `OPN_NVST_ANNOUNCE_EXTENDED=1`: adds the official client's encoder tuning and timers.
     public let announcesExtendedSettings: Bool

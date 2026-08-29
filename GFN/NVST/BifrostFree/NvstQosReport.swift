@@ -55,6 +55,7 @@ public struct NvstQosReport: Equatable, Sendable {
     /// `+44`: bits received during this report interval. The capture holds ~48–50k steady on a
     /// session receiving about 780 kbps, and 780000 / 18 reports per second is 43k — a rate
     /// estimate per interval, not a cumulative count, which also matches its 0 through warm-up.
+    public let intervalBits: UInt32
     /// The capture's flag at `+28`: 0 for its first 34 reports and 2 for the remaining 498. At the
     /// captured 18 Hz cadence that is a flip about 1.9 seconds in. What it actually reports is not
     /// established, so this models the observed timing and nothing more.
@@ -82,28 +83,17 @@ public struct NvstQosReport: Equatable, Sendable {
         self.isWarmedUp = isWarmedUp
     }
 
-    public let intervalBits: UInt32
-
     /// How long the capture takes to flip `isWarmedUp`.
     public static let warmUpSeconds: TimeInterval = 1.9
 
     /// The 52-byte payload, all fields little-endian.
     public var payload: Data {
-        var data = Data(capacity: 52)
-        func append(_ value: UInt32) {
-            for shift in stride(from: 0, through: 24, by: 8) {
-                data.append(UInt8(truncatingIfNeeded: value >> UInt32(shift)))
-            }
-        }
-        func append16(_ value: UInt16) {
-            data.append(UInt8(truncatingIfNeeded: value))
-            data.append(UInt8(truncatingIfNeeded: value >> 8))
-        }
-        append(Self.version)          // +0
-        append(0)                     // +4
-        append(sequence)              // +8
-        append(framesReceived)        // +12
-        append(bytesReceived)         // +16
+        var writer = NvstByteWriter(capacity: 52)
+        writer.u32LE(Self.version)          // +0
+        writer.u32LE(0)                     // +4
+        writer.u32LE(sequence)              // +8
+        writer.u32LE(framesReceived)        // +12
+        writer.u32LE(bytesReceived)         // +16
         // +20/+24/+44 decoded from 781 real reports in the official client's SSL_write tap
         // (2026-08-24):
         //   +20: 0…917, mean 174, non-cumulative, ~0 during the first ~2 warm-up reports.
@@ -116,20 +106,20 @@ public struct NvstQosReport: Equatable, Sendable {
         // averages 91 — and these are the last documented difference between its feedback and ours.
         // Filled from what we actually measure: RTCP interarrival jitter for the delay samples, and
         // bits carried since the previous report for the rate estimate.
-        append(delayMicroseconds)     // +20
-        append(delayTrendMicroseconds) // +24
-        append16(isWarmedUp ? 2 : 0)  // +28
-        append16(Self.constantPair)   // +30
-        append16(Self.constantPair)   // +32
-        append16(linkCapabilityKbps)  // +34
-        append(rtpTimestamp)          // +36
-        append(0)                     // +40  (vendor: always 0)
-        append(intervalBits)          // +44
-        append(previousBytesReceived) // +48
-        return data
+        writer.u32LE(delayMicroseconds)     // +20
+        writer.u32LE(delayTrendMicroseconds) // +24
+        writer.u16LE(isWarmedUp ? 2 : 0)  // +28
+        writer.u16LE(Self.constantPair)   // +30
+        writer.u16LE(Self.constantPair)   // +32
+        writer.u16LE(linkCapabilityKbps)  // +34
+        writer.u32LE(rtpTimestamp)          // +36
+        writer.u32LE(0)                     // +40  (vendor: always 0)
+        writer.u32LE(intervalBits)          // +44
+        writer.u32LE(previousBytesReceived) // +48
+        return writer.data
     }
 
     public var command: NvstControlCommand {
-        NvstControlCommand(code: 0x207, payload: payload)
+        NvstControlCommand(code: .qosFeedback, payload: payload)
     }
 }

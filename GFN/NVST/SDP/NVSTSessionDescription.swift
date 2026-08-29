@@ -516,10 +516,6 @@ private func nvstSDPLines(_ sdp: String) -> [String] {
         .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
-private func nvstAttributes(from sdp: String) -> [String: String] {
-    NVSTSessionDescription(sdp: sdp).attributesByKey
-}
-
 private func nvstAttribute(fromLine line: String) -> NVSTSDPAttribute? {
     guard line.hasPrefix("a=") else { return nil }
     let text = String(line.dropFirst(2))

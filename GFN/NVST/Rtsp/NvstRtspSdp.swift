@@ -252,7 +252,8 @@ public enum NvstRtspSdp {
         /// Adds the official client's encoder tuning and timer block. Opt-in: a larger ANNOUNCE has
         /// been observed to make the seat close DTLS immediately, so it is isolated from the
         /// encoder identity that a stream actually needs.
-        /// `OPN_NVST_OWD_CC=1` restores the seat's one-way-delay controller.
+        /// The seat's one-way-delay rate controller stays on by default (the vendor shape);
+        /// `OPN_NVST_OWD_CC=0` disables it and parks the encoder on the loss-based fallback.
         public var disablesOwdCongestionControl: Bool
         public var announcesExtendedSettings: Bool
         /// Lets the seat's DESCRIBE offer override our value for keys we already send.

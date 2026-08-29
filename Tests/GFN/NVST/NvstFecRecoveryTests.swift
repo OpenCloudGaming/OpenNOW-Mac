@@ -36,7 +36,7 @@ import Testing
         shards[1] = nil
         shards[7] = nil
         shards[11] = nil
-        let recovered = try #require(NvstReedSolomon.recover(shards: shards, dataCount: 10, parityCount: 3, size: size))
+        let recovered = try #require(NvstReedSolomon.recover(shards: &shards, dataCount: 10, parityCount: 3, size: size))
         #expect(recovered[1] == data[1])
         #expect(recovered[7] == data[7])
         #expect(recovered.count == 2)
@@ -49,7 +49,7 @@ import Testing
         var shards: [[UInt8]?] = (data + parity).map { $0 }
         shards[0] = nil
         shards[2] = nil
-        #expect(NvstReedSolomon.recover(shards: shards, dataCount: 4, parityCount: 1, size: size) == nil)
+        #expect(NvstReedSolomon.recover(shards: &shards, dataCount: 4, parityCount: 1, size: size) == nil)
     }
 }
 

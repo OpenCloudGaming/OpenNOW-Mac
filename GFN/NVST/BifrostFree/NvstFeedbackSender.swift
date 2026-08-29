@@ -32,11 +32,14 @@ public final class NvstFeedbackSender: @unchecked Sendable {
     private let lock = NSLock()
     private var write: (@Sendable (Data) -> Void)?
     private var timer: DispatchSourceTimer?
-    private let queue = DispatchQueue(label: "com.macforcenow.nvst.feedback")
+    private let queue = DispatchQueue(label: "com.opennow.nvst.feedback")
     private var senderSSRC: UInt32 = 0
     private var mediaSSRC: UInt32 = 0
     private var highestExtendedSequence: UInt32 = 0
     private var cumulativeLost: UInt32 = 0
+    private var fractionLost: UInt8 = 0
+    private var interarrivalJitter: UInt32 = 0
+    private var reportProvider: (@Sendable () -> NvstRtcpReportBlock?)?
     private var keyframeRequested = false
     private var reportsSent: UInt64 = 0
     private let interval: TimeInterval
@@ -82,11 +85,21 @@ public final class NvstFeedbackSender: @unchecked Sendable {
         timer = nil
     }
 
+    /// Fresh report blocks straight from the receiver, consulted on every emit. When set, the
+    /// RR carries the receiver's real RFC 3550 fraction-lost and jitter instead of the last
+    /// `updateMediaState` snapshot.
+    public func setReportProvider(_ provider: (@Sendable () -> NvstRtcpReportBlock?)?) {
+        withLock { reportProvider = provider }
+    }
+
     /// Updates the receiver-fed media stream state for the next RR.
-    public func updateMediaState(highestExtendedSequence: UInt32, cumulativeLost: UInt32) {
+    public func updateMediaState(highestExtendedSequence: UInt32, cumulativeLost: UInt32,
+                                 fractionLost: UInt8 = 0, interarrivalJitter: UInt32 = 0) {
         withLock {
             self.highestExtendedSequence = max(self.highestExtendedSequence, highestExtendedSequence)
             self.cumulativeLost = cumulativeLost
+            self.fractionLost = fractionLost
+            self.interarrivalJitter = interarrivalJitter
         }
     }
 
@@ -116,21 +129,30 @@ public final class NvstFeedbackSender: @unchecked Sendable {
         var media: UInt32 = 0
         var highest: UInt32 = 0
         var lost: UInt32 = 0
+        var fraction: UInt8 = 0
+        var jitter: UInt32 = 0
         var wantsKeyframe = false
+        var provider: (@Sendable () -> NvstRtcpReportBlock?)?
         withLock {
             sender = senderSSRC
             media = mediaSSRC
             highest = highestExtendedSequence
             lost = cumulativeLost
+            fraction = fractionLost
+            jitter = interarrivalJitter
             wantsKeyframe = keyframeRequested
             keyframeRequested = false
+            provider = reportProvider
         }
-        let block = NvstRtcpReportBlock(
+        // Real reception statistics when the receiver is wired in: a flat-zero fraction-lost and
+        // jitter tell the seat's congestion controller the network is perfect no matter what it
+        // actually did, which is indistinguishable from telling it nothing.
+        let block = provider?() ?? NvstRtcpReportBlock(
             sourceSSRC: media,
-            fractionLost: 0,
+            fractionLost: fraction,
             cumulativeLost: lost,
             extendedHighestSequence: highest,
-            interarrivalJitter: 0
+            interarrivalJitter: jitter
         )
         var payloads = [NvstRtcp.receiverReport(ssrc: sender, blocks: [block])]
         if wantsKeyframe {

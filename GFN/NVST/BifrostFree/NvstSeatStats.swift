@@ -10,7 +10,7 @@ import Foundation
 /// -1/+1 sentinels. The integers at +4 and +28 move with load and are carried raw for
 /// calibration until their meaning is pinned.
 public struct NvstSeatStats: Equatable, Sendable {
-    public static let commandCode: UInt16 = 0x0101
+    public static let commandCode = NvstControlCommandCode.qosInfo
     /// Payload length in every captured message.
     static let payloadLength = 80
 
@@ -24,24 +24,25 @@ public struct NvstSeatStats: Equatable, Sendable {
 
     public static func from(_ command: NvstControlCommand) -> NvstSeatStats? {
         guard command.code == commandCode, command.payload.count >= payloadLength else { return nil }
-        let bytes = [UInt8](command.payload)
-        func uint32(_ offset: Int) -> UInt32 {
-            UInt32(bytes[offset]) | UInt32(bytes[offset + 1]) << 8
-                | UInt32(bytes[offset + 2]) << 16 | UInt32(bytes[offset + 3]) << 24
+        var reader = NvstByteReader(command.payload)
+        do {
+            try reader.skip(4)
+            let counterA = try reader.u32LE()
+            try reader.skip(20)
+            let counterB = try reader.u32LE()
+            let gameFps = Double(bitPattern: try reader.u64LE())
+            let latency = Float(bitPattern: try reader.u32LE())
+            // A stats message with an implausible rate is a misread, not a measurement.
+            guard gameFps.isFinite, gameFps >= 0, gameFps < 1000 else { return nil }
+            return NvstSeatStats(
+                gameFramesPerSecond: gameFps,
+                latencySeconds: latency.isFinite ? Double(latency) : -1,
+                counterA: counterA,
+                counterB: counterB
+            )
+        } catch {
+            return nil
         }
-        func uint64(_ offset: Int) -> UInt64 {
-            UInt64(uint32(offset)) | UInt64(uint32(offset + 4)) << 32
-        }
-        let gameFps = Double(bitPattern: uint64(32))
-        let latency = Float(bitPattern: uint32(40))
-        // A stats message with an implausible rate is a misread, not a measurement.
-        guard gameFps.isFinite, gameFps >= 0, gameFps < 1000 else { return nil }
-        return NvstSeatStats(
-            gameFramesPerSecond: gameFps,
-            latencySeconds: latency.isFinite ? Double(latency) : -1,
-            counterA: uint32(4),
-            counterB: uint32(28)
-        )
     }
 
     public var summary: String {

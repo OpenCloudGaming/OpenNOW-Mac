@@ -32,14 +32,18 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     private let sendsReceiverReports: Bool
     /// User-interactive: this loop is the one piece of work that must never be descheduled — a
     /// late drain overflows the socket buffer and the loss is indistinguishable from the network's.
-    private let queue = DispatchQueue(label: "com.macforcenow.nvst.mjolnir", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "com.opennow.nvst.mjolnir", qos: .userInteractive)
     /// Feedback runs on its own queue. Sharing the receive queue meant the drain loop starved it:
     /// a 1 s repeating timer fired once in 30 s, so the sender never heard a receiver report and
     /// backed its bitrate off.
     private let startedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
-    private let feedbackQueue = DispatchQueue(label: "com.macforcenow.nvst.mjolnir.feedback")
+    private let feedbackQueue = DispatchQueue(label: "com.opennow.nvst.mjolnir.feedback")
     private let callbackLock = NSLock()
     private var socketDescriptor: Int32 = -1
+    /// Scratch space for `recvfrom`, hoisted out of `drainSocket`: the read source fires thousands
+    /// of times per session, and allocating 64 KB on every wake-up was ~17 MB/s of churn on the
+    /// user-interactive queue. The receive queue is serial, so a single reused buffer is safe.
+    private var drainBuffer = [UInt8](repeating: 0, count: 65_536)
     private var readSource: DispatchSourceRead?
     private var pingTimer: DispatchSourceTimer?
     private var reportTimer: DispatchSourceTimer?
@@ -66,6 +70,13 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     }
 
     public var stats: NvstReceiverStats { receiver.snapshot }
+
+    /// The bundle feedback path's receiver report block: the same real reception statistics the
+    /// raw socket seals into SRTCP, handed over unsealed for plain RTCP over SCTP.
+    public func receiverReportBlock(now: Date = Date(),
+                                    interval: TimeInterval = NvstMjolnirReceiver.receiverReportInterval) -> NvstRtcpReportBlock? {
+        receiver.receiverReportBlock(now: now, interval: interval)
+    }
     /// The counters the feedback reports need, without copying the per-second arrays.
     public var feedbackCounters: NvstVideoReceiver.FeedbackCounters { receiver.feedbackCounters }
     /// Where the per-packet receive cost goes: decrypt, parse, or reassembly.
@@ -138,10 +149,14 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
         source.setEventHandler { [weak self] in self?.drainSocket() }
         source.setCancelHandler { [weak self] in
             guard let self else { return }
+            // The close shares the send lock: a send in flight on another thread could otherwise
+            // `sendto` a descriptor number the kernel has already reissued to something else.
+            sendLock.lock()
             if socketDescriptor >= 0 {
                 close(socketDescriptor)
                 socketDescriptor = -1
             }
+            sendLock.unlock()
         }
         source.resume()
         readSource = source
@@ -267,12 +282,14 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     /// `feedbackQueue`, not this one.
     static let maxDatagramsPerWakeUp = 256
 
+    private static let pingPrefix = Data("PING".utf8)
+    private static let pongResponse = Data("PONG".utf8)
+
     /// One report per second, as RTCP prescribes and as upstream's NVST transport uses. Raising it
     /// to 10 Hz moved the frame rate 16.5 -> 17.5 fps, so density is not what the sender waits on.
-    static let receiverReportInterval: TimeInterval = 1
+    public static let receiverReportInterval: TimeInterval = 1
 
     private func drainSocket() {
-        var buffer = [UInt8](repeating: 0, count: 65_536)
         var readThisWakeUp = 0
         let drainStart = DispatchTime.now().uptimeNanoseconds
         defer {
@@ -287,12 +304,12 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
             var peerLength = socklen_t(MemoryLayout<sockaddr_in>.size)
             let received = withUnsafeMutablePointer(to: &peer) { pointer in
                 pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                    recvfrom(socketDescriptor, &buffer, buffer.count, 0, sockaddrPointer, &peerLength)
+                    recvfrom(socketDescriptor, &drainBuffer, drainBuffer.count, 0, sockaddrPointer, &peerLength)
                 }
             }
             if received <= 0 { return }
             readThisWakeUp += 1
-            let datagram = Data(buffer[0..<received])
+            let datagram = Data(drainBuffer[0..<received])
             counterLock.lock()
             counters.record(datagram: datagram, at: Int(DispatchTime.now().uptimeNanoseconds &- startedAtNanoseconds) / 1_000_000_000)
             counterLock.unlock()
@@ -304,8 +321,8 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
             // (`HandlePingHashLegacy` / `HandlePingHashHmac`), and the official probe answers a
             // literal PING with PONG. The video socket's keepalive is a ping, not necessarily a
             // STUN exchange, so answer both.
-            if datagram.count >= 4, datagram.prefix(4) == Data("PING".utf8) {
-                send(Data("PONG".utf8))
+            if datagram.count >= 4, datagram.prefix(4) == Self.pingPrefix {
+                send(Self.pongResponse)
                 counterLock.lock()
                 counters.responsesSent += 1
                 counterLock.unlock()
@@ -493,7 +510,16 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     /// Matches a STUN Binding Success against an outstanding probe and records the round trip.
     private func handleStunResponse(_ datagram: Data) {
         guard datagram.count >= 20 else { return }
+        guard let credentials = handoff.iceCredentials else { return }
         let transactionID = Data(datagram[8..<20])
+        // Authenticate before trusting the timing: cookie, length, transaction ID and — whenever
+        // the seat sends them — MESSAGE-INTEGRITY and FINGERPRINT. Without this a misrouted
+        // Binding Success with an observed id would write a fake RTT into the HUD.
+        guard NvstStunHolePunch.validateBindingResponse(
+            datagram,
+            integrityKey: Data(credentials.localPassword.utf8),
+            transactionID: transactionID
+        ) else { return }
         counterLock.lock()
         defer { counterLock.unlock() }
         guard let sentAt = pendingRttProbes.removeValue(forKey: transactionID) else { return }
@@ -530,15 +556,38 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
 
     // MARK: - Send
 
+    private let sendLock = NSLock()
+    private var sendDestination: sockaddr_in?
+
+    /// Builds the peer address once instead of re-parsing the dotted quad on every one of the
+    /// ~8,500 sends a second. Callers hold `sendLock`.
+    private func resolveSendDestination() -> sockaddr_in? {
+        if let sendDestination { return sendDestination }
+        guard let address = Self.inetAddr(handoff.videoPeerIP) else { return nil }
+        var destination = sockaddr_in()
+        destination.sin_family = sa_family_t(AF_INET)
+        destination.sin_port = handoff.videoPeerPort.bigEndian
+        destination.sin_addr.s_addr = address
+        sendDestination = destination
+        return destination
+    }
+
     /// Reports whether the datagram actually left the socket. A silent `sendto` failure looks
     /// exactly like a NAT that never answers, which is the wrong diagnosis to chase.
     @discardableResult
     private func send(_ data: Data) -> Bool {
+        // The send path and the cancel handler's close share a lock: sends come from transport
+        // threads while the close happens on the source's queue, and an unlocked `sendto` could
+        // hit a descriptor that is already closed — or worse, recycled.
+        sendLock.lock()
+        defer { sendLock.unlock() }
         guard socketDescriptor >= 0 else { return false }
-        var destination = sockaddr_in()
-        destination.sin_family = sa_family_t(AF_INET)
-        destination.sin_port = handoff.videoPeerPort.bigEndian
-        destination.sin_addr.s_addr = Self.inetAddr(handoff.videoPeerIP)
+        guard var destination = resolveSendDestination() else {
+            counterLock.lock()
+            counters.sendFailures += 1
+            counterLock.unlock()
+            return false
+        }
         let sent = data.withUnsafeBytes { bytes in
             withUnsafePointer(to: &destination) { pointer in
                 pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
@@ -555,11 +604,12 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
         return false
     }
 
-    static func inetAddr(_ dottedQuad: String) -> in_addr_t {
-        var result: UInt32 = 0
-        for octet in dottedQuad.split(separator: ".").compactMap({ UInt32($0) }) {
-            result = (result << 8) | (octet & 0xff)
-        }
+    /// The IPv4 address behind a dotted quad, or nil when it is not exactly four octets of at
+    /// most 255 — a malformed handoff address used to silently target a truncated one.
+    static func inetAddr(_ dottedQuad: String) -> in_addr_t? {
+        let octets = dottedQuad.split(separator: ".").compactMap { UInt32($0) }
+        guard octets.count == 4, octets.allSatisfy({ $0 <= 255 }) else { return nil }
+        let result = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
         return in_addr_t(result.bigEndian)
     }
 
