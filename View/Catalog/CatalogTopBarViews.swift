@@ -18,32 +18,46 @@ struct CatalogTopBar: View {
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+
+    /// The collapsed button and the expanded field are one element to SwiftUI, so the trip between
+    /// the trailing icon row and the centre of the bar is a single interpolated frame change
+    /// rather than a fade between two separately positioned views.
+    @Namespace private var searchTransition
+    @State private var isSearchExpanded = false
+    @FocusState private var isSearchFieldFocused: Bool
+
+    private static let searchGeometryID = "catalog-top-bar-search"
+    private static let searchTransitionAnimation = Animation.spring(response: 0.36, dampingFraction: 0.86)
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .center) {
-                HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: 14 * uiScale) {
                     Button {
                         showsMainMenu.toggle()
                         showsAccountMenu = false
                     } label: {
                         CatalogHamburgerLabel(isOpen: showsMainMenu)
                     }
-                    .frame(width: 44, height: 40)
+                    .frame(width: 44 * uiScale, height: 40 * uiScale)
                     .buttonStyle(.plain)
                     .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                     Text(mainPageTitle)
                         .nvidiaFont(size: 17, weight: .medium)
                         .foregroundStyle(.white.opacity(0.92))
-                        .frame(height: 40, alignment: .center)
+                        .frame(height: 40 * uiScale, alignment: .center)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.appBarHeight(scale: uiScale), alignment: .leading)
-                .padding(.leading, 22)
+                .padding(.leading, 22 * uiScale)
 
                 if viewModel.selectedMainPage == .games {
-                    catalogSearchField
-                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                    if isSearchExpanded {
+                        catalogSearchField
+                            .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                            .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
+                    }
                 } else {
                     Text(viewModel.selectedMainPage == .recordings ? "Saved gameplay videos" : viewModel.selectedSettingsGroup.title)
                         .nvidiaFont(size: 15, weight: .bold)
@@ -52,15 +66,31 @@ struct CatalogTopBar: View {
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
                 }
 
-                HStack(spacing: 24) {
+                HStack(spacing: 24 * uiScale) {
                     Spacer()
+                    HStack(spacing: 4 * uiScale) {
+                        if viewModel.selectedMainPage == .games, !isSearchExpanded {
+                            Button { setSearchExpanded(true) } label: {
+                                CatalogTopBarIconLabel(systemName: "magnifyingglass")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Search games")
+                            .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
+                        }
+                        Button { controllerModeEnabled = true } label: {
+                            CatalogTopBarIconLabel(systemName: "gamecontroller")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Switch to controller mode")
+                        .help("Controller mode")
+                    }
                     Button {
                         showsAccountMenu.toggle()
                         showsMainMenu = false
                     } label: {
-                        HStack(spacing: 12) {
-                            CatalogAccountAvatar(account: viewModel.account, size: 32)
-                            VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 12 * uiScale) {
+                            CatalogAccountAvatar(account: viewModel.account, size: 32 * uiScale)
+                            VStack(alignment: .leading, spacing: 1 * uiScale) {
                                 Text(viewModel.account.displayName)
                                     .nvidiaFont(size: 15, weight: .medium)
                                     .foregroundStyle(.white)
@@ -79,7 +109,7 @@ struct CatalogTopBar: View {
                     .accessibilityLabel("Open account menu")
                 }
                 .frame(height: CatalogVendorLayout.appBarHeight(scale: uiScale), alignment: .center)
-                .padding(.trailing, 22)
+                .padding(.trailing, 22 * uiScale)
             }
         }
         .frame(height: CatalogVendorLayout.appBarHeight(scale: uiScale))
@@ -87,6 +117,29 @@ struct CatalogTopBar: View {
             CatalogVendorLayout.appBarBackground
             WindowDragArea()
         }
+        // An active query has to stay visible - the field is the only place it can be read or
+        // edited, so a browse restored from state opens expanded rather than hiding itself
+        // behind an icon.
+        .onAppear { if hasActiveSearchQuery { isSearchExpanded = true } }
+        .onChange(of: hasActiveSearchQuery) { _, hasQuery in
+            if hasQuery, !isSearchExpanded { setSearchExpanded(true) }
+        }
+        .onChange(of: viewModel.selectedMainPage) { _, _ in
+            if !hasActiveSearchQuery { setSearchExpanded(false) }
+        }
+        .onChange(of: isSearchFieldFocused) { _, isFocused in
+            guard !isFocused, !hasActiveSearchQuery else { return }
+            setSearchExpanded(false)
+        }
+        .opnTakingFocus($isSearchFieldFocused, while: isSearchExpanded)
+    }
+
+    private var hasActiveSearchQuery: Bool { !viewModel.searchQuery.trimmed.isEmpty }
+
+    private func setSearchExpanded(_ expanded: Bool) {
+        guard isSearchExpanded != expanded else { return }
+        withAnimation(Self.searchTransitionAnimation) { isSearchExpanded = expanded }
+        if !expanded { isSearchFieldFocused = false }
     }
 
     private var mainPageTitle: String {
@@ -98,35 +151,39 @@ struct CatalogTopBar: View {
     }
 
     private var catalogSearchField: some View {
-        let placeholder = viewModel.selectedShowAllSection != nil
-            ? "Search titles, genres, publishers, stores, controls, ratings, or tags"
-            : "Search games, stores, or genres"
-        return HStack(spacing: 14) {
+        HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .nvidiaFont(size: 18, weight: .medium)
                 .foregroundStyle(.white.opacity(0.76))
-            TextField(placeholder, text: $viewModel.searchQuery)
+            TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .nvidiaFont(size: 16, weight: .medium)
                 .foregroundStyle(.white)
+                .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
                 .onChange(of: viewModel.searchQuery) { _, newValue in
                     if !newValue.trimmed.isEmpty, viewModel.selectedShowAllSection == nil {
                         viewModel.openBrowseFromSearch()
                     }
                 }
-            if !viewModel.searchQuery.isEmpty {
-                Button { viewModel.searchQuery = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
+            Button {
+                if hasActiveSearchQuery {
+                    viewModel.searchQuery = ""
+                } else {
+                    setSearchExpanded(false)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.52))
+            } label: {
+                Image(systemName: hasActiveSearchQuery ? "xmark.circle.fill" : "xmark")
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white.opacity(0.52))
+            .accessibilityLabel(hasActiveSearchQuery ? "Clear search" : "Close search")
         }
-        .padding(.horizontal, 18)
-        .frame(height: 46)
+        .padding(.horizontal, 18 * uiScale)
+        .frame(height: 46 * uiScale)
         .background(OpenNOWDesign.Surface.field)
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .onExitCommand { setSearchExpanded(false) }
     }
 }
 
@@ -170,27 +227,55 @@ struct CatalogAccountAvatar: View {
     }
 }
 
-struct CatalogHamburgerLabel: View {
-    let isOpen: Bool
+/// The plate every top-bar control sits on: fixed size, dark tint and a 3pt accent underline when
+/// active. Shared so the bar reads as one row of controls and its metrics exist once.
+private struct CatalogTopBarPlate: ViewModifier {
+    let isActive: Bool
+    @Environment(\.opnUIScale) private var uiScale
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: 44 * uiScale, height: 40 * uiScale)
+            .background(isActive ? Color.black.opacity(0.22) : Color.clear)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(isActive ? OpenNOWDesign.accent : Color.clear)
+                    .frame(height: 3)
+            }
+            .contentShape(Rectangle())
+    }
+}
+
+/// Square icon control for the top bar's trailing row.
+struct CatalogTopBarIconLabel: View {
+    let systemName: String
     @State private var isHovering = false
 
     var body: some View {
+        Image(systemName: systemName)
+            .nvidiaFont(size: 17, weight: .medium)
+            .foregroundStyle(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.84))
+            .modifier(CatalogTopBarPlate(isActive: isHovering))
+            .onHover { isHovering = $0 }
+    }
+}
+
+struct CatalogHamburgerLabel: View {
+    let isOpen: Bool
+    @State private var isHovering = false
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
         ZStack {
-            VStack(spacing: 4) {
+            VStack(spacing: 4 * uiScale) {
                 ForEach(0..<3, id: \.self) { index in
                     Rectangle()
                         .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.white.opacity(0.84))
-                        .frame(width: index == 1 ? 20 : 23, height: 2)
+                        .frame(width: (index == 1 ? 20 : 23) * uiScale, height: 2)
                 }
             }
         }
-        .frame(width: 44, height: 40)
-        .background((isOpen || isHovering) ? Color.black.opacity(0.22) : Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.clear)
-                .frame(height: 3)
-        }
+        .modifier(CatalogTopBarPlate(isActive: isOpen || isHovering))
         .onHover { isHovering = $0 }
         .accessibilityLabel("Main menu")
     }

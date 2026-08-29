@@ -137,13 +137,63 @@ enum SettingsFormat {
 struct SettingsView: View {
     @Bindable var viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
+    /// Set only when controller mode embeds this page; nil on the desktop surface.
+    @Environment(\.controllerPageCommand) private var controllerPageCommand
+    @StateObject private var focus = ControllerSettingsFocus()
+
+    private static let tabBarFocusID = "settings-tabs"
 
     var body: some View {
         VStack(spacing: 0) {
             SettingsTabBar(selection: $viewModel.selectedSettingsGroup, uiScale: uiScale)
-            SettingsContent(viewModel: viewModel, uiScale: uiScale)
+                .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
+            SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.controllerSettingsFocus, focus)
+        .environment(\.controllerFocusedRowID, focus.isActive ? focus.focusedID : nil)
+        .environment(\.controllerFocusActive, focus.isActive)
+        .environment(\.controllerRowCommand, focus.rowCommand)
+        .coordinateSpace(name: controllerSettingsFocusSpace)
+        .onPreferenceChange(ControllerFocusOrderKey.self) { entries in
+            focus.setOrder(entries)
+        }
+        .onAppear { focus.setActive(controllerPageCommand != nil) }
+        .onChange(of: controllerPageCommand) { _, pageCommand in
+            guard let pageCommand else { return }
+            focus.setActive(true)
+            apply(pageCommand.command)
+        }
+        .onChange(of: viewModel.selectedSettingsGroup) { _, _ in focus.focus(Self.tabBarFocusID) }
+    }
+
+    /// Up/down walk the tab bar and the focusable rows as one list, left/right act on whatever is
+    /// focused - switching tab on the bar, or adjusting a slider, option or toggle on a row - and
+    /// confirm presses it.
+    private func apply(_ command: ControllerInputCommand) {
+        // The first press only takes focus, so nothing changes value before the user can see what
+        // is selected.
+        if focus.focusFirstIfNeeded() { return }
+        switch command {
+        case .move(.up):
+            focus.move(delta: -1)
+        case .move(.down):
+            focus.move(delta: 1)
+        case .move(.left), .move(.right), .confirm:
+            focus.send(command)
+        default:
+            break
+        }
+    }
+
+    private func moveGroup(delta: Int) {
+        let groups = CatalogSettingsGroup.allCases
+        let current = groups.firstIndex(of: viewModel.selectedSettingsGroup) ?? 0
+        let next = min(max(current + delta, 0), groups.count - 1)
+        guard next != current else { return }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            viewModel.selectedSettingsGroup = groups[next]
+        }
     }
 }
 
@@ -230,8 +280,11 @@ struct SettingsTabItem: View {
 struct SettingsContent: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
+    /// The row the pad currently has focus on; the page scrolls to keep it visible.
+    var focusedID: String?
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 22 * uiScale) {
                 SettingsHeader(
@@ -252,8 +305,15 @@ struct SettingsContent: View {
             .padding(.bottom, 48 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onChange(of: focusedID) { _, id in
+            guard let id else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo(id, anchor: .center)
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SettingsSurfaceBackground())
+        }
     }
 
     @ViewBuilder private var page: some View {
@@ -270,6 +330,8 @@ struct SettingsContent: View {
             SteamControllerSettingsPage(uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
+        case .experimental:
+            ExperimentalFeaturesSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .about:
             AboutSettingsGroup(viewModel: viewModel, uiScale: uiScale)
         }

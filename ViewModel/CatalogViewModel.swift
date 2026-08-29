@@ -86,6 +86,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case connections
     case controller
     case general
+    case experimental
     case about
 
     var id: String { rawValue }
@@ -98,6 +99,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .connections: return "Connections"
         case .controller: return "Controller"
         case .general: return "General"
+        case .experimental: return "Experimental"
         case .about: return "About"
         }
     }
@@ -109,7 +111,8 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "Route GeForce NOW requests through a proxy. Stream traffic always connects directly."
         case .connections: return "Manage store accounts and Twitch broadcast settings."
         case .controller: return "Steam Controller support, permissions, input testing, and mapping."
-        case .general: return "Interface mode, display scale, and experimental features."
+        case .general: return "Interface mode and display scale."
+        case .experimental: return "Unfinished and in-development features. Expect rough edges."
         case .about: return "OpenNOW Mac runtime, system capability, and service identifiers."
         }
     }
@@ -122,6 +125,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .connections: return "link"
         case .controller: return "gamecontroller.fill"
         case .general: return "gearshape.2.fill"
+        case .experimental: return "flask.fill"
         case .about: return "info.circle.fill"
         }
     }
@@ -154,6 +158,10 @@ final class CatalogViewModel {
     var isLoading = false
     var isLoadingMoreCatalog = false
     var isLoadingPanels = false
+    /// The hero and the rails come from two different queries. `isLoadingPanels` only follows the
+    /// main (rails) one, so the hero needs its own flag - otherwise the rails paint at the top of
+    /// the page and the hero shoves them down whenever the marquee query finishes second.
+    var isLoadingMarquee = false
     /// The deferred library/favorites fetches run after the main grid. These hold a skeleton rail
     /// in place while they do, so the rails do not silently pop in when they land.
     var isLoadingLibrary = false { didSet { cachedCatalogSections = nil } }
@@ -453,6 +461,14 @@ final class CatalogViewModel {
     private func loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: Bool = false) {
         configureCatalogService()
         Task { await configureCatalogProviderEndpoint() }
+        // Claim the library and favorites rail slots up front rather than when their (deferred)
+        // fetches start. Setting them later meant the rails appeared mid-load and pushed
+        // everything under them down the page. This has to run before `loadPanels()`, whose
+        // prefetch replay can already deliver those lists and clear the flags again.
+        if !isBrowseMode {
+            if libraryGames.isEmpty { isLoadingLibrary = true }
+            if favoriteGames.isEmpty { isLoadingFavorites = true }
+        }
         loadPanels()
         loadSettingsPreferences()
         scheduleSecondaryCatalogLoads()
@@ -464,6 +480,11 @@ final class CatalogViewModel {
     // and delay them when the whole burst starts at once. They wait for the home
     // rails to have data, or for a short grace period if the rails are slow.
     private func scheduleSecondaryCatalogLoads() {
+        // `loadCatalogDataAfterProviderConfiguration` reserves the library and favorites rail slots
+        // and this task's `loadLibrary()`/`loadFavorites()` are what release them again, so every
+        // path that abandons this task must be one that immediately replaces it - otherwise those
+        // rails hold a skeleton forever. The cancel below is the only cancellation site for exactly
+        // that reason; a new one has to release the flags itself.
         secondaryCatalogLoadsTask?.cancel()
         secondaryCatalogLoadsTask = Task { [weak self] in
             for _ in 0..<Self.secondaryCatalogLoadPollCount {
@@ -479,8 +500,11 @@ final class CatalogViewModel {
             self.loadLibrary()
             self.loadFavorites()
             self.loadAccountAndStores()
-            self.checkActiveHomeSession()
         }
+        // Unlike the rest of this burst, the active-session lookup goes to the streaming host
+        // rather than the catalog control plane, so it contends with nothing here. Waiting for the
+        // panels only meant its banner landed after the page had painted and pushed it all down.
+        checkActiveHomeSession()
     }
 
     // Short: a cold panel fetch can take seconds, and holding the library and
@@ -641,8 +665,13 @@ final class CatalogViewModel {
             self.hasMoreCatalogResults = browseResult.hasNextPage
             self.catalogEndCursor = browseResult.endCursor
             self.isLoadingMoreCatalog = false
-            self.filterGroups = browseResult.filterGroups
-            self.sortOptions = browseResult.sortOptions
+            // A browse is delivered more than once: the cached catalog arrives first, before the
+            // filter/sort definitions have been read, and those early deliveries carry none. They
+            // were being assigned anyway, which blanked the filter chips and dropped the sort chip
+            // back to its "A-Z" placeholder - the difference between the Search page and a Show All
+            // page was only ever which delivery had last landed.
+            if !browseResult.filterGroups.isEmpty { self.filterGroups = browseResult.filterGroups }
+            if !browseResult.sortOptions.isEmpty { self.sortOptions = browseResult.sortOptions }
             OpenNOWLog.info(.catalog, "Show All result applied games=\(newCount) filterGroups=\(browseResult.filterGroups.count) sortOptions=\(browseResult.sortOptions.count) isPartial=\(isPartialDelivery)")
             if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
             self.selectedFilterIds = browseResult.selectedFilterIds
@@ -2064,6 +2093,7 @@ final class CatalogViewModel {
 
     private func loadPanels() {
         isLoadingPanels = true
+        isLoadingMarquee = true
         errorMessage = ""
         configureCatalogService()
 
@@ -2082,6 +2112,7 @@ final class CatalogViewModel {
     private func handleLaunchPrefetchEvent(_ event: CatalogLaunchPrefetch.Event) {
         switch event {
         case .panels(.marquee, let panels):
+            isLoadingMarquee = false
             applyMarqueePanels(panels)
         case .panels(.main, let panels):
             isLoadingPanels = false
@@ -2114,6 +2145,7 @@ final class CatalogViewModel {
         let panelStartTime = CFAbsoluteTimeGetCurrent()
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
             guard let self else { return }
+            self.isLoadingMarquee = false
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
                 OpenNOWLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
@@ -2640,6 +2672,7 @@ final class CatalogViewModel {
         authRefreshInFlight = true
         isLoading = false
         isLoadingPanels = false
+        isLoadingMarquee = false
         errorMessage = "Refreshing NVIDIA session..."
         Task { [weak self] in
             guard let self else { return }

@@ -86,6 +86,7 @@ struct SettingsInfoRow: View {
 }
 
 struct SettingsOptionRow: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
     let subtitle: String
     let options: [String]
@@ -125,10 +126,30 @@ struct SettingsOptionRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .controllerFocusable(
+            focusIdentity,
+            activate: { guard !isLocked else { return }; cycleOption(1) },
+            adjust: { delta in guard !isLocked else { return }; cycleOption(delta) }
+        )
+    }
+
+    /// Walks to the next selectable option, skipping any the page has disabled.
+    private func cycleOption(_ delta: Int) {
+        guard !options.isEmpty else { return }
+        var index = selectedIndex
+        for _ in 0..<options.count {
+            index = (index + delta + options.count) % options.count
+            let optionEnabled = enabled.indices.contains(index) ? enabled[index] : true
+            if optionEnabled {
+                action(index)
+                return
+            }
+        }
     }
 }
 
 struct SettingsToggleRow: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
     let subtitle: String
     let isOn: Bool
@@ -153,6 +174,16 @@ struct SettingsToggleRow: View {
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)
         }
+        .controllerFocusable(
+            focusIdentity,
+            activate: { guard !isLocked else { return }; action(!isOn) },
+            adjust: { delta in
+                guard !isLocked else { return }
+                let next = delta > 0
+                guard next != isOn else { return }
+                action(next)
+            }
+        )
     }
 }
 
@@ -243,6 +274,7 @@ struct SettingsSecureTextFieldRow: View {
 }
 
 struct SettingsSliderRow: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
     let valueText: String
     let value: Double
@@ -268,6 +300,18 @@ struct SettingsSliderRow: View {
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)
         }
+        .controllerFocusable(
+            focusIdentity,
+            adjust: { delta in
+                guard !isLocked else { return }
+                // A zero or absent step would make a pad nudge do nothing, so fall back to a
+                // hundredth of the range.
+                let increment = step > 0 ? step : (range.upperBound - range.lowerBound) / 100
+                let next = min(max(value + Double(delta) * increment, range.lowerBound), range.upperBound)
+                guard next != value else { return }
+                action(next)
+            }
+        )
     }
 }
 
@@ -301,6 +345,7 @@ struct SettingsColorRow: View {
 }
 
 struct SettingsActionButton: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     enum Tone {
         case primary
         case secondary
@@ -328,6 +373,7 @@ struct SettingsActionButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .controllerFocusable(focusIdentity, activate: { guard isEnabled else { return }; action() })
     }
 
     private var backgroundColor: Color {

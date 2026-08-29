@@ -44,6 +44,8 @@ struct RecordingsView: View {
     @State private var playerTimeObserver: Any?
     @State private var editorPreviewTask: Task<Void, Never>?
     @State private var editorPreviewDurationSeconds = 0.0
+    /// Set only when controller mode embeds this page; nil on the desktop surface.
+    @Environment(\.controllerPageCommand) private var controllerPageCommand
 
     private var visibleRecordings: [WebRTCStreamRecording] {
         let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -80,6 +82,10 @@ struct RecordingsView: View {
             }
         }
         .onAppear { reload(showMessage: false) }
+        .onChange(of: controllerPageCommand) { _, pageCommand in
+            guard let pageCommand else { return }
+            applyControllerCommand(pageCommand.command, in: visibleRecordings)
+        }
         .onChange(of: visibleRecordings.map(\.id)) { _, ids in
             guard let selectedRecording, !ids.contains(selectedRecording.id) else { return }
             select(visibleRecordings.first, autoplay: false)
@@ -309,6 +315,37 @@ struct RecordingsView: View {
         if showMessage {
             message = recordings.isEmpty ? "No recordings found in your GeForce NOW movies folder." : "Loaded \(recordings.count) recording\(recordings.count == 1 ? "" : "s")."
         }
+    }
+
+    /// Up/down walk the recordings list, left/right cycle the sort order, and confirm plays the
+    /// highlighted recording. Selecting a row already loads it into the player pane, so moving the
+    /// selection is enough to browse the library from a pad.
+    /// The visible list is passed in: it is two filters plus a sort with no memoization, and the
+    /// old shape read it three times per press. Nothing is highlighted until something is selected,
+    /// so the first press only takes the selection rather than also acting on it.
+    private func applyControllerCommand(_ command: ControllerInputCommand, in recordings: [WebRTCStreamRecording]) {
+        guard !recordings.isEmpty else { return }
+        guard let selectedRecording, recordings.contains(where: { $0.id == selectedRecording.id }) else {
+            select(recordings.first, autoplay: command == .confirm)
+            return
+        }
+        switch command {
+        case .move(.up), .move(.left):
+            moveSelection(delta: -1, from: selectedRecording, in: recordings)
+        case .move(.down), .move(.right):
+            moveSelection(delta: 1, from: selectedRecording, in: recordings)
+        case .confirm:
+            select(selectedRecording, autoplay: true)
+        default:
+            break
+        }
+    }
+
+    private func moveSelection(delta: Int, from selected: WebRTCStreamRecording, in recordings: [WebRTCStreamRecording]) {
+        guard let current = recordings.firstIndex(where: { $0.id == selected.id }) else { return }
+        let next = min(max(current + delta, 0), recordings.count - 1)
+        guard next != current else { return }
+        select(recordings[next], autoplay: false)
     }
 
     private func select(_ recording: WebRTCStreamRecording?, autoplay: Bool) {

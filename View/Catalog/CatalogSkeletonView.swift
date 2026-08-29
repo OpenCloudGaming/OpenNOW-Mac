@@ -80,17 +80,33 @@ struct SkeletonBlock: View {
     }
 }
 
-/// One skeleton rail: a placeholder title plus a row of placeholder tiles, matching the real
-/// `CatalogRailView` metrics so the transition to loaded content doesn't shift layout.
+/// One skeleton rail. Every metric here mirrors `CatalogRailView.loadedBody` exactly - the 28pt
+/// header row, the 14pt stack spacing, the tile row height and its 4pt bottom padding - so a rail
+/// swapping from skeleton to games keeps the page at the same height and nothing below it moves.
+///
+/// A deferred library/favorites rail already knows its title before its games arrive, so it passes
+/// one in and only the tiles read as loading.
 struct CatalogRailSkeletonView: View {
+    var title: String?
     var tileCount = 6
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(cornerRadius: 4)
-                .frame(width: 190, height: 20)
-                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+            HStack {
+                if let title {
+                    Text(title)
+                        .nvidiaFont(size: 20, weight: .medium)
+                        .foregroundStyle(.white.opacity(0.96))
+                        .accessibilityAddTraits(.isHeader)
+                } else {
+                    SkeletonBlock(cornerRadius: 4)
+                        .frame(width: 190 * uiScale, height: 20 * uiScale)
+                }
+                Spacer()
+            }
+            .frame(height: 28 * uiScale)
+            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
 
             HStack(spacing: 0) {
                 ForEach(0..<tileCount, id: \.self) { _ in
@@ -100,58 +116,51 @@ struct CatalogRailSkeletonView: View {
                         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
                 }
             }
+            .frame(height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
             .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
+            .padding(.bottom, 4 * uiScale)
         }
-    }
-}
-
-/// Full-page skeleton for the Home / catalog rails surface (hero banner + a few rails).
-struct CatalogHomeSkeletonView: View {
-    let availableWidth: CGFloat
-    var railCount = 3
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                SkeletonBlock()
-                    .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, scale: uiScale))
-
-                ForEach(0..<railCount, id: \.self) { _ in
-                    CatalogRailSkeletonView()
-                }
-            }
-            .padding(.bottom, 44)
-        }
-        .background(OpenNOWDesign.Surface.app)
         .allowsHitTesting(false)
-        .accessibilityLabel("Loading games")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title.map { "Loading \($0)" } ?? "Loading games")
     }
 }
 
-/// Skeleton grid for the Show All (filtered catalog) page while a browse is in flight.
+/// Skeleton grid for a filtered catalog page while a browse is in flight.
+///
+/// `isScrollable` is off when this sits inside a page that already scrolls - a nested vertical
+/// scroll view there has no height to resolve against and collapses.
 struct CatalogGridSkeletonView: View {
     var tileCount = 12
+    var isScrollable = true
     @Environment(\.opnUIScale) private var uiScale
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4, alignment: .top)]
+        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
     }
 
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(0..<tileCount, id: \.self) { _ in
-                    SkeletonBlock(cornerRadius: 2)
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
-                        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                        .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                }
+        Group {
+            if isScrollable {
+                ScrollView { grid }
+            } else {
+                grid
             }
-            .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
-            .padding(.bottom, 12)
         }
         .allowsHitTesting(false)
         .accessibilityLabel("Loading games")
+    }
+
+    private var grid: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
+            ForEach(0..<tileCount, id: \.self) { _ in
+                SkeletonBlock(cornerRadius: 2)
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
+                    .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
+            }
+        }
+        .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
+        .padding(.bottom, 12 * uiScale)
     }
 }

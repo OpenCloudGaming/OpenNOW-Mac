@@ -228,7 +228,9 @@ final class CatalogLaunchPrefetch {
                 append(game.bestMarqueeHeroImageURL, width: 1920, into: &urls, seen: &seen)
                 append(game.bestLogoImageURL, width: 620, into: &urls, seen: &seen)
             }
-            imageCache.prefetchPriority(urls, maxPixelSize: 1920)
+            // Retains the compressed bytes: the hero reads its scrim colour out of them, so an
+            // entry without them is a miss and a second decode of the largest artwork in the app.
+            imageCache.prefetchPriority(urls, maxPixelSize: 1920, retainingSourceData: true)
         case .main:
             guard !didPrefetchRailImages else { return }
             didPrefetchRailImages = true
@@ -241,7 +243,7 @@ final class CatalogLaunchPrefetch {
                     append(tile.imageUrl, width: 768, into: &urls, seen: &seen)
                 }
             }
-            imageCache.prefetchPriority(urls, maxPixelSize: 768)
+            imageCache.prefetchPriority(urls, maxPixelSize: 768, retainingSourceData: false)
         }
     }
 

@@ -293,7 +293,15 @@ extension OPNGameService {
                         let isCatalogFirstPage = page == 0 && startCursor.isEmpty
                         let isFinalPage = !hasNextPage || endCursor.isEmpty || page + 1 >= maxPages
                         let shouldDeliver = callerDrivenPaging || isFinalPage
-                        if shouldDeliver, !(callerDrivenPaging && isCatalogFirstPage && deliveredCachedResult.value) {
+                        // The filter groups and sort orders are parsed into `baseResult` on this
+                        // path and on no other; the earlier cached-catalog delivery carries games
+                        // only. Skipping this delivery purely to avoid repainting identical games
+                        // therefore threw those definitions away, so any browse served from cache -
+                        // in practice every search with an empty query - showed an empty filter bar
+                        // and a placeholder sort label.
+                        let carriesDefinitions = !baseResult.filterGroups.isEmpty || !baseResult.sortOptions.isEmpty
+                        let isRedundantRepaint = callerDrivenPaging && isCatalogFirstPage && deliveredCachedResult.value && !carriesDefinitions
+                        if shouldDeliver, !isRedundantRepaint {
                             let snapshot = state.snapshot()
                             if isCatalogFirstPage {
                                 deliveredFirstPage.setTrue()

@@ -73,7 +73,6 @@ struct GeneralSettingsGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             InterfaceSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            ExperimentalFeaturesSettingsPage(viewModel: viewModel, uiScale: uiScale)
         }
     }
 }

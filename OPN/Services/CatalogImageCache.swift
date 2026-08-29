@@ -9,10 +9,17 @@ import Foundation
 import ImageIO
 import SwiftData
 
+/// A decoded catalog image, plus - only when a caller asked for it - the compressed bytes it came
+/// from. The hero needs those bytes because the scrim colour lives in the image's EXIF user
+/// comment, which decoding discards. Nothing else does, and retaining them for every tile kept a
+/// full second copy of the catalog's artwork alive that the memory cache's cost accounting never
+/// even saw.
 struct CatalogCachedImageData: @unchecked Sendable {
-    let data: Data
+    let sourceData: Data?
     let image: NSImage
     let decodedByteCount: Int
+
+    var memoryCost: Int { decodedByteCount + (sourceData?.count ?? 0) }
 }
 
 struct CatalogImageCacheStatistics: Sendable {
@@ -55,10 +62,14 @@ actor CatalogImageCache {
     /// deliberately trickles at background priority with a sleep between items,
     /// which is right for scroll-ahead and far too slow for the hero and the
     /// first rail during the splash screen.
-    nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat = 1024) {
+    /// `retainingSourceData` must match what the eventual reader asks for. The hero requests its
+    /// bytes for the EXIF scrim, so prefetching its artwork without them stored an entry the hero
+    /// could not use - it missed, and decoded the largest image in the app a second time, during
+    /// launch, once per rotation game.
+    nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat = 1024, retainingSourceData: Bool = false) {
         guard !urls.isEmpty else { return }
         Task(priority: .userInitiated) { [weak self] in
-            await self?.startPriorityPrefetch(urls, maxPixelSize: maxPixelSize)
+            await self?.startPriorityPrefetch(urls, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
         }
     }
 
@@ -68,18 +79,18 @@ actor CatalogImageCache {
         }
     }
 
-    func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2) async -> CatalogCachedImageData? {
-        if let cached = memoryCache.image(for: url) {
+    func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
+        if let cached = memoryCache.image(for: url), !retainingSourceData || cached.sourceData != nil {
             return cached
         }
 
-        if let existingTask = inFlightLoads[url] {
+        if !retainingSourceData, let existingTask = inFlightLoads[url] {
             return await existingTask.value
         }
 
         let task = Task<CatalogCachedImageData?, Never>.detached(priority: .utility, operation: { [weak self] in
             guard let self else { return nil }
-            return await self.loadImage(for: url, maxPixelSize: maxPixelSize)
+            return await self.loadImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
         })
         inFlightLoads[url] = task
         let result = await task.value
@@ -88,36 +99,40 @@ actor CatalogImageCache {
     }
 
     func statistics() -> CatalogImageCacheStatistics {
-        guard let context = makeContext() else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
-        guard let entries = try? context.fetch(descriptor) else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
-        return CatalogImageCacheStatistics(entryCount: entries.count, totalBytes: entries.reduce(0) { $0 + $1.byteCount })
+        let empty = CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0)
+        let result = containerStore.perform { context -> CatalogImageCacheStatistics in
+            // Only `byteCount` is read, so the blobs stay unfaulted; this runs on the same queue
+            // that gates image loading.
+            var descriptor = FetchDescriptor<CatalogImageCacheEntry>()
+            descriptor.propertiesToFetch = [\.byteCount]
+            guard let entries = try? context.fetch(descriptor) else { return empty }
+            return CatalogImageCacheStatistics(entryCount: entries.count, totalBytes: entries.reduce(0) { $0 + $1.byteCount })
+        }
+        return result ?? empty
     }
 
     func clear() -> Bool {
-        guard let context = makeContext() else { return false }
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
-        guard let entries = try? context.fetch(descriptor) else { return false }
-        for entry in entries {
-            context.delete(entry)
+        let didClear = containerStore.perform { context -> Bool in
+            let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
+            guard let entries = try? context.fetch(descriptor) else { return false }
+            for entry in entries {
+                context.delete(entry)
+            }
+            return (try? context.save()) != nil
         }
-        do {
-            try context.save()
-            memoryCache.removeAll()
-            prefetchQueue.removeAll()
-            queuedPrefetchURLs.removeAll()
-            priorityPrefetchQueue.removeAll()
-            queuedPriorityPrefetchURLs.removeAll()
-            prefetchTask?.cancel()
-            prefetchTask = nil
-            pruneThrottle.reset()
-            return true
-        } catch {
-            return false
-        }
+        guard didClear == true else { return false }
+        memoryCache.removeAll()
+        prefetchQueue.removeAll()
+        queuedPrefetchURLs.removeAll()
+        priorityPrefetchQueue.removeAll()
+        queuedPriorityPrefetchURLs.removeAll()
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        pruneThrottle.reset()
+        return true
     }
 
-    private func startPriorityPrefetch(_ urls: [URL], maxPixelSize: CGFloat) {
+    private func startPriorityPrefetch(_ urls: [URL], maxPixelSize: CGFloat, retainingSourceData: Bool) {
         var didEnqueue = false
         for url in urls where !queuedPriorityPrefetchURLs.contains(url) {
             guard !hasCachedImage(for: url) else { continue }
@@ -131,7 +146,7 @@ actor CatalogImageCache {
             Task(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
                 while let url = await self.nextPriorityPrefetchURL() {
-                    _ = await self.image(for: url, maxPixelSize: maxPixelSize)
+                    _ = await self.image(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
                 }
                 await self.priorityPrefetchWorkerDidFinish()
             }
@@ -185,28 +200,31 @@ actor CatalogImageCache {
         startPrefetchTaskIfNeeded()
     }
 
-    nonisolated private func loadImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
-        if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize) {
+    nonisolated private func loadImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData? {
+        if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
             if stored.isFresh {
                 return stored.imageData
             }
-            refreshStoredImage(for: url, eTag: stored.eTag, lastModified: stored.lastModified, maxPixelSize: maxPixelSize)
+            refreshStoredImage(for: url, eTag: stored.eTag, lastModified: stored.lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
             return stored.imageData
         }
-        return await downloadAndStoreImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize)
+        return await downloadAndStoreImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
     }
 
-    nonisolated private func loadStoredImage(for url: URL, maxPixelSize: CGFloat) async -> StoredImage? {
-        guard let context = makeContext() else { return nil }
+    nonisolated private func loadStoredImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> StoredImage? {
         let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
-        guard let entry = try? context.fetch(descriptor).first,
-              let decoded = Self.downsampledImage(from: entry.data, maxPixelSize: maxPixelSize) else { return nil }
+        // Only the row is read on the persistence queue; decoding is far too slow to hold it.
+        let row = containerStore.perform { context -> StoredRow? in
+            var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
+            descriptor.fetchLimit = 1
+            guard let entry = try? context.fetch(descriptor).first else { return nil }
+            return StoredRow(data: entry.data, updatedAt: entry.updatedAt, eTag: entry.eTag, lastModified: entry.lastModified)
+        }
+        guard let row = row.flatMap({ $0 }), let decoded = Self.downsampledImage(from: row.data, maxPixelSize: maxPixelSize) else { return nil }
         await deferAccessMetadataUpdate(for: url)
-        let imageData = CatalogCachedImageData(data: entry.data, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
+        let imageData = CatalogCachedImageData(sourceData: retainingSourceData ? row.data : nil, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
         memoryCache.setImage(imageData, for: url)
-        return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(entry.updatedAt) < maximumCacheAge, eTag: entry.eTag, lastModified: entry.lastModified)
+        return StoredImage(imageData: imageData, isFresh: Date().timeIntervalSince(row.updatedAt) < maximumCacheAge, eTag: row.eTag, lastModified: row.lastModified)
     }
 
     // Access metadata is batched: a save per image access floods the store with
@@ -235,26 +253,27 @@ actor CatalogImageCache {
     }
 
     nonisolated private func flushAccessMetadata(_ hits: [String: Int]) {
-        guard let context = makeContext() else { return }
         let keys = Array(hits.keys)
-        let descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { keys.contains($0.url) })
-        guard let entries = try? context.fetch(descriptor) else { return }
-        let now = Date()
-        for entry in entries {
-            entry.lastAccessedAt = now
-            entry.hitCount += hits[entry.url] ?? 0
+        containerStore.performAsync { context in
+            let descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { keys.contains($0.url) })
+            guard let entries = try? context.fetch(descriptor) else { return }
+            let now = Date()
+            for entry in entries {
+                entry.lastAccessedAt = now
+                entry.hitCount += hits[entry.url] ?? 0
+            }
+            try? context.save()
         }
-        try? context.save()
     }
 
-    nonisolated private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) {
+    nonisolated private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) {
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize)
+            _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
         }
     }
 
-    nonisolated private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
+    nonisolated private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData? {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
@@ -271,7 +290,7 @@ actor CatalogImageCache {
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
                 await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
-                return await loadStoredImage(for: url, maxPixelSize: maxPixelSize)?.imageData
+                return await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)?.imageData
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
                 await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
@@ -281,8 +300,8 @@ actor CatalogImageCache {
                 await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
                 return nil
             }
-            let imageData = CatalogCachedImageData(data: data, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
-            store(imageData: imageData, response: httpResponse, for: url)
+            let imageData = CatalogCachedImageData(sourceData: retainingSourceData ? data : nil, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
+            store(imageData: imageData, sourceData: data, response: httpResponse, for: url)
             await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
             return imageData
         } catch {
@@ -297,37 +316,46 @@ actor CatalogImageCache {
     }
 
     nonisolated private func markStoredImageFresh(for url: URL) {
-        guard let context = makeContext() else { return }
         let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
-        guard let entry = try? context.fetch(descriptor).first else { return }
-        let now = Date()
-        entry.updatedAt = now
-        entry.lastAccessedAt = now
-        try? context.save()
+        containerStore.performAsync { context in
+            var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
+            descriptor.fetchLimit = 1
+            guard let entry = try? context.fetch(descriptor).first else { return }
+            let now = Date()
+            entry.updatedAt = now
+            entry.lastAccessedAt = now
+            try? context.save()
+        }
     }
 
-    nonisolated private func store(imageData: CatalogCachedImageData, response: HTTPURLResponse, for url: URL) {
-        guard let context = makeContext() else { return }
+    nonisolated private func store(imageData: CatalogCachedImageData, sourceData: Data, response: HTTPURLResponse, for url: URL) {
         let key = url.absoluteString
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
-        descriptor.fetchLimit = 1
-        let now = Date()
-        let entry = (try? context.fetch(descriptor).first) ?? CatalogImageCacheEntry(url: key, data: imageData.data)
-        if entry.modelContext == nil {
-            context.insert(entry)
-        }
-        entry.data = imageData.data
-        entry.mimeType = response.mimeType ?? ""
-        entry.eTag = response.value(forHTTPHeaderField: "ETag") ?? ""
-        entry.lastModified = response.value(forHTTPHeaderField: "Last-Modified") ?? ""
-        entry.byteCount = imageData.data.count
-        entry.updatedAt = now
-        entry.lastAccessedAt = now
+        let mimeType = response.mimeType ?? ""
+        let eTag = response.value(forHTTPHeaderField: "ETag") ?? ""
+        let lastModified = response.value(forHTTPHeaderField: "Last-Modified") ?? ""
         memoryCache.setImage(imageData, for: url)
-        try? context.save()
-        pruneIfNeeded(context: context)
+        // The decoded image is already in the memory cache, so callers need nothing from this; the
+        // write (and the prune behind it) stays off the queue's critical path where up to five
+        // prefetch workers are waiting to read.
+        containerStore.performAsync { context in
+            var descriptor = FetchDescriptor<CatalogImageCacheEntry>(predicate: #Predicate { $0.url == key })
+            descriptor.fetchLimit = 1
+            let now = Date()
+            let entry = (try? context.fetch(descriptor).first) ?? CatalogImageCacheEntry(url: key, data: sourceData)
+            if entry.modelContext == nil {
+                context.insert(entry)
+            }
+            entry.data = sourceData
+            entry.mimeType = mimeType
+            entry.eTag = eTag
+            entry.lastModified = lastModified
+            entry.byteCount = sourceData.count
+            entry.updatedAt = now
+            entry.lastAccessedAt = now
+            try? context.save()
+            // Same context, same queue turn: the prune can only ever see a settled store.
+            self.pruneIfNeeded(context: context)
+        }
     }
 
     nonisolated private func pruneIfNeeded(context: ModelContext) {
@@ -351,11 +379,6 @@ actor CatalogImageCache {
         try? context.save()
     }
 
-    nonisolated private func makeContext() -> ModelContext? {
-        guard let modelContainer = containerStore.container() else { return nil }
-        return ModelContext(modelContainer)
-    }
-
     private static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> (image: NSImage, decodedByteCount: Int)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
             return nil
@@ -376,6 +399,15 @@ actor CatalogImageCache {
     private struct StoredImage {
         let imageData: CatalogCachedImageData
         let isFresh: Bool
+        let eTag: String
+        let lastModified: String
+    }
+
+    /// A plain copy of the fields a load needs, so no `ModelContext`-bound object escapes the
+    /// persistence queue.
+    private struct StoredRow {
+        let data: Data
+        let updatedAt: Date
         let eTag: String
         let lastModified: String
     }
@@ -405,18 +437,54 @@ nonisolated private final class CatalogImageCachePruneThrottle: @unchecked Senda
     }
 }
 
+/// Owns the cache's `ModelContainer` and is the only place a `ModelContext` is created or used.
+///
+/// Every image store previously built its own context on whatever cooperative thread it landed on.
+/// Those contexts then raced each other - one inserting a freshly downloaded entry while another's
+/// prune deleted rows out from under it - and SwiftData surfaced that as a `swift_dynamicCast`
+/// failure deep inside `ModelContext.save()`, i.e. a hard crash rather than a thrown error. A
+/// context is not safe to use concurrently against a shared container, so all of that work is
+/// funnelled onto one serial queue here.
+///
+/// The queue is deliberately not the cache actor: routing persistence back through the actor is
+/// what caused the shared-container stall this cache was split out to avoid.
 nonisolated private final class CatalogImageCacheContainerStore: @unchecked Sendable {
-    private let lock = NSLock()
+    private let queue = DispatchQueue(label: "com.opennow.catalog-image-cache.persistence")
+    /// Only ever touched on `queue`, which is also the only thing that serialises it - no separate
+    /// lock, and one context reused for the process lifetime now that nothing else can reach it.
     private var modelContainer: ModelContainer?
+    private var context: ModelContext?
 
     func configure(container: ModelContainer) {
-        lock.withLock {
+        queue.async { [self] in
             modelContainer = container
+            context = nil
         }
     }
 
-    func container() -> ModelContainer? {
-        lock.withLock { modelContainer }
+    /// Runs `work` against the queue's context and waits for the result. Returns nil when no
+    /// container has been configured yet, the same "cache unavailable" outcome callers handle.
+    func perform<T>(_ work: (ModelContext) -> T) -> T? {
+        queue.sync {
+            guard let context = resolvedContext() else { return nil }
+            return work(context)
+        }
+    }
+
+    /// For writes whose result nobody waits on. Keeps image loads off the queue's critical path.
+    func performAsync(_ work: @escaping (ModelContext) -> Void) {
+        queue.async { [self] in
+            guard let context = resolvedContext() else { return }
+            work(context)
+        }
+    }
+
+    private func resolvedContext() -> ModelContext? {
+        if let context { return context }
+        guard let modelContainer else { return nil }
+        let context = ModelContext(modelContainer)
+        self.context = context
+        return context
     }
 }
 
@@ -433,7 +501,7 @@ nonisolated private final class CatalogImageMemoryCache: @unchecked Sendable {
     }
 
     func setImage(_ imageData: CatalogCachedImageData, for url: URL) {
-        cache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.decodedByteCount)
+        cache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.memoryCost)
     }
 
     func removeAll() {

@@ -8,6 +8,9 @@ import Foundation
 
 enum ControllerCatalogFocusArea {
     case navigation
+    /// The search bar at the top of the catalog. Its own area rather than a rail, because it sits
+    /// above the hero and has no game selection of its own.
+    case search
     case content
 }
 
@@ -64,7 +67,11 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     // Library and Favorites are no longer standalone destinations — they are reached from the
     // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
-    let navigationItems: [ControllerNavigationItem] = [.home, .search, .recordings, .settings, .actions]
+    /// Search is deliberately absent: it is an overlay raised by the dedicated search button (and
+    /// hinted as such in the hint bar), not a place you land on. Listing it as a destination meant
+    /// the bar had to claim something was "active" while an overlay was up, and paging with LB/RB
+    /// stepped onto a screen that immediately covered the bar it came from.
+    let navigationItems: [ControllerNavigationItem] = [.home, .recordings, .settings, .actions]
 
     var hasControllerOverlay: Bool {
         isActionMenuVisible || isSearchVisible || isDetailVisible

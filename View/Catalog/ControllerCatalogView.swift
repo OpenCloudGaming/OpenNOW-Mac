@@ -52,6 +52,7 @@ private enum ControllerDetailAction: Equatable {
 private enum ControllerActionMenuItem {
     case refresh
     case clearSearch
+    case desktopMode
     case home
     case library
     case favorites
@@ -64,6 +65,7 @@ private enum ControllerActionMenuItem {
         switch self {
         case .refresh: return "Refresh Catalog"
         case .clearSearch: return "Clear Search and Filters"
+        case .desktopMode: return "Switch to Desktop Mode"
         case .home: return "Go to Home"
         case .library: return "Go to Library"
         case .favorites: return "Go to Favorites"
@@ -85,6 +87,7 @@ private enum ControllerActionMenuItem {
         switch self {
         case .refresh: return "arrow.clockwise"
         case .clearSearch: return "line.3.horizontal.decrease.circle"
+        case .desktopMode: return "macwindow"
         case .home: return "gamecontroller.fill"
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
@@ -99,6 +102,7 @@ private enum ControllerActionMenuItem {
 private struct ControllerLayoutMetrics {
     let size: CGSize
     let safeAreaInsets: EdgeInsets
+    let scale: CGFloat
 
     var contentWidth: CGFloat {
         max(size.width - leadingInset - trailingInset, 1)
@@ -112,12 +116,24 @@ private struct ControllerLayoutMetrics {
         safeAreaInsets.trailing + baseInset
     }
 
-    var compactHeight: Bool { size.height < 760 }
-    var heroHeight: CGFloat { compactHeight ? 230 : 280 }
-    var railPreferredTileWidth: CGFloat { compactHeight ? 278 : 300 }
+    /// The threshold is a scaled point value, not a raw pixel count: at a larger interface scale the
+    /// same window holds less content, so it has to fall back to the compact metrics sooner.
+    var compactHeight: Bool { size.height < 760 * scale }
 
+    /// Follows the window's width the way the desktop hero does, instead of sitting at a fixed
+    /// point height. A constant 280pt banner is roughly right on a laptop and reads as a letterbox
+    /// strip on an ultrawide, where the artwork is stretched across several times that width.
+    /// Clamped so it still leaves room for the first rail on short windows.
+    var heroHeight: CGFloat {
+        let minimum = (compactHeight ? 230 : 280) * scale
+        let maximum = max(minimum, min(size.height * 0.42, 520 * scale))
+        return min(max(contentWidth * 0.22, minimum), maximum)
+    }
+    var railPreferredTileWidth: CGFloat { (compactHeight ? 278 : 300) * scale }
+
+    // The proportional term follows the window; only the clamp bounds are point values that scale.
     private var baseInset: CGFloat {
-        min(max(visibleWidth * 0.035, 56), 84)
+        min(max(visibleWidth * 0.022, 28 * scale), 48 * scale)
     }
 
     private var visibleWidth: CGFloat {
@@ -133,6 +149,15 @@ struct ControllerCatalogView: View {
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
 
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    /// Controller mode has no physical keyboard to assume, so catalog search reuses the stream's
+    /// on-screen keyboard rather than leaving the field untypeable on a pad.
+    @StateObject private var searchKeyboard = StreamOnScreenKeyboardController()
+    @State private var isSearchKeyboardVisible = false
+    @State private var searchPicker: ControllerSearchPicker?
+    @State private var searchPickerIndex = 0
+    @State private var embeddedPageCommand: ControllerPageCommand?
+    @Environment(\.opnUIScale) private var uiScale
     @StateObject private var inputRouter = ControllerInputRouter()
     @StateObject private var steamNavigator = GamepadUINavigator()
     @StateObject private var controllerViewModel = ControllerCatalogViewModel()
@@ -145,28 +170,39 @@ struct ControllerCatalogView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
+            let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets, scale: uiScale)
             ZStack {
-                // The search overlay is near-opaque; dropping the hero background and
-                // games page while it is up keeps them from rendering behind it.
-                if isSearchOverlayPresented {
-                    Color.black
-                } else {
-                    ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
-                }
+                // Search renders in the page slot rather than over the window, so the shell keeps
+                // its backdrop throughout instead of blacking out while searching.
+                ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
                 VStack(spacing: 0) {
                     ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout, topInset: topInset)
                     ControllerNavigationBar(
                         items: navigationItems,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
-                        isFocused: controllerViewModel.focusArea == .navigation && !hasModalOverlay,
+                        isFocused: (controllerViewModel.focusArea == .navigation || viewModel.selectedMainPage != .games) && !hasModalOverlay,
                         activeItem: activeNavigationItem,
                         layout: layout,
                         select: selectNavigationItem
                     )
                     if isSearchOverlayPresented && viewModel.selectedMainPage == .games {
-                        Spacer(minLength: 0)
+                        // In the page slot, not over the whole window: search is a destination in
+                        // the nav bar, so hiding the header and nav bar it was reached from left
+                        // no way to see where you were or page back out with LB/RB.
+                        ControllerSearchOverlay(
+                            viewModel: viewModel,
+                            rowIndex: controllerViewModel.searchRowIndex,
+                            filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
+                            resultIndex: controllerViewModel.searchResultIndex,
+                            layout: layout,
+                            selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
+                            close: { closeSearchOverlay() },
+                            focusSearchRow: { controllerViewModel.searchRowIndex = 0 },
+                            openSortPicker: { openSortPicker() },
+                            openFilterPicker: { group in openFilterPicker(group: group) }
+                        )
+                        .transition(.opacity)
                     } else {
                         controllerPage(layout: layout)
                     }
@@ -178,20 +214,19 @@ struct ControllerCatalogView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
-                if isSearchOverlayPresented {
-                    ControllerSearchOverlay(
-                        viewModel: viewModel,
+                if isSearchOverlayPresented, let searchPicker {
+                    ControllerSearchPickerOverlay(
+                        picker: searchPicker,
+                        selectedIndex: searchPickerIndex,
+                        selectedOptionIds: viewModel.selectedFilterIds,
+                        selectedSortId: viewModel.selectedSortId,
                         glyphs: activeGlyphs,
-                        rowIndex: controllerViewModel.searchRowIndex,
-                        filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
-                        resultIndex: controllerViewModel.searchResultIndex,
                         layout: layout,
-                        selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
-                        close: { closeSearchOverlay() },
-                        clear: { viewModel.clearSearchAndFilters() }
+                        select: { index in applySearchPickerSelection(at: index) },
+                        close: { closeSearchPicker() }
                     )
                     .transition(.opacity)
-                    .zIndex(30)
+                    .zIndex(31)
                 }
 
                 if controllerViewModel.isDetailVisible, let game = viewModel.selectedGame {
@@ -216,6 +251,12 @@ struct ControllerCatalogView: View {
             // ZStack sibling) so the action menu inherits exactly the bounds the
             // visible content is laid out in and can never anchor past the
             // window's trailing edge.
+            .overlay {
+                if isSearchOverlayPresented && isSearchKeyboardVisible {
+                    StreamOnScreenKeyboardOverlay(controller: searchKeyboard)
+                        .transition(.opacity)
+                }
+            }
             .overlay {
                 if controllerViewModel.isActionMenuVisible {
                     ControllerActionMenuOverlay(
@@ -262,15 +303,18 @@ struct ControllerCatalogView: View {
                 selectedGameIndices: $controllerViewModel.selectedGameIndices,
                 layout: layout,
                 openDetails: openDetails,
-                showAll: openShowAll
+                showAll: openShowAll,
+                openSearch: { openSearchOverlay() }
             )
         case .recordings:
             ControllerEmbeddedPage(title: "Recordings", subtitle: "Saved gameplay videos", layout: layout) {
                 RecordingsView()
+                    .environment(\.controllerPageCommand, embeddedPageCommand)
             }
         case .settings:
             ControllerEmbeddedPage(title: "Settings", subtitle: "Streaming, account, interface, and system options", layout: layout) {
                 SettingsView(viewModel: viewModel)
+                    .environment(\.controllerPageCommand, embeddedPageCommand)
             }
         }
     }
@@ -284,6 +328,8 @@ struct ControllerCatalogView: View {
     }
 
     private var activeNavigationItem: ControllerNavigationItem {
+        // Search is not in the bar, so while its overlay is up the bar keeps highlighting the
+        // destination underneath - which is also the one LB/RB pages away from.
         if viewModel.selectedMainPage == .recordings { return .recordings }
         if viewModel.selectedMainPage == .settings { return .settings }
         switch viewModel.selectedCatalogDestination {
@@ -306,6 +352,7 @@ struct ControllerCatalogView: View {
 
     private var hints: [ControllerHint] {
         if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
+        if isSearchKeyboardVisible { return [.move, .select, .back] }
         if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
         if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
@@ -315,7 +362,7 @@ struct ControllerCatalogView: View {
     private var actionMenuItems: [ControllerActionMenuItem] {
         var items: [ControllerActionMenuItem] = [.refresh]
         if viewModel.isBrowseMode { items.append(.clearSearch) }
-        items.append(contentsOf: [.home, .recordings, .settings])
+        items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
         for account in accounts where account.id != viewModel.account.id {
             items.append(.switchAccount(account))
         }
@@ -368,6 +415,14 @@ struct ControllerCatalogView: View {
     }
 
     private func handlePageInput(_ command: ControllerInputCommand) {
+        // Recordings and Settings embed desktop views that have no controller focus model of their
+        // own. Routing d-pad moves into `moveFocus` there silently drove the games rails behind the
+        // page - the catalog visibly changed underneath while nothing on screen responded - so
+        // those pages keep focus in the navigation bar and only accept page switching and Back.
+        guard viewModel.selectedMainPage == .games else {
+            handleEmbeddedPageInput(command)
+            return
+        }
         switch command {
         case .move(let direction):
             moveFocus(direction)
@@ -389,9 +444,29 @@ struct ControllerCatalogView: View {
         case .menu:
             openActionMenu()
         case .pageLeft:
-            moveRail(delta: -1)
+            cycleNavigation(delta: -1)
         case .pageRight:
-            moveRail(delta: 1)
+            cycleNavigation(delta: 1)
+        }
+    }
+
+    private func handleEmbeddedPageInput(_ command: ControllerInputCommand) {
+        switch command {
+        case .move, .confirm:
+            // The page owns its own selection, so the command goes to it rather than being
+            // interpreted here. LB/RB stay with the shell for switching destination.
+            embeddedPageCommand = ControllerPageCommand(command: command, sequence: (embeddedPageCommand?.sequence ?? 0) + 1)
+        case .back:
+            viewModel.showCatalogDestination(.home)
+            controllerViewModel.focusArea = .content
+        case .search:
+            openSearchOverlay()
+        case .actions, .menu:
+            openActionMenu()
+        case .pageLeft:
+            cycleNavigation(delta: -1)
+        case .pageRight:
+            cycleNavigation(delta: 1)
         }
     }
 
@@ -409,6 +484,14 @@ struct ControllerCatalogView: View {
     }
 
     private func handleSearchInput(_ command: ControllerInputCommand) {
+        if searchPicker != nil {
+            handleSearchPickerInput(command)
+            return
+        }
+        if isSearchKeyboardVisible {
+            handleSearchKeyboardInput(command)
+            return
+        }
         switch command {
         case .move(.up): controllerViewModel.searchRowIndex = max(controllerViewModel.searchRowIndex - 1, 0)
         case .move(.down): controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex + 1, max(searchRowCount - 1, 0))
@@ -417,7 +500,23 @@ struct ControllerCatalogView: View {
         case .confirm: confirmSearchSelection()
         case .actions: viewModel.clearSearchAndFilters()
         case .back, .search: closeSearchOverlay()
+        case .pageLeft: cycleNavigation(delta: -1)
+        case .pageRight: cycleNavigation(delta: 1)
         default: break
+        }
+    }
+
+    private func handleSearchKeyboardInput(_ command: ControllerInputCommand) {
+        switch command {
+        case .move(.up): searchKeyboard.handleNavigationAction(.move(dx: 0, dy: -1))
+        case .move(.down): searchKeyboard.handleNavigationAction(.move(dx: 0, dy: 1))
+        case .move(.left): searchKeyboard.handleNavigationAction(.move(dx: -1, dy: 0))
+        case .move(.right): searchKeyboard.handleNavigationAction(.move(dx: 1, dy: 0))
+        case .confirm: searchKeyboard.handleNavigationAction(.activate)
+        case .actions: searchKeyboard.handleNavigationAction(.backspace)
+        case .pageLeft: searchKeyboard.handleNavigationAction(.shift)
+        case .pageRight: searchKeyboard.handleNavigationAction(.space)
+        case .back, .search, .menu: closeSearchKeyboard()
         }
     }
 
@@ -443,21 +542,31 @@ struct ControllerCatalogView: View {
             switch direction {
             case .left: controllerViewModel.selectedNavigationIndex = max(controllerViewModel.selectedNavigationIndex - 1, 0)
             case .right: controllerViewModel.selectedNavigationIndex = min(controllerViewModel.selectedNavigationIndex + 1, max(navigationItems.count - 1, 0))
-            case .down: controllerViewModel.focusArea = .content
+            case .down: controllerViewModel.focusArea = .search
             case .up: break
+            }
+        case .search:
+            switch direction {
+            case .up: controllerViewModel.focusArea = .navigation
+            case .down: controllerViewModel.focusArea = .content
+            case .left, .right: break
             }
         case .content:
             switch direction {
             case .left: moveGame(delta: -1)
             case .right: moveGame(delta: 1)
             case .up:
-                if controllerViewModel.selectedRailIndex == 0 { controllerViewModel.focusArea = .navigation } else { moveRail(delta: -1) }
+                if controllerViewModel.selectedRailIndex == 0 { controllerViewModel.focusArea = .search } else { moveRail(delta: -1) }
             case .down: moveRail(delta: 1)
             }
         }
     }
 
     private func confirmFocusedItem() {
+        if controllerViewModel.focusArea == .search {
+            openSearchOverlay()
+            return
+        }
         if controllerViewModel.focusArea == .navigation {
             guard navigationItems.indices.contains(controllerViewModel.selectedNavigationIndex) else { return }
             selectNavigationItem(navigationItems[controllerViewModel.selectedNavigationIndex])
@@ -468,6 +577,27 @@ struct ControllerCatalogView: View {
         let index = clampedSelectedGameIndex(for: section, gameCount: games.count)
         guard games.indices.contains(index) else { return }
         openDetails(games[index], sectionId: section.id)
+    }
+
+    /// Destinations LB/RB step through, in nav-bar order. `.actions` opens a menu rather than
+    /// going anywhere, so it is not a stop on the way.
+    private var pageableNavigationItems: [ControllerNavigationItem] {
+        navigationItems.filter { $0 != .actions }
+    }
+
+    private func cycleNavigation(delta: Int) {
+        let items = pageableNavigationItems
+        guard !items.isEmpty else { return }
+        let current = items.firstIndex(of: activeNavigationItem) ?? 0
+        let next = min(max(current + delta, 0), items.count - 1)
+        guard next != current else { return }
+        let target = items[next]
+        // Paging off the search overlay has to dismiss it; selecting a destination alone would
+        // change the page underneath and leave the overlay covering it.
+        if controllerViewModel.isSearchVisible {
+            closeSearchOverlay()
+        }
+        selectNavigationItem(target)
     }
 
     private func selectNavigationItem(_ item: ControllerNavigationItem) {
@@ -531,14 +661,109 @@ struct ControllerCatalogView: View {
         viewModel.selectGame(nil)
     }
 
+    /// Captures the view model and a binding rather than `self`: these handlers live on a
+    /// `@StateObject` that outlives every render, so capturing the view would pin a stale copy of
+    /// its whole scope - accounts, callbacks and all - until the next open.
+    private func configureSearchKeyboard() {
+        let viewModel = viewModel
+        let isVisible = $isSearchKeyboardVisible
+        searchKeyboard.onOutput = { output in
+            switch output {
+            case .text(let text):
+                viewModel.searchQuery.append(text)
+            case .keyPress(let keyCode):
+                switch keyCode {
+                case 51: // backspace
+                    guard !viewModel.searchQuery.isEmpty else { return }
+                    viewModel.searchQuery.removeLast()
+                case 36, 76: // return / enter
+                    viewModel.browseCatalog()
+                    withAnimation(.easeOut(duration: 0.18)) { isVisible.wrappedValue = false }
+                default:
+                    break
+                }
+            }
+        }
+        searchKeyboard.onDismiss = {
+            withAnimation(.easeOut(duration: 0.18)) { isVisible.wrappedValue = false }
+        }
+    }
+
+    private func openSearchKeyboard() {
+        searchKeyboard.reset()
+        configureSearchKeyboard()
+        withAnimation(.easeOut(duration: 0.18)) { isSearchKeyboardVisible = true }
+    }
+
+    private func closeSearchKeyboard() {
+        withAnimation(.easeOut(duration: 0.18)) { isSearchKeyboardVisible = false }
+    }
+
+    private func openSortPicker() {
+        let options = viewModel.sortOptions.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) }
+        guard !options.isEmpty else { return }
+        searchPickerIndex = options.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
+        searchPicker = ControllerSearchPicker(title: "Sort", kind: .sort, options: options)
+    }
+
+    private func openFilterPicker(group: OPNCatalogFilterGroupObject) {
+        guard !group.options.isEmpty else { return }
+        var options = [ControllerSearchPicker.Option(id: ControllerSearchPicker.clearOptionId, label: "None")]
+        options.append(contentsOf: group.options.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) })
+        searchPickerIndex = options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? 0
+        searchPicker = ControllerSearchPicker(title: group.label, kind: .filter(groupId: group.id), options: options)
+    }
+
+    private func closeSearchPicker() {
+        searchPicker = nil
+    }
+
+    private func applySearchPickerSelection(at index: Int) {
+        guard let searchPicker, searchPicker.options.indices.contains(index) else { return }
+        let option = searchPicker.options[index]
+        switch searchPicker.kind {
+        case .sort:
+            viewModel.setSort(option.id)
+        case .filter(let groupId):
+            guard let group = viewModel.visibleFilterGroups.first(where: { $0.id == groupId }) else { break }
+            // One option per group: clear whatever this group already had before applying. "None"
+            // stops there, which is how a group gets turned back off.
+            for existing in group.options where viewModel.selectedFilterIds.contains(existing.id) {
+                viewModel.toggleFilter(existing.id)
+            }
+            if option.id != ControllerSearchPicker.clearOptionId, !viewModel.selectedFilterIds.contains(option.id) {
+                viewModel.toggleFilter(option.id)
+            }
+        }
+        closeSearchPicker()
+    }
+
+    private func handleSearchPickerInput(_ command: ControllerInputCommand) {
+        guard let searchPicker else { return }
+        switch command {
+        case .move(.up): searchPickerIndex = max(searchPickerIndex - 1, 0)
+        case .move(.down): searchPickerIndex = min(searchPickerIndex + 1, max(searchPicker.options.count - 1, 0))
+        case .confirm: applySearchPickerSelection(at: searchPickerIndex)
+        case .back, .search, .menu, .actions: closeSearchPicker()
+        default: break
+        }
+    }
+
     private func openSearchOverlay() {
         controllerViewModel.isSearchVisible = true
         controllerViewModel.isActionMenuVisible = false
         controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex, max(searchRowCount - 1, 0))
+        // Closing search clears `catalogGames`, so a reopen needs the browse even once the filter
+        // and sort definitions are already in hand - otherwise the results grid comes back empty
+        // and only fills in once something is typed.
+        if viewModel.catalogGames.isEmpty || viewModel.sortOptions.isEmpty || viewModel.filterGroups.isEmpty {
+            viewModel.browseCatalog()
+        }
     }
 
     private func closeSearchOverlay() {
         controllerViewModel.isSearchVisible = false
+        isSearchKeyboardVisible = false
         viewModel.closeShowAll()
     }
 
@@ -612,10 +837,10 @@ struct ControllerCatalogView: View {
 
     private func moveSearchSelection(delta: Int) {
         if controllerViewModel.searchRowIndex == 1 {
-            let chipCount = 1 + viewModel.visibleFilterGroups.count + (viewModel.selectedFilterCount > 0 ? 1 : 0)
-            let currentChip = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
+            let chipCount = ControllerSearchBar.count(groupCount: viewModel.visibleFilterGroups.count, hasClear: viewModel.selectedFilterCount > 0)
+            let currentChip = controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] ?? 0
             let next = min(max(currentChip + delta, 0), chipCount - 1)
-            controllerViewModel.searchFilterOptionIndices["_barIndex"] = next
+            controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] = next
             return
         }
         if controllerViewModel.searchRowIndex == 2, !viewModel.catalogGames.isEmpty {
@@ -625,16 +850,15 @@ struct ControllerCatalogView: View {
 
     private func confirmSearchSelection() {
         if controllerViewModel.searchRowIndex == 0 {
-            viewModel.browseCatalog()
+            openSearchKeyboard()
             return
         }
         if controllerViewModel.searchRowIndex == 1 {
-            let chipIndex = controllerViewModel.searchFilterOptionIndices["_barIndex"] ?? 0
-            if chipIndex == 0 {
-                cycleSortNavigation()
+            let chipIndex = controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] ?? 0
+            if chipIndex == ControllerSearchBar.sortIndex {
+                openSortPicker()
             } else if chipIndex <= viewModel.visibleFilterGroups.count {
-                let group = viewModel.visibleFilterGroups[chipIndex - 1]
-                cycleFilterNavigation(group: group)
+                openFilterPicker(group: viewModel.visibleFilterGroups[chipIndex - 1])
             } else {
                 viewModel.clearSearchAndFilters()
             }
@@ -645,22 +869,6 @@ struct ControllerCatalogView: View {
         }
     }
 
-    private func cycleSortNavigation() {
-        let count = viewModel.sortOptions.count
-        guard count > 0 else { return }
-        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
-        let next = (current + 1) % count
-        viewModel.setSort(viewModel.sortOptions[next].id)
-    }
-
-    private func cycleFilterNavigation(group: OPNCatalogFilterGroupObject) {
-        guard !group.options.isEmpty else { return }
-        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
-        let next = (current + 1) % group.options.count
-        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
-        viewModel.toggleFilter(group.options[next].id)
-    }
-
     private func executeActionMenuItem(_ item: ControllerActionMenuItem) {
         if !item.isRefresh { closeActionMenu() }
         switch item {
@@ -669,6 +877,8 @@ struct ControllerCatalogView: View {
             viewModel.refresh()
         case .clearSearch:
             viewModel.clearSearchAndFilters()
+        case .desktopMode:
+            controllerModeEnabled = false
         case .home:
             viewModel.showCatalogDestination(.home)
         case .library:
@@ -727,9 +937,11 @@ private struct ControllerHeader: View {
     let layout: ControllerLayoutMetrics
     let topInset: CGFloat
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 16 * uiScale) {
+            VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("GEFORCE NOW")
                     .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
@@ -743,7 +955,7 @@ private struct ControllerHeader: View {
             CatalogAccountAvatar(account: viewModel.account, size: 34)
         }
         .frame(width: layout.contentWidth)
-        .frame(height: 72)
+        .frame(height: 72 * uiScale)
         .padding(.top, topInset)
         .background {
             Color.black.opacity(0.24)
@@ -763,23 +975,16 @@ private struct ControllerHeader: View {
 private struct ControllerDeviceBadge: View {
     let glyphs: ControllerInputGlyphSet
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
-                .nvidiaFont(size: 13, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.accent)
-            Text(glyphs.deviceName)
-                .nvidiaFont(size: 12, weight: .bold)
-                .foregroundStyle(.white.opacity(0.72))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 250, alignment: .leading)
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .frame(maxWidth: 304)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
+            .nvidiaFont(size: 13, weight: .bold)
+            .foregroundStyle(OpenNOWDesign.accent)
+            .frame(width: 40 * uiScale, height: 34 * uiScale)
+            .background(Color.white.opacity(0.055))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .accessibilityLabel(glyphs.deviceName)
     }
 }
 
@@ -791,31 +996,34 @@ private struct ControllerNavigationBar: View {
     let layout: ControllerLayoutMetrics
     let select: (ControllerNavigationItem) -> Void
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * uiScale) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let selected = index == selectedIndex && isFocused
                     let active = activeItem == item
                     Button { select(item) } label: {
-                        HStack(spacing: 9) {
+                        HStack(spacing: 9 * uiScale) {
                             Image(systemName: item.icon)
                                 .nvidiaFont(size: 14, weight: .bold)
                             Text(item.title.uppercased())
                                 .nvidiaFont(size: 12, weight: .bold)
                                 .tracking(0.8)
                         }
-                        .foregroundStyle(selected || active ? .black.opacity(0.86) : .white.opacity(0.78))
-                        .padding(.horizontal, 14)
-                        .frame(height: 40)
-                        .background(selected || active ? OpenNOWDesign.accent : Color.white.opacity(0.065))
-                        .overlay { Rectangle().stroke(selected ? .white.opacity(0.82) : (active ? OpenNOWDesign.accent : Color.white.opacity(0.10)), lineWidth: selected ? 2 : 1) }
+                        .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.78))
+                        .padding(.horizontal, 14 * uiScale)
+                        .frame(height: 40 * uiScale)
+                        .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                        .openNowFocusRing(selected)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .frame(width: layout.contentWidth, alignment: .leading)
-            .padding(.vertical, 10)
+            .padding(.vertical, 10 * uiScale)
         }
         .frame(width: layout.contentWidth)
         .background(Color.black.opacity(0.18))
@@ -830,13 +1038,19 @@ private struct ControllerGamesPage: View {
     let layout: ControllerLayoutMetrics
     let openDetails: (OPNCatalogGameObject, String) -> Void
     let showAll: (CatalogSectionModel) -> Void
+    let openSearch: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         let sections = viewModel.catalogSections
         GeometryReader { _ in
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: layout.compactHeight ? 20 : 24) {
+                    LazyVStack(alignment: .leading, spacing: (layout.compactHeight ? 20 : 24) * uiScale) {
+                        ControllerSearchEntryBar(isFocused: focusArea == .search, open: openSearch)
+                            .frame(width: layout.contentWidth)
+
                         if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
                             VendorActiveSessionHomeBanner(
                                 title: viewModel.activeHomeSessionTitle,
@@ -849,7 +1063,7 @@ private struct ControllerGamesPage: View {
 
                         ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: layout.heroHeight)
                             .frame(width: layout.contentWidth)
-                            .padding(.top, layout.compactHeight ? 10 : 14)
+                            .padding(.top, (layout.compactHeight ? 10 : 14) * uiScale)
 
                         if !viewModel.errorMessage.isEmpty {
                             CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -872,10 +1086,10 @@ private struct ControllerGamesPage: View {
                         if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
                             CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
                                 .frame(width: layout.contentWidth)
-                                .padding(.top, 44)
+                                .padding(.top, 44 * uiScale)
                         }
                     }
-                    .padding(.bottom, 46)
+                    .padding(.bottom, 46 * uiScale)
                 }
                 .onChange(of: selectedRailIndex) { _, index in
                     guard sections.indices.contains(index) else { return }
@@ -916,10 +1130,44 @@ private struct ControllerGamesPage: View {
     }
 }
 
+/// The catalog's own way into search. Search is not a nav-bar destination, so without a visible
+/// entry here it existed only as a button press the hint bar mentions - fine once you know it, and
+/// invisible until then.
+private struct ControllerSearchEntryBar: View {
+    let isFocused: Bool
+    let open: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12 * uiScale) {
+                Image(systemName: "magnifyingglass")
+                    .nvidiaFont(size: 15, weight: .bold)
+                    .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                Text("Search")
+                    .nvidiaFont(size: 14, weight: .medium)
+                    .foregroundStyle(isFocused ? .black.opacity(0.82) : .white.opacity(0.62))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16 * uiScale)
+            .frame(height: 44 * uiScale)
+            .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Search games")
+    }
+}
+
 private struct ControllerHeroBillboard: View {
     let viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
     let height: CGFloat
+
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -930,7 +1178,7 @@ private struct ControllerHeroBillboard: View {
                     .contentShape(Rectangle())
                 LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
                 LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: 9 * uiScale) {
                     Text("NOW PLAYING IN THE CLOUD")
                         .nvidiaFont(size: 11, weight: .bold)
                         .tracking(1.6)
@@ -940,7 +1188,7 @@ private struct ControllerHeroBillboard: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
-                    HStack(spacing: 10) {
+                    HStack(spacing: 10 * uiScale) {
                         if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
                         if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
                         if game.isInLibrary { ControllerMetadataPill(text: "In Library", highlighted: true) }
@@ -950,19 +1198,18 @@ private struct ControllerHeroBillboard: View {
                         .nvidiaFont(size: 13, weight: .medium)
                         .foregroundStyle(.white.opacity(0.74))
                         .lineLimit(height < 260 ? 1 : 2)
-                        .frame(maxWidth: 650, alignment: .leading)
+                        .frame(maxWidth: 650 * uiScale, alignment: .leading)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, height < 260 ? 20 : 24)
-                .frame(maxWidth: 720, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.horizontal, 28 * uiScale)
+                .padding(.vertical, (height < 260 ? 20 : 24) * uiScale)
+                .frame(maxWidth: 720 * uiScale, maxHeight: .infinity, alignment: .bottomLeading)
             } else {
                 CatalogImageFallback()
             }
         }
         .frame(height: height)
         .background(Color.black.opacity(0.34))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.38), radius: 28, y: 18)
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
         .clipped()
     }
 
@@ -985,19 +1232,23 @@ private struct ControllerGameRail: View {
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.canLoadFullList }
-    private var itemSpacing: CGFloat { 18 }
+    private var itemSpacing: CGFloat { 18 * uiScale }
+
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: layout.compactHeight ? 10 : 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(alignment: .leading, spacing: (layout.compactHeight ? 10 : 12) * uiScale) {
+            HStack(alignment: .firstTextBaseline, spacing: 12 * uiScale) {
                 Text(section.title)
                     .nvidiaFont(size: isFocused ? 24 : 21, weight: .bold)
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
-                Text("\(section.games.count) games".uppercased())
-                    .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
+                if !section.isPlaceholder {
+                    Text("\(section.games.count) games".uppercased())
+                        .nvidiaFont(size: 11, weight: .bold)
+                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
+                }
                 Spacer(minLength: 0)
-                if canShowAll {
+                if canShowAll, !section.isPlaceholder {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
                         .nvidiaFont(size: 12, weight: .bold)
@@ -1009,6 +1260,15 @@ private struct ControllerGameRail: View {
             GeometryReader { geometry in
                 let metrics = layoutMetrics(width: geometry.size.width)
                 HStack(spacing: itemSpacing) {
+                    if section.isPlaceholder {
+                        // Deferred library/favorites rail. The row already reserves its height, so
+                        // this only fills it with something that reads as loading rather than as an
+                        // empty rail the user can focus and find nothing in.
+                        ForEach(0..<metrics.visibleCount, id: \.self) { _ in
+                            SkeletonBlock()
+                                .frame(width: metrics.tileSize.width, height: metrics.tileSize.height)
+                        }
+                    }
                     ForEach(visibleGames(metrics: metrics), id: \.game.catalogIdentity) { item in
                         ControllerGameTile(
                             game: item.game,
@@ -1019,6 +1279,7 @@ private struct ControllerGameRail: View {
                             tileSize: metrics.tileSize,
                             action: { openDetails(item.game) }
                         )
+                        .equatable()
                     }
                 }
                 .frame(width: geometry.size.width, height: metrics.rowHeight, alignment: .leading)
@@ -1032,12 +1293,15 @@ private struct ControllerGameRail: View {
     }
 
     private var estimatedRailHeight: CGFloat {
-        layout.compactHeight ? 178 : 196
+        (layout.compactHeight ? 178 : 196) * uiScale
     }
 
     private func layoutMetrics(width: CGFloat) -> ControllerRailLayoutMetrics {
         let contentWidth = max(width, 1)
-        let count = min(max(1, Int((contentWidth + itemSpacing) / (layout.railPreferredTileWidth + itemSpacing))), max(games.count, 1))
+        let fitted = max(1, Int((contentWidth + itemSpacing) / (layout.railPreferredTileWidth + itemSpacing)))
+        // A placeholder rail has no games to clamp against, so it fills the row instead of
+        // collapsing to a single tile.
+        let count = section.isPlaceholder ? fitted : min(fitted, max(games.count, 1))
         let totalSpacing = CGFloat(max(count - 1, 0)) * itemSpacing
         let tileWidth = floor(max((contentWidth - totalSpacing) / CGFloat(count), 1))
         let tileHeight = floor(tileWidth * 9 / 16)
@@ -1060,7 +1324,7 @@ private struct ControllerRailLayoutMetrics {
     let rowHeight: CGFloat
 }
 
-private struct ControllerGameTile: View {
+private struct ControllerGameTile: View, Equatable {
     let game: OPNCatalogGameObject
     let imageURL: URL?
     let isFocused: Bool
@@ -1068,6 +1332,21 @@ private struct ControllerGameTile: View {
     let showsFreeAccountAccessBadges: Bool
     let tileSize: CGSize
     let action: () -> Void
+
+    // The action closure is deliberately excluded: it is rebuilt on every parent render but always
+    // targets the same game, and comparing it would defeat the `.equatable()` body-skip that keeps
+    // a d-pad move from re-evaluating every visible tile. The card this replaced had exactly this
+    // conformance; swapping it out silently dropped the skip.
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.game.catalogIdentity == rhs.game.catalogIdentity
+            && lhs.imageURL == rhs.imageURL
+            && lhs.isFocused == rhs.isFocused
+            && lhs.isQueuedForPatching == rhs.isQueuedForPatching
+            && lhs.showsFreeAccountAccessBadges == rhs.showsFreeAccountAccessBadges
+            && lhs.tileSize == rhs.tileSize
+    }
+
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         Button(action: action) {
@@ -1083,12 +1362,12 @@ private struct ControllerGameTile: View {
                 if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
                     CatalogGameAccessBadge(label: badge)
                         .scaleEffect(0.92, anchor: .topTrailing)
-                        .padding(9)
+                        .padding(9 * uiScale)
                         .frame(width: tileSize.width, height: tileSize.height, alignment: .topTrailing)
                 }
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 7 * uiScale) {
                     Spacer(minLength: 0)
-                    HStack(spacing: 8) {
+                    HStack(spacing: 8 * uiScale) {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
                                 .nvidiaFont(size: 12, weight: .bold)
@@ -1104,11 +1383,11 @@ private struct ControllerGameTile: View {
                         .foregroundStyle(.white.opacity(0.62))
                         .lineLimit(1)
                 }
-                .padding(15)
+                .padding(15 * uiScale)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .overlay { Rectangle().stroke(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
-            .shadow(color: isFocused ? OpenNOWDesign.accent.opacity(0.18) : .black.opacity(0.20), radius: isFocused ? 12 : 8, y: 8)
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)
@@ -1135,9 +1414,11 @@ private struct ControllerEmbeddedPage<Content: View>: View {
         self.content = content()
     }
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .nvidiaFont(size: 11, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
@@ -1147,7 +1428,7 @@ private struct ControllerEmbeddedPage<Content: View>: View {
                     .foregroundStyle(.white.opacity(0.62))
             }
             .frame(width: layout.contentWidth, alignment: .leading)
-            .padding(.top, 20)
+            .padding(.top, 20 * uiScale)
 
             content
                 .clipShape(Rectangle())
@@ -1156,60 +1437,100 @@ private struct ControllerEmbeddedPage<Content: View>: View {
     }
 }
 
+/// Index arithmetic for the search page's filter bar: slot 0 is sort, then one slot per visible
+/// filter group, then the clear-filters chip. The input handler and the chips both read it so the
+/// focused chip and the moved-to chip are always the same one.
+/// An open list of options for one chip in the filter bar. Confirming a chip used to advance it
+/// blind to its next option, so there was no way to see what a group offered or pick a specific
+/// sort - only to cycle and watch the results change.
+struct ControllerSearchPicker: Equatable {
+    /// Stands for "no filter from this group". Filter groups are single-choice, so without it a
+    /// group could only ever be switched between its options, never turned back off.
+    static let clearOptionId = "__opn_filter_none__"
+
+    struct Option: Equatable {
+        let id: String
+        let label: String
+    }
+
+    enum Kind: Equatable {
+        case sort
+        case filter(groupId: String)
+    }
+
+    let title: String
+    let kind: Kind
+    let options: [Option]
+}
+
+enum ControllerSearchBar {
+    static let indexKey = "_barIndex"
+    static let sortIndex = 0
+
+    static func filterIndex(_ groupIndex: Int) -> Int { groupIndex + 1 }
+    static func clearIndex(groupCount: Int) -> Int { groupCount + 1 }
+
+    static func count(groupCount: Int, hasClear: Bool) -> Int {
+        1 + groupCount + (hasClear ? 1 : 0)
+    }
+}
+
 private struct ControllerSearchOverlay: View {
     @Bindable var viewModel: CatalogViewModel
-    let glyphs: ControllerInputGlyphSet
     let rowIndex: Int
     let filterOptionIndices: [String: Int]
     let resultIndex: Int
     let layout: ControllerLayoutMetrics
     let selectResult: (OPNCatalogGameObject) -> Void
     let close: () -> Void
-    let clear: () -> Void
+    let focusSearchRow: () -> Void
+    let openSortPicker: () -> Void
+    let openFilterPicker: (OPNCatalogFilterGroupObject) -> Void
 
-    private var pageTitle: String {
-        viewModel.selectedShowAllSection?.title.uppercased() ?? "SEARCH CATALOG"
-    }
+    /// The field is the focused row's real first responder, not just a highlighted box. The
+    /// keyboard bridge already steps aside whenever a text field owns the keyboard, so focus here
+    /// is what makes typing reach the query at all - without it the overlay opened with nothing
+    /// focused and keystrokes went nowhere until the field was clicked with a mouse.
+    @FocusState private var isSearchFieldFocused: Bool
 
-    private var pageSubtitle: String {
-        if viewModel.selectedShowAllSection != nil {
-            let count = viewModel.totalCatalogCount > 0 ? viewModel.totalCatalogCount : viewModel.catalogGames.count
-            return count == 1 ? "1 game" : "\(count) games"
-        }
-        return "Search, sort, filter, and launch from the full catalog."
-    }
+    @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         GeometryReader { proxy in
-            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250, spacing: 14)
-            ZStack(alignment: .topLeading) {
-                Color.black
-                VStack(alignment: .leading, spacing: 16) {
-                    ControllerOverlayHeader(title: pageTitle, subtitle: pageSubtitle, glyphs: glyphs, close: close)
-                    searchField
-                    filterBar
-                    resultsGrid(columns: columns)
-                }
-                .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.leading, layout.leadingInset)
-                .padding(.trailing, layout.trailingInset)
-                .padding(.top, 38)
-                .padding(.bottom, 32)
+            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250 * uiScale, spacing: 14 * uiScale)
+            VStack(alignment: .leading, spacing: 16 * uiScale) {
+                searchField
+                filterBar
+                resultsGrid(columns: columns)
             }
+            .frame(width: layout.contentWidth, alignment: .leading)
+            .padding(.top, 16 * uiScale)
+            .padding(.bottom, 12 * uiScale)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
         }
+        .opnTakingFocus($isSearchFieldFocused, while: rowIndex == 0)
+        .onChange(of: rowIndex) { _, row in
+            // Moving off the search row hands the keyboard back to the navigation bridge.
+            if row != 0 { isSearchFieldFocused = false }
+        }
+        .onChange(of: isSearchFieldFocused) { _, isFocused in
+            guard isFocused, rowIndex != 0 else { return }
+            focusSearchRow()
+        }
+        .onExitCommand { close() }
     }
 
     private var searchField: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .nvidiaFont(size: 18, weight: .bold)
                 .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accent : .white.opacity(0.62))
-            TextField("Search games, stores, genres, publishers, controls, ratings, or tags", text: $viewModel.searchQuery)
+            TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .nvidiaFont(size: 20, weight: .medium)
                 .foregroundStyle(.white)
+                .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
                 Button("CLEAR", action: { viewModel.searchQuery = "" })
@@ -1218,15 +1539,16 @@ private struct ControllerSearchOverlay: View {
                     .foregroundStyle(.white.opacity(0.72))
             }
         }
-        .padding(.horizontal, 18)
-        .frame(height: 58)
+        .padding(.horizontal, 18 * uiScale)
+        .frame(height: 58 * uiScale)
         .background(Color.white.opacity(rowIndex == 0 ? 0.12 : 0.075))
-        .overlay { Rectangle().stroke(rowIndex == 0 ? OpenNOWDesign.accent : Color.white.opacity(0.13), lineWidth: rowIndex == 0 ? 2 : 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .openNowFocusRing(rowIndex == 0)
     }
 
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * uiScale) {
                 sortChip
                 ForEach(Array(viewModel.visibleFilterGroups.enumerated()), id: \.element.id) { groupIndex, group in
                     filterChip(for: group, groupIndex: groupIndex)
@@ -1235,17 +1557,22 @@ private struct ControllerSearchOverlay: View {
                     clearFiltersChip
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 4 * uiScale)
         }
     }
 
+    /// Which chip in the filter bar is focused. The input side has always tracked this in
+    /// `_barIndex`; nothing rendered from it, so moving along the bar was invisible and the sort
+    /// chip looked permanently focused.
+    private var focusedBarIndex: Int { filterOptionIndices[ControllerSearchBar.indexKey] ?? 0 }
+
     private var sortChip: some View {
         let sortLabel = viewModel.sortOptions.first { $0.id == viewModel.selectedSortId }?.label ?? viewModel.selectedSortLabel
-        let isFocused = rowIndex == 1
+        let isFocused = rowIndex == 1 && focusedBarIndex == ControllerSearchBar.sortIndex
         return Button {
-            cycleSort()
+            openSortPicker()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 Image(systemName: "arrow.up.arrow.down")
                     .nvidiaFont(size: 11, weight: .bold)
                 Text("SORT: \(sortLabel.uppercased())")
@@ -1253,10 +1580,11 @@ private struct ControllerSearchOverlay: View {
                     .tracking(0.6)
             }
             .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+            .padding(.horizontal, 14 * uiScale)
+            .frame(height: 36 * uiScale)
             .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
-            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : Color.white.opacity(0.12), lineWidth: isFocused ? 2 : 1) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
     }
@@ -1265,11 +1593,11 @@ private struct ControllerSearchOverlay: View {
         let selectedOption = group.options.first { viewModel.selectedFilterIds.contains($0.id) }
         let label = selectedOption?.label ?? group.label
         let isSelected = selectedOption != nil
-        let isFocused = rowIndex == 2 && (filterOptionIndices[group.id] ?? 0) >= 0
+        let isFocused = rowIndex == 1 && focusedBarIndex == ControllerSearchBar.filterIndex(groupIndex)
         return Button {
-            cycleFilter(group: group)
+            openFilterPicker(group)
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .nvidiaFont(size: 10, weight: .bold)
@@ -1279,71 +1607,160 @@ private struct ControllerSearchOverlay: View {
                     .tracking(0.6)
             }
             .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OpenNOWDesign.accent : .white.opacity(0.82)))
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+            .padding(.horizontal, 14 * uiScale)
+            .frame(height: 36 * uiScale)
             .background(isFocused ? OpenNOWDesign.accent : (isSelected ? OpenNOWDesign.accent.opacity(0.15) : Color.white.opacity(0.075)))
-            .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
+            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
     }
 
     private var clearFiltersChip: some View {
-        Button {
+        let isFocused = rowIndex == 1 && focusedBarIndex == ControllerSearchBar.clearIndex(groupCount: viewModel.visibleFilterGroups.count)
+        return Button {
             viewModel.clearSearchAndFilters()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 6 * uiScale) {
                 Image(systemName: "xmark.circle.fill")
                     .nvidiaFont(size: 12, weight: .bold)
                 Text("CLEAR FILTERS")
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.6)
             }
-            .foregroundStyle(.white.opacity(0.72))
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(Color.white.opacity(0.05))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.72))
+            .padding(.horizontal, 12 * uiScale)
+            .frame(height: 36 * uiScale)
+            .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.05))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
     }
 
     private func resultsGrid(columns: Int) -> some View {
         let isResultsRowFocused = rowIndex == 2
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10 * uiScale) {
             ControllerOverlaySectionTitle(viewModel.resultSummary.isEmpty ? "Results" : viewModel.resultSummary)
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: columns), spacing: 14) {
-                    ForEach(Array(viewModel.catalogGames.enumerated()), id: \.element.catalogIdentity) { index, game in
-                        ControllerCompactGameCard(
-                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 520),
-                            title: game.title.isEmpty ? "GeForce NOW" : game.title,
-                            subtitle: game.primaryStoreLabel.isEmpty ? (game.isInLibrary ? "In Library" : "Cloud ready") : game.primaryStoreLabel,
-                            badge: game.cardBadgeLabel,
-                            isFocused: isResultsRowFocused && resultIndex == index,
-                            action: { selectResult(game) }
-                        )
-                        .equatable()
+            GeometryReader { grid in
+                // The same tile the rails use, so a game looks identical whether it was found by
+                // browsing or by searching.
+                let spacing = 14 * uiScale
+                let tileWidth = max((grid.size.width - spacing * CGFloat(columns - 1)) / CGFloat(columns), 1)
+                let tileSize = CGSize(width: floor(tileWidth), height: floor(tileWidth * 9 / 16))
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize.width), spacing: spacing), count: columns), spacing: spacing) {
+                        ForEach(Array(viewModel.catalogGames.enumerated()), id: \.element.catalogIdentity) { index, game in
+                            ControllerGameTile(
+                                game: game,
+                                imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
+                                isFocused: isResultsRowFocused && resultIndex == index,
+                                isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                                tileSize: tileSize,
+                                action: { selectResult(game) }
+                            )
+                            .equatable()
+                        }
                     }
+                    .padding(.bottom, 12 * uiScale)
                 }
-                .padding(.bottom, 12)
             }
         }
     }
 
-    private func cycleSort() {
-        let count = viewModel.sortOptions.count
-        guard count > 0 else { return }
-        let current = viewModel.sortOptions.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
-        let next = (current + 1) % count
-        viewModel.setSort(viewModel.sortOptions[next].id)
+}
+
+private struct ControllerSearchPickerOverlay: View {
+    let picker: ControllerSearchPicker
+    let selectedIndex: Int
+    let selectedOptionIds: [String]
+    let selectedSortId: String
+    let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
+    let select: (Int) -> Void
+    let close: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    /// Sized from the row count rather than left to fill: the list is inside a ScrollView, which
+    /// is greedy, so an unconstrained panel stretched to the full window height even for a
+    /// three-option sort list.
+    private var panelHeight: CGFloat {
+        let rowHeight = 44 * uiScale
+        let rowSpacing = 8 * uiScale
+        let rows = CGFloat(picker.options.count)
+        let chrome = 118 * uiScale
+        let content = rows * rowHeight + max(rows - 1, 0) * rowSpacing + chrome
+        return min(content, layout.size.height * 0.72)
     }
 
-    private func cycleFilter(group: OPNCatalogFilterGroupObject) {
-        guard !group.options.isEmpty else { return }
-        let current = group.options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? -1
-        let next = (current + 1) % group.options.count
-        if current >= 0 { viewModel.toggleFilter(group.options[current].id) }
-        viewModel.toggleFilter(group.options[next].id)
+    private func isApplied(_ option: ControllerSearchPicker.Option) -> Bool {
+        switch picker.kind {
+        case .sort:
+            return option.id == selectedSortId
+        case .filter:
+            guard option.id != ControllerSearchPicker.clearOptionId else {
+                return !picker.options.contains { $0.id != ControllerSearchPicker.clearOptionId && selectedOptionIds.contains($0.id) }
+            }
+            return selectedOptionIds.contains(option.id)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            OpenNOWDesign.Surface.scrim
+                .ignoresSafeArea()
+                .onTapGesture { close() }
+
+            VStack(alignment: .leading, spacing: 0) {
+                ControllerOverlayHeader(title: picker.title, subtitle: "Choose one", glyphs: glyphs, close: close)
+                    .padding(.horizontal, 22 * uiScale)
+                    .padding(.top, 18 * uiScale)
+                    .padding(.bottom, 12 * uiScale)
+
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 8 * uiScale) {
+                            ForEach(Array(picker.options.enumerated()), id: \.element.id) { index, option in
+                                let isFocused = index == selectedIndex
+                                Button { select(index) } label: {
+                                    HStack(spacing: 13 * uiScale) {
+                                        Image(systemName: isApplied(option) ? "checkmark.circle.fill" : "circle")
+                                            .nvidiaFont(size: 13, weight: .bold)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                        Text(option.label)
+                                            .nvidiaFont(size: 14, weight: .bold)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.88))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 14 * uiScale)
+                                    .frame(height: 44 * uiScale)
+                                    .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                                    .openNowFocusRing(isFocused)
+                                }
+                                .buttonStyle(.plain)
+                                .id(option.id)
+                            }
+                        }
+                        .padding(.horizontal, 22 * uiScale)
+                        .padding(.bottom, 22 * uiScale)
+                    }
+                    .onChange(of: selectedIndex) { _, index in
+                        guard picker.options.indices.contains(index) else { return }
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            proxy.scrollTo(picker.options[index].id, anchor: .center)
+                        }
+                    }
+                }
+            }
+            .frame(width: min(520 * uiScale, layout.contentWidth), height: panelHeight, alignment: .topLeading)
+            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.accent).frame(height: 2) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        }
     }
 }
 
@@ -1360,13 +1777,15 @@ private struct ControllerGameDetailOverlay: View {
     private var selectedVariant: OPNCatalogGameVariantObject? { viewModel.selectedVariant(in: game) }
     private var selectedPlatformOption: CatalogPlatformOption? { viewModel.selectedPlatformOption(in: game) }
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         GeometryReader { proxy in
             let panelWidth = min(layout.contentWidth * 0.62, 900)
             ZStack {
-                Color.black.ignoresSafeArea()
+                ControllerArtworkBackdrop(viewModel: viewModel, game: game, size: proxy.size)
 
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 18 * uiScale) {
                     ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
                     detailMetadata
                     Text(detailDescription)
@@ -1374,12 +1793,12 @@ private struct ControllerGameDetailOverlay: View {
                         .foregroundStyle(.white.opacity(0.82))
                         .lineSpacing(4)
                         .lineLimit(5)
-                        .frame(maxWidth: 720, alignment: .leading)
+                        .frame(maxWidth: 720 * uiScale, alignment: .leading)
                     detailRows
-                    FlowLayout(spacing: 12) {
+                    FlowLayout(spacing: 12 * uiScale) {
                         ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
                             Button { perform(action) } label: {
-                                HStack(spacing: 9) {
+                                HStack(spacing: 9 * uiScale) {
                                     Image(systemName: action.icon)
                                         .nvidiaFont(size: 14, weight: .bold)
                                     Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
@@ -1387,15 +1806,16 @@ private struct ControllerGameDetailOverlay: View {
                                         .tracking(0.8)
                                 }
                                 .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
-                                .padding(.horizontal, 15)
-                                .frame(height: 44)
-                                .background(index == selectedActionIndex ? OpenNOWDesign.accent : Color.white.opacity(0.09))
-                                .overlay { Rectangle().stroke(index == selectedActionIndex ? .white.opacity(0.86) : Color.white.opacity(0.14), lineWidth: index == selectedActionIndex ? 2 : 1) }
+                                .padding(.horizontal, 15 * uiScale)
+                                .frame(height: 44 * uiScale)
+                                .background(index == selectedActionIndex ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                                .openNowFocusRing(index == selectedActionIndex)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 8 * uiScale)
                 }
                 .frame(width: panelWidth, alignment: .leading)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
@@ -1420,7 +1840,7 @@ private struct ControllerGameDetailOverlay: View {
     }
 
     private var detailMetadata: some View {
-        FlowLayout(spacing: 8) {
+        FlowLayout(spacing: 8 * uiScale) {
             if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
             if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
             if game.supportsKeyboard { ControllerMetadataPill(text: "Keyboard") }
@@ -1429,11 +1849,11 @@ private struct ControllerGameDetailOverlay: View {
             }
             if game.isLaunchPatching { ControllerMetadataPill(text: "Patching", highlighted: true) }
         }
-        .frame(maxWidth: 720, alignment: .leading)
+        .frame(maxWidth: 720 * uiScale, alignment: .leading)
     }
 
     private var detailRows: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
             ControllerDetailRow(label: "Publisher", value: game.publisherName)
             ControllerDetailRow(label: "Developer", value: game.developerName)
             ControllerDetailRow(label: "Stores", value: game.storeLine)
@@ -1463,30 +1883,32 @@ private struct ControllerActionMenuOverlay: View {
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         ZStack(alignment: .trailing) {
             Color.black.opacity(0.58).onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 0) {
                 ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
-                    .padding(.horizontal, 22)
+                    .padding(.horizontal, 22 * uiScale)
                     .padding(.top, 22 + topInset)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 12 * uiScale)
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 8 * uiScale) {
                         ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                             Button { perform(item) } label: {
-                                HStack(spacing: 13) {
+                                HStack(spacing: 13 * uiScale) {
                                     if item.isRefresh, isRefreshingCatalog {
                                         ProgressView()
                                             .controlSize(.small)
                                             .tint(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .scaleEffect(0.82)
-                                            .frame(width: 28)
+                                            .frame(width: 28 * uiScale)
                                     } else {
                                         Image(systemName: item.icon)
                                             .nvidiaFont(size: 15, weight: .bold)
                                             .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
-                                            .frame(width: 28)
+                                            .frame(width: 28 * uiScale)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
                                         .nvidiaFont(size: 15, weight: .bold)
@@ -1494,23 +1916,23 @@ private struct ControllerActionMenuOverlay: View {
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
                                 }
-                                .padding(.horizontal, 14)
-                                .frame(height: 48)
+                                .padding(.horizontal, 14 * uiScale)
+                                .frame(height: 48 * uiScale)
                                 .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.055))
-                                .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
+                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                                .openNowFocusRing(index == selectedIndex)
                             }
                             .buttonStyle(.plain)
                             .disabled(item.isRefresh && isRefreshingCatalog)
                         }
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 22)
+                    .padding(.horizontal, 22 * uiScale)
+                    .padding(.bottom, 22 * uiScale)
                 }
             }
-            .frame(maxWidth: 420, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
+            .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
+            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
             .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
-            .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -1525,9 +1947,11 @@ private struct ControllerOverlayHeader: View {
     let glyphs: ControllerInputGlyphSet
     let close: () -> Void
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 16 * uiScale) {
+            VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .nvidiaFont(size: 27, weight: .bold)
                     .foregroundStyle(.white)
@@ -1538,7 +1962,7 @@ private struct ControllerOverlayHeader: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
                     .nvidiaFont(size: 11, weight: .bold)
@@ -1548,77 +1972,12 @@ private struct ControllerOverlayHeader: View {
                 Image(systemName: "xmark")
                     .nvidiaFont(size: 16, weight: .bold)
                     .foregroundStyle(.white.opacity(0.80))
-                    .frame(width: 38, height: 38)
+                    .frame(width: 38 * uiScale, height: 38 * uiScale)
                     .background(Color.white.opacity(0.08))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
-    }
-}
-
-private struct ControllerCompactGameCard: View, Equatable {
-    let imageURL: URL?
-    let title: String
-    let subtitle: String
-    let badge: String?
-    let isFocused: Bool
-    let action: () -> Void
-
-    // The action closure is deliberately excluded: it is recreated on every parent
-    // render but always targets the same game, and comparing it would defeat the
-    // .equatable() body-skip that keeps d-pad moves from re-evaluating every card.
-    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.imageURL == rhs.imageURL && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.badge == rhs.badge && lhs.isFocused == rhs.isFocused
-    }
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 9) {
-                CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 520)
-                    .frame(height: 128)
-                    .clipped()
-                    .overlay(alignment: .topLeading) {
-                        if let badge {
-                            CatalogGameCardBadge(label: badge)
-                                .scaleEffect(0.92, anchor: .topLeading)
-                        }
-                    }
-                Text(title)
-                    .nvidiaFont(size: 14, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.94))
-                    .lineLimit(1)
-                Text(subtitle)
-                    .nvidiaFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.84))
-                    .lineLimit(1)
-            }
-            .padding(10)
-            .background(Color.white.opacity(isFocused ? 0.12 : 0.055))
-            .overlay { Rectangle().stroke(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: isFocused ? 3 : 1) }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct ControllerOptionChip: View {
-    let title: String
-    let isSelected: Bool
-    let isFocused: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title.uppercased())
-                .nvidiaFont(size: 12, weight: .bold)
-                .tracking(0.6)
-                .foregroundStyle(isSelected || isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
-                .padding(.horizontal, 13)
-                .frame(height: 36)
-                .background(isSelected || isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
-                .overlay { Rectangle().stroke(isFocused ? .white.opacity(0.82) : (isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.12)), lineWidth: isFocused ? 2 : 1) }
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -1639,15 +1998,17 @@ private struct ControllerMetadataPill: View {
     let text: String
     var highlighted = false
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         Text(text.uppercased())
             .nvidiaFont(size: 11, weight: .bold)
             .tracking(0.7)
             .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.10))
-            .overlay { Rectangle().stroke(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
+            .padding(.horizontal, 10 * uiScale)
+            .frame(height: 28 * uiScale)
+            .background(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+            .overlay { Rectangle().stroke(highlighted ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -1655,14 +2016,16 @@ private struct ControllerDetailRow: View {
     let label: String
     let value: String
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         if !value.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
                 Text(label.uppercased())
                     .nvidiaFont(size: 10, weight: .bold)
                     .tracking(0.7)
                     .foregroundStyle(.white.opacity(0.42))
-                    .frame(width: 96, alignment: .leading)
+                    .frame(width: 96 * uiScale, alignment: .leading)
                 Text(value)
                     .nvidiaFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
@@ -1687,8 +2050,10 @@ private struct ControllerHintBar: View {
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 14 * uiScale) {
             ForEach(hints, id: \.self) { hint in
                 ControllerHintItem(hint: hint, glyphs: glyphs)
             }
@@ -1701,7 +2066,7 @@ private struct ControllerHintBar: View {
                 .minimumScaleFactor(0.72)
         }
         .frame(width: layout.contentWidth, alignment: .leading)
-        .frame(height: 46)
+        .frame(height: 46 * uiScale)
         .background(Color.black.opacity(0.36))
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
     }
@@ -1711,8 +2076,10 @@ private struct ControllerHintItem: View {
     let hint: ControllerHint
     let glyphs: ControllerInputGlyphSet
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 6 * uiScale) {
             if hint == .move, !glyphs.usesControllerGlyphs {
                 ControllerKeyboardMovePill(glyphs: glyphs)
             } else {
@@ -1756,8 +2123,10 @@ private struct ControllerGlyphPill: View {
     let glyph: ControllerInputGlyph
     var compact = false
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: compact ? 0 : 5) {
+        HStack(spacing: (compact ? 0 : 5) * uiScale) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
                     .nvidiaFont(size: compact ? 11 : 12, weight: .bold)
@@ -1769,9 +2138,9 @@ private struct ControllerGlyphPill: View {
             }
         }
         .foregroundStyle(OpenNOWDesign.accent)
-        .padding(.horizontal, compact ? 6 : 7)
-        .frame(minWidth: compact ? 25 : 0)
-        .frame(height: 22)
+        .padding(.horizontal, (compact ? 6 : 7) * uiScale)
+        .frame(minWidth: (compact ? 25 : 0) * uiScale)
+        .frame(height: 22 * uiScale)
         .background(OpenNOWDesign.accent.opacity(0.12))
         .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
@@ -1787,8 +2156,10 @@ private struct ControllerGlyphPill: View {
 private struct ControllerKeyboardMovePill: View {
     let glyphs: ControllerInputGlyphSet
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * uiScale) {
             Image(systemName: glyphs.left.symbolName)
             Image(systemName: glyphs.up.symbolName)
             Image(systemName: glyphs.down.symbolName)
@@ -1796,11 +2167,56 @@ private struct ControllerKeyboardMovePill: View {
         }
         .nvidiaFont(size: 11, weight: .bold)
         .foregroundStyle(OpenNOWDesign.accent)
-        .padding(.horizontal, 8)
-        .frame(height: 22)
+        .padding(.horizontal, 8 * uiScale)
+        .frame(height: 22 * uiScale)
         .background(OpenNOWDesign.accent.opacity(0.12))
         .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel("Arrow keys")
+    }
+}
+
+/// Blurred cover art behind the game detail overlay, carrying the stream launch screen's treatment
+/// - artwork under a top-to-bottom scrim - so choosing a game and launching it share one visual
+/// language instead of the details sitting on flat black.
+///
+/// The artwork is laid out larger than the surface, blurred, and only then clipped back: blurring
+/// at the exact size pulls the soft edge inward and leaves a translucent border around the page.
+private struct ControllerArtworkBackdrop: View {
+    let viewModel: CatalogViewModel
+    let game: OPNCatalogGameObject
+    let size: CGSize
+
+    private static let bleed: CGFloat = 80
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            CatalogCachedImageView(
+                url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280),
+                contentMode: .fill,
+                maxPixelSize: 1280,
+                placeholder: Color.clear,
+                failure: Color.clear
+            )
+            .frame(width: size.width + Self.bleed, height: size.height + Self.bleed)
+            .blur(radius: 30)
+            .frame(width: size.width, height: size.height)
+            .clipped()
+            .opacity(0.45)
+
+            // Keeps the description and metadata rows legible over bright artwork.
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.54), location: 0),
+                    .init(color: .black.opacity(0.20), location: 0.42),
+                    .init(color: .black.opacity(0.78), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
     }
 }
 
@@ -1855,8 +2271,15 @@ private struct ControllerKeyboardInputBridge: NSViewRepresentable {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self else { return event }
-                guard !MainActor.assumeIsolated({ Self.isTextInputActive }) else { return event }
                 guard let command = Self.command(for: event) else { return event }
+                if MainActor.assumeIsolated({ Self.isTextInputActive }) {
+                    // A focused field owns the keyboard: letters are text, and left/right are
+                    // caret moves inside the query. Up and down stay navigation so the row can
+                    // still be left without reaching for a pad.
+                    guard case .move(let direction) = command, direction == .up || direction == .down else {
+                        return event
+                    }
+                }
                 self.onCommand(command)
                 return nil
             }

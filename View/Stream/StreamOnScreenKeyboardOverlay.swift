@@ -60,14 +60,14 @@ final class StreamOnScreenKeyboardController: ObservableObject {
         triggerHeld[deviceID] = triggers
 
         if let action = navigator.action(deviceID: deviceID, buttons: snapshot.buttons, leftStickX: snapshot.leftStickX, leftStickY: snapshot.leftStickY) {
-            perform(action)
+            handleNavigationAction(action)
         }
     }
 
     /// Regular gamepad state path for controllers without trackpads.
     func handleGamepadState(_ gamepadState: GamepadState) {
         guard let action = navigator.action(deviceID: gamepadState.deviceID, buttons: gamepadState.buttons, leftStickX: gamepadState.leftStickX, leftStickY: gamepadState.leftStickY) else { return }
-        perform(action)
+        handleNavigationAction(action)
     }
 
     func activateGridKey(row: Int, column: Int) {
@@ -78,7 +78,10 @@ final class StreamOnScreenKeyboardController: ObservableObject {
         apply(state.activateBarItem(index))
     }
 
-    private func perform(_ action: StreamOSKNavAction) {
+    /// Drives the keyboard from an already-abstract navigation command. The stream hosts feed raw
+    /// device reports because they also aim the trackpad cursors; the controller-mode catalog gets
+    /// its input as high-level moves from `ControllerInputRouter` and has no cursor to aim.
+    func handleNavigationAction(_ action: StreamOSKNavAction) {
         switch action {
         case .move(let dx, let dy): state.moveGridCursor(dx: dx, dy: dy)
         case .activate: apply(state.activateGridCursor())

@@ -26,6 +26,10 @@ enum OpenNOWDesign {
         static let muted = Color.white.opacity(0.38)
     }
 
+    /// Budget for `opnTakingFocus`.
+    static let focusAttempts = 6
+    static let focusRetryMilliseconds = 30
+
     enum Stroke {
         static let subtle = Color.white.opacity(0.10)
         static let regular = Color.white.opacity(0.14)
@@ -140,10 +144,34 @@ enum OpenNOWDesign {
 }
 
 extension View {
+    /// Now sits over interactive rows (settings toggles, sliders), not just buttons, so it is
+    /// explicitly inert and absent rather than a permanently installed clear stroke.
     func openNowFocusRing(_ isFocused: Bool) -> some View {
         overlay {
-            Rectangle()
-                .stroke(isFocused ? OpenNOWDesign.accent : .clear, lineWidth: 2)
+            if isFocused {
+                Rectangle()
+                    .stroke(OpenNOWDesign.accent, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Takes `@FocusState` for a field that is being inserted, retrying briefly.
+    ///
+    /// A focus request made in the same frame as the insertion is dropped - the field is not in the
+    /// responder chain yet - so this yields, then re-asks while the field is still meant to be
+    /// focused. Both the search field in the top bar and the one in controller mode need it, and a
+    /// per-site copy meant the attempt count and delay had to stay in sync by hand.
+    func opnTakingFocus(_ isFocused: FocusState<Bool>.Binding, while shouldFocus: Bool) -> some View {
+        task(id: shouldFocus) {
+            guard shouldFocus else { return }
+            await Task.yield()
+            for _ in 0..<OpenNOWDesign.focusAttempts {
+                guard !Task.isCancelled, shouldFocus else { return }
+                if isFocused.wrappedValue { return }
+                isFocused.wrappedValue = true
+                try? await Task.sleep(for: .milliseconds(OpenNOWDesign.focusRetryMilliseconds))
+            }
         }
     }
 

@@ -46,12 +46,17 @@ struct CatalogHeroRemoteImage: View {
 
         onScrimColorChange(.black)
         isLoading = true
-        if let cached = await imageCache.image(for: url) {
+        // The scrim colour is read from the image's EXIF user comment, so this is the one call site
+        // that needs the compressed bytes kept alongside the decoded image.
+        if let cached = await imageCache.image(for: url, retainingSourceData: true) {
             guard !Task.isCancelled else { return }
             image = cached.image
             hasFailed = false
             isLoading = false
-            let scrimColor = await CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black
+            var scrimColor = CatalogMarqueeScrimColor.black
+            if let sourceData = cached.sourceData {
+                scrimColor = await CatalogHeroImageMetadata.scrimColor(from: sourceData) ?? .black
+            }
             guard !Task.isCancelled else { return }
             onScrimColorChange(scrimColor)
         } else {

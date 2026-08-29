@@ -29,20 +29,31 @@ struct CatalogContentView: View {
                 let sections = viewModel.catalogSections
                 let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
                 ScrollViewReader { proxy in
-                    ZStack {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 26) {
-                                if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
-                                    VendorActiveSessionHomeBanner(
-                                        title: viewModel.activeHomeSessionTitle,
-                                        isResumable: session.isResumable,
-                                        serverIp: session.serverIp,
-                                        onResume: { viewModel.resumeActiveHomeSession() },
-                                        onEnd: { viewModel.endActiveHomeSession() }
-                                    )
-                                }
+                    ScrollView {
+                        // Lazy: a plain VStack built every rail on the home page up front, so all
+                        // ten rails' worth of tiles (and their image requests) existed whether or
+                        // not they were ever scrolled to. Controller mode has always used a
+                        // LazyVStack here.
+                        //
+                        // Never attach `.animation(_:value:)` to this stack. A lazy stack tracks a
+                        // materialisation phase per item; an animated container makes every phase
+                        // change re-dirty layout, which recomputes the phases, which animates
+                        // again. That span the main thread at 100% CPU inside
+                        // `LazyLayoutViewCache.updateItemPhases`. Animate the model mutation or an
+                        // individual non-lazy child instead.
+                        LazyVStack(alignment: .leading, spacing: 26) {
+                            if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
+                                VendorActiveSessionHomeBanner(
+                                    title: viewModel.activeHomeSessionTitle,
+                                    isResumable: session.isResumable,
+                                    serverIp: session.serverIp,
+                                    onResume: { viewModel.resumeActiveHomeSession() },
+                                    onEnd: { viewModel.endActiveHomeSession() }
+                                )
+                            }
 
-                                if hero != nil && !isGridDestination {
+                            if !isGridDestination {
+                                if hero != nil {
                                     CatalogHeroView(
                                         viewModel: viewModel,
                                         games: heroes,
@@ -64,78 +75,97 @@ struct CatalogContentView: View {
                                             heroIndex = min(heroIndex + 1, heroes.count - 1)
                                         }
                                     )
+                                } else if viewModel.isLoadingMarquee {
+                                    // The hero comes from the marquee query, the rails from the main
+                                    // one. Whichever lands second used to resize the page: with no
+                                    // hero the rails start at the top, then the banner appears and
+                                    // pushes them down by its full height. Hold the exact height
+                                    // `CatalogHeroView` will claim until the marquee resolves.
+                                    SkeletonBlock()
+                                        .frame(height: CatalogVendorLayout.heroHeight(
+                                            for: viewport.size.width,
+                                            viewportHeight: viewport.size.height,
+                                            scale: uiScale
+                                        ))
                                 }
+                            }
 
-                                if !viewModel.errorMessage.isEmpty {
-                                    CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            if !viewModel.errorMessage.isEmpty {
+                                CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                            }
+                            if viewModel.isBrowseMode {
+                                CatalogBrowseControlsView(viewModel: viewModel)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                            }
+                            if isGridDestination, sections.isEmpty, isLoadingInitialSections {
+                                CatalogGridSkeletonView(isScrollable: false)
+                                    .padding(.top, 24 * uiScale)
+                            } else if isGridDestination, let section = sections.first {
+                                CatalogDestinationGridView(viewModel: viewModel, section: section)
+                                if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
+                                    GameDetailPanel(
+                                        viewModel: viewModel,
+                                        availableWidth: max(0, viewport.size.width - CatalogVendorLayout.sectionHeaderMargin(scale: uiScale) * 2),
+                                        viewportHeight: viewport.size.height
+                                    )
+                                        .padding(.top, -10)
+                                        .padding(.bottom, 22)
                                         .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                                        .onHover { isPointerInsideDetailPanel = $0 }
+                                        .id(detailAnchor)
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
-                                if viewModel.isBrowseMode {
-                                    CatalogBrowseControlsView(viewModel: viewModel)
-                                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-                                }
-                                if isGridDestination, let section = sections.first {
-                                    CatalogDestinationGridView(viewModel: viewModel, section: section)
-                                    if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
+                            } else {
+                                ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                                    let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
+                                    if showsDetail, let railAnchor = selectedRailScrollAnchor {
+                                        Color.clear
+                                            .frame(height: 0)
+                                            .id(railAnchor)
+                                    }
+                                    CatalogRailView(viewModel: viewModel, section: section, onShowAll: { viewModel.openShowAll(section) })
+                                    if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                         GameDetailPanel(
                                             viewModel: viewModel,
-                                            availableWidth: max(0, viewport.size.width - CatalogVendorLayout.sectionHeaderMargin(scale: uiScale) * 2),
+                                            availableWidth: viewport.size.width,
                                             viewportHeight: viewport.size.height
                                         )
-                                            .padding(.top, -10)
+                                            .padding(.top, -8)
                                             .padding(.bottom, 22)
-                                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
                                             .onHover { isPointerInsideDetailPanel = $0 }
                                             .id(detailAnchor)
                                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                                     }
-                                } else {
-                                    ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                                        let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
-                                        if showsDetail, let railAnchor = selectedRailScrollAnchor {
-                                            Color.clear
-                                                .frame(height: 0)
-                                                .id(railAnchor)
-                                        }
-                                        CatalogRailView(viewModel: viewModel, section: section, onShowAll: { viewModel.openShowAll(section) })
-                                        if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
-                                            GameDetailPanel(
-                                                viewModel: viewModel,
-                                                availableWidth: viewport.size.width,
-                                                viewportHeight: viewport.size.height
-                                            )
-                                                .padding(.top, -8)
-                                                .padding(.bottom, 22)
-                                                .onHover { isPointerInsideDetailPanel = $0 }
-                                                .id(detailAnchor)
-                                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                        }
+                                }
+                                // Only when there is nothing at all yet. On Home the library and
+                                // favorites rails have already claimed their slots by this point,
+                                // so they carry the loading state and real rails append below them
+                                // instead of displacing anything already on screen.
+                                if sections.isEmpty, isLoadingInitialSections {
+                                    ForEach(0..<3, id: \.self) { _ in
+                                        CatalogRailSkeletonView()
                                     }
                                 }
-
-                                if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
-                                    CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
-                                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-                                        .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
-                                }
                             }
-                            .padding(.bottom, 44)
-                        }
-                        .background(
-                            OpenNOWDesign.Surface.app
-                                .contentShape(Rectangle())
-                                .onTapGesture { viewModel.closeGameDetailsFromBackground() }
-                        )
-                        .simultaneousGesture(TapGesture().onEnded {
-                            guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
-                            viewModel.closeGameDetailsFromBackground()
-                        })
 
-                        if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
-                            CatalogHomeSkeletonView(availableWidth: viewport.size.width)
-                                .transition(.opacity)
+                            if sections.isEmpty && !isLoadingInitialSections {
+                                CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                                    .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
+                            }
                         }
+                        .padding(.bottom, 44)
                     }
+                    .background(
+                        OpenNOWDesign.Surface.app
+                            .contentShape(Rectangle())
+                            .onTapGesture { viewModel.closeGameDetailsFromBackground() }
+                    )
+                    .simultaneousGesture(TapGesture().onEnded {
+                        guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
+                        viewModel.closeGameDetailsFromBackground()
+                    })
                     .onChange(of: selectedRailScrollAnchor) { _, anchor in
                         scrollToSelectedRail(anchor, proxy: proxy)
                     }
@@ -163,6 +193,13 @@ struct CatalogContentView: View {
 
     private var heroGames: [OPNCatalogGameObject] {
         viewModel.heroRotationGames
+    }
+
+    /// True while the first page of rails is still in flight. Drives the in-flow rail skeletons,
+    /// which replaced an overlaid full-page skeleton: one layout tree means the loading and loaded
+    /// states cannot drift apart in height the way two hand-matched trees did.
+    private var isLoadingInitialSections: Bool {
+        viewModel.isLoading || viewModel.isLoadingPanels
     }
 
     private var selectedRailScrollAnchor: String? {
@@ -551,16 +588,11 @@ struct CatalogRailView: View {
     var body: some View {
         if section.isPlaceholder {
             // Deferred library/favorites rail: keep its title and reserve the row with a skeleton
-            // so the layout does not jump when the games arrive a moment later.
-            VStack(alignment: .leading, spacing: 14) {
-                Text(section.title)
-                    .nvidiaFont(size: 20, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.96))
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-                CatalogRailSkeletonView()
-            }
-            .transition(.opacity)
+            // so the layout does not jump when the games arrive a moment later. The skeleton owns
+            // the header too - drawing a title here as well stacked two headers and made the
+            // placeholder rail taller than the loaded one it turns into.
+            CatalogRailSkeletonView(title: section.title)
+                .transition(.opacity)
         } else {
             loadedBody
         }
@@ -581,7 +613,7 @@ struct CatalogRailView: View {
                         .foregroundStyle(.white.opacity(0.92))
                 }
             }
-            .frame(height: 28)
+            .frame(height: 28 * uiScale)
             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
 
             ScrollViewReader { proxy in
@@ -619,7 +651,7 @@ struct CatalogRailView: View {
                         }
                         .frame(height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 4 * uiScale)
                     }
                     if games.count > 3 {
                         HStack {
@@ -707,36 +739,42 @@ struct CatalogDestinationGridView: View {
                     .nvidiaFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
                     .accessibilityAddTraits(.isHeader)
-                Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
-                    .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
-                    .tracking(0.8)
+                if !section.isPlaceholder {
+                    Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
+                        .nvidiaFont(size: 12, weight: .bold)
+                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
+                        .tracking(0.8)
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
             .padding(.top, 24 * uiScale)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
-                ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                    CatalogGameTile(
-                        game: game,
-                        imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
-                        isSelected: isSelected(game),
-                        isSelectionActive: viewModel.selectedGame != nil,
-                        isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                        showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
-                        onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
-                        onPlay: { viewModel.launch(game: game) },
-                        onMarkOwned: {
-                            viewModel.selectGame(game, inSection: section.id)
-                            viewModel.handleUnownedSelectedVariantPrimaryAction()
-                        },
-                        onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
-                    )
+            if section.isPlaceholder {
+                CatalogGridSkeletonView(isScrollable: false)
+            } else {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
+                    ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
+                        CatalogGameTile(
+                            game: game,
+                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
+                            isSelected: isSelected(game),
+                            isSelectionActive: viewModel.selectedGame != nil,
+                            isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                            showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                            onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
+                            onPlay: { viewModel.launch(game: game) },
+                            onMarkOwned: {
+                                viewModel.selectGame(game, inSection: section.id)
+                                viewModel.handleUnownedSelectedVariantPrimaryAction()
+                            },
+                            onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
+                        )
+                    }
                 }
+                .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
+                .padding(.bottom, 12 * uiScale)
             }
-            .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
-            .padding(.bottom, 12 * uiScale)
         }
         .onAppear { prefetchGridImages() }
         .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
