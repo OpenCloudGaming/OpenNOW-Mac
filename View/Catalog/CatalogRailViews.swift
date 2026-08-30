@@ -18,6 +18,7 @@ struct CatalogRailView: View {
     let section: CatalogSectionModel
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
+    @State private var isRailHovering = false
     @Environment(\.opnUIScale) private var uiScale
 
     private var games: [OPNCatalogGameObject] {
@@ -110,8 +111,16 @@ struct CatalogRailView: View {
                             }
                         }
                         .padding(.horizontal, 8)
+                        // The arrows sit on top of the artwork, so they only earn their place while
+                        // the pointer is on this rail. Hit testing follows the opacity - an
+                        // invisible target that still swallows clicks is worse than no target.
+                        .opacity(isRailHovering ? 1 : 0)
+                        .allowsHitTesting(isRailHovering)
+                        .accessibilityHidden(!isRailHovering)
+                        .opnMotion(OpenNOWDesign.Motion.hover, value: isRailHovering)
                     }
                 }
+                .onHover { isRailHovering = $0 }
                 .onAppear { revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
                 .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
             }
@@ -220,6 +229,7 @@ struct CatalogDestinationGridView: View {
 struct CatalogRailArrow: View {
     let name: String
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
@@ -227,9 +237,12 @@ struct CatalogRailArrow: View {
                 .scaledToFit()
                 .frame(width: 30, height: 30)
                 .frame(width: 44, height: 44)
-                .background(.black.opacity(0.24), in: Circle())
+                .background(.black.opacity(isHovering ? 0.52 : 0.24), in: Circle())
+                .opnHoverScale(isHovering, factor: 1.10)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable(scale: 0.92))
+        .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
     }
 }
 
@@ -252,14 +265,14 @@ struct CatalogSeeMoreTile: View {
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
             .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))
             .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
-            .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.2), value: isHovering)
+            .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
+            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
         .accessibilityLabel("See all")
     }
@@ -303,13 +316,13 @@ struct CatalogPanelActionTile: View {
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
             .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
-            .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.2), value: isHovering)
+            .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
+            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
         .accessibilityLabel(tile.title.isEmpty ? actionLabel : tile.title)
     }

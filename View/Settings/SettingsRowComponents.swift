@@ -371,8 +371,9 @@ struct SettingsActionButton: View {
                 .background(backgroundColor)
                 .overlay { Rectangle().stroke(strokeColor, lineWidth: 1) }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         .controllerFocusable(focusIdentity, activate: { guard isEnabled else { return }; action() })
     }
 
@@ -454,8 +455,9 @@ struct SettingsRegionRow: View {
             .background(selected ? OpenNOWDesign.accent.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
             .overlay { Rectangle().stroke(selected ? OpenNOWDesign.accent.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
     }
 }
 

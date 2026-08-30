@@ -323,12 +323,13 @@ struct CatalogShowAllGridTile: View {
                 playButton
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .opacity(isHovering ? 1 : 0)
+                    .opnHoverScale(!isHovering, factor: 0.92)
                     .allowsHitTesting(isHovering)
                     .accessibilityHidden(!isHovering)
                     .zIndex(2)
             }
-            .scaleEffect(isHovering ? CatalogShowAllLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .opnHoverScale(isHovering, factor: CatalogShowAllLayout.tileScaleFactor)
+            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .zIndex(isHovering ? 1 : 0)
         }
     }
@@ -364,7 +365,7 @@ struct CatalogShowAllGridTile: View {
             .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable(scale: 0.94))
         .disabled(game.isLaunchPatching && isQueuedForPatching)
     }
 

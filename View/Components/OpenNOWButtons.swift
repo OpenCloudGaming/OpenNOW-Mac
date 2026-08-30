@@ -1,5 +1,42 @@
 import SwiftUI
 
+/// `.plain` with a press response. Plain buttons draw no chrome *and* give no feedback, so every
+/// tile, menu row and icon in the app used to swallow the click silently until the action's own
+/// side effect showed up. Drops the transform under Reduce Motion and keeps the dim.
+struct OpenNOWPressableButtonStyle: ButtonStyle {
+    var pressedScale: CGFloat = 0.97
+    var pressedOpacity: Double = 0.92
+    var anchor: UnitPoint = .center
+
+    func makeBody(configuration: Configuration) -> some View {
+        // `@Environment` read from a nested View: a ButtonStyle is not part of the view graph, so
+        // an environment property on the style itself never updates.
+        PressableBody(configuration: configuration, pressedScale: pressedScale, pressedOpacity: pressedOpacity, anchor: anchor)
+    }
+
+    private struct PressableBody: View {
+        let configuration: Configuration
+        let pressedScale: CGFloat
+        let pressedOpacity: Double
+        let anchor: UnitPoint
+
+        var body: some View {
+            configuration.label
+                .opnHoverScale(configuration.isPressed, factor: pressedScale, anchor: anchor)
+                .opacity(configuration.isPressed ? pressedOpacity : 1)
+                .opnMotion(OpenNOWDesign.Motion.press, value: configuration.isPressed)
+        }
+    }
+}
+
+extension ButtonStyle where Self == OpenNOWPressableButtonStyle {
+    static var opnPressable: OpenNOWPressableButtonStyle { .init() }
+
+    static func opnPressable(scale: CGFloat, opacity: Double = 0.92, anchor: UnitPoint = .center) -> OpenNOWPressableButtonStyle {
+        .init(pressedScale: scale, pressedOpacity: opacity, anchor: anchor)
+    }
+}
+
 struct OpenNOWCompactButtonStyle: ButtonStyle {
     enum Role {
         case primary

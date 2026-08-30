@@ -220,17 +220,14 @@ struct CatalogView: View {
                         .padding(.top, measuredCatalogTopInset)
                         .transition(.opacity)
 
-                        if showsMainMenu {
-                            CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset, onSignOut: onSignOut)
-                                .transition(.opacity)
-                                .zIndex(12)
-                        }
+                        // Both menus stay mounted and animate themselves in and out. Wrapping them
+                        // in an `if` here removed them before their exit transition could run, and
+                        // gave the scrim and the panel one shared transition instead of two.
+                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset, onSignOut: onSignOut)
+                            .zIndex(12)
 
-                        if showsAccountMenu {
-                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
-                                .transition(.opacity)
-                                .zIndex(13)
-                        }
+                        CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
+                            .zIndex(13)
                     }
                     if viewModel.isLaunchFlowVisible {
                         VendorLaunchFlowOverlay(viewModel: viewModel)

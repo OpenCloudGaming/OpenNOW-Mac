@@ -20,16 +20,32 @@ struct CatalogMainMenuOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.6)
-                    .ignoresSafeArea()
-                    .onTapGesture { isPresented = false }
+                // Presentation is decided here rather than by an `if` at the call site so the scrim
+                // and the panel can carry separate transitions. A conditional ancestor animates as
+                // one block: the dimming would slide in with the drawer.
+                if isPresented {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                        .onTapGesture { isPresented = false }
+                        .transition(.opacity)
 
-                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - topInset))
-                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
-                    .padding(.leading, 0)
+                    // The transition is attached before the padding on purpose. `.move` travels by
+                    // the frame of the view it is attached to, so outside the padding the panel
+                    // would start a full window width away instead of just off its own edge.
+                    CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - topInset))
+                        .opnTransition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .onExitCommand { isPresented = false }
+        .opnMotion(OpenNOWDesign.Motion.panel, value: isPresented)
+        // Closed, this is an empty ZStack with nothing to hit; the guard is belt and braces so a
+        // permanently mounted full-window overlay can never steal hover from the rails below it.
+        .allowsHitTesting(isPresented)
+        // Nil while closed: this view stays mounted to own the transition, and a permanently
+        // installed handler would eat Escape from whatever is actually on screen.
+        .onExitCommand(perform: isPresented ? { isPresented = false } : nil)
     }
 }
 
@@ -168,17 +184,24 @@ struct CatalogAccountDropdownOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topTrailing) {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { isPresented = false }
+                if isPresented {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { isPresented = false }
 
-                CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $isPresented, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
-                    .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
-                    .padding(.trailing, 22)
+                    // Grows out of the avatar it hangs from instead of fading in place. Anchored
+                    // top-trailing so the corner under the button stays put while it opens.
+                    CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $isPresented, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
+                        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
+                        .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
+                        .padding(.trailing, 22)
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .onExitCommand { isPresented = false }
+        .opnMotion(OpenNOWDesign.Motion.panel, value: isPresented)
+        .allowsHitTesting(isPresented)
+        .onExitCommand(perform: isPresented ? { isPresented = false } : nil)
     }
 }
 
@@ -352,8 +375,9 @@ struct CatalogAccountDropdownRow: View {
             .background(rowBackground)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         .accessibilityLabel(title)
     }
 
@@ -513,9 +537,10 @@ struct CatalogMainMenuRow: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
         .disabled(isLoading)
         .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         .accessibilityLabel(title)
     }
 

@@ -66,7 +66,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 Button(action: onSelect) {
                     tileContent
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.opnPressable(scale: 0.985))
                 .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityValue(isSelected ? "Details open" : "")
@@ -78,12 +78,15 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                 .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
                 .opacity(isHovering ? 1 : 0)
+                // Settles into place rather than materialising: the button is small and sits over
+                // busy artwork, where a pure fade is easy to miss.
+                .opnHoverScale(!isHovering, factor: 0.92, anchor: .topLeading)
                 .allowsHitTesting(isHovering)
                 .accessibilityHidden(!isHovering)
                 .zIndex(2)
             }
-            .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .opnHoverScale(isHovering && !isSelectionActive, factor: CatalogVendorLayout.tileScaleFactor)
+            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .zIndex(isHovering ? 1 : 0)
         }
     }
@@ -104,7 +107,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
             .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable(scale: 0.94))
         .disabled(game.isLaunchPatching && isQueuedForPatching)
         .accessibilityLabel(primaryAccessibilityLabel)
     }

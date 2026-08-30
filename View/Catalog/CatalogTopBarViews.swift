@@ -41,7 +41,7 @@ struct CatalogTopBar: View {
                         CatalogHamburgerLabel(isOpen: showsMainMenu)
                     }
                     .frame(width: 44 * uiScale, height: 40 * uiScale)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.opnPressable(scale: 0.90))
                     .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                     Text(mainPageTitle)
                         .nvidiaFont(size: 17, weight: .medium)
@@ -73,14 +73,14 @@ struct CatalogTopBar: View {
                             Button { setSearchExpanded(true) } label: {
                                 CatalogTopBarIconLabel(systemName: "magnifyingglass")
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.opnPressable(scale: 0.90))
                             .accessibilityLabel("Search games")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
                         Button { controllerModeEnabled = true } label: {
                             CatalogTopBarIconLabel(systemName: "gamecontroller")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.opnPressable(scale: 0.90))
                         .accessibilityLabel("Switch to controller mode")
                         .help("Controller mode")
                     }
@@ -103,9 +103,10 @@ struct CatalogTopBar: View {
                                 .nvidiaFont(size: 10, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.88))
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
+                                .opnMotion(OpenNOWDesign.Motion.toggle, value: showsAccountMenu)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.opnPressable(scale: 0.97))
                     .accessibilityLabel("Open account menu")
                 }
                 .frame(height: CatalogVendorLayout.appBarHeight(scale: uiScale), alignment: .center)
@@ -257,6 +258,7 @@ struct CatalogTopBarIconLabel: View {
             .foregroundStyle(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.84))
             .modifier(CatalogTopBarPlate(isActive: isHovering))
             .onHover { isHovering = $0 }
+            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
     }
 }
 
@@ -272,11 +274,35 @@ struct CatalogHamburgerLabel: View {
                     Rectangle()
                         .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.white.opacity(0.84))
                         .frame(width: (index == 1 ? 20 : 23) * uiScale, height: 2)
+                        // Folds into a close cross while the drawer is open, so the button says
+                        // what the click will do instead of only recolouring.
+                        .opacity(isOpen && index == 1 ? 0 : 1)
+                        .rotationEffect(.degrees(isOpen ? barRotation(index: index) : 0))
+                        .offset(y: isOpen ? barOffset(index: index) : 0)
                 }
             }
         }
         .modifier(CatalogTopBarPlate(isActive: isOpen || isHovering))
         .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OpenNOWDesign.Motion.toggle, value: isOpen)
         .accessibilityLabel("Main menu")
+    }
+
+    /// The outer bars meet in the middle: 2pt bar, 4pt gap, so each travels one bar plus one gap.
+    private func barOffset(index: Int) -> CGFloat {
+        switch index {
+        case 0: return 6 * uiScale
+        case 2: return -6 * uiScale
+        default: return 0
+        }
+    }
+
+    private func barRotation(index: Int) -> Double {
+        switch index {
+        case 0: return 45
+        case 2: return -45
+        default: return 0
+        }
     }
 }

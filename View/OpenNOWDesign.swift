@@ -134,6 +134,35 @@ enum OpenNOWDesign {
         /// Fast small-area travel reads as stepped at 30 fps, and these surfaces
         /// live for under three seconds, so the extra frames are worth paying for.
         static let heroFrameInterval: TimeInterval = 1.0 / 60.0
+
+        /// Shared curve vocabulary. Every interactive surface should reach for one of these rather
+        /// than inventing a duration: the durations used to be spread across twenty files, so two
+        /// adjacent controls could fade at different speeds for no reason. Use them through
+        /// `opnMotion(_:value:)`, which drops the motion under Reduce Motion.
+        ///
+        /// Pointer-driven state that must feel instant (hover tints, borders).
+        static let hover = Animation.easeOut(duration: 0.16)
+        /// Click feedback. Shorter than `hover` so the press reads as a direct response.
+        static let press = Animation.easeOut(duration: 0.10)
+        /// A control changing state in place (chevron flip, disclosure, tab tint).
+        static let toggle = Animation.easeInOut(duration: 0.18)
+        /// Panels and menus entering or leaving. The only spring in the set - travel is the point.
+        static let panel = Animation.spring(response: 0.34, dampingFraction: 0.86)
+        /// Whole-surface swaps (page change, skeleton to content).
+        static let page = Animation.easeInOut(duration: 0.24)
+
+        /// Substitute used when Reduce Motion is on: same timing family, no spring overshoot, and
+        /// paired with `opnTransition` so nothing travels or scales.
+        static let reduced = Animation.easeInOut(duration: 0.12)
+
+        /// Per-item delay for staggered appearance, and the index it stops growing at. Without the
+        /// cap a 400-tile grid would ripple for ten seconds.
+        static let stagger: TimeInterval = 0.028
+        static let staggerLimit = 12
+
+        static func staggered(_ animation: Animation, index: Int) -> Animation {
+            animation.delay(Double(min(max(index, 0), staggerLimit)) * stagger)
+        }
     }
 
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
@@ -177,6 +206,55 @@ extension View {
 
     func opnInterfaceScale(_ scale: CGFloat) -> some View {
         modifier(OpenNOWInterfaceScaleModifier(scale: scale))
+    }
+
+    /// `animation(_:value:)` that answers to Reduce Motion. Springs and long curves collapse to
+    /// `Motion.reduced`, so a state change still cross-fades instead of snapping, but nothing
+    /// overshoots. One switch here beats a `guard !reduceMotion` at every call site.
+    func opnMotion<V: Equatable>(_ animation: Animation, value: V) -> some View {
+        modifier(OpenNOWMotionModifier(animation: animation, value: value))
+    }
+
+    /// Transition that degrades to a plain cross-fade under Reduce Motion, which is exactly what
+    /// the setting asks for: the state change still reads, the travel does not happen.
+    func opnTransition(_ transition: AnyTransition) -> some View {
+        modifier(OpenNOWTransitionModifier(transition: transition))
+    }
+
+    /// Hover scale that Reduce Motion flattens. Callers still pair it with `opnMotion` for timing;
+    /// this only decides whether the transform is applied at all.
+    func opnHoverScale(_ isActive: Bool, factor: CGFloat, anchor: UnitPoint = .center) -> some View {
+        modifier(OpenNOWHoverScaleModifier(isActive: isActive, factor: factor, anchor: anchor))
+    }
+}
+
+private struct OpenNOWMotionModifier<V: Equatable>: ViewModifier {
+    let animation: Animation
+    let value: V
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? OpenNOWDesign.Motion.reduced : animation, value: value)
+    }
+}
+
+private struct OpenNOWTransitionModifier: ViewModifier {
+    let transition: AnyTransition
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.transition(reduceMotion ? .opacity : transition)
+    }
+}
+
+private struct OpenNOWHoverScaleModifier: ViewModifier {
+    let isActive: Bool
+    let factor: CGFloat
+    let anchor: UnitPoint
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.scaleEffect(reduceMotion || !isActive ? 1 : factor, anchor: anchor)
     }
 }
 
