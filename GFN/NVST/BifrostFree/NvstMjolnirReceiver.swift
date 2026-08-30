@@ -25,14 +25,14 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     public static let punchBurstCount = 5
     public static let punchDuration: TimeInterval = 7
 
-    private let handoff: NVSTVideoHandoff
-    private let receiver: NvstVideoReceiver
+    let handoff: NVSTVideoHandoff
+    let receiver: NvstVideoReceiver
     /// Sends SRTCP receiver reports on this socket. Off when the bundle's SCTP feedback channel
     /// carries them instead.
     private let sendsReceiverReports: Bool
     /// User-interactive: this loop is the one piece of work that must never be descheduled — a
     /// late drain overflows the socket buffer and the loss is indistinguishable from the network's.
-    private let queue = DispatchQueue(label: "com.opennow.nvst.mjolnir", qos: .userInteractive)
+    let queue = DispatchQueue(label: "com.opennow.nvst.mjolnir", qos: .userInteractive)
     /// Feedback runs on its own queue. Sharing the receive queue meant the drain loop starved it:
     /// a 1 s repeating timer fired once in 30 s, so the sender never heard a receiver report and
     /// backed its bitrate off.
@@ -390,73 +390,6 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
         }
     }
 
-    /// A relayed inbound Binding Request is answered with an authenticated Binding Success,
-    /// keyed by our own ICE password (ping-version 6 "PONG").
-    private func answerStun(_ datagram: Data, from peer: sockaddr_in) {
-        guard let credentials = handoff.iceCredentials,
-              let transactionID = NvstStunHolePunch.bindingRequestTransactionID(datagram) else { return }
-        let host = Self.dottedQuad(peer.sin_addr.s_addr)
-        let port = UInt16(bigEndian: peer.sin_port)
-        guard let response = NvstStunHolePunch.buildBindingSuccess(
-            transactionID: transactionID,
-            mappedHost: host,
-            mappedPort: port,
-            integrityKey: Data(credentials.localPassword.utf8)
-        ) else { return }
-        send(response)
-        counterLock.lock()
-        counters.responsesSent += 1
-        counterLock.unlock()
-    }
-
-    // MARK: - Keepalive
-
-    private func markConnected() {
-        guard !connected else { return }
-        connected = true
-    }
-
-    private func startHolePunch(interval: TimeInterval) {
-        guard let credentials = handoff.iceCredentials else { return }
-        pingTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(5))
-        timer.setEventHandler { [weak self] in
-            self?.sendHolePunch(credentials: credentials)
-        }
-        timer.resume()
-        pingTimer = timer
-    }
-
-    private func sendHolePunch(credentials: NVSTHandoffIceCredentials) {
-        punchCount += 1
-        // The burst gives way to the keepalive, and the keepalive stops once the relay is up: the
-        // official client sends nothing on this socket after ~7 s.
-        if punchCount == Self.punchBurstCount {
-            startHolePunch(interval: Self.pingIntervalAfterConnection)
-        }
-        if let punchStartedAt, Date().timeIntervalSince(punchStartedAt) > Self.punchDuration {
-            pingTimer?.cancel()
-            pingTimer = nil
-            return
-        }
-
-        // Captured from the official client (2026-08-23): the video socket sends STUN Binding
-        // Requests whose USERNAME is `<raw ping payload>:<local ufrag>` — the bundle socket is the
-        // one that uses `ping+1`. No plaintext PING and no ping-hash datagram appears on either
-        // socket, so STUN is the only keepalive form needed here.
-        guard let request = NvstStunHolePunch.buildNattHolePunchRequest(
-            localUfrag: credentials.localUsernameFragment,
-            pingPayload: handoff.pingPayload,
-            remotePassword: Data(credentials.remotePassword.utf8),
-            transactionID: NvstBundleIceProbe.transactionID()
-        ) else { return }
-        guard send(request) else { return }
-        counterLock.lock()
-        counters.punchesSent += 1
-        counterLock.unlock()
-    }
-
     // MARK: - Round trip
 
     /// The media path's measured round trip in milliseconds, or -1 before the first sample.
@@ -471,62 +404,11 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
         return lastRoundTripMilliseconds
     }
 
-    private var lastRoundTripMilliseconds: Double = -1
+    var lastRoundTripMilliseconds: Double = -1
     private var pendingRttProbes: [Data: UInt64] = [:]
     private var rttTimer: DispatchSourceTimer?
     static let rttProbeInterval: TimeInterval = 1.0
 
-    private func startRttProbes() {
-        guard let credentials = handoff.iceCredentials else { return }
-        let timer = DispatchSource.makeTimerSource(queue: feedbackQueue)
-        timer.schedule(deadline: .now() + Self.rttProbeInterval,
-                       repeating: Self.rttProbeInterval,
-                       leeway: .milliseconds(50))
-        timer.setEventHandler { [weak self] in
-            self?.sendRttProbe(credentials: credentials)
-        }
-        timer.resume()
-        rttTimer = timer
-    }
-
-    private func sendRttProbe(credentials: NVSTHandoffIceCredentials) {
-        let transactionID = NvstBundleIceProbe.transactionID()
-        guard let request = NvstStunHolePunch.buildBindingRequest(
-            transactionID: transactionID,
-            username: "\(credentials.remoteUsernameFragment):\(credentials.localUsernameFragment)",
-            integrityKey: Data(credentials.remotePassword.utf8)
-        ) else { return }
-        counterLock.lock()
-        pendingRttProbes[transactionID] = DispatchTime.now().uptimeNanoseconds
-        // An unanswered probe must not accumulate: keep only the last few in flight.
-        if pendingRttProbes.count > 4 {
-            let oldest = pendingRttProbes.min { $0.value < $1.value }?.key
-            if let oldest { pendingRttProbes.removeValue(forKey: oldest) }
-        }
-        counterLock.unlock()
-        _ = send(request)
-    }
-
-    /// Matches a STUN Binding Success against an outstanding probe and records the round trip.
-    private func handleStunResponse(_ datagram: Data) {
-        guard datagram.count >= 20 else { return }
-        guard let credentials = handoff.iceCredentials else { return }
-        let transactionID = Data(datagram[8..<20])
-        // Authenticate before trusting the timing: cookie, length, transaction ID and — whenever
-        // the seat sends them — MESSAGE-INTEGRITY and FINGERPRINT. Without this a misrouted
-        // Binding Success with an observed id would write a fake RTT into the HUD.
-        guard NvstStunHolePunch.validateBindingResponse(
-            datagram,
-            integrityKey: Data(credentials.localPassword.utf8),
-            transactionID: transactionID
-        ) else { return }
-        counterLock.lock()
-        defer { counterLock.unlock() }
-        guard let sentAt = pendingRttProbes.removeValue(forKey: transactionID) else { return }
-        let elapsed = DispatchTime.now().uptimeNanoseconds
-        guard elapsed > sentAt else { return }
-        lastRoundTripMilliseconds = Double(elapsed - sentAt) / 1_000_000
-    }
 
     private func startReceiverReports() {
         // The official client feeds the seat's rate controller about 18 times a second. One report
@@ -616,5 +498,131 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     static func dottedQuad(_ address: in_addr_t) -> String {
         let host = UInt32(bigEndian: address)
         return "\((host >> 24) & 0xff).\((host >> 16) & 0xff).\((host >> 8) & 0xff).\(host & 0xff)"
+    }
+}
+
+// MARK: - STUN, hole punching and round-trip probing
+
+// Split out of the main declaration so the receiver's body stays inside the size budget. Same file,
+// so `private` members stay reachable.
+extension NvstMjolnirReceiver {
+
+    /// A relayed inbound Binding Request is answered with an authenticated Binding Success,
+    /// keyed by our own ICE password (ping-version 6 "PONG").
+    private func answerStun(_ datagram: Data, from peer: sockaddr_in) {
+        guard let credentials = handoff.iceCredentials,
+              let transactionID = NvstStunHolePunch.bindingRequestTransactionID(datagram) else { return }
+        let host = Self.dottedQuad(peer.sin_addr.s_addr)
+        let port = UInt16(bigEndian: peer.sin_port)
+        guard let response = NvstStunHolePunch.buildBindingSuccess(
+            transactionID: transactionID,
+            mappedHost: host,
+            mappedPort: port,
+            integrityKey: Data(credentials.localPassword.utf8)
+        ) else { return }
+        send(response)
+        counterLock.lock()
+        counters.responsesSent += 1
+        counterLock.unlock()
+    }
+
+    // MARK: - Keepalive
+
+    private func markConnected() {
+        guard !connected else { return }
+        connected = true
+    }
+
+    private func startHolePunch(interval: TimeInterval) {
+        guard let credentials = handoff.iceCredentials else { return }
+        pingTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(5))
+        timer.setEventHandler { [weak self] in
+            self?.sendHolePunch(credentials: credentials)
+        }
+        timer.resume()
+        pingTimer = timer
+    }
+
+    private func sendHolePunch(credentials: NVSTHandoffIceCredentials) {
+        punchCount += 1
+        // The burst gives way to the keepalive, and the keepalive stops once the relay is up: the
+        // official client sends nothing on this socket after ~7 s.
+        if punchCount == Self.punchBurstCount {
+            startHolePunch(interval: Self.pingIntervalAfterConnection)
+        }
+        if let punchStartedAt, Date().timeIntervalSince(punchStartedAt) > Self.punchDuration {
+            pingTimer?.cancel()
+            pingTimer = nil
+            return
+        }
+
+        // Captured from the official client (2026-08-23): the video socket sends STUN Binding
+        // Requests whose USERNAME is `<raw ping payload>:<local ufrag>` — the bundle socket is the
+        // one that uses `ping+1`. No plaintext PING and no ping-hash datagram appears on either
+        // socket, so STUN is the only keepalive form needed here.
+        guard let request = NvstStunHolePunch.buildNattHolePunchRequest(
+            localUfrag: credentials.localUsernameFragment,
+            pingPayload: handoff.pingPayload,
+            remotePassword: Data(credentials.remotePassword.utf8),
+            transactionID: NvstBundleIceProbe.transactionID()
+        ) else { return }
+        guard send(request) else { return }
+        counterLock.lock()
+        counters.punchesSent += 1
+        counterLock.unlock()
+    }
+
+    private func startRttProbes() {
+        guard let credentials = handoff.iceCredentials else { return }
+        let timer = DispatchSource.makeTimerSource(queue: feedbackQueue)
+        timer.schedule(deadline: .now() + Self.rttProbeInterval,
+                       repeating: Self.rttProbeInterval,
+                       leeway: .milliseconds(50))
+        timer.setEventHandler { [weak self] in
+            self?.sendRttProbe(credentials: credentials)
+        }
+        timer.resume()
+        rttTimer = timer
+    }
+
+    private func sendRttProbe(credentials: NVSTHandoffIceCredentials) {
+        let transactionID = NvstBundleIceProbe.transactionID()
+        guard let request = NvstStunHolePunch.buildBindingRequest(
+            transactionID: transactionID,
+            username: "\(credentials.remoteUsernameFragment):\(credentials.localUsernameFragment)",
+            integrityKey: Data(credentials.remotePassword.utf8)
+        ) else { return }
+        counterLock.lock()
+        pendingRttProbes[transactionID] = DispatchTime.now().uptimeNanoseconds
+        // An unanswered probe must not accumulate: keep only the last few in flight.
+        if pendingRttProbes.count > 4 {
+            let oldest = pendingRttProbes.min { $0.value < $1.value }?.key
+            if let oldest { pendingRttProbes.removeValue(forKey: oldest) }
+        }
+        counterLock.unlock()
+        _ = send(request)
+    }
+
+    /// Matches a STUN Binding Success against an outstanding probe and records the round trip.
+    private func handleStunResponse(_ datagram: Data) {
+        guard datagram.count >= 20 else { return }
+        guard let credentials = handoff.iceCredentials else { return }
+        let transactionID = Data(datagram[8..<20])
+        // Authenticate before trusting the timing: cookie, length, transaction ID and — whenever
+        // the seat sends them — MESSAGE-INTEGRITY and FINGERPRINT. Without this a misrouted
+        // Binding Success with an observed id would write a fake RTT into the HUD.
+        guard NvstStunHolePunch.validateBindingResponse(
+            datagram,
+            integrityKey: Data(credentials.localPassword.utf8),
+            transactionID: transactionID
+        ) else { return }
+        counterLock.lock()
+        defer { counterLock.unlock() }
+        guard let sentAt = pendingRttProbes.removeValue(forKey: transactionID) else { return }
+        let elapsed = DispatchTime.now().uptimeNanoseconds
+        guard elapsed > sentAt else { return }
+        lastRoundTripMilliseconds = Double(elapsed - sentAt) / 1_000_000
     }
 }

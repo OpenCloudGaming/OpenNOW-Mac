@@ -141,8 +141,8 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         }
     }
 
-    private let lock = NSLock()
-    private let handoff: NVSTVideoHandoff
+    let lock = NSLock()
+    let handoff: NVSTVideoHandoff
     private let cipher: SrtpGcm8
     private let sessionSalt: Data
     private let tagLength: Int
@@ -331,6 +331,32 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             return [.dropped(.malformedPacket)]
         }
 
+        if let rejection = bindLocked(packet) { return rejection }
+
+        stats.authenticatedPackets += 1
+        stats.bytesReceived += UInt64(datagram.count)
+        let arrivals = arrivalsLocked(plaintext: plaintext, packet: packet, extendedIndex: extendedIndex)
+        recordPacketStatsLocked(packet: packet, extendedIndex: extendedIndex)
+
+        var events: [NvstReceiveEvent] = []
+        let assembleStart = DispatchTime.now().uptimeNanoseconds
+        defer { stageNanoseconds.assemble += DispatchTime.now().uptimeNanoseconds - assembleStart }
+        let ordered = arrivals.flatMap { pushReorder(index: $0.index, packet: $0.packet, events: &events) }
+        stageNanoseconds.reorder += DispatchTime.now().uptimeNanoseconds - assembleStart
+        for candidate in ordered {
+            reassembleLocked(candidate, events: &events)
+        }
+        // Snapshots of counters owned elsewhere, taken once per batch instead of once per packet:
+        // the reassembler's lock and these running totals only change on frame/report boundaries.
+        stats.abandonedFrames = reassembler.abandonedFrameCount
+        stats.receiverReportFailures = reportFailures
+        stats.lastReceiverReportFailure = lastReportFailure
+        return events
+    }
+
+    /// Binds the receiver to the first SSRC it sees and rejects anything else. Returns the drop
+    /// events when the packet does not belong to this stream, `nil` when it is accepted.
+    private func bindLocked(_ packet: NvstRtpVideoPacket) -> [NvstReceiveEvent]? {
         if handoff.rtpSSRC != 0, packet.ssrc != handoff.rtpSSRC {
             stats.droppedPackets += 1
             return [.dropped(.unexpectedSSRC(packet.ssrc))]
@@ -340,14 +366,19 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             return [.dropped(.unexpectedSSRC(packet.ssrc))]
         }
         boundSSRC = boundSSRC ?? packet.ssrc
+        return nil
+    }
 
-        stats.authenticatedPackets += 1
-        stats.bytesReceived += UInt64(datagram.count)
-        // Repairs lost packets from the parity stream the moment enough shards exist — before the
-        // reorder window could ever declare them lost. A reconstructed shard is a complete
-        // plaintext packet (RTP header, GS block and payload), so it joins the stream through the
-        // same parse-and-reorder path as a received one; a late arrival of the real packet then
-        // reads as an ordinary duplicate.
+    /// The received packet plus anything FEC could rebuild from it.
+    ///
+    /// Repairs lost packets from the parity stream the moment enough shards exist — before the
+    /// reorder window could ever declare them lost. A reconstructed shard is a complete plaintext
+    /// packet (RTP header, GS block and payload), so it joins the stream through the same
+    /// parse-and-reorder path as a received one; a late arrival of the real packet then reads as an
+    /// ordinary duplicate.
+    private func arrivalsLocked(plaintext: Data,
+                                packet: NvstRtpVideoPacket,
+                                extendedIndex: UInt64) -> [(index: UInt64, packet: NvstRtpVideoPacket)] {
         var arrivals: [(index: UInt64, packet: NvstRtpVideoPacket)] = [(extendedIndex, packet)]
         for recoveredPlaintext in fecRecovery.observe(plaintext: plaintext, packet: packet) {
             guard let repaired = try? NvstVideoPacketParser.parse(recoveredPlaintext),
@@ -355,6 +386,11 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             stats.recoveredPackets += 1
             arrivals.append((replay.estimatedIndex(for: repaired.sequenceNumber), repaired))
         }
+        return arrivals
+    }
+
+    /// Per-packet counters: frame boundaries, RTP timestamps, sequence span and jitter.
+    private func recordPacketStatsLocked(packet: NvstRtpVideoPacket, extendedIndex: UInt64) {
         if lastSeenFrameIndex != packet.frameIndex {
             if lastSeenFrameIndex != nil { stats.frameIndexChanges += 1 }
             lastSeenFrameIndex = packet.frameIndex
@@ -367,59 +403,53 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         stats.highestSequence = max(stats.highestSequence, sequence)
         stats.sequenceSpan = baseSequence.map { stats.highestSequence >= $0 ? stats.highestSequence - $0 + 1 : 0 } ?? 0
         recordJitter(rtpTimestamp: packet.timestamp)
+    }
 
-        var events: [NvstReceiveEvent] = []
-        let assembleStart = DispatchTime.now().uptimeNanoseconds
-        defer { stageNanoseconds.assemble += DispatchTime.now().uptimeNanoseconds - assembleStart }
-        let ordered = arrivals.flatMap { pushReorder(index: $0.index, packet: $0.packet, events: &events) }
-        stageNanoseconds.reorder += DispatchTime.now().uptimeNanoseconds - assembleStart
-        for candidate in ordered {
-            if candidate.flags.contains(.startOfFrame) { stats.startOfFrameFlagged += 1 }
-            if candidate.isStartOfFrame { stats.startOfFrameAccepted += 1 }
-            if candidate.fecLastBlock > 0 { stats.multiBlockPackets += 1 }
-            stats.highestFecLastBlock = max(stats.highestFecLastBlock, candidate.fecLastBlock)
-            do {
-                let pushStart = DispatchTime.now().uptimeNanoseconds
-                let pushed = try reassembler.push(candidate)
-                let pushCost = DispatchTime.now().uptimeNanoseconds - pushStart
-                // Split per-packet appends from the frame-completion path: only the latter runs the
-                // Annex-B scans, and only one packet in ~60 takes it.
-                if pushed == nil { stageNanoseconds.append += pushCost } else { stageNanoseconds.complete += pushCost }
-                guard let unit = pushed else { continue }
-                stats.framesEmitted += 1
-                recordFrameBytes(unit.bytes.count)
-                if unit.isKeyframe { stats.keyframesEmitted += 1 }
-                events.append(.frame(unit))
-            } catch let drop as NvstReassemblyDrop {
-                if drop == .notPictureData {
-                    stats.fecPackets += 1
-                } else {
-                    stats.droppedPackets += 1
-                    // A hole inside a frame leaves the decoder's reference chain broken, and only a
-                    // fresh keyframe restores it. `awaitingStartOfFrame` is the consequence of a
-                    // loss the reorder window already reported, so it must not ask twice.
-                    //
-                    // This gap is in GS stream-sequence space while RTP delivery was contiguous, so
-                    // there is no RTP sequence number to NACK — the old code fed `streamSequence`
-                    // into the RTP-space recovery event, asking the seat to retransmit an arbitrary
-                    // unrelated packet and (at span 1) suppressing the keyframe request entirely.
-                    if case .sequenceGap = drop {
-                        stats.recoveries += 1
-                        events.append(.chainBroken)
-                    }
-                }
-                events.append(.dropped(.reassembly(drop)))
-            } catch {
-                stats.droppedPackets += 1
-                events.append(.dropped(.malformedPacket))
+    /// Feeds one in-order packet to the reassembler, appending whatever it produced to `events`.
+    private func reassembleLocked(_ candidate: NvstRtpVideoPacket, events: inout [NvstReceiveEvent]) {
+        if candidate.flags.contains(.startOfFrame) { stats.startOfFrameFlagged += 1 }
+        if candidate.isStartOfFrame { stats.startOfFrameAccepted += 1 }
+        if candidate.fecLastBlock > 0 { stats.multiBlockPackets += 1 }
+        stats.highestFecLastBlock = max(stats.highestFecLastBlock, candidate.fecLastBlock)
+        do {
+            let pushStart = DispatchTime.now().uptimeNanoseconds
+            let pushed = try reassembler.push(candidate)
+            let pushCost = DispatchTime.now().uptimeNanoseconds - pushStart
+            // Split per-packet appends from the frame-completion path: only the latter runs the
+            // Annex-B scans, and only one packet in ~60 takes it.
+            if pushed == nil { stageNanoseconds.append += pushCost } else { stageNanoseconds.complete += pushCost }
+            guard let unit = pushed else { return }
+            stats.framesEmitted += 1
+            recordFrameBytes(unit.bytes.count)
+            if unit.isKeyframe { stats.keyframesEmitted += 1 }
+            events.append(.frame(unit))
+        } catch let drop as NvstReassemblyDrop {
+            recordReassemblyDropLocked(drop, events: &events)
+        } catch {
+            stats.droppedPackets += 1
+            events.append(.dropped(.malformedPacket))
+        }
+    }
+
+    /// Classifies a reassembly drop. A hole inside a frame leaves the decoder's reference chain
+    /// broken, and only a fresh keyframe restores it. `awaitingStartOfFrame` is the consequence of a
+    /// loss the reorder window already reported, so it must not ask twice.
+    ///
+    /// A `sequenceGap` is in GS stream-sequence space while RTP delivery was contiguous, so there is
+    /// no RTP sequence number to NACK — the old code fed `streamSequence` into the RTP-space
+    /// recovery event, asking the seat to retransmit an arbitrary unrelated packet and (at span 1)
+    /// suppressing the keyframe request entirely.
+    private func recordReassemblyDropLocked(_ drop: NvstReassemblyDrop, events: inout [NvstReceiveEvent]) {
+        if drop == .notPictureData {
+            stats.fecPackets += 1
+        } else {
+            stats.droppedPackets += 1
+            if case .sequenceGap = drop {
+                stats.recoveries += 1
+                events.append(.chainBroken)
             }
         }
-        // Snapshots of counters owned elsewhere, taken once per batch instead of once per packet:
-        // the reassembler's lock and these running totals only change on frame/report boundaries.
-        stats.abandonedFrames = reassembler.abandonedFrameCount
-        stats.receiverReportFailures = reportFailures
-        stats.lastReceiverReportFailure = lastReportFailure
-        return events
+        events.append(.dropped(.reassembly(drop)))
     }
 
     /// RFC 3550 interarrival jitter: the smoothed difference between packet spacing on the sender's

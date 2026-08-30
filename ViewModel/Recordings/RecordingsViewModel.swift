@@ -32,7 +32,7 @@ final class RecordingsViewModel: ObservableObject {
     private var editorPreviewTask: Task<Void, Never>?
     private var editorPreviewDurationSeconds = 0.0
 
-    private let systemIntegration: any SystemIntegrationServing
+    let systemIntegration: any SystemIntegrationServing
 
     init(systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration()) {
         self.systemIntegration = systemIntegration

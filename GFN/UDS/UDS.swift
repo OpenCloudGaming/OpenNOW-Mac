@@ -324,7 +324,7 @@ public enum UDSServiceError: LocalizedError, Equatable, Sendable {
 public actor UDSService<Transport: UDSHTTPTransport> {
     public private(set) var notificationState: UDSNotificationState
 
-    private let configuration: UDSConfiguration
+    let configuration: UDSConfiguration
     private let transport: Transport
 
     public init(configuration: UDSConfiguration = .production, transport: Transport, notificationState: UDSNotificationState = UDSNotificationState()) {

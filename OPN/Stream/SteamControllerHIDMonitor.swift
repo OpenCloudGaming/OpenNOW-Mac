@@ -40,14 +40,16 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     @Published public private(set) var inputMonitoringPermissionGranted = false
     @Published public private(set) var isMonitorActive = false
-    @Published public private(set) var matchedDeviceCount = 0
     @Published public private(set) var isInputCaptureActive = false
-    @Published public private(set) var batteryLevels: [InputDeviceID: UInt8] = [:]
-    @Published public private(set) var batteryCharging: [InputDeviceID: Bool] = [:]
+    // `internal(set)` rather than `private(set)`: the monitor's own extensions in the neighbouring
+    // files write these, and the public contract is unchanged — nothing outside the module can.
+    @Published public internal(set) var matchedDeviceCount = 0
+    @Published public internal(set) var batteryLevels: [InputDeviceID: UInt8] = [:]
+    @Published public internal(set) var batteryCharging: [InputDeviceID: Bool] = [:]
     
     public private(set) var allDevices: [DeviceInfo] = []
     
-    private func updateAllDevices() {
+    func updateAllDevices() {
         allDevices = devices.values.map { context in
             let productID = intProperty(context.device, key: kIOHIDProductIDKey) ?? 0
             let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
@@ -74,19 +76,19 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         claimedNames.withLock { $0 }
     }
 
-    private nonisolated static let claimedNames = OSAllocatedUnfairLock(initialState: Set<String>())
-    private nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
-    private static let heartbeatInterval: TimeInterval = 5.0
-    private static let featureReportAttempts = 5
-    private static let powerOffCombo: GamepadButtons = [.mode, .north]
+    nonisolated static let claimedNames = OSAllocatedUnfairLock(initialState: Set<String>())
+    nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
+    static let heartbeatInterval: TimeInterval = 5.0
+    static let featureReportAttempts = 5
+    static let powerOffCombo: GamepadButtons = [.mode, .north]
 
-    private struct Consumer {
+    struct Consumer {
         let controllersChanged: () -> Void
         let inputState: (InputDeviceID, SteamControllerInputSnapshot) -> Void
         let batteryLevel: (InputDeviceID, UInt8) -> Void
     }
 
-    private final class DeviceContext {
+    final class DeviceContext {
         let device: IOHIDDevice
         let model: SteamControllerModel
         let deviceID: InputDeviceID
@@ -119,15 +121,15 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     }
 
     private var manager: IOHIDManager?
-    private var devices: [ObjectIdentifier: DeviceContext] = [:]
-    private var gamepadDeviceContexts: [ObjectIdentifier: DeviceContext] = [:]
-    private var pendingGamepadDevices: [UInt64: IOHIDDevice] = [:]
-    private var consumers: [ObjectIdentifier: Consumer] = [:]
+    var devices: [ObjectIdentifier: DeviceContext] = [:]
+    var gamepadDeviceContexts: [ObjectIdentifier: DeviceContext] = [:]
+    var pendingGamepadDevices: [UInt64: IOHIDDevice] = [:]
+    var consumers: [ObjectIdentifier: Consumer] = [:]
     private var captureRequesters: Set<ObjectIdentifier> = []
     private var permissionRetryObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var heartbeatTimer: Timer?
+    nonisolated(unsafe) var heartbeatTimer: Timer?
 
-    private let mappingProvider: any SteamControllerMappingProviding
+    let mappingProvider: any SteamControllerMappingProviding
 
     init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
         self.mappingProvider = mappingProvider
@@ -324,7 +326,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
     }
 }
 
-    private func captureDeviceOpenFailure(interface: String, context: DeviceContext, status: Int32) {
+    func captureDeviceOpenFailure(interface: String, context: DeviceContext, status: Int32) {
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         let baseAttributes: [String: String] = [
             "interface": interface,
@@ -469,453 +471,4 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         permissionRetryObserver = nil
     }
 
-    private static let deviceMatched: IOHIDDeviceCallback = { context, result, _, device in
-        guard let context, result == kIOReturnSuccess else { return }
-        let monitor = Unmanaged<SteamControllerHIDMonitor>.fromOpaque(context).takeUnretainedValue()
-        nonisolated(unsafe) let matchedDevice = device
-        MainActor.assumeIsolated { monitor.handleDeviceMatched(matchedDevice) }
-    }
-
-    private static let deviceRemoved: IOHIDDeviceCallback = { context, _, _, device in
-        guard let context else { return }
-        let monitor = Unmanaged<SteamControllerHIDMonitor>.fromOpaque(context).takeUnretainedValue()
-        nonisolated(unsafe) let removedDevice = device
-        MainActor.assumeIsolated { monitor.handleDeviceRemoved(removedDevice) }
-    }
-
-    private static let inputReportReceived: IOHIDReportCallback = { context, result, sender, _, _, _, reportLength in
-        guard let context, let sender, result == kIOReturnSuccess else { return }
-        let monitor = Unmanaged<SteamControllerHIDMonitor>.fromOpaque(context).takeUnretainedValue()
-        nonisolated(unsafe) let reportingDevice = Unmanaged<IOHIDDevice>.fromOpaque(sender).takeUnretainedValue()
-        MainActor.assumeIsolated { monitor.handleInputReport(device: reportingDevice, length: reportLength) }
-    }
-
-    private func handleDeviceMatched(_ device: IOHIDDevice) {
-        let productID = intProperty(device, key: kIOHIDProductIDKey) ?? SteamControllerReport.wiredProductID
-        guard let model = SteamControllerModel(productID: productID) else { return }
-        let usagePage = intProperty(device, key: kIOHIDDeviceUsagePageKey) ?? 0
-        let usage = intProperty(device, key: kIOHIDDeviceUsageKey) ?? 0
-        let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
-        let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
-
-        OpenNOWLog.info(.controller, "Matched device: productID=0x\(String(format: "%04X", productID)) usagePage=0x\(String(format: "%04X", usagePage)) usage=0x\(String(format: "%04X", usage)) controllerID=0x\(String(format: "%016X", controllerID)) wirelessReceiver=\(isWirelessReceiver)")
-
-        if usagePage == SteamControllerReport.gamepadUsagePage {
-            handleGamepadDeviceMatched(device, controllerID: controllerID)
-            return
-        }
-
-        let context = DeviceContext(
-            device: device,
-            controllerID: controllerID,
-            model: model,
-            isActive: !isWirelessReceiver
-        )
-        devices[ObjectIdentifier(device)] = context
-        matchedDeviceCount = devices.count
-        updateAllDevices()
-
-        if let gamepadDevice = pendingGamepadDevices.removeValue(forKey: controllerID) {
-            associateGamepadDevice(gamepadDevice, with: context)
-        }
-
-        openVendorDevice(device, context: context)
-        if isInputCaptureActive {
-            configureCapture(for: context)
-            startHeartbeatIfNeeded()
-        }
-        publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.matched", level: .info, message: "Steam Controller vendor interface matched.", attributes: ["wireless": String(isWirelessReceiver), "active": String(context.isActive)])
-    }
-
-    private func handleGamepadDeviceMatched(_ device: IOHIDDevice, controllerID: UInt64) {
-        if let context = devices.values.first(where: { $0.controllerID == controllerID }) {
-            associateGamepadDevice(device, with: context)
-            OpenNOWLog.debug(.controller, "Gamepad interface associated with vendor controllerID=0x\(String(format: "%016X", controllerID))")
-        } else {
-            pendingGamepadDevices[controllerID] = device
-            OpenNOWLog.debug(.controller, "Gamepad interface pending for controllerID=0x\(String(format: "%016X", controllerID))")
-        }
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.matched", level: .info, message: "Steam Controller gamepad interface matched.")
-    }
-
-    private func openVendorDevice(_ device: IOHIDDevice, context: DeviceContext) {
-        let deviceOpenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
-
-        var finalDeviceOpenStatus = deviceOpenStatus
-        if deviceOpenStatus == kIOReturnNotPermitted {
-            IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-            finalDeviceOpenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
-
-        guard finalDeviceOpenStatus == kIOReturnSuccess else {
-            captureDeviceOpenFailure(interface: "vendor", context: context, status: finalDeviceOpenStatus)
-            return
-        }
-
-        registerVendorReportCallback(for: context)
-    }
-
-    private func registerVendorReportCallback(for context: DeviceContext) {
-        IOHIDDeviceRegisterInputReportCallback(
-            context.device,
-            context.reportBuffer,
-            SteamControllerReport.reportLength,
-            Self.inputReportReceived,
-            Unmanaged.passUnretained(self).toOpaque()
-        )
-    }
-
-    private func associateGamepadDevice(_ gamepadDevice: IOHIDDevice, with context: DeviceContext) {
-        guard context.gamepadDevice == nil else { return }
-        context.gamepadDevice = gamepadDevice
-        gamepadDeviceContexts[ObjectIdentifier(gamepadDevice)] = context
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: SteamControllerReport.reportLength)
-        buffer.initialize(repeating: 0, count: SteamControllerReport.reportLength)
-        context.gamepadReportBuffer = buffer
-
-        var openStatus = IOHIDDeviceOpen(gamepadDevice, IOOptionBits(kIOHIDOptionsTypeNone))
-        if openStatus == kIOReturnNotPermitted {
-            IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-            openStatus = IOHIDDeviceOpen(gamepadDevice, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
-        guard openStatus == kIOReturnSuccess else {
-            captureDeviceOpenFailure(interface: "gamepad", context: context, status: openStatus)
-            return
-        }
-
-        IOHIDDeviceRegisterInputReportCallback(
-            gamepadDevice,
-            buffer,
-            SteamControllerReport.reportLength,
-            Self.inputReportReceived,
-            Unmanaged.passUnretained(self).toOpaque()
-        )
-    }
-
-    private func closeGamepadDevice(for context: DeviceContext) {
-        if let gamepadDevice = context.gamepadDevice, let buffer = context.gamepadReportBuffer {
-            IOHIDDeviceRegisterInputReportCallback(gamepadDevice, buffer, SteamControllerReport.reportLength, nil, nil)
-            IOHIDDeviceClose(gamepadDevice, IOOptionBits(kIOHIDOptionsTypeNone))
-            gamepadDeviceContexts.removeValue(forKey: ObjectIdentifier(gamepadDevice))
-            context.gamepadDevice = nil
-        }
-        context.gamepadReportBuffer?.deallocate()
-        context.gamepadReportBuffer = nil
-    }
-
-    private func handleDeviceRemoved(_ device: IOHIDDevice) {
-        if let context = devices.removeValue(forKey: ObjectIdentifier(device)) {
-            matchedDeviceCount = devices.count
-            updateAllDevices()
-            cancelPowerOffCombo(for: context)
-            emitNeutralStateIfNeeded(for: context)
-            batteryLevels.removeValue(forKey: context.deviceID)
-            batteryCharging.removeValue(forKey: context.deviceID)
-            closeGamepadDevice(for: context)
-            IOHIDDeviceRegisterInputReportCallback(device, context.reportBuffer, SteamControllerReport.reportLength, nil, nil)
-            IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-            if devices.isEmpty {
-                heartbeatTimer?.invalidate()
-                heartbeatTimer = nil
-            }
-            publishActiveCount()
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.removed", level: .info, message: "Steam Controller vendor interface removed.")
-            return
-        }
-
-        if let context = gamepadDeviceContexts.removeValue(forKey: ObjectIdentifier(device)) {
-            closeGamepadDevice(for: context)
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.removed", level: .info, message: "Steam Controller gamepad interface removed.")
-            return
-        }
-
-        let productID = intProperty(device, key: kIOHIDProductIDKey) ?? SteamControllerReport.wiredProductID
-        let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
-        let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
-        if pendingGamepadDevices.removeValue(forKey: controllerID) != nil {
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.pending.removed", level: .info, message: "Steam Controller pending gamepad interface removed.")
-            OpenNOWLog.debug(.controller, "Pending gamepad interface removed controllerID=0x\(String(format: "%016X", controllerID))")
-        }
-    }
-
-    private func handleInputReport(device: IOHIDDevice, length: Int) {
-        guard let context = devices[ObjectIdentifier(device)] ?? gamepadDeviceContexts[ObjectIdentifier(device)] else { return }
-        let isGamepad = context.gamepadDevice === device
-        let reportBuffer = isGamepad ? context.gamepadReportBuffer : context.reportBuffer
-        guard let reportBuffer = reportBuffer else { return }
-
-        let count = min(max(length, 0), SteamControllerReport.reportLength)
-        let report = Array(UnsafeBufferPointer(start: reportBuffer, count: count))
-        // TEMP: raw report dump to locate the SC2 button bytes. Logs distinct reports (deduped by
-        // content) up to a cap so a button press is visible in the raw bytes.
-        let isDeckStateReport = report.first == SteamControllerReport.deckStateReportID
-        if isGamepad, !isDeckStateReport, report.first != 0 {
-            OpenNOWLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
-        }
-        let event = isDeckStateReport
-            ? SteamControllerReport.parseDeckState(report, previous: context.deckSnapshot)
-            : SteamControllerReport.parse(report, previous: context.snapshot, model: context.model)
-
-        switch event {
-        case .connected:
-            setActive(true, for: context)
-            if isInputCaptureActive {
-                disableLizardMode(for: context)
-            }
-        case .disconnected:
-            emitNeutralStateIfNeeded(for: context)
-            setActive(false, for: context)
-        case .state(let snapshot):
-            setActive(true, for: context)
-            if isDeckStateReport {
-                context.deckSnapshot = snapshot
-            } else {
-                context.snapshot = snapshot
-            }
-            let merged = mergedSnapshot(for: context)
-            evaluatePowerOffCombo(for: context, buttons: merged.buttons)
-            guard merged != context.mergedSnapshot else { return }
-            if merged.buttons != context.mergedSnapshot.buttons {
-                if isDeckStateReport, report.count >= 16 {
-                    let bits = UInt64(report[8]) | (UInt64(report[9]) << 8) | (UInt64(report[10]) << 16) | (UInt64(report[11]) << 24) | (UInt64(report[12]) << 32) | (UInt64(report[13]) << 40) | (UInt64(report[14]) << 48) | (UInt64(report[15]) << 56)
-                    OpenNOWLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(merged.buttons)")
-                } else if context.model == .triton, report.count >= 6 {
-                    let bits = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
-                    // INFO level, and dump the WHOLE report: our button parse only reads report[2..6],
-                    // but the report is longer, so a bit past byte 5 (grips, extra pads) would be
-                    // silently dropped. The full hex lets a one-button-at-a-time capture find it.
-                    let hex = report.map { String(format: "%02x", $0) }.joined()
-                    OpenNOWLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(merged.buttons) len=\(report.count) full=\(hex)")
-                } else {
-                    OpenNOWLog.debug(.controller, "Buttons changed: \(merged.buttons)")
-                }
-            }
-            context.mergedSnapshot = merged
-            notifyInputState(context.deviceID, merged)
-        case .battery(let level, let charging):
-            context.batteryLevel = level
-            batteryLevels[context.deviceID] = level
-            batteryCharging[context.deviceID] = charging
-            notifyBatteryLevel(context.deviceID, level)
-        case .ignored:
-            break
-        }
-    }
-
-    private func mergedSnapshot(for context: DeviceContext) -> SteamControllerInputSnapshot {
-        var merged = context.snapshot
-        merged.buttons.formUnion(context.deckSnapshot.buttons)
-        return merged
-    }
-
-    private func evaluatePowerOffCombo(for context: DeviceContext, buttons: GamepadButtons) {
-        guard buttons.isSuperset(of: Self.powerOffCombo), !context.powerOffComboSent else { return }
-        context.powerOffComboSent = true
-        powerOff(context)
-    }
-
-    private func powerOff(_ context: DeviceContext) {
-        let report = SteamControllerReport.powerOffReport(model: context.model)
-        sendFeatureReport(report, to: context.device, attempts: Self.featureReportAttempts)
-        OpenNOWLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
-        WebRTCMediaTelemetry.capture(
-            "webrtc.input.steamcontroller.poweroff.combo",
-            level: .info,
-            message: "Steam+Y power-off combo triggered.",
-            attributes: ["controllerID": String(format: "%016X", context.controllerID)]
-        )
-    }
-
-    private func cancelPowerOffCombo(for context: DeviceContext) {
-        context.powerOffComboSent = false
-    }
-
-    private func emitNeutralStateIfNeeded(for context: DeviceContext) {
-        let neutral = SteamControllerInputSnapshot()
-        guard context.mergedSnapshot != neutral else { return }
-        context.snapshot = neutral
-        context.deckSnapshot = neutral
-        context.mergedSnapshot = neutral
-        cancelPowerOffCombo(for: context)
-        notifyInputState(context.deviceID, neutral)
-    }
-
-    private func notifyInputState(_ deviceID: InputDeviceID, _ snapshot: SteamControllerInputSnapshot) {
-        for consumer in consumers.values {
-            consumer.inputState(deviceID, snapshot)
-        }
-    }
-
-    private func notifyBatteryLevel(_ deviceID: InputDeviceID, _ level: UInt8) {
-        for consumer in consumers.values {
-            consumer.batteryLevel(deviceID, level)
-        }
-    }
-
-    private func setActive(_ isActive: Bool, for context: DeviceContext) {
-        guard context.isActive != isActive else { return }
-        context.isActive = isActive
-        publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.presence", level: .info, message: "Steam Controller presence changed.", attributes: ["active": String(isActive)])
-    }
-
-    private func publishActiveCount() {
-        let active = devices.values.filter(\.isActive)
-        let count = Set(active.map(\.controllerID)).count
-        Self.activeCount.withLock { $0 = count }
-        let names = Set(active.compactMap { stringProperty($0.device, key: kIOHIDProductKey)?.lowercased() }
-            .filter { !$0.isEmpty })
-        Self.claimedNames.withLock { $0 = names }
-        for consumer in consumers.values {
-            consumer.controllersChanged()
-        }
-    }
-
-    /// Capture with a trackpad bound to mouse/scroll behavior: the vendor interface is
-    /// seized so the firmware's lizard mouse/keyboard events never reach macOS,
-    /// while the firmware profile itself stays enabled — the pads keep their
-    /// native haptics and the raw reports drive the stream. When seizing fails
-    /// (or no trackpad wants raw capture) the firmware emulation is disabled instead.
-    private func configureCapture(for context: DeviceContext) {
-        let wantsRawTrackpadCapture = mappingProvider.activeProfile?.wantsRawTrackpadCapture ?? false
-        if wantsRawTrackpadCapture, reopenVendorDevice(context, seize: true) {
-            context.isSeized = true
-            enableLizardMode(for: context)
-        } else {
-            context.isSeized = false
-            disableLizardMode(for: context)
-        }
-    }
-
-    private func restoreAfterCapture(for context: DeviceContext) {
-        if context.isSeized {
-            context.isSeized = false
-            _ = reopenVendorDevice(context, seize: false)
-        } else {
-            enableLizardMode(for: context)
-        }
-    }
-
-    private func reopenVendorDevice(_ context: DeviceContext, seize: Bool) -> Bool {
-        let device = context.device
-        IOHIDDeviceRegisterInputReportCallback(device, context.reportBuffer, SteamControllerReport.reportLength, nil, nil)
-        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        let options = IOOptionBits(seize ? kIOHIDOptionsTypeSeizeDevice : kIOHIDOptionsTypeNone)
-        let status = IOHIDDeviceOpen(device, options)
-        if status == kIOReturnSuccess {
-            registerVendorReportCallback(for: context)
-            return true
-        }
-        guard seize else {
-            captureDeviceOpenFailure(interface: "vendor", context: context, status: status)
-            return false
-        }
-        OpenNOWLog.warning(.controller, "Seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
-        let reopenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        if reopenStatus == kIOReturnSuccess {
-            registerVendorReportCallback(for: context)
-        } else {
-            captureDeviceOpenFailure(interface: "vendor", context: context, status: reopenStatus)
-        }
-        return false
-    }
-
-    private func disableLizardMode(for context: DeviceContext) {
-        let attempts = context.isActive ? Self.featureReportAttempts : 1
-        for report in SteamControllerReport.lizardModeDisableReports(model: context.model) {
-            sendFeatureReport(report, to: context.device, attempts: attempts)
-        }
-    }
-
-    private func enableLizardMode(for context: DeviceContext) {
-        let attempts = context.isActive ? Self.featureReportAttempts : 1
-        for report in SteamControllerReport.lizardModeEnableReports(model: context.model) {
-            sendFeatureReport(report, to: context.device, attempts: attempts)
-        }
-    }
-
-    private func startHeartbeatIfNeeded() {
-        guard heartbeatTimer == nil else { return }
-        let timer = Timer(timeInterval: Self.heartbeatInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.sendHeartbeats() }
-        }
-        heartbeatTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    private func sendHeartbeats() {
-        guard isInputCaptureActive else { return }
-        for context in devices.values where context.isActive && !context.isSeized {
-            sendFeatureReport(SteamControllerReport.lizardModeHeartbeatReport(model: context.model), to: context.device, attempts: 1)
-        }
-    }
-
-    private func sendFeatureReport(_ report: SteamControllerFeatureReport, to device: IOHIDDevice, attempts: Int = SteamControllerHIDMonitor.featureReportAttempts) {
-        report.bytes.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            for _ in 0..<max(1, attempts) {
-                if IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, CFIndex(report.reportID), base, buffer.count) == kIOReturnSuccess {
-                    return
-                }
-            }
-        }
-    }
-
-    public func sendRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16) {
-        guard let context = devices.values.first(where: { $0.deviceID == deviceID }) else { return }
-        let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
-        sendFeatureReport(report, to: context.device, attempts: 3)
-    }
-
-    private func stringProperty(_ device: IOHIDDevice, key: String) -> String? {
-        IOHIDDeviceGetProperty(device, key as CFString) as? String
-    }
-
-    private func intProperty(_ device: IOHIDDevice, key: String) -> Int? {
-        (IOHIDDeviceGetProperty(device, key as CFString) as? NSNumber)?.intValue
-    }
-
-    private func registryID(of device: IOHIDDevice) -> UInt64 {
-        var entryID: UInt64 = 0
-        IORegistryEntryGetRegistryEntryID(IOHIDDeviceGetService(device), &entryID)
-        return entryID
-    }
-
-    private func controllerID(of device: IOHIDDevice, isWirelessReceiver: Bool) -> UInt64 {
-        isWirelessReceiver ? registryID(of: device) : usbDeviceRegistryID(of: device)
-    }
-
-    private func usbDeviceRegistryID(of device: IOHIDDevice) -> UInt64 {
-        let hidService = IOHIDDeviceGetService(device)
-        var service = hidService
-        var parent: io_registry_entry_t = 0
-        defer {
-            if service != hidService {
-                IOObjectRelease(service)
-            }
-        }
-        while true {
-            var className = [Int8](repeating: 0, count: 128)
-            IOObjectGetClass(service, &className)
-            let nullIndex = className.firstIndex(of: 0) ?? className.endIndex
-            let bytes = className[..<nullIndex].map { UInt8(bitPattern: $0) }
-            let classNameString = String(decoding: bytes, as: UTF8.self)
-            if classNameString == "IOUSBHostDevice" || classNameString == "IOUSBDevice" || classNameString == "AppleUSBDevice" {
-                var entryID: UInt64 = 0
-                if IORegistryEntryGetRegistryEntryID(service, &entryID) == kIOReturnSuccess {
-                    return entryID
-                }
-            }
-            let status = IORegistryEntryGetParentEntry(service, kIOServicePlane, &parent)
-            guard status == kIOReturnSuccess else {
-                break
-            }
-            if service != hidService {
-                IOObjectRelease(service)
-            }
-            service = parent
-        }
-        return UInt64(intProperty(device, key: kIOHIDLocationIDKey) ?? 0)
-    }
 }

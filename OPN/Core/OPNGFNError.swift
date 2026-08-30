@@ -30,98 +30,134 @@ enum OPNGFNErrorMapper {
     static func userFacingMessage(_ errorMessage: String, gameTitle: String, sessionWasConnected: Bool) -> String {
         if errorMessage.isEmpty { return "An unknown error occurred." }
 
-        let lower = errorMessage.lowercased()
-        let json = jsonDictionary(from: errorMessage)
-        var code = errorCode(from: json)
-        let httpCode = httpStatusCode(from: lower)
-        let hexCode = hexErrorCode(from: lower)
-        let description = errorDescription(from: json)
-
-        if code == noGFNErrorCode, httpCode != noGFNErrorCode { code = httpCode }
-        if code == noGFNErrorCode, hexCode != noGFNErrorCode { code = hexCode }
-
-        if lower.contains("gsec_") || lower.contains("src_gsec") || lower.contains("gfn_gsec") {
-            return messageWithDetails("GeForce NOW reported an internal game-seat service error. Try launching again; if it keeps happening, choose another region or wait for NVIDIA to recover the service.", code: code, description: description)
+        let context = Context(errorMessage: errorMessage, gameTitle: gameTitle, sessionWasConnected: sessionWasConnected)
+        // Ahead of `structuredRule`, as it has always been: a game-seat-service failure whose text
+        // also names an entitlement or network code is still a GSEC failure, and its guidance
+        // (retry, change region, wait for NVIDIA) is the one that helps.
+        if context.contains("gsec_", "src_gsec", "gfn_gsec") {
+            return context.detailed("GeForce NOW reported an internal game-seat service error. Try launching again; if it keeps happening, choose another region or wait for NVIDIA to recover the service.")
         }
-
-        if let rule = structuredRule(for: code, lowerError: lower) {
-            return messageWithDetails(rule.message, code: code, description: description)
+        if let rule = structuredRule(for: context.code, lowerError: context.lower) {
+            return context.detailed(rule.message)
         }
-
-        if httpCode == 401 || lower.contains("unauthorized") || lower.contains("auth_err") {
-            return messageWithDetails("Your NVIDIA session expired. Sign in again, then try launching the game.", code: code, description: description)
-        }
-        if httpCode == 429 || matches(code: code, lowerError: lower, expectedCode: 3_237_290_301, name: "too_many") || lower.contains("too many requests") {
-            return messageWithDetails("Too many GeForce NOW launch requests were sent. Wait a few minutes, then try again.", code: code, description: description)
-        }
-        if lower.contains("account_link") || lower.contains("account link") || lower.contains("store account") || lower.contains("link_required") || lower.contains("link required") {
-            return messageWithDetails("The store account for this game is not linked to GeForce NOW. Open the Store to link the account, then try launching again.", code: code, description: description)
-        }
-        if lower.contains("install_to_play") || lower.contains("install to play") || lower.contains("install required") || lower.contains("game installation required") {
-            return messageWithDetails("This game must be installed or prepared through its store before GeForce NOW can launch it. Open the Store, finish setup, then try again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 41, name: "app_patching_status") || lower.contains("app patching") || lower.contains("app_patching_status") {
-            return messageWithDetails("GeForce NOW is patching this game before launch. Try again after patching finishes.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 86, name: "insufficient_playability_level") || matches(code: code, lowerError: lower, expectedCode: 3_237_290_326, name: "insufficient_playability_level") {
-            return messageWithDetails("This stream quality is not available for your current GeForce NOW membership. Lower the streaming quality or upgrade your membership, then try again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 302, name: "session_limit") || matches(code: code, lowerError: lower, expectedCode: 11, name: "session_limit") {
-            let message = gameTitle.isEmpty ? "A game is already running in another GeForce NOW session. Close the other stream or continue from the active session." : "\(gameTitle) is already running in another GeForce NOW session. Close the other stream or continue from the active session."
-            return messageWithDetails(message, code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 311, name: "session_terminated_another_client") {
-            return messageWithDetails("This GeForce NOW session ended because the game was opened from another device or client.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 310, name: "multiple_login") || lower.contains("multiple login") {
-            return messageWithDetails("This GeForce NOW session ended because your NVIDIA account was used on another device.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 15_806_465, name: "game_not_owned") || lower.contains("not entitled") || lower.contains("not_entitled") || lower.contains("entitlement required") || lower.contains("ownership required") || lower.contains("purchase required") || lower.contains("license required") {
-            return messageWithDetails("This game is not owned or linked on your account. Open the Store or link the required account, then try again.", code: code, description: description)
-        }
-        if lower.contains("session_ads_required") || lower.contains("isadsrequired") || lower.contains("ad_required") || lower.contains("ads required") || lower.contains("queuepaused") || lower.contains("queue paused") || lower.contains("graceperiodstart") {
-            return messageWithDetails("GeForce NOW requires ad playback before this free-tier session can continue. Wait for the ad prompt, finish the ad, then continue launching.", code: code, description: description)
-        }
-        if lower.contains("parental") || lower.contains("age_restricted") || lower.contains("age restricted") {
-            return messageWithDetails("This game is restricted by account age or parental controls. Check the NVIDIA account settings, then try again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_290_311, name: "maintenance") || lower.contains("maintenance") || lower.contains("out_of_service") {
-            return messageWithDetails("GeForce NOW is temporarily unavailable for maintenance. Try again later.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_290_302, name: "queue_length_exceeded") || lower.contains("queue length") {
-            return messageWithDetails("The GeForce NOW queue is currently full. Try again later.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_290_330, name: "storage_not_available") || lower.contains("storage") {
-            return messageWithDetails("GeForce NOW cloud storage is not available for this session. Try again later.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_290_306, name: "game_binaries_not_available") || lower.contains("not available in region") {
-            return messageWithDetails("This game is not available in the selected GeForce NOW region. Choose Automatic or another region, then try again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_289_989, name: "system_sleep") || lower.contains("sleep during session") {
-            return messageWithDetails("Session setup was interrupted by system sleep. Keep your Mac awake, then try again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 57, name: "session_timelimit") || lower.contains("time limit") || lower.contains("entitlement_timeout") || lower.contains("entitlement timeout") {
-            return messageWithDetails("Your GeForce NOW session time limit has been reached. Start a new session when more play time is available.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 301, name: "session_not_active") || matches(code: code, lowerError: lower, expectedCode: 308, name: "no_active_session") || matches(code: code, lowerError: lower, expectedCode: 309, name: "session_not_paused") || lower.contains("stale_active_session") {
-            return messageWithDetails("The previous GeForce NOW session is no longer available. Try launching the game again.", code: code, description: description)
-        }
-        if matches(code: code, lowerError: lower, expectedCode: 3_237_093_894, name: "ice_connection_failed") || matches(code: code, lowerError: lower, expectedCode: 3_237_150_722, name: "frame_loss_timeout") || lower.contains("not connected to internet") || lower.contains("network connection was lost") || lower.contains("network error") || lower.contains("connection lost") || lower.contains("signaling") || lower.contains("webrtc") || lower.contains(" ice ") || lower.contains("ice_connection") {
-            return messageWithDetails("There was a network problem connecting to GeForce NOW. Check your connection, then try again.", code: code, description: description)
-        }
-        if lower.contains("timeout") || lower.contains("timed out") {
-            return messageWithDetails("GeForce NOW took too long to start the session. Try launching again.", code: code, description: description)
-        }
-        if (httpCode >= 500 && httpCode <= 599) || lower.contains("server error") || lower.contains("internal server error") {
-            return messageWithDetails("GeForce NOW had a server problem while starting the session. Try again later.", code: code, description: description)
-        }
-        if lower.contains("terminal error state") || lower.contains("session failed") || lower.contains("session ended") {
-            let message = sessionWasConnected ? "GeForce NOW ended the running session. Try launching again." : "GeForce NOW ended the session before it was ready. Try launching again."
-            return messageWithDetails(message, code: code, description: description)
-        }
-
-        return errorMessage
+        guard let rule = messageRules.first(where: { $0.matches(context) }) else { return errorMessage }
+        return context.detailed(rule.message(context))
     }
+
+    /// One error, parsed once: every rule below reads its verdict off this.
+    private struct Context: Sendable {
+        let lower: String
+        let code: Int64
+        let httpCode: Int64
+        let description: String?
+        let gameTitle: String
+        let sessionWasConnected: Bool
+
+        init(errorMessage: String, gameTitle: String, sessionWasConnected: Bool) {
+            let lowered = errorMessage.lowercased()
+            let json = OPNGFNErrorMapper.jsonDictionary(from: errorMessage)
+            let http = OPNGFNErrorMapper.httpStatusCode(from: lowered)
+            let hex = OPNGFNErrorMapper.hexErrorCode(from: lowered)
+            var resolved = OPNGFNErrorMapper.errorCode(from: json)
+            if resolved == noGFNErrorCode, http != noGFNErrorCode { resolved = http }
+            if resolved == noGFNErrorCode, hex != noGFNErrorCode { resolved = hex }
+
+            lower = lowered
+            code = resolved
+            httpCode = http
+            description = OPNGFNErrorMapper.errorDescription(from: json)
+            self.gameTitle = gameTitle
+            self.sessionWasConnected = sessionWasConnected
+        }
+
+        /// True when the numeric code matches, or the error text names it.
+        func matches(_ expectedCode: Int64, _ name: String) -> Bool {
+            OPNGFNErrorMapper.matches(code: code, lowerError: lower, expectedCode: expectedCode, name: name)
+        }
+
+        func contains(_ needles: String...) -> Bool {
+            needles.contains { lower.contains($0) }
+        }
+
+        func detailed(_ message: String) -> String {
+            OPNGFNErrorMapper.messageWithDetails(message, code: code, description: description)
+        }
+    }
+
+    /// One classification rule. Order matters — the first match wins, so the specific rules come
+    /// before the catch-all network/timeout/server ones.
+    private struct MessageRule: Sendable {
+        let matches: @Sendable (Context) -> Bool
+        let message: @Sendable (Context) -> String
+
+        init(_ matches: @escaping @Sendable (Context) -> Bool, _ message: String) {
+            self.matches = matches
+            self.message = { _ in message }
+        }
+
+        init(_ matches: @escaping @Sendable (Context) -> Bool, message: @escaping @Sendable (Context) -> String) {
+            self.matches = matches
+            self.message = message
+        }
+    }
+
+    private static let messageRules: [MessageRule] = [
+        MessageRule({ $0.httpCode == 401 || $0.contains("unauthorized", "auth_err") },
+                    "Your NVIDIA session expired. Sign in again, then try launching the game."),
+        MessageRule({ $0.httpCode == 429 || $0.matches(3_237_290_301, "too_many") || $0.contains("too many requests") },
+                    "Too many GeForce NOW launch requests were sent. Wait a few minutes, then try again."),
+        MessageRule({ $0.contains("account_link", "account link", "store account", "link_required", "link required") },
+                    "The store account for this game is not linked to GeForce NOW. Open the Store to link the account, then try launching again."),
+        MessageRule({ $0.contains("install_to_play", "install to play", "install required", "game installation required") },
+                    "This game must be installed or prepared through its store before GeForce NOW can launch it. Open the Store, finish setup, then try again."),
+        MessageRule({ $0.matches(41, "app_patching_status") || $0.contains("app patching", "app_patching_status") },
+                    "GeForce NOW is patching this game before launch. Try again after patching finishes."),
+        MessageRule({ $0.matches(86, "insufficient_playability_level") || $0.matches(3_237_290_326, "insufficient_playability_level") },
+                    "This stream quality is not available for your current GeForce NOW membership. Lower the streaming quality or upgrade your membership, then try again."),
+        MessageRule({ $0.matches(302, "session_limit") || $0.matches(11, "session_limit") }, message: { context in
+            context.gameTitle.isEmpty
+                ? "A game is already running in another GeForce NOW session. Close the other stream or continue from the active session."
+                : "\(context.gameTitle) is already running in another GeForce NOW session. Close the other stream or continue from the active session."
+        }),
+        MessageRule({ $0.matches(311, "session_terminated_another_client") },
+                    "This GeForce NOW session ended because the game was opened from another device or client."),
+        MessageRule({ $0.matches(310, "multiple_login") || $0.contains("multiple login") },
+                    "This GeForce NOW session ended because your NVIDIA account was used on another device."),
+        MessageRule({ $0.matches(15_806_465, "game_not_owned")
+            || $0.contains("not entitled", "not_entitled", "entitlement required", "ownership required", "purchase required", "license required") },
+                    "This game is not owned or linked on your account. Open the Store or link the required account, then try again."),
+        MessageRule({ $0.contains("session_ads_required", "isadsrequired", "ad_required", "ads required", "queuepaused", "queue paused", "graceperiodstart") },
+                    "GeForce NOW requires ad playback before this free-tier session can continue. Wait for the ad prompt, finish the ad, then continue launching."),
+        MessageRule({ $0.contains("parental", "age_restricted", "age restricted") },
+                    "This game is restricted by account age or parental controls. Check the NVIDIA account settings, then try again."),
+        MessageRule({ $0.matches(3_237_290_311, "maintenance") || $0.contains("maintenance", "out_of_service") },
+                    "GeForce NOW is temporarily unavailable for maintenance. Try again later."),
+        MessageRule({ $0.matches(3_237_290_302, "queue_length_exceeded") || $0.contains("queue length") },
+                    "The GeForce NOW queue is currently full. Try again later."),
+        MessageRule({ $0.matches(3_237_290_330, "storage_not_available") || $0.contains("storage") },
+                    "GeForce NOW cloud storage is not available for this session. Try again later."),
+        MessageRule({ $0.matches(3_237_290_306, "game_binaries_not_available") || $0.contains("not available in region") },
+                    "This game is not available in the selected GeForce NOW region. Choose Automatic or another region, then try again."),
+        MessageRule({ $0.matches(3_237_289_989, "system_sleep") || $0.contains("sleep during session") },
+                    "Session setup was interrupted by system sleep. Keep your Mac awake, then try again."),
+        MessageRule({ $0.matches(57, "session_timelimit") || $0.contains("time limit", "entitlement_timeout", "entitlement timeout") },
+                    "Your GeForce NOW session time limit has been reached. Start a new session when more play time is available."),
+        MessageRule({ $0.matches(301, "session_not_active") || $0.matches(308, "no_active_session")
+            || $0.matches(309, "session_not_paused") || $0.contains("stale_active_session") },
+                    "The previous GeForce NOW session is no longer available. Try launching the game again."),
+        MessageRule({ $0.matches(3_237_093_894, "ice_connection_failed") || $0.matches(3_237_150_722, "frame_loss_timeout")
+            || $0.contains("not connected to internet", "network connection was lost", "network error", "connection lost", "signaling", "webrtc", " ice ", "ice_connection") },
+                    "There was a network problem connecting to GeForce NOW. Check your connection, then try again."),
+        MessageRule({ $0.contains("timeout", "timed out") },
+                    "GeForce NOW took too long to start the session. Try launching again."),
+        MessageRule({ ($0.httpCode >= 500 && $0.httpCode <= 599) || $0.contains("server error", "internal server error") },
+                    "GeForce NOW had a server problem while starting the session. Try again later."),
+        MessageRule({ $0.contains("terminal error state", "session failed", "session ended") }, message: { context in
+            context.sessionWasConnected
+                ? "GeForce NOW ended the running session. Try launching again."
+                : "GeForce NOW ended the session before it was ready. Try launching again."
+        })
+    ]
 
     private static func jsonDictionary(from errorMessage: String) -> [String: Any]? {
         guard let start = errorMessage.firstIndex(of: "{") else { return nil }

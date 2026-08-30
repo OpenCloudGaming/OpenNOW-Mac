@@ -346,14 +346,14 @@ public struct StreamOSKChordTracker: Sendable {
         public var command: StreamOSKChordCommand?
     }
 
-    private struct DeviceState: Equatable, Sendable {
+    struct DeviceState: Equatable, Sendable {
         var quickAccessHeld = false
         var steamHeld = false
         var westHeld = false
         var westConsumed = false
     }
 
-    private var devices: [InputDeviceID: DeviceState] = [:]
+    var devices: [InputDeviceID: DeviceState] = [:]
 
     public init() {}
 

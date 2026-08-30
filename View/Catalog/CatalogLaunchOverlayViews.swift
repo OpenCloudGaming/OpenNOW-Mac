@@ -132,20 +132,14 @@ struct VendorEmbeddedSessionAdPlayer: View {
     let ad: CatalogStreamAdPlayback
     let onFinished: (Int) -> Void
     let onFailed: (String) -> Void
-    @State private var player: AVPlayer?
-    @State private var item: AVPlayerItem?
-    @State private var statusObservation: NSKeyValueObservation?
-    @State private var endObserver: NSObjectProtocol?
-    @State private var startedAt = Date()
-    @State private var remainingSeconds = 0
+    @StateObject private var playback = SessionAdPlaybackModel()
     @AppStorage(Self.volumePreferenceKey) private var volume = 1.0
-    @State private var didFinish = false
     private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                if let player {
+                if let player = playback.player {
                     VendorSessionAdPlayerView(player: player)
                 } else {
                     Color.black
@@ -153,7 +147,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
                         .controlSize(.large)
                 }
 
-                Text("AD · \(countdownText)")
+                Text("AD · \(playback.countdownText)")
                     .nvidiaFont(size: 12, weight: .bold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
@@ -184,7 +178,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
                     Slider(value: $volume, in: 0...1)
                         .frame(width: 140)
                         .onChange(of: volume) { _, nextVolume in
-                            player?.volume = Float(nextVolume)
+                            playback.setVolume(nextVolume)
                         }
                 }
             }
@@ -195,76 +189,13 @@ struct VendorEmbeddedSessionAdPlayer: View {
         .clipShape(Rectangle())
         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
-        .onAppear(perform: startPlayback)
-        .onDisappear(perform: stopPlayback)
-        .onReceive(timer) { _ in updateCountdown() }
-    }
-
-    private var countdownText: String {
-        let minutes = max(0, remainingSeconds) / 60
-        let seconds = max(0, remainingSeconds) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private func startPlayback() {
-        guard player == nil else { return }
-        guard let url = URL(string: ad.mediaUrl) else {
-            fail("Required ad media URL is invalid.")
-            return
+        .onAppear {
+            playback.onFinished = onFinished
+            playback.onFailed = onFailed
+            playback.start(ad: ad, volume: volume)
         }
-        startedAt = Date()
-        remainingSeconds = max(1, Int(ceil(Double(ad.durationMs) / 1000.0)))
-        let nextItem = AVPlayerItem(url: url)
-        let nextPlayer = AVPlayer(playerItem: nextItem)
-        nextPlayer.volume = Float(volume)
-        item = nextItem
-        player = nextPlayer
-        statusObservation = nextItem.observe(\.status, options: [.new]) { observedItem, _ in
-            Task { @MainActor in
-                if observedItem.status == .failed {
-                    fail(observedItem.error?.localizedDescription ?? "Required ad failed to load.")
-                }
-            }
-        }
-        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nextItem, queue: .main) { _ in
-            Task { @MainActor in finish() }
-        }
-        nextPlayer.play()
-    }
-
-    private func stopPlayback() {
-        statusObservation = nil
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
-        endObserver = nil
-        player?.pause()
-        player = nil
-        item = nil
-    }
-
-    private func updateCountdown() {
-        guard let player else { return }
-        let elapsed = Date().timeIntervalSince(startedAt)
-        let knownDuration = Double(ad.durationMs) / 1000.0
-        let itemDuration = player.currentItem?.duration.seconds ?? 0
-        let duration = knownDuration > 0 ? knownDuration : (itemDuration.isFinite ? itemDuration : 0)
-        remainingSeconds = duration > 0 ? max(0, Int(ceil(duration - elapsed))) : 0
-    }
-
-    private func finish() {
-        guard !didFinish else { return }
-        didFinish = true
-        let watchedTimeInMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
-        stopPlayback()
-        onFinished(watchedTimeInMs)
-    }
-
-    private func fail(_ message: String) {
-        guard !didFinish else { return }
-        didFinish = true
-        stopPlayback()
-        onFailed(message)
+        .onDisappear { playback.stop() }
+        .onReceive(timer) { _ in playback.updateCountdown() }
     }
 }
 

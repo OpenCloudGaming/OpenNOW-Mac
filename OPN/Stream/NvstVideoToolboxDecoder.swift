@@ -39,11 +39,11 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     /// handler runs on a decode thread and takes `statsLock`, so holding one lock across both
     /// would deadlock against `VTDecompressionSessionWaitForAsynchronousFrames`.
     private let stateLock = NSLock()
-    private let statsLock = NSLock()
+    let statsLock = NSLock()
     private let codec: NVSTVideoCodec
     private var parameterSets = NvstElementaryStream.ParameterSets()
     private var formatDescription: CMVideoFormatDescription?
-    private var session: VTDecompressionSession?
+    var session: VTDecompressionSession?
     private var decodedFrames: UInt64 = 0
     private var failedFrames: UInt64 = 0
     private var firstFailureStatus: OSStatus = noErr
@@ -127,8 +127,68 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         // One pass produces both the parameter sets and the length-prefixed sample. See
         // `NvstElementaryStream.prepare` for what this replaced.
         let prepared = NvstElementaryStream.prepare(unit.bytes, codec: codec)
-        let incoming = prepared.parameterSets
 
+        let (session, description) = try prepareSession(for: prepared.parameterSets)
+
+        let buildStart = DispatchTime.now().uptimeNanoseconds
+        let sample = prepared.sample
+        guard !sample.isEmpty else { return }
+        let sampleBuffer = try makeSampleBuffer(
+            sample: sample,
+            formatDescription: description,
+            presentationTime: CMTime(value: CMTimeValue(unit.rtpTimestamp), timescale: Self.clockRate)
+        )
+        let submitStart = DispatchTime.now().uptimeNanoseconds
+
+        var flagsOut = VTDecodeInfoFlags()
+        let isKeyframe = unit.isKeyframe
+        // Described only when a report is actually going to be emitted. Building it eagerly walked
+        // every NAL of every access unit — a per-frame scan of up to 112 KB whose result was thrown
+        // away for all but the first handful of frames.
+        let bytes = unit.bytes
+        let codec = codec
+        let shape: @Sendable () -> String = { Self.accessUnitShape(bytes, codec: codec) }
+        let logFailure = onDecodeFailure
+        let frameIndex = unit.frameIndex
+        let status = VTDecompressionSessionDecodeFrame(
+            session,
+            sampleBuffer: sampleBuffer,
+            // WebRTC's own VideoToolbox decoder (`RTCVideoDecoderH264.mm`, the path the vendored
+            // WebRTC-based build uses) sets only `_EnableAsynchronousDecompression`. Temporal
+            // processing buffers frames for B-frame reordering — pure added latency on a
+            // low-latency cloud-gaming stream that encodes without B-frames.
+            flags: [._EnableAsynchronousDecompression],
+            infoFlagsOut: &flagsOut,
+            outputHandler: { [weak self] status, _, imageBuffer, presentationTime, _ in
+                guard let self else { return }
+                handleDecodedFrame(status: status,
+                                   imageBuffer: imageBuffer,
+                                   presentationTime: presentationTime,
+                                   frameIndex: frameIndex,
+                                   isKeyframe: isKeyframe,
+                                   shape: shape,
+                                   logFailure: logFailure)
+            }
+        )
+        noteStageTimings(prepare: decodeStart, build: buildStart, submit: submitStart)
+        guard status == noErr else {
+            statsLock.lock()
+            failedFrames &+= 1
+            statsLock.unlock()
+            // A rejected frame usually means the session lost its reference chain; force a
+            // rebuild so the next keyframe can restart cleanly.
+            stateLock.lock()
+            let broken = self.session
+            self.session = nil
+            stateLock.unlock()
+            Self.tearDown(broken)
+            throw DecoderError.decodeFailed(status)
+        }
+    }
+
+    /// Installs the parameter sets this access unit carries and returns the session and format
+    /// description to decode it with, rebuilding either when the stream geometry changed.
+    private func prepareSession(for incoming: NvstElementaryStream.ParameterSets) throws -> (VTDecompressionSession, CMFormatDescription) {
         stateLock.lock()
         var expiring: VTDecompressionSession?
         if incoming.isComplete, incoming != parameterSets {
@@ -167,87 +227,50 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
                 stateLock.unlock()
             }
         }
-        guard let session = active else { throw DecoderError.sessionCreationFailed(-1) }
+        guard let active else { throw DecoderError.sessionCreationFailed(-1) }
+        return (active, description)
+    }
 
-        let buildStart = DispatchTime.now().uptimeNanoseconds
-        let sample = prepared.sample
-        guard !sample.isEmpty else { return }
-        let sampleBuffer = try makeSampleBuffer(
-            sample: sample,
-            formatDescription: description,
-            presentationTime: CMTime(value: CMTimeValue(unit.rtpTimestamp), timescale: Self.clockRate)
-        )
-        let submitStart = DispatchTime.now().uptimeNanoseconds
-
-        var flagsOut = VTDecodeInfoFlags()
-        let isKeyframe = unit.isKeyframe
-        // Described only when a report is actually going to be emitted. Building it eagerly walked
-        // every NAL of every access unit — a per-frame scan of up to 112 KB whose result was thrown
-        // away for all but the first handful of frames.
-        let bytes = unit.bytes
-        let codec = codec
-        let shape: @Sendable () -> String = { Self.accessUnitShape(bytes, codec: codec) }
-        let logFailure = onDecodeFailure
-        let frameIndex = unit.frameIndex
-        let status = VTDecompressionSessionDecodeFrame(
-            session,
-            sampleBuffer: sampleBuffer,
-            // WebRTC's own VideoToolbox decoder (`RTCVideoDecoderH264.mm`, the path the vendored
-            // WebRTC-based build uses) sets only `_EnableAsynchronousDecompression`. Temporal
-            // processing buffers frames for B-frame reordering — pure added latency on a
-            // low-latency cloud-gaming stream that encodes without B-frames.
-            flags: [._EnableAsynchronousDecompression],
-            infoFlagsOut: &flagsOut,
-            outputHandler: { [weak self] status, _, imageBuffer, presentationTime, _ in
-                guard let self else { return }
-                guard status == noErr, let imageBuffer else {
-                    statsLock.lock()
-                    failedFrames &+= 1
-                    let shouldReport = loggedFailures < Self.maxLoggedFailures
-                    if shouldReport { loggedFailures += 1 }
-                    // Asynchronous decode reports its reason only here. Counting without it turns
-                    // every decoder problem into the same unreadable number.
-                    if firstFailureStatus == noErr { firstFailureStatus = status }
-                    lastFailureStatus = status
-                    statsLock.unlock()
-                    if shouldReport {
-                        logFailure?(frameIndex, "NVST decode rejected OSStatus \(status) frame=\(frameIndex) keyframe=\(isKeyframe) \(shape())")
-                    }
-                    onDecodeCompleted?(false)
-                    return
-                }
-                onDecodeCompleted?(true)
-                statsLock.lock()
-                decodedFrames &+= 1
-                // Measured from the decoded surface, not from what the negotiation asked for: a
-                // seat that ignores the requested geometry is otherwise invisible here.
-                decodedWidth = CVPixelBufferGetWidth(imageBuffer)
-                decodedHeight = CVPixelBufferGetHeight(imageBuffer)
-                let handler = onPixelBuffer
-                let shouldReportAccepted = loggedAccepted < Self.maxLoggedAccepted
-                if shouldReportAccepted { loggedAccepted += 1 }
-                statsLock.unlock()
-                // A rejected unit only means something next to an accepted one.
-                if shouldReportAccepted {
-                    logFailure?(0, "NVST decode accepted frame=\(frameIndex) keyframe=\(isKeyframe) \(shape())")
-                }
-                handler?(imageBuffer, presentationTime, isKeyframe)
-            }
-        )
-        noteStageTimings(prepare: decodeStart, build: buildStart, submit: submitStart)
-        guard status == noErr else {
+    /// VideoToolbox's asynchronous answer for one submitted frame.
+    private func handleDecodedFrame(status: OSStatus,
+                                    imageBuffer: CVImageBuffer?,
+                                    presentationTime: CMTime,
+                                    frameIndex: UInt32,
+                                    isKeyframe: Bool,
+                                    shape: @escaping @Sendable () -> String,
+                                    logFailure: ((UInt32, String) -> Void)?) {
+        guard status == noErr, let imageBuffer else {
             statsLock.lock()
             failedFrames &+= 1
+            let shouldReport = loggedFailures < Self.maxLoggedFailures
+            if shouldReport { loggedFailures += 1 }
+            // Asynchronous decode reports its reason only here. Counting without it turns every
+            // decoder problem into the same unreadable number.
+            if firstFailureStatus == noErr { firstFailureStatus = status }
+            lastFailureStatus = status
             statsLock.unlock()
-            // A rejected frame usually means the session lost its reference chain; force a
-            // rebuild so the next keyframe can restart cleanly.
-            stateLock.lock()
-            let broken = self.session
-            self.session = nil
-            stateLock.unlock()
-            Self.tearDown(broken)
-            throw DecoderError.decodeFailed(status)
+            if shouldReport {
+                logFailure?(frameIndex, "NVST decode rejected OSStatus \(status) frame=\(frameIndex) keyframe=\(isKeyframe) \(shape())")
+            }
+            onDecodeCompleted?(false)
+            return
         }
+        onDecodeCompleted?(true)
+        statsLock.lock()
+        decodedFrames &+= 1
+        // Measured from the decoded surface, not from what the negotiation asked for: a seat that
+        // ignores the requested geometry is otherwise invisible here.
+        decodedWidth = CVPixelBufferGetWidth(imageBuffer)
+        decodedHeight = CVPixelBufferGetHeight(imageBuffer)
+        let handler = onPixelBuffer
+        let shouldReportAccepted = loggedAccepted < Self.maxLoggedAccepted
+        if shouldReportAccepted { loggedAccepted += 1 }
+        statsLock.unlock()
+        // A rejected unit only means something next to an accepted one.
+        if shouldReportAccepted {
+            logFailure?(0, "NVST decode accepted frame=\(frameIndex) keyframe=\(isKeyframe) \(shape())")
+        }
+        handler?(imageBuffer, presentationTime, isKeyframe)
     }
 
     /// Where `decode` actually spends its time. `submit` is VideoToolbox itself — it applies

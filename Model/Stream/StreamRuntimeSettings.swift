@@ -89,14 +89,14 @@ struct StreamRuntimeSettings: Equatable {
         recordingEnhancedVideoEnabled = Self.bool(dictionary["recordingEnhancedVideoEnabled"], fallback: true)
     }
 
-    private static func string(_ value: Any?, fallback: String = "") -> String {
+    static func string(_ value: Any?, fallback: String = "") -> String {
         if let value = value as? String { return value.isEmpty ? fallback : value }
         if let value = value as? NSString { let string = value as String; return string.isEmpty ? fallback : string }
         if let value = value as? NSNumber { return value.stringValue }
         return fallback
     }
 
-    private static func int(_ value: Any?, fallback: Int = 0) -> Int {
+    static func int(_ value: Any?, fallback: Int = 0) -> Int {
         if let value = value as? Int { return value }
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) ?? fallback }
@@ -110,7 +110,7 @@ struct StreamRuntimeSettings: Equatable {
         return value
     }
 
-    private static func bool(_ value: Any?, fallback: Bool = false) -> Bool {
+    static func bool(_ value: Any?, fallback: Bool = false) -> Bool {
         if let value = value as? Bool { return value }
         if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }

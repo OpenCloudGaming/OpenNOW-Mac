@@ -166,7 +166,7 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         var cooldownUntil: TimeInterval = 0
     }
 
-    private let lock = NSLock()
+    let lock = NSLock()
     private var state = State()
     private let now: @Sendable () -> TimeInterval
 
@@ -247,7 +247,7 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         }
     }
 
-    private func session(for configuration: OPNSessionProxyConfiguration) -> URLSession {
+    func session(for configuration: OPNSessionProxyConfiguration) -> URLSession {
         lock.lock()
         defer { lock.unlock() }
         if let existing = state.sessions[configuration.cacheKey] { return existing }

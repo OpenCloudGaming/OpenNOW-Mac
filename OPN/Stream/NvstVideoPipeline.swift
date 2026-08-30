@@ -6,8 +6,8 @@ import Foundation
 /// NVST timestamps are session-scale, not epoch-scale — a seat that sanity-checks them against its
 /// own session time discards an epoch value — so both sides have to read the same origin.
 public final class NvstSessionClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var startedAt: Date?
+    let lock = NSLock()
+    var startedAt: Date?
 
     public init() {}
 
@@ -126,7 +126,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     /// How often to re-ask for the keyframe while waiting.
     public static let keyframeRetryInterval = 0.4
 
-    private let decoder: NvstVideoToolboxDecoder
+    let decoder: NvstVideoToolboxDecoder
     private let clock: NvstSessionClock
     private let frameTimeMicroseconds: UInt32
     /// The real display's vsync interval, in microseconds. Geronimo's own strings
@@ -135,7 +135,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     /// this was hardcoded to a hardware-agnostic 16000 before, meaning we told the seat to pace to
     /// ~62.5 Hz regardless of the client's real display.
     private let displayVsyncMicroseconds: UInt32
-    private let logger: (@Sendable (String) -> Void)?
+    let logger: (@Sendable (String) -> Void)?
     /// Hands the raw access unit to whatever else wants it (the media-session stream). Must not
     /// block: it is called on the decode queue.
     private let mediaSink: (@Sendable (NvstAccessUnit) -> Void)?
@@ -144,11 +144,11 @@ public final class NvstVideoPipeline: @unchecked Sendable {
 
     /// Below the receive loop's `.userInteractive` deliberately: decode falling a frame behind
     /// costs latency, while the receive loop falling behind costs packets.
-    private let queue = DispatchQueue(label: "com.opennow.nvst.decode", qos: .userInitiated)
-    private let lock = NSLock()
+    let queue = DispatchQueue(label: "com.opennow.nvst.decode", qos: .userInitiated)
+    let lock = NSLock()
     /// The video receiver is armed at SETUP, before the ICE/DTLS bundle exists — the bundle needs
     /// SETUP's own ping payload — so the ack channel arrives later than this object does.
-    private var bundle: NvstWebRtcBundle?
+    var bundle: NvstWebRtcBundle?
     private var counters = Counters()
     private var loggedSlowFrames = 0
     private var frameAckNumber: UInt32 = 0
@@ -238,53 +238,10 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     }
 
     private func process(_ unit: NvstAccessUnit, enqueuedAt: UInt64) {
-        lock.lock()
-        let stopped = isStopped
-        pendingFrames -= 1
-        let backlog = pendingFrames
-        var skipping = isAwaitingKeyframe
-        let now = DispatchTime.now().uptimeNanoseconds
-        // A burst is not a backlog: only count frames that arrive with the queue already deep, and
-        // reset the streak the moment it drains.
-        backlogStreak = backlog > Self.maximumPendingFrames ? backlogStreak + 1 : 0
-        var retryKeyframe = false
-        if skipping, Self.seconds(from: awaitingKeyframeSince ?? now, to: now) > Self.maximumKeyframeWait {
-            // The keyframe never came. Decode what we have rather than keep the picture frozen —
-            // every frame will be rejected until one arrives, so this is the lesser evil, not a
-            // good outcome.
-            skipping = false
-            isAwaitingKeyframe = false
-            awaitingKeyframeSince = nil
-            counters.abandonedResyncs += 1
-        } else if skipping, Self.seconds(from: lastKeyframeRequestAt ?? now, to: now) >= Self.keyframeRetryInterval {
-            lastKeyframeRequestAt = now
-            retryKeyframe = true
-        }
-        let sinceLastResync = lastResyncAt.map { Self.seconds(from: $0, to: now) } ?? .infinity
-        if !skipping, backlogStreak >= Self.sustainedBacklogFrames, sinceLastResync >= Self.minimumResyncInterval {
-            skipping = true
-            isAwaitingKeyframe = true
-            awaitingKeyframeSince = now
-            lastKeyframeRequestAt = now
-            lastResyncAt = now
-            backlogStreak = 0
-            counters.latencyResyncs += 1
-            lock.unlock()
-            logger?("NVST decode has been \(backlog) frames behind for \(Self.sustainedBacklogFrames) frames; skipping to the next keyframe")
-            onKeyframeNeeded()
-            lock.lock()
-        }
-        lock.unlock()
-        // Outside the lock: the retry reaches back into the transport.
-        if retryKeyframe { onKeyframeNeeded() }
-        guard !stopped else { return }
+        let gate = evaluateLatencyGate()
+        guard !gate.stopped else { return }
 
-        // A backlog never drains on its own: the queue is served at best as fast as frames arrive,
-        // so whatever latency it accumulates is permanent, and a 736 ms mean with an 8.5 s peak was
-        // measured on a saturated 5K120 session. Skipping to the next keyframe trades a brief
-        // glitch for bounded latency — and since skipped frames break the decoder's reference
-        // chain anyway, resuming anywhere else would show corruption instead.
-        if skipping {
+        if gate.skipping {
             guard unit.isKeyframe else {
                 lock.lock()
                 counters.framesSkippedForLatency += 1
@@ -345,6 +302,56 @@ public final class NvstVideoPipeline: @unchecked Sendable {
             }
             return
         }
+    }
+
+    /// Whether this frame should be decoded at all.
+    ///
+    /// A backlog never drains on its own: the queue is served at best as fast as frames arrive, so
+    /// whatever latency it accumulates is permanent, and a 736 ms mean with an 8.5 s peak was
+    /// measured on a saturated 5K120 session. Skipping to the next keyframe trades a brief glitch
+    /// for bounded latency — and since skipped frames break the decoder's reference chain anyway,
+    /// resuming anywhere else would show corruption instead.
+    private func evaluateLatencyGate() -> (stopped: Bool, skipping: Bool) {
+        lock.lock()
+        let stopped = isStopped
+        pendingFrames -= 1
+        let backlog = pendingFrames
+        var skipping = isAwaitingKeyframe
+        let now = DispatchTime.now().uptimeNanoseconds
+        // A burst is not a backlog: only count frames that arrive with the queue already deep, and
+        // reset the streak the moment it drains.
+        backlogStreak = backlog > Self.maximumPendingFrames ? backlogStreak + 1 : 0
+        var retryKeyframe = false
+        if skipping, Self.seconds(from: awaitingKeyframeSince ?? now, to: now) > Self.maximumKeyframeWait {
+            // The keyframe never came. Decode what we have rather than keep the picture frozen —
+            // every frame will be rejected until one arrives, so this is the lesser evil, not a
+            // good outcome.
+            skipping = false
+            isAwaitingKeyframe = false
+            awaitingKeyframeSince = nil
+            counters.abandonedResyncs += 1
+        } else if skipping, Self.seconds(from: lastKeyframeRequestAt ?? now, to: now) >= Self.keyframeRetryInterval {
+            lastKeyframeRequestAt = now
+            retryKeyframe = true
+        }
+        let sinceLastResync = lastResyncAt.map { Self.seconds(from: $0, to: now) } ?? .infinity
+        if !skipping, backlogStreak >= Self.sustainedBacklogFrames, sinceLastResync >= Self.minimumResyncInterval {
+            skipping = true
+            isAwaitingKeyframe = true
+            awaitingKeyframeSince = now
+            lastKeyframeRequestAt = now
+            lastResyncAt = now
+            backlogStreak = 0
+            counters.latencyResyncs += 1
+            lock.unlock()
+            logger?("NVST decode has been \(backlog) frames behind for \(Self.sustainedBacklogFrames) frames; skipping to the next keyframe")
+            onKeyframeNeeded()
+            lock.lock()
+        }
+        lock.unlock()
+        // Outside the lock: the retry reaches back into the transport.
+        if retryKeyframe { onKeyframeNeeded() }
+        return (stopped, skipping)
     }
 
     /// Matches one asynchronous decode completion to the unit it was for (FIFO order — see

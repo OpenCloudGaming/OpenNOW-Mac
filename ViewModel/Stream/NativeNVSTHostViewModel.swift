@@ -100,7 +100,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var streamControlsFocusIndex = 0
     @Published var onScreenKeyboardVisible = false
     var restorePointerLockOnKeyboardHide = false
-    let onScreenKeyboard = StreamOnScreenKeyboardController()
+    let onScreenKeyboard = StreamOnScreenKeyboardModel()
 
     func startIfNeeded() {
         guard startTask == nil, path == nil, !didEnd else { return }
@@ -108,6 +108,54 @@ final class NativeNVSTHostViewModel: ObservableObject {
             loadingStepIndex = StreamLaunchStep.checkNetworkRoute.rawValue
             return
         }
+        let launch = prepareLaunch(nativeView: nativeView)
+        let resolvedStreamSettings = launch.settings
+        let transport = makeTransport(nativeView: nativeView, settings: resolvedStreamSettings)
+        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
+        let inputDispatcher = NativeNVSTInputDispatcher { input in
+            switch input {
+            case .event(let event):
+                try? await path.send(event)
+            case .absoluteMove(let event):
+                try? await path.sendAbsoluteMouseMove(event)
+            }
+        }
+        self.path = path
+        self.inputDispatcher = inputDispatcher
+        endEventTask = Task {
+            let events = await path.endEvents()
+            for await report in events {
+                guard !Task.isCancelled else { return }
+                await MainActor.run { finishOnce(report: report) }
+                return
+            }
+        }
+        configureInput(for: nativeView)
+        WebRTCMediaStreamLifecycle.activate(
+            configuration.id,
+            // Both handlers land in `WebRTCMediaStreamLifecycle`'s static dictionaries, so both
+            // capture weakly: as a struct these closures held a value copy and retained nothing, but
+            // this class owns the Metal surface, the transport and five unbounded tasks.
+            //
+            // Returning `false` when `self` is gone is load-bearing, not a formality. `true` makes
+            // `applicationShouldTerminate` answer `.terminateLater` and wait for a `completion` that
+            // a deallocated model can never call - the app would refuse to quit, permanently, with
+            // no way out but force-quit.
+            quitRequestHandler: { [weak self] completion in
+                guard let self else { return false }
+                self.showStreamControls(completion: completion)
+                return true
+            },
+            commandHandler: { [weak self] command in self?.handleNativeCommand(command) }
+        )
+        runStartTask(path: path,
+                     nativeView: nativeView,
+                     microphoneConfiguration: launch.microphoneConfiguration,
+                     initialMicrophoneEnabled: launch.microphoneConfiguration.initiallyEnabled)
+    }
+
+    /// Applies the saved launch profile to this model and returns what starting the stream needs.
+    func prepareLaunch(nativeView: NativeWebRTCStreamView) -> (settings: WebRTCMediaResolvedStreamSettings, microphoneConfiguration: NativeNVSTMicrophoneConfiguration) {
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
@@ -123,13 +171,21 @@ final class NativeNVSTHostViewModel: ObservableObject {
         microphoneEnabled = microphoneConfiguration.initiallyEnabled
         microphoneDesiredEnabled = microphoneEnabled
         microphonePendingStates.removeAll()
-        let initialMicrophoneEnabled = microphoneEnabled
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
+        return (resolvedStreamSettings, microphoneConfiguration)
+    }
+
+    /// The only transport. The vendored NVIDIA path has been removed; there is no fallback, so a
+    /// failure surfaces as a failed stream instead of silently using the old libraries.
+    ///
+    /// Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir receiver +
+    /// VideoToolbox decode, drawn on the shared Metal surface.
+    func makeTransport(nativeView: NativeWebRTCStreamView, settings resolvedStreamSettings: WebRTCMediaResolvedStreamSettings) -> any NativeNVSTTransport {
         // Experimental: OpenNOW's own session core (Phase 2) replaces the Geronimo
         // transport when enabled. Geronimo/SDL2 are not loaded; video frames are counted but
         // not decoded until Phase 2C, so the surface stays blank while HUD and input work.
@@ -171,43 +227,14 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 }
             }
         }
-        let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
-        let inputDispatcher = NativeNVSTInputDispatcher { input in
-            switch input {
-            case .event(let event):
-                try? await path.send(event)
-            case .absoluteMove(let event):
-                try? await path.sendAbsoluteMouseMove(event)
-            }
-        }
-        self.path = path
-        self.inputDispatcher = inputDispatcher
-        endEventTask = Task {
-            let events = await path.endEvents()
-            for await report in events {
-                guard !Task.isCancelled else { return }
-                await MainActor.run { finishOnce(report: report) }
-                return
-            }
-        }
-        configureInput(for: nativeView)
-        WebRTCMediaStreamLifecycle.activate(
-            configuration.id,
-            // Both handlers land in `WebRTCMediaStreamLifecycle`'s static dictionaries, so both
-            // capture weakly: as a struct these closures held a value copy and retained nothing, but
-            // this class owns the Metal surface, the transport and five unbounded tasks.
-            //
-            // Returning `false` when `self` is gone is load-bearing, not a formality. `true` makes
-            // `applicationShouldTerminate` answer `.terminateLater` and wait for a `completion` that
-            // a deallocated model can never call - the app would refuse to quit, permanently, with
-            // no way out but force-quit.
-            quitRequestHandler: { [weak self] completion in
-                guard let self else { return false }
-                self.showStreamControls(completion: completion)
-                return true
-            },
-            commandHandler: { [weak self] command in self?.handleNativeCommand(command) }
-        )
+        return transport
+    }
+
+    /// Drives the streaming path to a connected session, or reports why it did not get there.
+    func runStartTask(path: NativeNVSTStreamingPath,
+                              nativeView: NativeWebRTCStreamView,
+                              microphoneConfiguration: NativeNVSTMicrophoneConfiguration,
+                              initialMicrophoneEnabled: Bool) {
         startTask = Task {
             do {
                 try await path.setMicrophoneConfiguration(microphoneConfiguration)
@@ -227,33 +254,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                     }
                 }
                 let shouldPresentStream = await MainActor.run {
-                    guard !Task.isCancelled, !didEnd, !isEnding else { return false }
-                    isConnected = true
-                    sessionLimit = StreamSessionSidebarLimit(session: session)
-                    nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
-                    nativeView.setNativeNVSTVideoVisible(true)
-                    nativeView.restoreInputFocus()
-                    Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
-                    loadingStepIndex = StreamLaunchStep.connected.rawValue
-                    startNativeStatsPolling(path: path)
-                    refreshAntiAFKMouseMovementTask()
-                    let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-                    pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
-                    nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
-                    upscalingModeIndex = launchProfile.upscalingModeIndex
-                    upscalingTargetIndex = launchProfile.upscalingTargetIndex
-                    upscalingSharpness = launchProfile.upscalingSharpness
-                    upscalingDenoise = launchProfile.upscalingDenoise
-                    nativeStreamResolutionText = "\(launchProfile.resolution.width) x \(launchProfile.resolution.height)"
-                    nativeStreamFrameRateText = "\(launchProfile.fps) FPS"
-                    nativeStreamCodecText = launchProfile.codec.value.uppercased()
-                    nativeView.setVideoEnhancement(mode: launchProfile.upscalingMode,
-                                                   sharpness: launchProfile.upscalingSharpness,
-                                                   denoise: launchProfile.upscalingDenoise,
-                                                   targetHeight: launchProfile.upscalingTargetHeight)
-                    onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
-                    WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
-                    return true
+                    presentStream(session: session, path: path, nativeView: nativeView)
                 }
                 if !shouldPresentStream {
                     _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed during startup.")
@@ -263,6 +264,38 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 await MainActor.run { handleStartFailure(error, diagnostics: diagnostics) }
             }
         }
+    }
+
+    /// Publishes an established session to the UI. False means the view went away while the stream
+    /// was still coming up, and the caller stops the session instead.
+    func presentStream(session: StreamSessionDescriptor, path: NativeNVSTStreamingPath, nativeView: NativeWebRTCStreamView) -> Bool {
+        guard !Task.isCancelled, !didEnd, !isEnding else { return false }
+        isConnected = true
+        sessionLimit = StreamSessionSidebarLimit(session: session)
+        nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
+        nativeView.setNativeNVSTVideoVisible(true)
+        nativeView.restoreInputFocus()
+        Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
+        loadingStepIndex = StreamLaunchStep.connected.rawValue
+        startNativeStatsPolling(path: path)
+        refreshAntiAFKMouseMovementTask()
+        let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
+        nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
+        upscalingModeIndex = launchProfile.upscalingModeIndex
+        upscalingTargetIndex = launchProfile.upscalingTargetIndex
+        upscalingSharpness = launchProfile.upscalingSharpness
+        upscalingDenoise = launchProfile.upscalingDenoise
+        nativeStreamResolutionText = "\(launchProfile.resolution.width) x \(launchProfile.resolution.height)"
+        nativeStreamFrameRateText = "\(launchProfile.fps) FPS"
+        nativeStreamCodecText = launchProfile.codec.value.uppercased()
+        nativeView.setVideoEnhancement(mode: launchProfile.upscalingMode,
+                                       sharpness: launchProfile.upscalingSharpness,
+                                       denoise: launchProfile.upscalingDenoise,
+                                       targetHeight: launchProfile.upscalingTargetHeight)
+        onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
+        WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
+        return true
     }
 
     func handleStartFailure(_ error: Error, diagnostics: [String: String]) {
@@ -287,256 +320,4 @@ final class NativeNVSTHostViewModel: ObservableObject {
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))
     }
 
-    func stopStream() {
-        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
-        pendingApplicationQuitCompletion?(false)
-        pendingApplicationQuitCompletion = nil
-        startTask?.cancel()
-        startTask = nil
-        endEventTask?.cancel()
-        endEventTask = nil
-        nativeStatsTask?.cancel()
-        nativeStatsTask = nil
-        latestNativeStats = nil
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
-        sessionLimit = nil
-        networkGovernor = nil
-        networkPathTask?.cancel()
-        networkPathTask = nil
-        networkPathAvailable = true
-        cancelNativeShortcutTasks()
-        endStreamingPerformanceMode()
-        nativeView?.remoteInputEnabled = false
-        let inputDispatcher = self.inputDispatcher
-        self.inputDispatcher = nil
-        isConnected = false
-        pointerLocked = false
-        unifiedHUDVisible = false
-        streamControlsVisible = false
-        nativeStatsVisible = false
-        microphoneAvailable = false
-        microphoneEnabled = false
-        microphoneDesiredEnabled = false
-        microphoneMode = "disabled"
-        microphonePendingStates.removeAll()
-        antiAFKMouseMovementEnabled = false
-        batteryAlertTracker.reset()
-        nativeView?.stopHaptics()
-        // Visibility is dropped by the transport's shutdown hook once the native session
-        // is gone; hiding the Metal layer before `path.stop` wedges Geronimo's render loop.
-        guard !didEnd else {
-            inputDispatcher?.cancel()
-            return
-        }
-        didEnd = true
-        nativeView?.onInputEvent = nil
-        nativeView?.onAbsoluteMouseMove = nil
-        nativeView?.onGamepadTopologyChanged = nil
-        nativeView?.onPointerLockChanged = nil
-        nativeView?.onCommand = nil
-        nativeView?.shouldHandleCommand = nil
-        nativeView?.onScreenKeyboardCapture = nil
-        if let path {
-            Task {
-                await inputDispatcher?.finish()
-                try? await path.setMicrophoneEnabled(false)
-                _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
-            }
-        } else {
-            inputDispatcher?.cancel()
-        }
-    }
-
-    func finish(reason: StreamEndReason, message: String) async -> Bool {
-        guard !isEnding else { return false }
-        // The Geronimo-owned Metal layer stays visible until the native session is torn
-        // down. Hiding it here stalls the render loop's in-flight presents, and Geronimo's
-        // shutdown then deadlocks the main thread waiting on that render loop. Visibility
-        // is cleared in `finishOnce`, after `path.stop` has returned.
-        let inputDispatcher = await MainActor.run {
-            nativeView?.remoteInputEnabled = false
-            let dispatcher = self.inputDispatcher
-            self.inputDispatcher = nil
-            isEnding = true
-            return dispatcher
-        }
-        await inputDispatcher?.finish()
-        guard let path else {
-            await MainActor.run {
-                isEnding = false
-                showStreamControls()
-            }
-            return false
-        }
-        do {
-            do {
-                try await path.setMicrophoneEnabled(false)
-            } catch {
-                WebRTCMediaTelemetry.capture(
-                    "nvst.microphone.shutdown.failed",
-                    level: .warning,
-                    message: Self.message(for: error),
-                    attributes: ["applicationID": configuration.applicationID, "reason": reason.rawValue]
-                )
-            }
-            let report = try await path.stop(reason: reason, message: message)
-            await MainActor.run { finishOnce(report: report) }
-            return true
-        } catch {
-            let failureMessage = Self.message(for: error)
-            if reason == .paused {
-                await MainActor.run {
-                    isEnding = false
-                    self.inputDispatcher = NativeNVSTInputDispatcher { input in
-                        switch input {
-                        case .event(let event):
-                            try? await path.send(event)
-                        case .absoluteMove(let event):
-                            try? await path.sendAbsoluteMouseMove(event)
-                        }
-                    }
-                    streamControlsVisible = true
-                    WebRTCMediaTelemetry.capture("nvst.ui.pause.failed", level: .error, message: failureMessage, attributes: ["applicationID": configuration.applicationID])
-                }
-                return false
-            }
-            let report = StreamReport(title: configuration.title, success: false, reason: .failed, message: failureMessage, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID, "transport": "nvst"])
-            await MainActor.run { finishOnce(report: report) }
-            return false
-        }
-    }
-
-    func finishOnce(report: StreamReport) {
-        guard !didEnd else { return }
-        nativeView?.remoteInputEnabled = false
-        inputDispatcher?.cancel()
-        inputDispatcher = nil
-        didEnd = true
-        isConnected = false
-        unifiedHUDVisible = false
-        streamControlsVisible = false
-        onScreenKeyboardVisible = false
-        restorePointerLockOnKeyboardHide = false
-        nativeView?.localOverlayCapturesInput = false
-        nativeStatsVisible = false
-        microphoneAvailable = false
-        microphoneEnabled = false
-        microphoneDesiredEnabled = false
-        microphoneMode = "disabled"
-        microphonePendingStates.removeAll()
-        antiAFKMouseMovementEnabled = false
-        nativeStatsTask?.cancel()
-        nativeStatsTask = nil
-        latestNativeStats = nil
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
-        sessionLimit = nil
-        networkGovernor = nil
-        networkPathTask?.cancel()
-        networkPathTask = nil
-        networkPathAvailable = true
-        cancelNativeShortcutTasks()
-        pendingApplicationQuitCompletion?(false)
-        pendingApplicationQuitCompletion = nil
-        nativeView?.setPointerLocked(false)
-        nativeView?.setNativeNVSTVideoVisible(false)
-        endEventTask?.cancel()
-        endEventTask = nil
-        nativeView?.onInputEvent = nil
-        nativeView?.onAbsoluteMouseMove = nil
-        nativeView?.onPointerLockChanged = nil
-        nativeView?.onCommand = nil
-        nativeView?.shouldHandleCommand = nil
-        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
-        onEnd(report.success, report.message, report)
-    }
-
-    func configureNativeView(_ view: NativeWebRTCStreamView) {
-        guard !didEnd, !isEnding else {
-            view.remoteInputEnabled = false
-            view.setNativeNVSTVideoVisible(false)
-            return
-        }
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        view.directMouseInputEnabled = profile.directMouseInput
-        view.locksPointerWhenRelativeModeSelected = true
-        view.confinesCursorToWindowInAbsoluteMode = profile.directMouseInput
-        view.hidesCursorWhilePointerLocked = true
-        view.onPointerLockChanged = { [weak self] locked in self?.pointerLocked = locked }
-        if path == nil { view.mouseInputMode = .absolute }
-        view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
-        view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
-        let pushToTalkEnabled = profile.microphoneMode.caseInsensitiveCompare("push-to-talk") == .orderedSame
-        view.configurePushToTalk(
-            keyCode: pushToTalkEnabled ? profile.microphonePushToTalkKeyCode : nil,
-            modifierMask: profile.microphonePushToTalkModifierMask
-        ) { [weak self] enabled in
-            self?.requestNativeMicrophoneEnabled(enabled, source: "push-to-talk")
-        }
-        configureInput(for: view)
-    }
-
-    /// Every callback below is stored *on the view*, and the view model holds the view - so each one
-    /// captures `self` weakly. As `@State` on a struct this was not a cycle; as a class it would be,
-    /// and the session would never deallocate.
-    func configureInput(for view: NativeWebRTCStreamView) {
-        view.onInputEvent = { [weak self, weak view] event in
-            guard let self else { return }
-            if self.onScreenKeyboardVisible, !self.isEnding, !self.didEnd, case .gamepad(let state) = event {
-                self.onScreenKeyboard.handleGamepadState(state)
-                if self.isConnected {
-                    self.inputDispatcher?.enqueue(.gamepad(GamepadState(deviceID: state.deviceID, playerIndex: state.playerIndex, timestamp: state.timestamp)))
-                }
-                return
-            }
-            guard self.path != nil, let view, self.isConnected, !self.unifiedHUDVisible, !self.streamControlsVisible, !self.isEnding, !self.didEnd else { return }
-            if view.remoteInputEnabled && !NativeNVSTInputDispatcher.isNeutralizing(event) {
-                guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
-            }
-            self.lastAcceptedStreamInputAt = Date()
-            if case .mouse = event {
-                if view.mouseInputMode == .relative, !view.isPointerLocked { return }
-                self.inputDispatcher?.enqueue(event)
-                return
-            }
-            self.inputDispatcher?.enqueue(event)
-        }
-        view.shouldHandleCommand = { [weak self] _ in
-            self?.isConnected ?? false
-        }
-        view.onCommand = { [weak self] command in
-            self?.handleNativeCommand(command)
-        }
-        view.onAbsoluteMouseMove = { [weak self, weak view] event in
-            guard let self, let view else { return }
-            guard self.isConnected, !self.unifiedHUDVisible, !self.streamControlsVisible, !self.isEnding, !self.didEnd,
-                  view.remoteInputEnabled, view.mouseInputMode == .absolute else { return }
-            guard view.isEmittingNeutralizingAbsolutePosition ||
-                    (NSApplication.shared.isActive && view.window?.isKeyWindow == true) else { return }
-            self.lastAcceptedStreamInputAt = Date()
-            self.inputDispatcher?.enqueueAbsoluteMove(event)
-        }
-        view.onGamepadTopologyChanged = { [weak self] topology in
-            guard let self, let path = self.path, self.isConnected, !self.isEnding, !self.didEnd else { return }
-            Task { try? await path.updateGamepadTopology(topology) }
-        }
-        view.onScreenKeyboardCapture = { [weak self] deviceID, snapshot in
-            guard let self, self.onScreenKeyboardVisible else { return false }
-            self.onScreenKeyboard.handleSteamSnapshot(deviceID: deviceID, snapshot: snapshot)
-            return true
-        }
-        onScreenKeyboard.onOutput = { [weak self] output in
-            self?.sendOnScreenKeyboardOutput(output)
-        }
-        onScreenKeyboard.onDismiss = { [weak self] in
-            self?.setOnScreenKeyboardVisible(false)
-        }
-        view.onLocalGamepadState = { [weak self] state in
-            guard let self, !self.isEnding, !self.didEnd, !self.showingControllerMapping else { return }
-            if self.streamControlsVisible {
-                self.handleStreamControlsGamepad(state)
-            } else if self.unifiedHUDVisible {
-                self.handleHUDGamepad(state)
-            }
-        }
-    }
 }

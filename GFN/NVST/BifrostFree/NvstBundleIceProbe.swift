@@ -27,11 +27,11 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     public static let iceBurstCount = 3
     public static let nattUsername = "PING"
 
-    private let handoff: NVSTVideoHandoff
+    let handoff: NVSTVideoHandoff
     private let credentials: NVSTHandoffIceCredentials
-    private let logger: (@Sendable (String) -> Void)?
-    private let queue = DispatchQueue(label: "com.opennow.nvst.bundle")
-    private let lock = NSLock()
+    let logger: (@Sendable (String) -> Void)?
+    let queue = DispatchQueue(label: "com.opennow.nvst.bundle")
+    let lock = NSLock()
     private var descriptor: Int32
     private var readSource: DispatchSourceRead?
     private var punchTimer: DispatchSourceTimer?

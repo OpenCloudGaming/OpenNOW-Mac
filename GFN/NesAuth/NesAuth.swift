@@ -73,37 +73,35 @@ public enum NesAuthRequestFactory {
         return "\(base)/\(version)\(normalizedPath)"
     }
 
-    private static func route(for operation: NesAuth.Operation) -> (method: String, path: String, useLayoutServer: Bool) {
-        return switch operation {
-        case .getSubscriptions:
-            ("GET", "/subscriptions", false)
-        case .getClientStreamingQuality:
-            ("GET", "/client/streaming-qualities", false)
-        case .getServiceUrls:
-            ("GET", "/serviceUrls", true)
-        case .getProducts:
-            ("GET", "/products", false)
-        case .getCredits:
-            ("GET", "/credits", false)
-        case .getPlayTime:
-            ("GET", "/playtime", false)
-        case .getProductCredits:
-            ("GET", "/productCredits", false)
-        case .getApps:
-            ("GET", "/apps", false)
-        case .getResource:
-            ("GET", "/resource", false)
-        case .install:
-            ("POST", "/apps/install", false)
-        case .uninstall:
-            ("DELETE", "/apps/uninstall", false)
-        case .cancelSubscription:
-            ("DELETE", "/subscriptions", false)
-        case .updateSubscription:
-            ("POST", "/subscriptions", false)
-        case .nes:
-            ("GET", "", false)
+    typealias Route = (method: String, path: String, useLayoutServer: Bool)
+
+    /// Method and path per operation. A table rather than a `switch` so adding an operation is a
+    /// one-line change; anything missing falls back to `.nes`, the bare versioned service root.
+    static let routes: [NesAuth.Operation: Route] = [
+        .getSubscriptions: ("GET", "/subscriptions", false),
+        .getClientStreamingQuality: ("GET", "/client/streaming-qualities", false),
+        .getServiceUrls: ("GET", "/serviceUrls", true),
+        .getProducts: ("GET", "/products", false),
+        .getCredits: ("GET", "/credits", false),
+        .getPlayTime: ("GET", "/playtime", false),
+        .getProductCredits: ("GET", "/productCredits", false),
+        .getApps: ("GET", "/apps", false),
+        .getResource: ("GET", "/resource", false),
+        .install: ("POST", "/apps/install", false),
+        .uninstall: ("DELETE", "/apps/uninstall", false),
+        .cancelSubscription: ("DELETE", "/subscriptions", false),
+        .updateSubscription: ("POST", "/subscriptions", false),
+        .nes: ("GET", "", false)
+    ]
+
+    private static func route(for operation: NesAuth.Operation) -> Route {
+        // A missing entry is a programming error, not a runtime condition: without this the request
+        // would silently go to the bare versioned service root and surface as a confusing 404.
+        guard let route = routes[operation] else {
+            assertionFailure("NesAuth operation \(operation.rawValue) has no route")
+            return ("GET", "", false)
         }
+        return route
     }
 }
 
@@ -138,7 +136,7 @@ public enum NesAuthServiceError: LocalizedError, Equatable, Sendable {
 }
 
 public struct NesAuthService<Transport: NesAuthHTTPTransport>: Sendable {
-    private let configuration: NesAuthConfiguration
+    let configuration: NesAuthConfiguration
     private let transport: Transport
 
     public init(configuration: NesAuthConfiguration = .gfnPC, transport: Transport) {

@@ -181,29 +181,11 @@ final class OPNPillarboxDetector {
         let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
         guard width > 1, height > 1 else { return nil }
 
-        let rowStep = max(1, height / sampledRows)
-        var rowCount = 0
-        var columnSums = [Double](repeating: 0, count: width)
-
-        if isTenBit {
-            let scale = 1.0 / 65535.0
-            for y in stride(from: 0, to: height, by: rowStep) {
-                let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt16.self)
-                for x in 0..<width { columnSums[x] += Double(row[x]) * scale }
-                rowCount += 1
-            }
-        } else {
-            let scale = 1.0 / 255.0
-            for y in stride(from: 0, to: height, by: rowStep) {
-                let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
-                for x in 0..<width { columnSums[x] += Double(row[x]) * scale }
-                rowCount += 1
-            }
-        }
-        guard rowCount > 0 else { return nil }
-
-        let inverseRows = 1.0 / Double(rowCount)
-        for x in 0..<width { columnSums[x] *= inverseRows }
+        guard let columnSums = columnMeanLuma(base: base,
+                                              width: width,
+                                              height: height,
+                                              bytesPerRow: bytesPerRow,
+                                              isTenBit: isTenBit) else { return nil }
 
         // Derive the black floor from the frame itself rather than assuming a
         // range. Video-range black sits at ~0.0625, full-range at 0.0, and a
@@ -234,6 +216,39 @@ final class OPNPillarboxDetector {
             left: Double(firstContent) / Double(width),
             right: Double(lastContent + 1) / Double(width)
         )
+    }
+
+    /// Mean luma per column over a sampled subset of rows, normalised to 0...1. Nil when no row
+    /// could be read.
+    private static func columnMeanLuma(base: UnsafeMutableRawPointer,
+                                       width: Int,
+                                       height: Int,
+                                       bytesPerRow: Int,
+                                       isTenBit: Bool) -> [Double]? {
+        let rowStep = max(1, height / sampledRows)
+        var rowCount = 0
+        var columnSums = [Double](repeating: 0, count: width)
+
+        if isTenBit {
+            let scale = 1.0 / 65535.0
+            for y in stride(from: 0, to: height, by: rowStep) {
+                let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt16.self)
+                for x in 0..<width { columnSums[x] += Double(row[x]) * scale }
+                rowCount += 1
+            }
+        } else {
+            let scale = 1.0 / 255.0
+            for y in stride(from: 0, to: height, by: rowStep) {
+                let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+                for x in 0..<width { columnSums[x] += Double(row[x]) * scale }
+                rowCount += 1
+            }
+        }
+        guard rowCount > 0 else { return nil }
+
+        let inverseRows = 1.0 / Double(rowCount)
+        for x in 0..<width { columnSums[x] *= inverseRows }
+        return columnSums
     }
 
     /// Nudges a measured rect onto a standard aspect ratio when it is within

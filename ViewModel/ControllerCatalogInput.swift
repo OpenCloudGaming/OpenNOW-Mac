@@ -31,39 +31,45 @@ extension ControllerCatalogViewModel {
     private func handleSharedOverlayInput(_ command: ControllerInputCommand) -> Bool {
         guard let catalog else { return false }
 
-        if catalog.isLaunchFlowVisible {
-            switch command {
-            case .back:
-                catalog.cancelVendorLaunch()
-                return true
-            case .confirm:
-                if catalog.launchFlowState == .activeSessionPrompt {
-                    if catalog.canResumeActiveLaunchSession { catalog.resumeActiveLaunchSession() }
-                    else { catalog.endActiveSessionAndLaunchSelectedGame() }
-                    return true
-                }
-                return false
-            default:
-                return true
-            }
-        }
+        if catalog.isLaunchFlowVisible { return handleLaunchFlowInput(command, catalog: catalog) }
+        if catalog.isStorePickerVisible { return handleStorePickerInput(command, catalog: catalog) }
+        return false
+    }
 
-        if catalog.isStorePickerVisible {
-            switch command {
-            case .back:
-                catalog.closeStorePicker()
-            case .move(.up), .move(.left):
-                moveSelectedStore(delta: -1)
-            case .move(.down), .move(.right):
-                moveSelectedStore(delta: 1)
-            case .confirm:
-                confirmStorePickerStage()
-            default:
-                break
+    /// The launch flow swallows everything except its own confirm and cancel.
+    private func handleLaunchFlowInput(_ command: ControllerInputCommand, catalog: CatalogViewModel) -> Bool {
+        switch command {
+        case .back:
+            catalog.cancelVendorLaunch()
+            return true
+        case .confirm:
+            guard catalog.launchFlowState == .activeSessionPrompt else { return false }
+            if catalog.canResumeActiveLaunchSession {
+                catalog.resumeActiveLaunchSession()
+            } else {
+                catalog.endActiveSessionAndLaunchSelectedGame()
             }
             return true
+        default:
+            return true
         }
-        return false
+    }
+
+    /// The store picker owns the whole d-pad while it is up.
+    private func handleStorePickerInput(_ command: ControllerInputCommand, catalog: CatalogViewModel) -> Bool {
+        switch command {
+        case .back:
+            catalog.closeStorePicker()
+        case .move(.up), .move(.left):
+            moveSelectedStore(delta: -1)
+        case .move(.down), .move(.right):
+            moveSelectedStore(delta: 1)
+        case .confirm:
+            confirmStorePickerStage()
+        default:
+            break
+        }
+        return true
     }
 
     private func handlePageInput(_ command: ControllerInputCommand) {
@@ -502,22 +508,31 @@ extension ControllerCatalogViewModel {
             catalog.refresh()
         case .clearSearch:
             catalog.clearSearchAndFilters()
-        case .desktopMode:
-            host.onExitControllerMode()
-        case .home:
-            catalog.showCatalogDestination(.home)
-        case .library:
-            catalog.showCatalogDestination(.library)
-        case .favorites:
-            catalog.showCatalogDestination(.favorites)
         case .recordings:
             catalog.showRecordings()
         case .settings:
             catalog.showSettings(.general)
+        case .home, .library, .favorites:
+            catalog.showCatalogDestination(Self.destination(for: item))
+        case .desktopMode:
+            host.onExitControllerMode()
         case .switchAccount(let account):
             host.onSwitch(account)
         case .signOut:
             host.onSignOut()
+        }
+    }
+
+    /// The catalog destination each navigation menu item selects. `home` is the only item the
+    /// caller routes here besides these two, so anything else is a caller mistake.
+    private static func destination(for item: ControllerActionMenuItem) -> CatalogDestination {
+        switch item {
+        case .library: return .library
+        case .favorites: return .favorites
+        case .home: return .home
+        default:
+            assertionFailure("destination(for:) called with a non-navigation item")
+            return .home
         }
     }
 

@@ -81,3 +81,12 @@ private struct MockNesAuthTransport: NesAuthHTTPTransport {
     #expect(policy.result(authType: "NONE", entitlementErrorCode: "351").launchStatus == .notEntitled)
     #expect(policy.result(authType: "NONE", entitlementErrorCode: "NVB_R_NETWORK_ERROR").launchStatus == .failed)
 }
+
+/// `routes` replaced an exhaustive `switch`, so nothing makes the compiler complain when an
+/// operation is added without a route. Without this, the request would quietly go to the bare
+/// versioned service root and come back as a confusing 404.
+@Test func everyNesOperationHasARoute() {
+    let missing = NesAuth.Operation.allCases.filter { NesAuthRequestFactory.routes[$0] == nil }
+    #expect(missing.isEmpty, "NesAuth operations with no route: \(missing.map(\.rawValue))")
+}
+

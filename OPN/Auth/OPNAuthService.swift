@@ -44,8 +44,8 @@ public final class OPNAuthService: @unchecked Sendable {
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
-    private let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
-    private let starfleetService: StarfleetService<StarfleetURLSessionTransport>
+    let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
+    let starfleetService: StarfleetService<StarfleetURLSessionTransport>
     private let statusObservationTask: Task<Void, Never>
 
     private init() {
@@ -110,34 +110,11 @@ public final class OPNAuthService: @unchecked Sendable {
                     providerIdpId: selectedProviderIdpId
                 )
                 self.startOAuthCallbackListener(port: port) { [weak self] result in
-                    guard let self else { return }
-                    switch result {
-                    case .success(let query):
-                        Task { [weak self] in
-                            guard let self else { return }
-                            do {
-                                let callback = try await self.jarvisAuthService.parseCallback(query: query, expectedState: pkce.state)
-                                self.doOAuthTokenExchange(
-                                    authCode: callback.code,
-                                    codeVerifier: pkce.codeVerifier,
-                                    redirectUri: redirectUri,
-                                    providerIdpId: selectedProviderIdpId,
-                                    completion: completion
-                                )
-                            } catch {
-                                _ = await self.jarvisAuthService.finishLogin(success: false)
-                                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
-                                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
-                            }
-                        }
-                    case .failure(let error):
-                        Task { [weak self] in
-                            guard let self else { return }
-                            _ = await self.jarvisAuthService.finishLogin(success: false)
-                            self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
-                            Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
-                        }
-                    }
+                    self?.handleOAuthCallback(result,
+                                              pkce: pkce,
+                                              redirectUri: redirectUri,
+                                              providerIdpId: selectedProviderIdpId,
+                                              completion: completion)
                 } readyHandler: {
                     Task { @MainActor in
                         self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
@@ -147,6 +124,33 @@ public final class OPNAuthService: @unchecked Sendable {
             } catch {
                 _ = await self.jarvisAuthService.finishLogin(success: false)
                 self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "authorization_url"])
+                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
+            }
+        }
+    }
+
+    /// The loopback listener's answer: either the authorization code to exchange, or the reason
+    /// the browser leg failed.
+    func handleOAuthCallback(_ result: Result<String, Error>,
+                                     pkce: JarvisOAuthState,
+                                     redirectUri: String,
+                                     providerIdpId: String,
+                                     completion: @escaping OPNAuthCallback) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let query = try result.get()
+                let callback = try await self.jarvisAuthService.parseCallback(query: query, expectedState: pkce.state)
+                self.doOAuthTokenExchange(
+                    authCode: callback.code,
+                    codeVerifier: pkce.codeVerifier,
+                    redirectUri: redirectUri,
+                    providerIdpId: providerIdpId,
+                    completion: completion
+                )
+            } catch {
+                _ = await self.jarvisAuthService.finishLogin(success: false)
+                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
                 Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
@@ -305,7 +309,7 @@ public final class OPNAuthService: @unchecked Sendable {
         saveSession(session, replacingIdentity: nil)
     }
 
-    private func saveSession(_ session: OPNAuthSession, replacingIdentity: String?) {
+    func saveSession(_ session: OPNAuthSession, replacingIdentity: String?) {
         guard session.isAuthenticated, !session.accessToken.isEmpty else { return }
 
         Task { [jarvisAuthService, starfleetService] in
@@ -337,582 +341,4 @@ public final class OPNAuthService: @unchecked Sendable {
         defaults.set(true, forKey: "OPN_HasSavedSession")
         defaults.set(identity, forKey: "OPN_ActiveUserId")
     }
-
-    func saveUserInfo(_ userInfo: JarvisUserInfo) {
-        guard userInfo.isAuthenticated else {
-            clearUserInfo()
-            return
-        }
-        var session = loadSavedSession()
-        guard session.isAuthenticated else { return }
-        let oldIdentity = sessionIdentity(from: session)
-        if !userInfo.userId.isEmpty { session.userId = userInfo.userId }
-        if !userInfo.displayName.isEmpty { session.displayName = userInfo.displayName }
-        else if !userInfo.preferredUsername.isEmpty { session.displayName = userInfo.preferredUsername }
-        if !userInfo.email.isEmpty { session.email = userInfo.email }
-        if !userInfo.idpId.isEmpty { session.idpId = userInfo.idpId }
-        saveSession(session, replacingIdentity: oldIdentity)
-    }
-
-    func clearUserInfo() {
-        var session = loadSavedSession()
-        guard session.isAuthenticated else { return }
-        let oldIdentity = sessionIdentity(from: session)
-        session.userId = ""
-        session.displayName = ""
-        session.email = ""
-        session.idpId = Self.defaultIdpId
-        saveSession(session, replacingIdentity: oldIdentity)
-    }
-
-    func loadSavedSession() -> OPNAuthSession {
-        let defaults = Self.authUserDefaults()
-        var activeUserId: String?
-        let accounts = loadAccountDictionaries(activeUserId: &activeUserId)
-        let preferredUserId = defaults.string(forKey: "OPN_ActiveUserId") ?? activeUserId
-        var fallback: NSDictionary?
-
-        for account in accounts {
-            if fallback == nil { fallback = account }
-            let identity = sessionIdentity(from: account)
-            if preferredUserId?.isEmpty == false, identity == preferredUserId {
-                let session = session(from: account)
-                if session.isAuthenticated { return session }
-            }
-        }
-
-        if let fallback {
-            let session = session(from: fallback)
-            if let identity = sessionIdentity(from: fallback), !identity.isEmpty {
-                defaults.set(identity, forKey: "OPN_ActiveUserId")
-            }
-            defaults.set(true, forKey: "OPN_HasSavedSession")
-            return session
-        }
-
-        if !defaults.bool(forKey: "OPN_HasSavedSession") && !defaults.bool(forKey: "GFN_HasSavedSession") {
-            return OPNAuthSession()
-        }
-        let legacy = loadLegacySingleSession()
-        if legacy.isAuthenticated {
-            saveSession(legacy)
-            // The session now lives in accounts.plist with its tokens in the keychain, so the
-            // legacy files are a second, plaintext copy of the same refresh token. Drop them.
-            removeLegacySessionFiles()
-        }
-        return legacy
-    }
-
-    func loadSavedSessions() -> [OPNAuthSession] {
-        var sessions = loadAccountDictionaries(activeUserId: nil).map(session).filter(\.isAuthenticated)
-        if sessions.isEmpty {
-            let legacy = loadLegacySingleSession()
-            if legacy.isAuthenticated { sessions.append(legacy) }
-        }
-        return sessions
-    }
-
-    func loadSavedSession(forUserId userId: String) -> OPNAuthSession {
-        guard !userId.isEmpty else { return OPNAuthSession() }
-        for account in loadAccountDictionaries(activeUserId: nil) {
-            if sessionIdentity(from: account) == userId {
-                return session(from: account)
-            }
-        }
-        return OPNAuthSession()
-    }
-
-    func setActiveSessionUserId(_ userId: String) {
-        guard !userId.isEmpty else { return }
-        var activeUserId: String?
-        let accounts = loadAccountDictionaries(activeUserId: &activeUserId)
-        guard accounts.contains(where: { sessionIdentity(from: $0) == userId }) else { return }
-        saveAccountDictionaries(accounts, activeUserId: userId)
-        let defaults = Self.authUserDefaults()
-        defaults.set(userId, forKey: "OPN_ActiveUserId")
-        defaults.set(true, forKey: "OPN_HasSavedSession")
-    }
-
-    func removeSavedSession(userId: String) {
-        guard !userId.isEmpty else { return }
-        var activeUserId: String?
-        let existing = loadAccountDictionaries(activeUserId: &activeUserId)
-        let removed = existing.filter { sessionIdentity(from: $0) == userId }
-        removed.forEach { removedAccount in
-            if let identity = sessionIdentity(from: removedAccount) {
-                GFNTokenStore.delete(forIdentity: identity)
-            }
-        }
-        let accounts = existing.filter { sessionIdentity(from: $0) != userId }
-        let newActive = activeUserId == userId ? accounts.compactMap(sessionIdentity).first : activeUserId
-        saveAccountDictionaries(accounts, activeUserId: newActive)
-        let defaults = Self.authUserDefaults()
-        if let newActive, !newActive.isEmpty {
-            defaults.set(newActive, forKey: "OPN_ActiveUserId")
-            defaults.set(true, forKey: "OPN_HasSavedSession")
-        } else {
-            defaults.removeObject(forKey: "OPN_ActiveUserId")
-            defaults.removeObject(forKey: "OPN_HasSavedSession")
-        }
-    }
-
-    func clearSession() {
-        let defaults = Self.authUserDefaults()
-        // Only take the per-account path when the stored id still names a real account. Builds
-        // before the identity change could leave an access token here, which matches nothing — and
-        // signing out would then clear neither the account nor its tokens.
-        if let activeUserId = defaults.string(forKey: "OPN_ActiveUserId"), !activeUserId.isEmpty,
-           loadAccountDictionaries(activeUserId: nil).contains(where: { sessionIdentity(from: $0) == activeUserId }) {
-            removeSavedSession(userId: activeUserId)
-            Task { [jarvisAuthService, starfleetService] in
-                await jarvisAuthService.clearSession()
-                await starfleetService.clearSession()
-            }
-            return
-        }
-        GFNTokenStore.deleteAll()
-        [accountsFilePath(), sessionFilePath(), legacySessionFilePath()].forEach { path in
-            if let path { try? FileManager.default.removeItem(atPath: path) }
-        }
-        defaults.removeObject(forKey: "OPN_HasSavedSession")
-        defaults.removeObject(forKey: "GFN_HasSavedSession")
-        defaults.removeObject(forKey: "OPN_ActiveUserId")
-        Task { [jarvisAuthService, starfleetService] in
-            await jarvisAuthService.clearSession()
-            await starfleetService.clearSession()
-        }
-    }
-
-    func getStayLoggedIn() -> Bool {
-        let defaults = Self.authUserDefaults()
-        if defaults.object(forKey: "OPN_StayLoggedIn") != nil { return defaults.bool(forKey: "OPN_StayLoggedIn") }
-        if defaults.object(forKey: "GFN_StayLoggedIn") != nil { return defaults.bool(forKey: "GFN_StayLoggedIn") }
-        return true
-    }
-
-    func setStayLoggedIn(_ value: Bool) {
-        let defaults = Self.authUserDefaults()
-        defaults.set(value, forKey: "OPN_StayLoggedIn")
-    }
-
-    static func parseOAuthSession(json: NSDictionary) -> OPNAuthSession {
-        opnSession(from: StarfleetSessionParser.parseTokenResponse(json as? [String: Any] ?? [:], defaultIdpId: defaultIdpId))
-    }
-
-    static func parseQueryString(_ query: String?) -> NSDictionary {
-        let params = NSMutableDictionary()
-        for (key, value) in JarvisSessionParser.parseQueryString(query) {
-            params[key] = value
-        }
-        return params
-    }
-
-    private func doOAuthTokenExchange(
-        authCode: String,
-        codeVerifier: String,
-        redirectUri: String,
-        providerIdpId: String,
-        completion: @escaping OPNAuthCallback
-    ) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let session = Self.opnSession(from: try await self.starfleetService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId))
-                await self.jarvisAuthService.setSession(session)
-                self.saveSession(session)
-                _ = await self.jarvisAuthService.finishLogin(success: true)
-                Task { @MainActor in completion(true, session, "") }
-            } catch {
-                _ = await self.jarvisAuthService.finishLogin(success: false)
-                Task { @MainActor in completion(false, OPNAuthSession(), error.localizedDescription) }
-            }
-        }
-    }
-
-    private func syncBackendSessions(_ session: OPNAuthSession) async {
-        await jarvisAuthService.setSession(session)
-        await starfleetService.setSession(Self.starfleetSession(from: session))
-    }
-
-    private func handleStarfleetFailure(_ error: Error) async {
-        guard (error as? StarfleetAuthError)?.category == .authorization else { return }
-        _ = await jarvisAuthService.finishLogin(success: false)
-    }
-
-    private func dictionary(from userInfo: StarfleetUserInfo) -> NSDictionary {
-        let dictionary = NSMutableDictionary()
-        put(userInfo.userId, key: "sub", into: dictionary)
-        put(userInfo.userId, key: "userId", into: dictionary)
-        put(userInfo.externalId, key: "external_id", into: dictionary)
-        put(userInfo.externalId, key: "externalId", into: dictionary)
-        put(userInfo.idpId, key: "idp_id", into: dictionary)
-        put(userInfo.idpId, key: "idpId", into: dictionary)
-        put(userInfo.preferredUsername, key: "preferred_username", into: dictionary)
-        put(userInfo.displayName, key: "name", into: dictionary)
-        put(userInfo.displayName, key: "displayName", into: dictionary)
-        put(userInfo.email, key: "email", into: dictionary)
-        return dictionary
-    }
-
-    private func startOAuthCallbackListener(
-        port: Int,
-        completion: @escaping @Sendable (Result<String, Error>) -> Void,
-        readyHandler: @escaping @Sendable () -> Void
-    ) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
-            guard socketDescriptor >= 0 else {
-                completion(.failure(ServiceError("Failed to create OAuth callback listener")))
-                return
-            }
-            var reuse = Int32(1)
-            setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-            var address = sockaddr_in()
-            address.sin_family = sa_family_t(AF_INET)
-            address.sin_addr.s_addr = in_addr_t(INADDR_LOOPBACK).bigEndian
-            address.sin_port = in_port_t(port).bigEndian
-            let bindResult = withUnsafePointer(to: &address) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    bind(socketDescriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-                }
-            }
-            guard bindResult == 0, listen(socketDescriptor, 1) == 0 else {
-                close(socketDescriptor)
-                completion(.failure(ServiceError("Failed to bind OAuth callback listener")))
-                return
-            }
-            readyHandler()
-            let clientSocket = accept(socketDescriptor, nil, nil)
-            close(socketDescriptor)
-            guard clientSocket >= 0 else {
-                completion(.failure(ServiceError("Failed to accept OAuth callback")))
-                return
-            }
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)
-            let body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
-            _ = response.withCString { send(clientSocket, $0, strlen($0), 0) }
-            close(clientSocket)
-
-            guard byteCount > 0 else {
-                completion(.failure(ServiceError("Empty OAuth callback request")))
-                return
-            }
-            let request = String(decoding: buffer.prefix(byteCount), as: UTF8.self)
-            guard let pathStart = request.range(of: "GET ")?.upperBound,
-                  let pathEnd = request[pathStart...].firstIndex(of: " ") else {
-                completion(.failure(ServiceError("Invalid OAuth callback request")))
-                return
-            }
-            let path = String(request[pathStart..<pathEnd])
-            let query = path.split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
-            completion(.success(query ?? ""))
-        }
-    }
-
-    private func findAvailablePort() -> Int {
-        for port in [2259, 6460, 7119, 8870, 9096] {
-            let probeSocket = socket(AF_INET, SOCK_STREAM, 0)
-            if probeSocket >= 0 {
-                var address = sockaddr_in()
-                address.sin_family = sa_family_t(AF_INET)
-                address.sin_addr.s_addr = in_addr_t(INADDR_LOOPBACK).bigEndian
-                address.sin_port = in_port_t(port).bigEndian
-                let hasListener = withUnsafePointer(to: &address) {
-                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                        connect(probeSocket, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
-                    }
-                }
-                close(probeSocket)
-                if hasListener { continue }
-            }
-            let testSocket = socket(AF_INET, SOCK_STREAM, 0)
-            if testSocket < 0 { continue }
-            var reuse = Int32(1)
-            setsockopt(testSocket, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-            var address = sockaddr_in()
-            address.sin_family = sa_family_t(AF_INET)
-            address.sin_addr.s_addr = in_addr_t(INADDR_LOOPBACK).bigEndian
-            address.sin_port = in_port_t(port).bigEndian
-            let canBind = withUnsafePointer(to: &address) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    bind(testSocket, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
-                }
-            }
-            close(testSocket)
-            if canBind { return port }
-        }
-        return 0
-    }
-
-    private func generatePKCEState() -> JarvisOAuthState {
-        let verifier = generateRandomString(length: 64)
-        return JarvisOAuthState(
-            codeVerifier: verifier,
-            codeChallenge: base64URLEncodedSHA256(verifier),
-            state: generateRandomString(length: 32),
-            nonce: generateRandomString(length: 32)
-        )
-    }
-
-    private func generateRandomString(length: Int) -> String {
-        let characters = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
-        return String((0..<length).compactMap { _ in characters.randomElement() })
-    }
-
-    private func base64URLEncodedSHA256(_ value: String) -> String {
-        Data(SHA256.hash(data: Data(value.utf8))).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-    }
-
-    private func generateOpenNOWDeviceId() -> String {
-        var hostnameBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-        let hostname = gethostname(&hostnameBuffer, hostnameBuffer.count) == 0
-            ? String(decoding: hostnameBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
-            : "unknown"
-        let user = ProcessInfo.processInfo.environment["USER"] ?? "unknown"
-        return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable".utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func authUserDefaults() -> UserDefaults {
-        if let suiteName = ProcessInfo.processInfo.environment["OPN_AUTH_USER_DEFAULTS_SUITE"], !suiteName.isEmpty {
-            return UserDefaults(suiteName: suiteName) ?? .standard
-        }
-        return .standard
-    }
-
-    private func applicationSupportBasePath() -> String? {
-        if let overridePath = ProcessInfo.processInfo.environment["OPN_AUTH_APPLICATION_SUPPORT_DIR"], !overridePath.isEmpty {
-            return overridePath
-        }
-        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path
-    }
-
-    private func sessionStorageDirectory() -> String? {
-        guard let basePath = applicationSupportBasePath(), !basePath.isEmpty else { return nil }
-        let directory = (basePath as NSString).appendingPathComponent("OpenNOW")
-        if !FileManager.default.fileExists(atPath: directory) {
-            try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        }
-        return directory
-    }
-
-    private func legacySessionFilePath() -> String? {
-        guard let basePath = applicationSupportBasePath(), !basePath.isEmpty else { return nil }
-        return ((basePath as NSString).appendingPathComponent("com.nvidia.geforcenow") as NSString).appendingPathComponent("session.plist")
-    }
-
-    private func sessionFilePath() -> String? {
-        sessionStorageDirectory().map { ($0 as NSString).appendingPathComponent("session.plist") }
-    }
-
-    private func accountsFilePath() -> String? {
-        sessionStorageDirectory().map { ($0 as NSString).appendingPathComponent("accounts.plist") }
-    }
-
-    private func sessionFilePathForRead() -> String? {
-        if let path = sessionFilePath(), FileManager.default.fileExists(atPath: path) { return path }
-        if let path = legacySessionFilePath(), FileManager.default.fileExists(atPath: path) { return path }
-        return sessionFilePath()
-    }
-
-    private func loadLegacySingleSession() -> OPNAuthSession {
-        guard let path = sessionFilePathForRead(), let dictionary = loadPropertyListDictionary(path: path) else { return OPNAuthSession() }
-        return session(from: dictionary)
-    }
-
-    private func loadAccountDictionaries(activeUserId: UnsafeMutablePointer<String?>?) -> [NSDictionary] {
-        let store = accountsFilePath().flatMap(loadPropertyListDictionary)
-        let storedActiveUserId = store?["active_user_id"] as? String
-        activeUserId?.pointee = storedActiveUserId
-        let accounts = store?["accounts"] as? [NSDictionary] ?? []
-        return drainLegacyTokens(from: accounts, activeUserId: storedActiveUserId)
-    }
-
-    private func saveAccountDictionaries(_ accounts: [NSDictionary], activeUserId: String?) {
-        guard let path = accountsFilePath() else { return }
-        let store = NSMutableDictionary()
-        store["accounts"] = accounts
-        if let activeUserId, !activeUserId.isEmpty { store["active_user_id"] = activeUserId }
-        guard let data = try? PropertyListSerialization.data(fromPropertyList: store, format: .xml, options: 0) else { return }
-        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
-    }
-
-    private func loadPropertyListDictionary(path: String) -> NSDictionary? {
-        guard FileManager.default.fileExists(atPath: path), let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
-        return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? NSDictionary
-    }
-
-    /// The profile fields only. The access token is deliberately NOT a fallback here: the identity
-    /// is written to UserDefaults, to `accounts.plist`, and to the keychain account name, so using
-    /// a token would scatter a live credential across all three. It also rotates on every refresh,
-    /// which orphaned a keychain item each time. `saveSession` mints a stable opaque id instead.
-    private func sessionIdentity(from session: OPNAuthSession) -> String? {
-        [session.userId, session.email, session.displayName].first { !$0.isEmpty }
-    }
-
-    /// `identity` first: an account whose profile fields are all blank still round-trips, which the
-    /// profile-only form could not do — the entry became unfindable and only the fallback path
-    /// reached it.
-    private func sessionIdentity(from dictionary: NSDictionary) -> String? {
-        ["identity", "user_id", "email", "display_name"].compactMap { dictionary[$0] as? String }.first { !$0.isEmpty }
-    }
-
-    private static func newAnonymousIdentity() -> String {
-        "anon." + UUID().uuidString
-    }
-
-    private static let legacyTokenKeys = ["access_token", "id_token", "refresh_token", "client_token"]
-
-    private func dictionary(from session: OPNAuthSession, identity: String) -> NSDictionary {
-        let dictionary = NSMutableDictionary()
-        put(identity, key: "identity", into: dictionary)
-        put(session.userId, key: "user_id", into: dictionary)
-        put(session.displayName, key: "display_name", into: dictionary)
-        put(session.email, key: "email", into: dictionary)
-        put(session.membershipTier, key: "membership_tier", into: dictionary)
-        put(session.idpId, key: "idp_id", into: dictionary)
-        dictionary["expires_at"] = session.expiresAt
-        dictionary["access_token_expiry"] = session.accessTokenExpiry
-        dictionary["client_token_expiry"] = session.clientTokenExpiry
-        dictionary["client_token_expiry_length"] = session.clientTokenExpiryLength
-        dictionary["id_token_expiry"] = session.idTokenExpiry
-        let tokens = GFNTokenStore.Tokens(
-            accessToken: session.accessToken,
-            idToken: session.idToken,
-            refreshToken: session.refreshToken,
-            clientToken: session.clientToken
-        )
-        GFNTokenStore.save(tokens, forIdentity: identity)
-        return dictionary
-    }
-
-    /// Pre-keychain builds wrote the tokens straight into `accounts.plist`. Migrating them on read
-    /// is not enough on its own: the file keeps its plaintext copy — including the long-lived
-    /// refresh token — until something rewrites it, so strip them here, once.
-    ///
-    /// An entry is only stripped once the keychain is confirmed to hold its tokens. Stripping on a
-    /// failed keychain write would sign the user out and lose the refresh token entirely.
-    private func drainLegacyTokens(from accounts: [NSDictionary], activeUserId: String?) -> [NSDictionary] {
-        var didDrain = false
-        let scrubbed: [NSDictionary] = accounts.map { account in
-            guard Self.legacyTokenKeys.contains(where: { account[$0] != nil }) else { return account }
-            guard let identity = sessionIdentity(from: account), !identity.isEmpty else { return account }
-            if GFNTokenStore.load(forIdentity: identity) == nil {
-                let tokens = GFNTokenStore.Tokens(
-                    accessToken: account["access_token"] as? String ?? "",
-                    idToken: account["id_token"] as? String ?? "",
-                    refreshToken: account["refresh_token"] as? String ?? "",
-                    clientToken: account["client_token"] as? String ?? ""
-                )
-                guard !tokens.isEmpty else { return account }
-                GFNTokenStore.save(tokens, forIdentity: identity)
-                guard GFNTokenStore.load(forIdentity: identity) != nil else { return account }
-            }
-            let copy = NSMutableDictionary(dictionary: account)
-            Self.legacyTokenKeys.forEach { copy.removeObject(forKey: $0) }
-            didDrain = true
-            return copy
-        }
-        if didDrain { saveAccountDictionaries(scrubbed, activeUserId: activeUserId) }
-        return scrubbed
-    }
-
-    /// The single-session plists predate `accounts.plist` and hold plaintext tokens of their own.
-    /// Removed once the session they carried has been re-saved through the keychain path.
-    private func removeLegacySessionFiles() {
-        [sessionFilePath(), legacySessionFilePath()].forEach { path in
-            if let path { try? FileManager.default.removeItem(atPath: path) }
-        }
-    }
-
-    private func session(from dictionary: NSDictionary) -> OPNAuthSession {
-        let identity = sessionIdentity(from: dictionary)
-        let keychainTokens = identity.flatMap { GFNTokenStore.load(forIdentity: $0) }
-        let accessToken = (keychainTokens?.accessToken ?? (dictionary["access_token"] as? String)) ?? ""
-        guard !accessToken.isEmpty else { return OPNAuthSession() }
-        var session = OPNAuthSession()
-        session.accessToken = accessToken
-        session.idToken = keychainTokens?.idToken ?? (dictionary["id_token"] as? String ?? "")
-        session.refreshToken = keychainTokens?.refreshToken ?? (dictionary["refresh_token"] as? String ?? "")
-        session.clientToken = keychainTokens?.clientToken ?? (dictionary["client_token"] as? String ?? "")
-        session.userId = dictionary["user_id"] as? String ?? ""
-        session.displayName = dictionary["display_name"] as? String ?? ""
-        session.email = dictionary["email"] as? String ?? ""
-        session.membershipTier = dictionary["membership_tier"] as? String ?? "Free"
-        session.idpId = dictionary["idp_id"] as? String ?? Self.defaultIdpId
-        session.expiresAt = JarvisSessionParser.int64Value(dictionary["expires_at"]) ?? 0
-        session.accessTokenExpiry = JarvisSessionParser.int64Value(dictionary["access_token_expiry"]) ?? 0
-        session.clientTokenExpiry = JarvisSessionParser.int64Value(dictionary["client_token_expiry"]) ?? 0
-        session.clientTokenExpiryLength = JarvisSessionParser.int64Value(dictionary["client_token_expiry_length"]) ?? 0
-        session.idTokenExpiry = JarvisSessionParser.int64Value(dictionary["id_token_expiry"]) ?? 0
-        session.isAuthenticated = true
-        if let identity, !identity.isEmpty, keychainTokens == nil,
-           let legacyAccess = dictionary["access_token"] as? String, !legacyAccess.isEmpty {
-            let tokens = GFNTokenStore.Tokens(
-                accessToken: legacyAccess,
-                idToken: dictionary["id_token"] as? String ?? "",
-                refreshToken: dictionary["refresh_token"] as? String ?? "",
-                clientToken: dictionary["client_token"] as? String ?? ""
-            )
-            GFNTokenStore.save(tokens, forIdentity: identity)
-        }
-        return session
-    }
-
-    private static func opnSession(from session: StarfleetSession) -> OPNAuthSession {
-        var mapped = OPNAuthSession()
-        mapped.accessToken = session.accessToken
-        mapped.idToken = session.idToken
-        mapped.refreshToken = session.refreshToken
-        mapped.clientToken = session.clientToken
-        mapped.userId = session.userId
-        mapped.displayName = session.displayName
-        mapped.email = session.email
-        mapped.idpId = session.idpId
-        mapped.expiresAt = session.expiresAt
-        mapped.isAuthenticated = session.isAuthenticated
-        mapped.clientTokenExpiry = session.clientTokenExpiry
-        mapped.clientTokenExpiryLength = session.clientTokenExpiryLength
-        mapped.idTokenExpiry = session.idTokenExpiry
-        mapped.accessTokenExpiry = session.accessTokenExpiry
-        if !session.idToken.isEmpty {
-            mapped.membershipTier = StarfleetTokenParser.jwtClaims(session.idToken)["membership_tier"] as? String ?? "Free"
-        }
-        return mapped
-    }
-
-    private static func starfleetSession(from session: OPNAuthSession) -> StarfleetSession {
-        StarfleetSession(
-            accessToken: session.accessToken,
-            idToken: session.idToken,
-            refreshToken: session.refreshToken,
-            userId: session.userId,
-            displayName: session.displayName,
-            email: session.email,
-            idpId: session.idpId.isEmpty ? defaultIdpId : session.idpId,
-            expiresAt: session.expiresAt,
-            isAuthenticated: session.isAuthenticated,
-            clientToken: session.clientToken,
-            clientTokenExpiry: session.clientTokenExpiry,
-            clientTokenExpiryLength: session.clientTokenExpiryLength,
-            idTokenExpiry: session.idTokenExpiry,
-            accessTokenExpiry: session.accessTokenExpiry
-        )
-    }
-
-    private func put(_ value: String, key: String, into dictionary: NSMutableDictionary) {
-        if !value.isEmpty { dictionary[key] = value }
-    }
-
-    private struct ServiceError: LocalizedError, Sendable {
-        let message: String
-        init(_ message: String) { self.message = message }
-        var errorDescription: String? { message }
-    }
-
 }

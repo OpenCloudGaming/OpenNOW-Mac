@@ -6,22 +6,22 @@ import SwiftUI
 /// a keyboard key, a mouse action, or off; trackpads and sticks additionally get a
 /// continuous-motion "Behavior" (mouse / scroll wheel / joystick / disabled).
 struct SteamControllerMappingView: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var store: SteamControllerMappingStore
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var store: SteamControllerMappingStore
 
     init(store: SteamControllerMappingStore = .shared) {
         _store = ObservedObject(wrappedValue: store)
     }
-    @StateObject private var liveModel = SteamControllerTestModel()
-    @State private var draft: SteamControllerMappingProfile?
-    @State private var selectedControl: SteamControllerControl = .leftGrip
-    @State private var bindingKindOverride: BindingKind?
+    @StateObject var liveModel = SteamControllerTestModel()
+    @State var draft: SteamControllerMappingProfile?
+    @State var selectedControl: SteamControllerControl = .leftGrip
+    @State var bindingKindOverride: BindingKind?
 
     private static let backgroundColor = OpenNOWDesign.Surface.deep
     private static let panelColor = Color(red: 24 / 255, green: 25 / 255, blue: 24 / 255)
     private static let sidebarColor = Color(red: 21 / 255, green: 22 / 255, blue: 21 / 255)
 
-    private enum BindingKind: String, CaseIterable, Identifiable {
+    enum BindingKind: String, CaseIterable, Identifiable {
         case gamepad, keyboard, mouse, off
         var id: String { rawValue }
         var label: String {
@@ -375,157 +375,4 @@ struct SteamControllerMappingView: View {
         }
     }
 
-    // MARK: - Gamepad chord editor
-
-    private func gamepadEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
-        let combo: SteamControllerGripCombo = {
-            if case .gamepadChord(let combo) = target { return combo }
-            return SteamControllerGripCombo()
-        }()
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : OpenNOWDesign.accent.opacity(0.9))
-            let columns = [GridItem(.adaptive(minimum: 64), spacing: 6)]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-                ForEach(SteamControllerGripComboTarget.all) { chip in
-                    let selected = combo.contains(chip.element)
-                    Button {
-                        var updated = combo
-                        updated.toggle(chip.element)
-                        draft?.bindings[control] = updated.isEmpty ? .passthroughButton : .gamepadChord(updated)
-                    } label: {
-                        Text(chip.label)
-                            .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
-                            .foregroundStyle(selected ? .black : .white.opacity(0.55))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 24)
-                            .background(selected ? OpenNOWDesign.accent : Color.white.opacity(0.05))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    // MARK: - Keyboard editor
-
-    private func keyboardEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
-        let currentLabel: String = {
-            if case .keyboardKey(let keyCode, let modifiers) = target {
-                return SteamControllerKeyLabel.label(for: keyCode, modifiers: modifiers)
-            }
-            return "Click to set a key"
-        }()
-        return SteamControllerBindingRecorder(currentLabel: currentLabel) { keyCode, modifiers in
-            draft?.bindings[control] = .keyboardKey(keyCode: keyCode, modifiers: modifiers)
-        }
-    }
-
-    // MARK: - Mouse editor
-
-    private func mouseEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
-        let current: MouseButton? = {
-            if case .mouseButton(let button) = target { return button }
-            return nil
-        }()
-        let options: [(MouseButton, String)] = [(.left, "Left Click"), (.right, "Right Click"), (.middle, "Middle Click"), (.back, "Back"), (.forward, "Forward")]
-        return VStack(alignment: .leading, spacing: 6) {
-            ForEach(options, id: \.0) { button, label in
-                Button {
-                    draft?.bindings[control] = .mouseButton(button)
-                } label: {
-                    HStack {
-                        Text(label)
-                            .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
-                            .foregroundStyle(current == button ? .black : .white.opacity(0.7))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(current == button ? OpenNOWDesign.accent : Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    // MARK: - Pad/stick behavior section
-
-    private enum PadSettingsKind {
-        case leftPad, rightPad, leftStick, rightStick
-    }
-
-    private func padSettingsKind(for control: SteamControllerControl) -> PadSettingsKind? {
-        switch control {
-        case .leftPadClick: .leftPad
-        case .rightPadClick: .rightPad
-        case .leftStickClick: .leftStick
-        case .rightStickClick: .rightStick
-        default: nil
-        }
-    }
-
-    private func padSettingsBinding(_ kind: PadSettingsKind) -> Binding<SteamControllerPadSettings> {
-        Binding(
-            get: {
-                guard let draft else { return SteamControllerPadSettings(mode: .disabled) }
-                switch kind {
-                case .leftPad: return draft.leftPad
-                case .rightPad: return draft.rightPad
-                case .leftStick: return draft.leftStick
-                case .rightStick: return draft.rightStick
-                }
-            },
-            set: { newValue in
-                switch kind {
-                case .leftPad: draft?.leftPad = newValue
-                case .rightPad: draft?.rightPad = newValue
-                case .leftStick: draft?.leftStick = newValue
-                case .rightStick: draft?.rightStick = newValue
-                }
-            }
-        )
-    }
-
-    private func behaviorSection(_ kind: PadSettingsKind) -> some View {
-        let binding = padSettingsBinding(kind)
-        let isStick = kind == .leftStick || kind == .rightStick
-        let availableModes: [SteamControllerPointerMode] = isStick
-            ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
-            : [.mouse, .scrollWheel, .disabled]
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("BEHAVIOR")
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
-                .tracking(1.0)
-                .foregroundStyle(.white.opacity(0.35))
-            Picker("", selection: binding.mode) {
-                ForEach(availableModes) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-
-            if binding.wrappedValue.mode == .mouse || binding.wrappedValue.mode == .scrollWheel {
-                HStack {
-                    Text("Sensitivity")
-                        .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
-                    Spacer()
-                    Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                Slider(value: binding.sensitivity, in: 0.1...4.0)
-                Toggle("Invert Y-Axis", isOn: binding.invertY)
-                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                    .toggleStyle(.switch)
-            }
-        }
-    }
 }

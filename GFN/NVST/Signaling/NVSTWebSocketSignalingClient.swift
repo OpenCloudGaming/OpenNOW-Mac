@@ -10,7 +10,7 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
     public var onIceCandidate: ((NVSTIceCandidate) -> Void)?
     public var onClosed: ((Bool, String) -> Void)?
 
-    private let configuration: NVSTSignalingConfiguration
+    let configuration: NVSTSignalingConfiguration
     private var peerId = 0
     private var remotePeerId = 1
     private var ackCounter = 0

@@ -92,78 +92,81 @@ enum SteamControllerKeyLabel {
         return parts.joined()
     }
 
+    /// Virtual key code to the label a user recognises. A table rather than a `switch`, because it
+    /// is pure data: every entry is one key on a US layout.
+    private static let baseLabels: [UInt16: String] = [
+        0: "A",
+        1: "S",
+        2: "D",
+        3: "F",
+        4: "H",
+        5: "G",
+        6: "Z",
+        7: "X",
+        8: "C",
+        9: "V",
+        11: "B",
+        12: "Q",
+        13: "W",
+        14: "E",
+        15: "R",
+        16: "Y",
+        17: "T",
+        18: "1",
+        19: "2",
+        20: "3",
+        21: "4",
+        22: "6",
+        23: "5",
+        24: "=",
+        25: "9",
+        26: "7",
+        27: "-",
+        28: "8",
+        29: "0",
+        30: "]",
+        31: "O",
+        32: "U",
+        33: "[",
+        34: "I",
+        35: "P",
+        36: "Return",
+        37: "L",
+        38: "J",
+        39: "'",
+        40: "K",
+        41: ";",
+        42: "\\",
+        43: ",",
+        44: "/",
+        45: "N",
+        46: "M",
+        47: ".",
+        48: "Tab",
+        49: "Space",
+        50: "`",
+        51: "Delete",
+        53: "Escape",
+        76: "Enter",
+        96: "F5",
+        97: "F6",
+        98: "F7",
+        99: "F3",
+        100: "F8",
+        101: "F9",
+        103: "F11",
+        109: "F10",
+        111: "F12",
+        118: "F4",
+        120: "F2",
+        122: "F1",
+        123: "←",
+        124: "→",
+        125: "↓",
+        126: "↑"
+    ]
+
     private static func baseLabel(for keyCode: UInt16) -> String {
-        switch keyCode {
-        case 0: "A"
-        case 1: "S"
-        case 2: "D"
-        case 3: "F"
-        case 4: "H"
-        case 5: "G"
-        case 6: "Z"
-        case 7: "X"
-        case 8: "C"
-        case 9: "V"
-        case 11: "B"
-        case 12: "Q"
-        case 13: "W"
-        case 14: "E"
-        case 15: "R"
-        case 16: "Y"
-        case 17: "T"
-        case 18: "1"
-        case 19: "2"
-        case 20: "3"
-        case 21: "4"
-        case 22: "6"
-        case 23: "5"
-        case 24: "="
-        case 25: "9"
-        case 26: "7"
-        case 27: "-"
-        case 28: "8"
-        case 29: "0"
-        case 30: "]"
-        case 31: "O"
-        case 32: "U"
-        case 33: "["
-        case 34: "I"
-        case 35: "P"
-        case 36: "Return"
-        case 37: "L"
-        case 38: "J"
-        case 39: "'"
-        case 40: "K"
-        case 41: ";"
-        case 42: "\\"
-        case 43: ","
-        case 44: "/"
-        case 45: "N"
-        case 46: "M"
-        case 47: "."
-        case 48: "Tab"
-        case 49: "Space"
-        case 50: "`"
-        case 51: "Delete"
-        case 53: "Escape"
-        case 76: "Enter"
-        case 96: "F5"
-        case 97: "F6"
-        case 98: "F7"
-        case 99: "F3"
-        case 100: "F8"
-        case 101: "F9"
-        case 103: "F11"
-        case 109: "F10"
-        case 111: "F12"
-        case 118: "F4"
-        case 120: "F2"
-        case 122: "F1"
-        case 123: "←"
-        case 124: "→"
-        case 125: "↓"
-        case 126: "↑"
-        default: "Key \(keyCode)"
-        }
+        baseLabels[keyCode] ?? "Key \(keyCode)"
     }
 }

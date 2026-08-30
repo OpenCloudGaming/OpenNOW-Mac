@@ -36,69 +36,29 @@ public struct SteamControllerBindingEngine: Sendable {
         let active = Self.activeControls(snapshot: snapshot)
         updateHoldInstants(active: active, now: now)
 
-        var outputButtons: GamepadButtons = []
-        var leftTriggerPulled = false
-        var rightTriggerPulled = false
-        var nextReapplyDelay: Duration?
-        var events: [UserInputEvent] = []
-
+        var pass = DiscretePass()
         for control in SteamControllerControl.allCases {
-            let isActive = active.contains(control)
-            let wasActive = previousActiveControls.contains(control)
-            switch profile.binding(for: control) {
-            case .passthroughButton:
-                if isActive, let bit = control.gamepadButton {
-                    outputButtons.insert(bit)
-                }
-
-            case .disabled:
-                break
-
-            case .gamepadChord(let combo):
-                guard isActive else { continue }
-                let modifiers = combo.buttons.intersection(Self.chordModifierButtons)
-                let actionButtons = combo.buttons.subtracting(modifiers)
-                outputButtons.formUnion(modifiers)
-                leftTriggerPulled = leftTriggerPulled || combo.leftTrigger
-                rightTriggerPulled = rightTriggerPulled || combo.rightTrigger
-                guard !actionButtons.isEmpty else { continue }
-                let hasModifierPhase = combo.leftTrigger || combo.rightTrigger || !modifiers.isEmpty
-                let held = holdInstants[control].map { now - $0 } ?? .zero
-                if !hasModifierPhase || held >= Self.modifierLeadTime {
-                    outputButtons.formUnion(actionButtons)
-                } else {
-                    let remaining = Self.modifierLeadTime - held
-                    nextReapplyDelay = nextReapplyDelay.map { min($0, remaining) } ?? remaining
-                }
-
-            case .keyboardKey(let keyCode, let modifiers):
-                guard isActive != wasActive else { continue }
-                events.append(.keyboard(KeyboardEvent(
-                    deviceID: deviceID, keyCode: keyCode, scanCode: keyCode,
-                    modifiers: modifiers, isPressed: isActive, timestamp: timestamp
-                )))
-
-            case .mouseButton(let button):
-                guard isActive != wasActive else { continue }
-                events.append(.mouse(.button(deviceID: deviceID, button: button, isPressed: isActive, timestamp: timestamp)))
-
-            case .mouseScroll(let delta):
-                guard isActive, !wasActive else { continue }
-                events.append(.mouse(.wheel(deviceID: deviceID, delta: delta, timestamp: timestamp)))
-            }
+            apply(binding: profile.binding(for: control),
+                  control: control,
+                  isActive: active.contains(control),
+                  wasActive: previousActiveControls.contains(control),
+                  deviceID: deviceID,
+                  now: now,
+                  timestamp: timestamp,
+                  into: &pass)
         }
-        if snapshot.buttons.contains(.quickAccess) { outputButtons.insert(.quickAccess) }
+        if snapshot.buttons.contains(.quickAccess) { pass.buttons.insert(.quickAccess) }
         previousActiveControls = active
 
-        let leftTrigger = leftTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .leftTrigger)) ? 0 : snapshot.leftTrigger)
-        let rightTrigger = rightTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .rightTrigger)) ? 0 : snapshot.rightTrigger)
+        let leftTrigger = pass.leftTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .leftTrigger)) ? 0 : snapshot.leftTrigger)
+        let rightTrigger = pass.rightTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .rightTrigger)) ? 0 : snapshot.rightTrigger)
         let leftStickPassthrough = profile.leftStick.mode == .joystickPassthrough
         let rightStickPassthrough = profile.rightStick.mode == .joystickPassthrough
 
-        events.append(.gamepad(GamepadState(
+        pass.events.append(.gamepad(GamepadState(
             deviceID: deviceID,
             playerIndex: playerIndex,
-            buttons: outputButtons,
+            buttons: pass.buttons,
             leftTrigger: leftTrigger,
             rightTrigger: rightTrigger,
             leftStickX: leftStickPassthrough ? snapshot.leftStickX : 0,
@@ -108,7 +68,77 @@ public struct SteamControllerBindingEngine: Sendable {
             timestamp: timestamp
         )))
 
-        return SteamControllerBindingResult(events: events, nextReapplyDelay: nextReapplyDelay)
+        return SteamControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay)
+    }
+
+    /// What one discrete pass accumulates while walking the controls.
+    private struct DiscretePass {
+        var buttons: GamepadButtons = []
+        var leftTriggerPulled = false
+        var rightTriggerPulled = false
+        var nextReapplyDelay: Duration?
+        var events: [UserInputEvent] = []
+    }
+
+    /// Folds one control's binding into the pass.
+    private func apply(binding: SteamControllerBindingTarget,
+                       control: SteamControllerControl,
+                       isActive: Bool,
+                       wasActive: Bool,
+                       deviceID: InputDeviceID,
+                       now: ContinuousClock.Instant,
+                       timestamp: MediaTimestamp,
+                       into pass: inout DiscretePass) {
+        switch binding {
+        case .passthroughButton:
+            if isActive, let bit = control.gamepadButton {
+                pass.buttons.insert(bit)
+            }
+
+        case .disabled:
+            break
+
+        case .gamepadChord(let combo):
+            guard isActive else { return }
+            apply(chord: combo, control: control, now: now, into: &pass)
+
+        case .keyboardKey(let keyCode, let modifiers):
+            guard isActive != wasActive else { return }
+            pass.events.append(.keyboard(KeyboardEvent(
+                deviceID: deviceID, keyCode: keyCode, scanCode: keyCode,
+                modifiers: modifiers, isPressed: isActive, timestamp: timestamp
+            )))
+
+        case .mouseButton(let button):
+            guard isActive != wasActive else { return }
+            pass.events.append(.mouse(.button(deviceID: deviceID, button: button, isPressed: isActive, timestamp: timestamp)))
+
+        case .mouseScroll(let delta):
+            guard isActive, !wasActive else { return }
+            pass.events.append(.mouse(.wheel(deviceID: deviceID, delta: delta, timestamp: timestamp)))
+        }
+    }
+
+    /// A chord's modifiers go down first; the action buttons follow only once the modifier lead
+    /// time has elapsed, and the caller is asked to reapply when it has not.
+    private func apply(chord combo: SteamControllerGripCombo,
+                       control: SteamControllerControl,
+                       now: ContinuousClock.Instant,
+                       into pass: inout DiscretePass) {
+        let modifiers = combo.buttons.intersection(Self.chordModifierButtons)
+        let actionButtons = combo.buttons.subtracting(modifiers)
+        pass.buttons.formUnion(modifiers)
+        pass.leftTriggerPulled = pass.leftTriggerPulled || combo.leftTrigger
+        pass.rightTriggerPulled = pass.rightTriggerPulled || combo.rightTrigger
+        guard !actionButtons.isEmpty else { return }
+        let hasModifierPhase = combo.leftTrigger || combo.rightTrigger || !modifiers.isEmpty
+        let held = holdInstants[control].map { now - $0 } ?? .zero
+        if !hasModifierPhase || held >= Self.modifierLeadTime {
+            pass.buttons.formUnion(actionButtons)
+        } else {
+            let remaining = Self.modifierLeadTime - held
+            pass.nextReapplyDelay = pass.nextReapplyDelay.map { min($0, remaining) } ?? remaining
+        }
     }
 
     /// Trackpad/stick continuous pointer motion (mouse-move or scroll-wheel), driven by

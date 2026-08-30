@@ -4,14 +4,9 @@
 # size burn-down for the views that still carry logic. It is not a style linter — every stylistic
 # rule stays disabled so the diff noise stays zero.
 #
-# Existing violations are absorbed by swiftlint-baseline.json. Regenerate it after each migration
-# phase lands, so the baseline only ever shrinks:
+# There is no baseline: the tree lints clean, so every rule below applies to every file. CI runs:
 #
-#   swiftlint --write-baseline swiftlint-baseline.json
-#
-# CI runs:
-#
-#   swiftlint lint --strict --baseline swiftlint-baseline.json
+#   swiftlint lint --strict App GFN Model OPN View ViewModel Tests
 
 only_rules:
   - file_length
@@ -20,18 +15,15 @@ only_rules:
   - cyclomatic_complexity
   - custom_rules
 
-# Deliberately no `excluded:` key. Setting it makes SwiftLint report paths relative to the config
-# instead of absolute, and `--baseline` matches on the stored path — so a config with `excluded:`
-# silently suppresses nothing and every baselined violation comes back. Verified against 0.65.1.
-#
-# Scope comes from the explicit path list passed on the command line instead:
+# Deliberately no `excluded:` key. Scope comes from the explicit path list passed on the command
+# line instead:
 #
 #   swiftlint lint App GFN Model OPN View ViewModel Tests
 #
 # which keeps .build/, DerivedData/, build/ and WebRTC.framework/ out without touching `excluded:`.
 
-# Size limits double as the R1/R2 burn-down chart. Today's worst offenders are absorbed by the
-# baseline; anything new has to come in under these.
+# Size limits double as the R1/R2 budget. Everything in the tree is under them; a file that grows
+# past one is asking to be split rather than to have the limit raised.
 file_length:
   warning: 600
   error: 1200

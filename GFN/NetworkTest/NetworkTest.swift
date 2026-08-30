@@ -368,7 +368,7 @@ public enum NetworkTestServiceError: LocalizedError, Equatable, Sendable {
 public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
     public private(set) var lifecycle: NetworkTestLifecycle
 
-    private let configuration: NetworkTestConfiguration
+    let configuration: NetworkTestConfiguration
     private let transport: Transport
     private var activeTask: Task<NetworkTestResult, Error>?
     private var activeOperationID: UUID?

@@ -335,17 +335,17 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         return key
     }
 
-    private static func int(_ value: String?, defaultValue: Int) -> Int {
+    static func int(_ value: String?, defaultValue: Int) -> Int {
         guard let value, let parsed = Int(value) else { return defaultValue }
         return parsed
     }
 
-    private static func bool(_ value: String?, defaultValue: Bool) -> Bool {
+    static func bool(_ value: String?, defaultValue: Bool) -> Bool {
         guard let value else { return defaultValue }
         return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
     }
 
-    private static func string(_ value: String?, defaultValue: String) -> String {
+    static func string(_ value: String?, defaultValue: String) -> String {
         normalizedURLString(value ?? "", fallback: defaultValue)
     }
 }

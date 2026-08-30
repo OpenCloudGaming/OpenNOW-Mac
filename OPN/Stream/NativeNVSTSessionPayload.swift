@@ -62,7 +62,7 @@ public struct NativeNVSTSessionPayload: Equatable, Sendable {
         return object
     }
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
         if let value = value as? NSString { return (value as String).trimmingCharacters(in: .whitespacesAndNewlines) }
         if let value = value as? NSNumber { return value.stringValue }

@@ -414,7 +414,7 @@ actor CatalogImageCache {
 }
 
 nonisolated private final class CatalogImageCachePruneThrottle: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var storesSincePrune = 0
     private var lastPruneDate = Date.distantPast
 
@@ -449,7 +449,7 @@ nonisolated private final class CatalogImageCachePruneThrottle: @unchecked Senda
 /// The queue is deliberately not the cache actor: routing persistence back through the actor is
 /// what caused the shared-container stall this cache was split out to avoid.
 nonisolated private final class CatalogImageCacheContainerStore: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.opennow.catalog-image-cache.persistence")
+    let queue = DispatchQueue(label: "com.opennow.catalog-image-cache.persistence")
     /// Only ever touched on `queue`, which is also the only thing that serialises it - no separate
     /// lock, and one context reused for the process lifetime now that nothing else can reach it.
     private var modelContainer: ModelContainer?

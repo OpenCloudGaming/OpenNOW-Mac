@@ -1,5 +1,5 @@
 //
-//  ControllerSettingsFocus.swift
+//  ControllerSettingsFocusModel.swift
 //  OpenNOW
 //
 //  Pad focus for the settings surface: which row is focused, what order they traverse in, and the
@@ -20,7 +20,7 @@ import Foundation
 /// on screen - including rows that appear and disappear as other settings change - without any page
 /// having to declare one.
 @MainActor
-final class ControllerSettingsFocus: ObservableObject {
+final class ControllerSettingsFocusModel: ObservableObject {
     @Published private(set) var focusedID: String?
     @Published private(set) var isActive = false
     /// The latest command aimed at the focused row. Rows act on it from their current render, so

@@ -168,7 +168,7 @@ public final class OPNProtocolDebug: NSObject {
 }
 
 private final class ProtocolCaptureSequence: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var value: UInt = 0
 
     func next() -> UInt {

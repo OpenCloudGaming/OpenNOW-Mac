@@ -148,48 +148,58 @@ public struct NvstWebSocketFrameReader: Sendable {
     public mutating func push(_ chunk: Data) throws -> [Data] {
         buffer.append(chunk)
         var messages: [Data] = []
-        while true {
-            var reader = NvstByteReader(buffer)
-            guard reader.remaining >= 2,
-                  let firstByte = try? reader.u8(),
-                  let secondByte = try? reader.u8() else { break }
-            let masked = (secondByte & 0x80) != 0
-            var payloadLength = Int(secondByte & 0x7f)
-            if payloadLength == 126 {
-                guard let extended = try? reader.u16BE() else { break }
-                payloadLength = Int(extended)
-            } else if payloadLength == 127 {
-                guard let extended = try? reader.u64BE() else { break }
-                guard extended <= UInt64(Int(Int32.max)) else { throw NvstWebSocketFrameError.frameTooLarge }
-                payloadLength = Int(extended)
-            }
-            let maskLength = masked ? 4 : 0
-            guard reader.remaining >= maskLength + payloadLength else { break }
-            let opcode = firstByte & 0x0f
-            var mask = Data()
-            if masked {
-                guard let frameMask = try? reader.bytes(4) else { break }
-                mask = frameMask
-            }
-            guard var payload = try? reader.bytes(payloadLength) else { break }
-            if masked {
-                let maskBytes = [UInt8](mask)
-                for index in payload.indices {
-                    payload[index] ^= maskBytes[(index - payload.startIndex) % 4]
-                }
-            }
-            buffer = reader.unread
-            if opcode == 0x1 || opcode == 0x2 {
-                messages.append(payload)
-            } else if opcode == 0x8 {
-                throw NvstWebSocketFrameError.closed
-            } else if opcode == 0xa {
-                pongsSeen += 1
-            } else if opcode == 0x9 {
-                pendingPings.append(payload)
+        while let frame = try nextFrame() {
+            switch frame.opcode {
+            case 0x1, 0x2: messages.append(frame.payload)
+            case 0x8: throw NvstWebSocketFrameError.closed
+            case 0x9: pendingPings.append(frame.payload)
+            case 0xa: pongsSeen += 1
+            default: break
             }
         }
         return messages
+    }
+
+    /// One complete frame consumed from `buffer`, or nil when only a partial frame has arrived.
+    private mutating func nextFrame() throws -> (opcode: UInt8, payload: Data)? {
+        var reader = NvstByteReader(buffer)
+        guard reader.remaining >= 2,
+              let firstByte = try? reader.u8(),
+              let secondByte = try? reader.u8() else { return nil }
+        let masked = (secondByte & 0x80) != 0
+        guard let payloadLength = try Self.payloadLength(secondByte, reader: &reader) else { return nil }
+        let maskLength = masked ? 4 : 0
+        guard reader.remaining >= maskLength + payloadLength else { return nil }
+        var mask = Data()
+        if masked {
+            guard let frameMask = try? reader.bytes(4) else { return nil }
+            mask = frameMask
+        }
+        guard var payload = try? reader.bytes(payloadLength) else { return nil }
+        if masked {
+            let maskBytes = [UInt8](mask)
+            for index in payload.indices {
+                payload[index] ^= maskBytes[(index - payload.startIndex) % 4]
+            }
+        }
+        buffer = reader.unread
+        return (firstByte & 0x0f, payload)
+    }
+
+    /// The frame's payload length, following the 126/127 extended-length escapes. Nil means the
+    /// extended field has not arrived yet.
+    private static func payloadLength(_ secondByte: UInt8, reader: inout NvstByteReader) throws -> Int? {
+        let base = Int(secondByte & 0x7f)
+        if base == 126 {
+            guard let extended = try? reader.u16BE() else { return nil }
+            return Int(extended)
+        }
+        if base == 127 {
+            guard let extended = try? reader.u64BE() else { return nil }
+            guard extended <= UInt64(Int(Int32.max)) else { throw NvstWebSocketFrameError.frameTooLarge }
+            return Int(extended)
+        }
+        return base
     }
 }
 

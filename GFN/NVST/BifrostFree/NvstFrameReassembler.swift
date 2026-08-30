@@ -38,7 +38,7 @@ public enum NvstReassemblyDrop: Equatable, Sendable {
 /// start-of-frame was seen and its end-of-frame arrives, so a gap never produces a
 /// half-decodable access unit — it produces a drop the feedback plane answers with a PLI.
 public final class NvstFrameReassembler: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private let maxAccessUnitBytes: Int
     private let codec: NVSTVideoCodec
     private var currentFrame: UInt32?
@@ -91,48 +91,64 @@ public final class NvstFrameReassembler: @unchecked Sendable {
         }
 
         if packet.isStartOfFrame {
-            // A start-of-frame while a frame is still assembling abandons that frame. It used to
-            // vanish with no counter, so a stream losing two thirds of its frames looked healthy.
-            if currentFrame != nil { abandonedFrames += 1 }
-            resetLocked()
-            expectedAv1AccessUnitLength = Self.av1AccessUnitLength(in: packet.payload, codec: codec)
-            guard let stripped = NvstAnnexB.picturePayload(packet.payload, codec: codec) else {
-                throw NvstReassemblyDrop.missingStartCode
-            }
-            guard stripped.count <= maxAccessUnitBytes else {
-                resetLocked()
-                throw NvstReassemblyDrop.accessUnitTooLarge(limit: maxAccessUnitBytes)
-            }
-            currentFrame = packet.frameIndex
-            firstStreamPacketIndex = packet.streamSequence
-            lastStreamPacketIndex = packet.streamSequence
-            bytes = stripped
+            try beginFrameLocked(packet)
         } else if currentFrame != packet.frameIndex {
             resetLocked()
             throw NvstReassemblyDrop.awaitingStartOfFrame
         } else {
-            // Repair packets were skipped, so a break in the stream sequence is a real hole in the
-            // picture data. `dropped` counts nothing here because the reorder buffer saw no
-            // reordering — the packet simply never arrived.
-            if let previous = lastStreamPacketIndex {
-                // `streamSequence` is a 24-bit GS field, so compare it modulo 2^24: otherwise the
-                // 0xff_ffff -> 0x000000 rollover (~every 2^24 packets, ~half an hour of streaming)
-                // reads as a gap and forces a needless keyframe.
-                let expected = (previous &+ 1) & 0x00ff_ffff
-                if packet.streamSequence != expected {
-                    resetLocked()
-                    throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence)
-                }
-            }
-            guard packet.payload.count <= maxAccessUnitBytes - bytes.count else {
-                resetLocked()
-                throw NvstReassemblyDrop.accessUnitTooLarge(limit: maxAccessUnitBytes)
-            }
-            lastStreamPacketIndex = packet.streamSequence
-            bytes.append(packet.payload)
+            try appendLocked(packet)
         }
 
         guard packet.isEndOfFrame else { return nil }
+        return try completeFrameLocked(packet)
+    }
+
+    /// Starts a new access unit. A start-of-frame while a frame is still assembling abandons that
+    /// frame — it used to vanish with no counter, so a stream losing two thirds of its frames
+    /// looked healthy.
+    private func beginFrameLocked(_ packet: NvstRtpVideoPacket) throws {
+        if currentFrame != nil { abandonedFrames += 1 }
+        resetLocked()
+        expectedAv1AccessUnitLength = Self.av1AccessUnitLength(in: packet.payload, codec: codec)
+        guard let stripped = NvstAnnexB.picturePayload(packet.payload, codec: codec) else {
+            throw NvstReassemblyDrop.missingStartCode
+        }
+        guard stripped.count <= maxAccessUnitBytes else {
+            resetLocked()
+            throw NvstReassemblyDrop.accessUnitTooLarge(limit: maxAccessUnitBytes)
+        }
+        currentFrame = packet.frameIndex
+        firstStreamPacketIndex = packet.streamSequence
+        lastStreamPacketIndex = packet.streamSequence
+        bytes = stripped
+    }
+
+    /// Appends a continuation packet of the frame already assembling.
+    ///
+    /// Repair packets were skipped, so a break in the stream sequence is a real hole in the picture
+    /// data. `dropped` counts nothing here because the reorder buffer saw no reordering — the
+    /// packet simply never arrived.
+    private func appendLocked(_ packet: NvstRtpVideoPacket) throws {
+        if let previous = lastStreamPacketIndex {
+            // `streamSequence` is a 24-bit GS field, so compare it modulo 2^24: otherwise the
+            // 0xff_ffff -> 0x000000 rollover (~every 2^24 packets, ~half an hour of streaming)
+            // reads as a gap and forces a needless keyframe.
+            let expected = (previous &+ 1) & 0x00ff_ffff
+            if packet.streamSequence != expected {
+                resetLocked()
+                throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence)
+            }
+        }
+        guard packet.payload.count <= maxAccessUnitBytes - bytes.count else {
+            resetLocked()
+            throw NvstReassemblyDrop.accessUnitTooLarge(limit: maxAccessUnitBytes)
+        }
+        lastStreamPacketIndex = packet.streamSequence
+        bytes.append(packet.payload)
+    }
+
+    /// Finishes the assembled access unit on end-of-frame.
+    private func completeFrameLocked(_ packet: NvstRtpVideoPacket) throws -> NvstAccessUnit? {
         // AV1 is not self-delimiting the way Annex-B is, so trailing bytes from the last packet
         // would be fed to the decoder as if they were OBU data. The GFN cloud 0x81 header states
         // the exact access-unit size, so trim to it — and treat a size the frame cannot satisfy as

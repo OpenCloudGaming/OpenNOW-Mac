@@ -4,82 +4,14 @@ import Testing
 
 @Suite(.serialized)
 struct NvstMjolnirReceiverTests {
-    private static let mediaSSRC: UInt32 = 0x1122_3344
-
-    private func hex(_ text: String) -> Data {
-        var data = Data()
-        var index = text.startIndex
-        while index < text.endIndex {
-            let next = text.index(index, offsetBy: 2)
-            data.append(UInt8(text[index..<next], radix: 16)!)
-            index = next
-        }
-        return data
-    }
-
-    private func makeHandoff(profile: NVSTSrtpProfile = .aeadAes256Gcm8,
-                             reorderWindow: Int = 32,
-                             expectedSSRC: UInt32 = NvstMjolnirReceiverTests.mediaSSRC) -> NVSTVideoHandoff {
-        NVSTVideoHandoff(
-            clientUDPPort: 0,
-            videoPeerIP: "192.0.2.20",
-            videoPeerPort: 5004,
-            srtpProfile: profile,
-            srtpAESKey: hex(String(repeating: "ab", count: profile.masterKeyLength)),
-            srtpSalt: hex(String(repeating: "9e", count: profile.masterSaltLength)),
-            codec: .h264,
-            rtpPayloadType: 96,
-            rtpSSRC: expectedSSRC,
-            reorderWindowPackets: reorderWindow,
-            maxAccessUnitBytes: 2 * 1024 * 1024,
-            timeoutMilliseconds: 5000,
-            pingVersion: nil,
-            pingPayload: "PING",
-            mjolnirUDPPort: 0,
-            iceCredentials: nil
-        )
-    }
-
-    /// Protects a plaintext GS/RTP packet exactly the way the seat does: AES-GCM over the
-    /// payload with the RTP header (extension included) as AAD.
-    private func seal(_ packet: Data, sequence: UInt16, handoff: NVSTVideoHandoff, rolloverCounter: UInt32 = 0, ssrc: UInt32 = NvstMjolnirReceiverTests.mediaSSRC) throws -> Data {
-        let sessionKey = try SrtpKeyDerivation.derive(key: handoff.srtpAESKey, salt: handoff.srtpSalt, label: 0x00, length: handoff.srtpProfile.masterKeyLength)
-        let sessionSalt = try SrtpKeyDerivation.derive(key: handoff.srtpAESKey, salt: handoff.srtpSalt, label: 0x02, length: 12)
-        let cipher = try SrtpGcm8(key: sessionKey)
-        let headerLength = 32 // 12-byte RTP header + 4-byte extension header + 16-byte GS block
-        let aad = packet.prefix(headerLength)
-        let plaintext = packet.dropFirst(headerLength)
-        let iv = try SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequence)
-        let sealed = try cipher.seal(iv: iv, aad: Data(aad), plaintext: Data(plaintext), tagLength: handoff.srtpProfile.authenticationTagLength)
-        return Data(aad) + sealed
-    }
-
-    private func packet(sequence: UInt16, frameIndex: UInt32, flags: UInt8, media: [UInt8],
-                        fecWord: UInt32 = 0, streamSequence: UInt32? = nil) -> Data {
-        NvstVideoPacketTests.buildPacket(sequence: sequence, frameIndex: frameIndex, flags: flags,
-                                         media: media, fecWord: fecWord, streamSequence: streamSequence)
-    }
-
-    private func frames(_ events: [NvstReceiveEvent]) -> [NvstAccessUnit] {
-        events.compactMap { if case .frame(let unit) = $0 { return unit } else { return nil } }
-    }
-
-    private func drops(_ events: [NvstReceiveEvent]) -> [String] {
-        events.compactMap { if case .dropped(let reason) = $0 { return reason.description } else { return nil } }
-    }
-
-    private func recoveries(_ events: [NvstReceiveEvent]) -> Int {
-        events.filter { if case .recoveryNeeded = $0 { return true } else { return false } }.count
-    }
-
     @Test func authenticatedPacketsReassembleIntoAnAnnexBAccessUnit() throws {
-        let handoff = makeHandoff()
+        let handoff = NvstReceiverFixtures.makeHandoff()
         let receiver = try NvstVideoReceiver(handoff: handoff)
-        let sof = packet(sequence: 1, frameIndex: 42, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65])
-        let eof = packet(sequence: 2, frameIndex: 42, flags: 0x03, media: [0x00, 0x00, 0x01, 0x41])
+        let sof = NvstReceiverFixtures.packet(sequence: 1, frameIndex: 42, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65])
+        let eof = NvstReceiverFixtures.packet(sequence: 2, frameIndex: 42, flags: 0x03, media: [0x00, 0x00, 0x01, 0x41])
 
-        #expect(frames(receiver.process(datagram: try seal(sof, sequence: 1, handoff: handoff))).isEmpty)
-        let emitted = frames(receiver.process(datagram: try seal(eof, sequence: 2, handoff: handoff)))
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: try NvstReceiverFixtures.seal(sof, sequence: 1, handoff: handoff))).isEmpty)
+        let emitted = NvstReceiverFixtures.frames(receiver.process(datagram: try NvstReceiverFixtures.seal(eof, sequence: 2, handoff: handoff)))
         #expect(emitted.count == 1)
         #expect(emitted[0].bytes == Data([0x00, 0x00, 0x00, 0x01, 0x65, 0x00, 0x00, 0x01, 0x41]))
         #expect(emitted[0].isKeyframe)
@@ -87,47 +19,47 @@ struct NvstMjolnirReceiverTests {
         #expect(stats.authenticatedPackets == 2)
         #expect(stats.framesEmitted == 1)
         #expect(stats.keyframesEmitted == 1)
-        #expect(stats.boundSSRC == Self.mediaSSRC)
+        #expect(stats.boundSSRC == NvstReceiverFixtures.mediaSSRC)
     }
 
     @Test func theSixteenByteTagProfileAuthenticatesToo() throws {
         // The seat advertises AEAD_AES_256_GCM explicitly on some builds; the tag is 16 bytes
         // there, not NVIDIA's default 8.
-        let handoff = makeHandoff(profile: .aeadAes256Gcm)
+        let handoff = NvstReceiverFixtures.makeHandoff(profile: .aeadAes256Gcm)
         let receiver = try NvstVideoReceiver(handoff: handoff)
-        let unit = packet(sequence: 7, frameIndex: 1, flags: 0x07, media: [0x00, 0x00, 0x00, 0x01, 0x65])
-        let emitted = frames(receiver.process(datagram: try seal(unit, sequence: 7, handoff: handoff)))
+        let unit = NvstReceiverFixtures.packet(sequence: 7, frameIndex: 1, flags: 0x07, media: [0x00, 0x00, 0x00, 0x01, 0x65])
+        let emitted = NvstReceiverFixtures.frames(receiver.process(datagram: try NvstReceiverFixtures.seal(unit, sequence: 7, handoff: handoff)))
         #expect(emitted.count == 1)
     }
 
     @Test func aesCmProfilesAreRejectedRatherThanMisDecrypted() {
         #expect(throws: NvstVideoReceiver.ReceiverError.unsupportedProfile("AES_CM_128_HMAC_SHA1_80")) {
-            _ = try NvstVideoReceiver(handoff: makeHandoff(profile: .aesCm128HmacSha1_80))
+            _ = try NvstVideoReceiver(handoff: NvstReceiverFixtures.makeHandoff(profile: .aesCm128HmacSha1_80))
         }
     }
 
     @Test func tamperedAndReplayedPacketsAreDropped() throws {
-        let handoff = makeHandoff()
+        let handoff = NvstReceiverFixtures.makeHandoff()
         let receiver = try NvstVideoReceiver(handoff: handoff)
-        let sof = try seal(packet(sequence: 5, frameIndex: 9, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 5, handoff: handoff)
-        #expect(frames(receiver.process(datagram: sof)).isEmpty)
+        let sof = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 5, frameIndex: 9, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 5, handoff: handoff)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: sof)).isEmpty)
         // Same packet again: the replay window must reject it.
-        #expect(!drops(receiver.process(datagram: sof)).isEmpty)
+        #expect(!NvstReceiverFixtures.drops(receiver.process(datagram: sof)).isEmpty)
 
         var tampered = sof
         tampered[tampered.count - 3] ^= 0x40
-        #expect(!drops(receiver.process(datagram: tampered)).isEmpty)
+        #expect(!NvstReceiverFixtures.drops(receiver.process(datagram: tampered)).isEmpty)
     }
 
     @Test func aPacketFromAForeignSsrcNeverJoinsTheStream() throws {
-        let handoff = makeHandoff()
+        let handoff = NvstReceiverFixtures.makeHandoff()
         let receiver = try NvstVideoReceiver(handoff: handoff)
-        var foreign = packet(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65])
+        var foreign = NvstReceiverFixtures.packet(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65])
         foreign.replaceSubrange(8..<12, with: Data([0xde, 0xad, 0xbe, 0xef]))
         // Sealed under its own SSRC so authentication passes; only the handoff disagrees.
-        let datagram = try seal(foreign, sequence: 1, handoff: handoff, ssrc: 0xdead_beef)
+        let datagram = try NvstReceiverFixtures.seal(foreign, sequence: 1, handoff: handoff, ssrc: 0xdead_beef)
         let events = receiver.process(datagram: datagram)
-        #expect(drops(events).contains { $0.contains("SSRC") })
+        #expect(NvstReceiverFixtures.drops(events).contains { $0.contains("SSRC") })
         #expect(receiver.snapshot.boundSSRC == nil)
     }
 
@@ -135,23 +67,23 @@ struct NvstMjolnirReceiverTests {
     /// destroyed every packet buffered behind the gap, so a single loss cost 32 packets and the
     /// frames they carried — uncounted, because the destroyed packets hit no drop counter.
     @Test func aSingleLostPacketDeliversTheBufferedPacketsBehindIt() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let receiver = try NvstVideoReceiver(handoff: handoff)
         let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
         // A complete single-packet frame per sequence number. Sequence 2 never arrives.
-        let first = try seal(packet(sequence: 1, frameIndex: 1, flags: 0x07, media: media), sequence: 1, handoff: handoff)
-        #expect(frames(receiver.process(datagram: first)).count == 1)
+        let first = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 1, frameIndex: 1, flags: 0x07, media: media), sequence: 1, handoff: handoff)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: first)).count == 1)
         for sequence in UInt16(3)...UInt16(5) {
-            let held = try seal(packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+            let held = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
                                 sequence: sequence, handoff: handoff)
             // Head-of-line blocked on the missing packet, not dropped.
-            #expect(frames(receiver.process(datagram: held)).isEmpty)
+            #expect(NvstReceiverFixtures.frames(receiver.process(datagram: held)).isEmpty)
         }
         // Sequence 6 ages the gap past the window: 2 is finalized loss, 3...6 must all deliver.
-        let sixth = try seal(packet(sequence: 6, frameIndex: 6, flags: 0x07, media: media), sequence: 6, handoff: handoff)
+        let sixth = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 6, frameIndex: 6, flags: 0x07, media: media), sequence: 6, handoff: handoff)
         let events = receiver.process(datagram: sixth)
-        #expect(frames(events).count == 4)
-        #expect(recoveries(events) == 1)
+        #expect(NvstReceiverFixtures.frames(events).count == 4)
+        #expect(NvstReceiverFixtures.recoveries(events) == 1)
         let stats = receiver.snapshot
         #expect(stats.framesEmitted == 5)
         #expect(stats.recoveries == 1)
@@ -162,23 +94,23 @@ struct NvstMjolnirReceiverTests {
     /// A second gap among the survivors finalizes on its own later packet rather than being
     /// silently absorbed by the first flush.
     @Test func interleavedGapsFinalizeIndependently() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let receiver = try NvstVideoReceiver(handoff: handoff)
         let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
         func feed(_ sequence: UInt16) throws -> [NvstReceiveEvent] {
-            receiver.process(datagram: try seal(
-                packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+            receiver.process(datagram: try NvstReceiverFixtures.seal(
+                NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
                 sequence: sequence, handoff: handoff))
         }
         _ = try feed(1)
         // 2 and 4 never arrive; 3 and 5 wait behind 2.
-        #expect(frames(try feed(3)).isEmpty)
-        #expect(frames(try feed(5)).isEmpty)
+        #expect(NvstReceiverFixtures.frames(try feed(3)).isEmpty)
+        #expect(NvstReceiverFixtures.frames(try feed(5)).isEmpty)
         // 6 finalizes the loss of 2 and delivers 3; 4 is still an open gap holding 5 and 6.
-        #expect(frames(try feed(6)).count == 1)
+        #expect(NvstReceiverFixtures.frames(try feed(6)).count == 1)
         // 8 finalizes the loss of 4 and delivers 5, 6 — 7 is now the open gap holding 8.
         let events = try feed(8)
-        #expect(frames(events).count == 2)
+        #expect(NvstReceiverFixtures.frames(events).count == 2)
         let stats = receiver.snapshot
         #expect(stats.finalizedLossPackets == 2)
         #expect(stats.recoveries == 2)
@@ -187,18 +119,18 @@ struct NvstMjolnirReceiverTests {
     /// A hole in the GS stream sequence with contiguous RTP delivery has no RTP packet to NACK:
     /// it must ask for a keyframe, not a retransmission of an arbitrary sequence number.
     @Test func aStreamSequenceHoleAsksForAKeyframeNotARetransmission() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let receiver = try NvstVideoReceiver(handoff: handoff)
-        let sof = try seal(packet(sequence: 1, frameIndex: 7, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]),
+        let sof = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 1, frameIndex: 7, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]),
                            sequence: 1, handoff: handoff)
-        #expect(frames(receiver.process(datagram: sof)).isEmpty)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: sof)).isEmpty)
         // Contiguous RTP sequence 2, but the GS stream index jumps to 5: a slot was consumed
         // upstream, no RTP packet is missing.
-        let midFrameHole = try seal(packet(sequence: 2, frameIndex: 7, flags: 0x01, media: [0xbb], streamSequence: 5),
+        let midFrameHole = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 2, frameIndex: 7, flags: 0x01, media: [0xbb], streamSequence: 5),
                                     sequence: 2, handoff: handoff)
         let events = receiver.process(datagram: midFrameHole)
-        #expect(frames(events).isEmpty)
-        #expect(recoveries(events) == 0)
+        #expect(NvstReceiverFixtures.frames(events).isEmpty)
+        #expect(NvstReceiverFixtures.recoveries(events) == 0)
         let chainBreaks = events.filter { if case .chainBroken = $0 { return true } else { return false } }.count
         #expect(chainBreaks == 1)
         let stats = receiver.snapshot
@@ -210,7 +142,7 @@ struct NvstMjolnirReceiverTests {
     /// frame carrying the hole may be lost — the frames behind it ride on packets the old flush
     /// destroyed wholesale.
     @Test func oneLostPacketInsideAFrameCostsExactlyThatFrame() throws {
-        let handoff = makeHandoff(reorderWindow: 32)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 32)
         let receiver = try NvstVideoReceiver(handoff: handoff)
         let packetsPerFrame: UInt16 = 50
         let droppedSequence: UInt16 = 75 // mid-frame 2
@@ -224,9 +156,9 @@ struct NvstMjolnirReceiverTests {
                 if position == 0 { flags |= 0x04 }
                 if position == packetsPerFrame - 1 { flags |= 0x02 }
                 let media: [UInt8] = position == 0 ? sofBytes : [UInt8(truncatingIfNeeded: sequence)]
-                let datagram = try seal(packet(sequence: sequence, frameIndex: UInt32(frame), flags: flags, media: media),
+                let datagram = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(frame), flags: flags, media: media),
                                         sequence: sequence, handoff: handoff)
-                emitted += frames(receiver.process(datagram: datagram)).count
+                emitted += NvstReceiverFixtures.frames(receiver.process(datagram: datagram)).count
             }
         }
         let stats = receiver.snapshot
@@ -243,7 +175,7 @@ struct NvstMjolnirReceiverTests {
     /// Several isolated losses across a long stream each cost one frame and one loss count —
     /// no compounding, no stuck reassembler, no double-counted recovery.
     @Test func isolatedLossesAcrossAStreamDoNotCompound() throws {
-        let handoff = makeHandoff(reorderWindow: 32)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 32)
         let receiver = try NvstVideoReceiver(handoff: handoff)
         let packetsPerFrame: UInt16 = 30
         let frameCount: UInt16 = 20
@@ -257,9 +189,9 @@ struct NvstMjolnirReceiverTests {
                 if position == 0 { flags |= 0x04 }
                 if position == packetsPerFrame - 1 { flags |= 0x02 }
                 let media: [UInt8] = position == 0 ? [0x00, 0x00, 0x00, 0x01, 0x65] : [UInt8(truncatingIfNeeded: sequence)]
-                let datagram = try seal(packet(sequence: sequence, frameIndex: UInt32(frame), flags: flags, media: media),
+                let datagram = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(frame), flags: flags, media: media),
                                         sequence: sequence, handoff: handoff)
-                emitted += frames(receiver.process(datagram: datagram)).count
+                emitted += NvstReceiverFixtures.frames(receiver.process(datagram: datagram)).count
             }
         }
         let stats = receiver.snapshot
@@ -272,15 +204,15 @@ struct NvstMjolnirReceiverTests {
     /// is rebuilt from the block's parity packet, the frame still emits, and no loss is recorded —
     /// the seat never learns anything was lost.
     @Test func aLostPacketIsRepairedFromParityAndTheFrameStillEmits() throws {
-        let handoff = makeHandoff()
+        let handoff = NvstReceiverFixtures.makeHandoff()
         let receiver = try NvstVideoReceiver(handoff: handoff)
 
         func fecWord(index: UInt32) -> UInt32 { (50 << 4) | (index << 12) | (2 << 22) }
         // One frame per FEC block: two sources (SOF, EOF) and one parity shard (50% of 2).
         func blockPackets(frameIndex: UInt32, baseSequence: UInt16, seed: UInt8) -> [(UInt16, Data)] {
-            let sof = packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
+            let sof = NvstReceiverFixtures.packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
                              media: [0x00, 0x00, 0x00, 0x01, 0x65, seed], fecWord: fecWord(index: 0))
-            let eof = packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
+            let eof = NvstReceiverFixtures.packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
                              media: [0xbb, seed, 0xcc], fecWord: fecWord(index: 1))
             let size = max(sof.count, eof.count)
             let shards = [sof, eof].map { source -> [UInt8] in
@@ -288,7 +220,7 @@ struct NvstMjolnirReceiverTests {
                 return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
             }
             let parity = NvstReedSolomon.encode(data: shards, parityCount: 1, size: size)!
-            let parityHeader = packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
+            let parityHeader = NvstReceiverFixtures.packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
                                       media: [], fecWord: fecWord(index: 2))
             let parityPacket = parityHeader + Data(parity[0][NvstFecRecovery.headerLength...])
             return [(baseSequence, sof), (baseSequence + 1, eof), (baseSequence + 2, parityPacket)]
@@ -300,7 +232,7 @@ struct NvstMjolnirReceiverTests {
             for (sequence, plain) in blockPackets(frameIndex: UInt32(round + 1),
                                                   baseSequence: UInt16(round * 3 + 1),
                                                   seed: UInt8(round)) {
-                emitted += frames(receiver.process(datagram: try seal(plain, sequence: sequence, handoff: handoff))).count
+                emitted += NvstReceiverFixtures.frames(receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))).count
             }
         }
         #expect(emitted == NvstFecRecovery.verificationTarget)
@@ -310,11 +242,11 @@ struct NvstMjolnirReceiverTests {
         let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
         let lossy = blockPackets(frameIndex: UInt32(NvstFecRecovery.verificationTarget + 1),
                                  baseSequence: base, seed: 0x42)
-        #expect(frames(receiver.process(datagram: try seal(lossy[1].1, sequence: lossy[1].0, handoff: handoff))).isEmpty)
-        let events = receiver.process(datagram: try seal(lossy[2].1, sequence: lossy[2].0, handoff: handoff))
-        #expect(frames(events).count == 1)
-        #expect(frames(events).first?.isKeyframe == true)
-        #expect(recoveries(events) == 0)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: try NvstReceiverFixtures.seal(lossy[1].1, sequence: lossy[1].0, handoff: handoff))).isEmpty)
+        let events = receiver.process(datagram: try NvstReceiverFixtures.seal(lossy[2].1, sequence: lossy[2].0, handoff: handoff))
+        #expect(NvstReceiverFixtures.frames(events).count == 1)
+        #expect(NvstReceiverFixtures.frames(events).first?.isKeyframe == true)
+        #expect(NvstReceiverFixtures.recoveries(events) == 0)
 
         let stats = receiver.snapshot
         #expect(stats.finalizedLossPackets == 0)
@@ -327,14 +259,14 @@ struct NvstMjolnirReceiverTests {
     /// arrives after all of the block's sources, so finalizing at the plain window would lose the
     /// race and turn a repairable hole into a lost frame plus a keyframe round trip.
     @Test func anOpenGapWaitsForFecRepairBeforeBecomingLoss() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let receiver = try NvstVideoReceiver(handoff: handoff)
 
         func fecWord(index: UInt32) -> UInt32 { (50 << 4) | (index << 12) | (2 << 22) }
         func blockPackets(frameIndex: UInt32, baseSequence: UInt16, seed: UInt8) -> [(UInt16, Data)] {
-            let sof = packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
+            let sof = NvstReceiverFixtures.packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
                              media: [0x00, 0x00, 0x00, 0x01, 0x65, seed], fecWord: fecWord(index: 0))
-            let eof = packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
+            let eof = NvstReceiverFixtures.packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
                              media: [0xbb, seed, 0xcc], fecWord: fecWord(index: 1))
             let size = max(sof.count, eof.count)
             let shards = [sof, eof].map { source -> [UInt8] in
@@ -342,7 +274,7 @@ struct NvstMjolnirReceiverTests {
                 return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
             }
             let parity = NvstReedSolomon.encode(data: shards, parityCount: 1, size: size)!
-            let parityHeader = packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
+            let parityHeader = NvstReceiverFixtures.packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
                                       media: [], fecWord: fecWord(index: 2))
             return [(baseSequence, sof), (baseSequence + 1, eof),
                     (baseSequence + 2, parityHeader + Data(parity[0][NvstFecRecovery.headerLength...]))]
@@ -351,7 +283,7 @@ struct NvstMjolnirReceiverTests {
             for (sequence, plain) in blockPackets(frameIndex: UInt32(round + 1),
                                                   baseSequence: UInt16(round * 3 + 1),
                                                   seed: UInt8(round)) {
-                _ = receiver.process(datagram: try seal(plain, sequence: sequence, handoff: handoff))
+                _ = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
             }
         }
         #expect(receiver.fecFindings.isArmed)
@@ -359,168 +291,15 @@ struct NvstMjolnirReceiverTests {
         // A jump well past the plain window (4) but inside the repair window: the gap must stay
         // open — no recovery event, no finalized loss — while repair still has a chance.
         let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
-        let far = try seal(packet(sequence: base + 20, frameIndex: 99, flags: 0x05,
+        let far = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: base + 20, frameIndex: 99, flags: 0x05,
                                   media: [0x00, 0x00, 0x00, 0x01, 0x65]),
                            sequence: base + 20, handoff: handoff)
         let events = receiver.process(datagram: far)
-        #expect(recoveries(events) == 0)
-        #expect(frames(events).isEmpty)
+        #expect(NvstReceiverFixtures.recoveries(events) == 0)
+        #expect(NvstReceiverFixtures.frames(events).isEmpty)
         #expect(receiver.snapshot.finalizedLossPackets == 0)
     }
 
-    /// SRTCP feedback sealed at a constant index 0 is accepted by the seat's replay window exactly
-    /// once per session; every later PLI and NACK was silently discarded (and reused a GCM nonce).
-    @Test func srtcpFeedbackIndexesAreMonotonic() throws {
-        let receiver = try NvstMjolnirReceiver(handoff: makeHandoff())
-        #expect(receiver.nextSrtcpIndex() == 0)
-        #expect(receiver.nextSrtcpIndex() == 1)
-        #expect(receiver.nextSrtcpIndex() == 2)
-        #expect(receiver.srtcpFeedbackIndex == 3)
-    }
-
-    @Test func aGapBeyondTheReorderWindowRequestsRecoveryAndNeverEmitsAPartialFrame() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        let sof = try seal(packet(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
-        #expect(frames(receiver.process(datagram: sof)).isEmpty)
-        // Jump far past the window: the reference chain is broken.
-        let far = try seal(packet(sequence: 40, frameIndex: 2, flags: 0x01, media: [0xaa]), sequence: 40, handoff: handoff)
-        let events = receiver.process(datagram: far)
-        #expect(recoveries(events) == 1)
-        #expect(frames(events).isEmpty)
-        #expect(receiver.snapshot.recoveries == 1)
-    }
-
-    /// The OS default receive buffer drops the tail of a 5K keyframe burst, which is
-    /// indistinguishable from network loss and unrecoverable without FEC.
-    @Test func theReceiveBufferIsGrownBeyondTheOsDefault() {
-        let descriptor = socket(AF_INET, SOCK_DGRAM, 0)
-        #expect(descriptor >= 0)
-        defer { close(descriptor) }
-        var initial: Int32 = 0
-        var length = socklen_t(MemoryLayout<Int32>.size)
-        #expect(getsockopt(descriptor, SOL_SOCKET, SO_RCVBUF, &initial, &length) == 0)
-
-        let granted = NvstMjolnirReceiver.growReceiveBuffer(descriptor)
-        #expect(granted >= Int(initial))
-        #expect(granted >= 256 * 1024)
-    }
-
-    /// A kernel that refuses every request must still leave a working socket.
-    @Test func anUngrowableSocketKeepsItsExistingBuffer() {
-        let descriptor = socket(AF_INET, SOCK_DGRAM, 0)
-        #expect(descriptor >= 0)
-        defer { close(descriptor) }
-        // `first` below `last` means the loop body never runs; the reported size is what was there.
-        let granted = NvstMjolnirReceiver.growReceiveBuffer(descriptor, first: 1024, last: 4096)
-        #expect(granted > 0)
-    }
-
-    /// A video sender that never hears a receiver report backs its bitrate off, so this path
-    /// producing nothing looks like a slow stream rather than a dead feedback plane.
-    @Test func aReceiverReportIsProducedOnceAnSsrcIsBound() throws {
-        let handoff = makeHandoff(reorderWindow: 4)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        // No SSRC bound yet, so nothing to report about.
-        #expect(receiver.pollReceiverReport() == nil)
-
-        let sof = try seal(packet(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
-        _ = receiver.process(datagram: sof)
-        #expect(receiver.snapshot.boundSSRC != nil)
-
-        let report = receiver.pollReceiverReport()
-        #expect(report != nil)
-        // And it is rate limited rather than sent per packet.
-        #expect(receiver.pollReceiverReport() == nil)
-    }
-
-    /// The drain loop used to run until the socket ran dry, which on a busy media socket is never:
-    /// it monopolised its queue and starved the feedback timer, so a 1 s repeating report fired
-    /// once in 30 s and the sender never heard from us.
-    /// Reporting zeros for loss and jitter describes a receiver that has never seen a packet.
-    /// The sender's rate control reads these, so they have to be real.
-    @Test func receiverReportsCarryRealReceptionStatistics() throws {
-        let handoff = makeHandoff(reorderWindow: 8)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        for sequence in UInt16(1)...UInt16(6) {
-            let datagram = try seal(packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x05,
-                                           media: [0x00, 0x00, 0x00, 0x01, 0x65]),
-                                    sequence: sequence, handoff: handoff)
-            _ = receiver.process(datagram: datagram)
-        }
-        let report = try #require(receiver.pollReceiverReport())
-        // RTCP RR: 8-byte header, then the report block. Highest sequence sits at block offset 8.
-        let bytes = [UInt8](report)
-        #expect(bytes.count > 30)
-        // Nothing was lost, so the fraction-lost byte stays zero — but it is now derived, and the
-        // reported highest sequence tracks what actually arrived rather than staying at zero.
-        #expect(receiver.snapshot.highestSequence == 6)
-        #expect(receiver.snapshot.authenticatedPackets == 6)
-    }
-
-    @Test func theDrainLoopIsBoundedPerWakeUp() {
-        #expect(NvstMjolnirReceiver.maxDatagramsPerWakeUp > 0)
-        #expect(NvstMjolnirReceiver.maxDatagramsPerWakeUp <= 256)
-    }
-
-    @Test func outOfOrderPacketsAreDeliveredInSequence() throws {
-        let handoff = makeHandoff(reorderWindow: 8)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        let sof = try seal(packet(sequence: 1, frameIndex: 3, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
-        let eof = try seal(packet(sequence: 3, frameIndex: 3, flags: 0x03, media: [0xcc]), sequence: 3, handoff: handoff)
-        let middle = try seal(packet(sequence: 2, frameIndex: 3, flags: 0x01, media: [0xbb]), sequence: 2, handoff: handoff)
-
-        #expect(frames(receiver.process(datagram: sof)).isEmpty)
-        // The end-of-frame arrives early and must wait for the middle packet.
-        #expect(frames(receiver.process(datagram: eof)).isEmpty)
-        let emitted = frames(receiver.process(datagram: middle))
-        #expect(emitted.count == 1)
-        #expect(emitted[0].bytes == Data([0x00, 0x00, 0x00, 0x01, 0x65, 0xbb, 0xcc]))
-    }
-
-    @Test func fecRepairPacketsAreCountedNotDecoded() throws {
-        let handoff = makeHandoff()
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        let repair = NvstVideoPacketTests.buildPacket(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65], fecWord: 0x00c0_3420)
-        let events = receiver.process(datagram: try seal(repair, sequence: 1, handoff: handoff))
-        #expect(frames(events).isEmpty)
-        #expect(receiver.snapshot.fecPackets == 1)
-    }
-
-    @Test func srtcpReceiverReportsWaitForTheMediaSsrcThenRespectTheInterval() throws {
-        let handoff = makeHandoff()
-        let receiver = try NvstVideoReceiver(handoff: handoff)
-        let origin = Date(timeIntervalSince1970: 1_000_000)
-        // No authenticated packet yet: nothing to report about.
-        #expect(receiver.pollReceiverReport(now: origin) == nil)
-
-        let sof = try seal(packet(sequence: 1, frameIndex: 1, flags: 0x07, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
-        _ = receiver.process(datagram: sof)
-        let first = receiver.pollReceiverReport(now: origin)
-        #expect(first != nil)
-        // Sealed SRTCP: an RR (32 bytes) plus the 4-byte E/index trailer and an 8-byte tag.
-        #expect(first?.count == 44)
-        let opened = try NvstSrtcp.open(srtcpPacket: first!, masterKey: handoff.srtpAESKey, masterSalt: handoff.srtpSalt, senderSSRC: Self.mediaSSRC)
-        #expect(opened.rtcp[1] == NvstRtcp.receiverReportPayloadType)
-        // At most one report per interval.
-        #expect(receiver.pollReceiverReport(now: origin.addingTimeInterval(0.5)) == nil)
-        #expect(receiver.pollReceiverReport(now: origin.addingTimeInterval(1.5)) != nil)
-    }
-
-    @Test func socketBindsAndStopsCleanly() throws {
-        let receiver = try NvstMjolnirReceiver(handoff: makeHandoff())
-        try receiver.start()
-        receiver.stop()
-        #expect(receiver.stats.authenticatedPackets == 0)
-    }
-
-    @Test func peerAddressConversionRoundTrips() throws {
-        let network = try #require(NvstMjolnirReceiver.inetAddr("10.20.30.40"))
-        #expect(NvstMjolnirReceiver.dottedQuad(network) == "10.20.30.40")
-        #expect(NvstMjolnirReceiver.inetAddr("10.20.30") == nil)
-        #expect(NvstMjolnirReceiver.inetAddr("10.20.30.40.50") == nil)
-        #expect(NvstMjolnirReceiver.inetAddr("10.20.30.999") == nil)
-    }
 }
 
 @Suite struct NvstInboundCounterTests {

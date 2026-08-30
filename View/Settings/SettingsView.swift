@@ -139,7 +139,7 @@ struct SettingsView: View {
     @Environment(\.opnUIScale) private var uiScale
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
-    @StateObject private var focus = ControllerSettingsFocus()
+    @StateObject private var focus = ControllerSettingsFocusModel()
 
     private static let tabBarFocusID = "settings-tabs"
 

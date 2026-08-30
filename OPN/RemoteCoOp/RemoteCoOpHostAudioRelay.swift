@@ -26,7 +26,7 @@ public protocol OPNRemoteCoOpHostAudioSink: AnyObject, Sendable {
 }
 
 public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var sinks: [UUID: any OPNRemoteCoOpHostAudioSink] = [:]
 
     public init() {}
@@ -129,7 +129,7 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
 
 @objc(OPNRemoteCoOpHostAudioDevice)
 final class OPNRemoteCoOpHostAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private weak var delegate: RTCAudioDeviceDelegate?
     private var sampleIndex: UInt64 = 0
 

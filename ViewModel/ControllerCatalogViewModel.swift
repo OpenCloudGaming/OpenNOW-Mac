@@ -79,7 +79,7 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     /// Controller mode has no physical keyboard to assume, so catalog search reuses the stream's
     /// on-screen keyboard rather than leaving the field untypeable on a pad.
-    let searchKeyboard = StreamOnScreenKeyboardController()
+    let searchKeyboard = StreamOnScreenKeyboardModel()
     let inputRouter = ControllerInputRouter()
     let steamNavigator = GamepadUINavigator()
 
@@ -130,29 +130,43 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// the routing can be exercised without a live view.
     func moveFocus(_ direction: ControllerInputDirection, navigationItemCount: Int) -> ControllerFocusEffect {
         switch focusArea {
-        case .navigation:
-            switch direction {
-            case .left: selectedNavigationIndex = max(selectedNavigationIndex - 1, 0)
-            case .right: selectedNavigationIndex = min(selectedNavigationIndex + 1, max(navigationItemCount - 1, 0))
-            case .down: focusArea = .search
-            case .up: break
-            }
-        case .search:
-            switch direction {
-            case .up: focusArea = .navigation
-            case .down: focusArea = .content
-            case .left, .right: break
-            }
-        case .content:
-            switch direction {
-            case .left: return .moveGame(delta: -1)
-            case .right: return .moveGame(delta: 1)
-            case .up:
-                if selectedRailIndex == 0 { focusArea = .search } else { return .moveRail(delta: -1) }
-            case .down: return .moveRail(delta: 1)
-            }
+        case .navigation: moveNavigationFocus(direction, itemCount: navigationItemCount)
+        case .search: moveSearchFocus(direction)
+        case .content: moveContentFocus(direction)
+        }
+    }
+
+    private func moveNavigationFocus(_ direction: ControllerInputDirection, itemCount: Int) -> ControllerFocusEffect {
+        switch direction {
+        case .left: selectedNavigationIndex = max(selectedNavigationIndex - 1, 0)
+        case .right: selectedNavigationIndex = min(selectedNavigationIndex + 1, max(itemCount - 1, 0))
+        case .down: focusArea = .search
+        case .up: break
         }
         return .none
+    }
+
+    private func moveSearchFocus(_ direction: ControllerInputDirection) -> ControllerFocusEffect {
+        switch direction {
+        case .up: focusArea = .navigation
+        case .down: focusArea = .content
+        case .left, .right: break
+        }
+        return .none
+    }
+
+    /// The top row of the content area is the only one that hands focus back up to the search bar;
+    /// everywhere else `up` moves between rails.
+    private func moveContentFocus(_ direction: ControllerInputDirection) -> ControllerFocusEffect {
+        switch direction {
+        case .left: return .moveGame(delta: -1)
+        case .right: return .moveGame(delta: 1)
+        case .up:
+            guard selectedRailIndex == 0 else { return .moveRail(delta: -1) }
+            focusArea = .search
+            return .none
+        case .down: return .moveRail(delta: 1)
+        }
     }
 
     func moveRail(delta: Int, sectionCount: Int) {

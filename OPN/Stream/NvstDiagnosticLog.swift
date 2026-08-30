@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Writes happen on a utility queue; the caller's logging path never blocks on the filesystem.
 public final class NvstDiagnosticLog: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.opennow.nvst.diagnostic-log", qos: .utility)
+    let queue = DispatchQueue(label: "com.opennow.nvst.diagnostic-log", qos: .utility)
     private let handle: FileHandle?
     /// Where this session's log lives, for surfacing in the stream log itself.
     public let url: URL?

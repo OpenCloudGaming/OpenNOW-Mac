@@ -33,13 +33,13 @@ public final class NvstAudioReceiver: @unchecked Sendable {
 
     private let descriptor: Int32
     private var peer = sockaddr_in()
-    private let queue = DispatchQueue(label: "com.opennow.nvst.audio")
+    let queue = DispatchQueue(label: "com.opennow.nvst.audio")
     private var readSource: DispatchSourceRead?
     private var punchTimer: DispatchSourceTimer?
-    private let lock = NSLock()
+    let lock = NSLock()
     private var counters = Counters()
     private var lastTimestamp: UInt32?
-    private var handoff: NVSTVideoHandoff?
+    var handoff: NVSTVideoHandoff?
     private var drainBuffer = [UInt8](repeating: 0, count: 4096)
 
     /// Reorder window, run only on `queue` so it needs no lock. Reordered packets used to be
@@ -55,7 +55,7 @@ public final class NvstAudioReceiver: @unchecked Sendable {
     /// could otherwise `sendto` a descriptor the read source's cancel handler has closed — and a
     /// closed descriptor number can be reused by something else.
     private var isStopped = false
-    private let decoder: NvstOpusDecoder
+    let decoder: NvstOpusDecoder
     private let player: NvstAudioPlayer
 
     public var onDiagnostic: (@Sendable (String) -> Void)?

@@ -6,7 +6,7 @@
 
 **A native macOS client for GeForce NOW - built for Mac, built for controllers.**
 
-[**⬇ Download the latest release**](../../releases) · [What's new](CHANGELOG.md) · [Build from source](#build-from-source)
+[**⬇ Download the latest release**](../../releases) · [What's new](CHANGELOG.md) · [Pre-0.1.0 history](CHANGELOG-legacy.md) · [Build from source](#build-from-source)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)

@@ -7,7 +7,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
     public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: WebRTCStreamRecordingStatus) -> Void)?
 
-    private let session = OPNLibWebRTCStreamSession()
+    let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
     private weak var nativeView: NativeWebRTCStreamView?
     private let remoteCoOpVideoRelayLock = NSLock()
@@ -254,6 +254,125 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         )
     }
 
+    private func resumeAnswer(_ answer: StreamAnswer) {
+        guard let continuation = takeContinuation() else { return }
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
+        startStatsTelemetry()
+        continuation.resume(returning: answer)
+    }
+
+    private func resumeError(_ error: Error) {
+        guard let continuation = takeContinuation() else { return }
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = nil
+        continuation.resume(throwing: error)
+    }
+
+    private func startAnswerTimeout(sessionID: String) {
+        answerTimeoutTask?.cancel()
+        answerTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 20_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.resumeError(NativeWebRTCTransportError.connectionFailed("Native WebRTC answer was not created within 20 seconds for session \(sessionID)."))
+        }
+    }
+
+    private func installContinuation(_ continuation: CheckedContinuation<StreamAnswer, Error>) {
+        continuationLock.withLock { self.continuation = continuation }
+    }
+
+    private func takeContinuation() -> CheckedContinuation<StreamAnswer, Error>? {
+        continuationLock.withLock {
+            let value = continuation
+            continuation = nil
+            return value
+        }
+    }
+
+    private var hasPendingContinuation: Bool {
+        continuationLock.withLock { continuation != nil }
+    }
+
+    private func handleLocalIceCandidate(_ payload: NSDictionary) {
+        let candidate = Self.stringValue(payload["candidate"])
+        guard !candidate.isEmpty else { return }
+        let iceCandidate = StreamIceCandidate(
+            sdp: candidate,
+            sdpMid: Self.stringValue(payload["sdpMid"]),
+            sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"]),
+            usernameFragment: Self.stringValue(payload["usernameFragment"]),
+            isEndOfCandidates: false
+        )
+        _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
+    }
+
+    private func currentRemoteCoOpVideoRelay() -> OPNRemoteCoOpHostVideoRelay? {
+        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay }
+    }
+
+    private func currentRemoteCoOpAudioRelay() -> OPNRemoteCoOpHostAudioRelay? {
+        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay }
+    }
+
+    private func handleEnded(message: String) {
+        if hasPendingContinuation {
+            resumeError(NativeWebRTCTransportError.connectionFailed(message))
+            return
+        }
+        guard !isDisconnecting, !didEmitEnd else { return }
+        didEmitEnd = true
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.ended", level: .warning, message: message)
+        Task { @MainActor [onEnded] in onEnded?(message) }
+    }
+
+    private func startStatsTelemetry() {
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = Task { [session] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                let stats = session.latestStatsSnapshot()
+                guard stats.available else { continue }
+                let attributes = ["codec": stats.codec, "resolution": stats.resolution]
+                WebRTCMediaTelemetry.record("webrtc.media.latency_ms", kind: .gauge, value: stats.latencyMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.jitter_ms", kind: .gauge, value: stats.jitterMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.inbound_bitrate_mbps", kind: .gauge, value: stats.inboundBitrateMbps, unit: "megabit/second", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.frame_interval_ms", kind: .gauge, value: stats.videoFrameIntervalMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.max_frame_interval_ms", kind: .gauge, value: stats.videoMaxFrameIntervalMs, unit: "millisecond", attributes: attributes)
+            }
+        }
+    }
+}
+
+public enum NativeWebRTCTransportError: LocalizedError, Sendable {
+    case connectionFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .connectionFailed(let message):
+            message
+        }
+    }
+}
+
+// MARK: - Input wire encoding
+
+// Split out of the main declaration so it stays inside the size budget. Same file, so `private`
+// members stay reachable.
+extension NativeWebRTCTransport {
     static func gfnMouseButton(_ button: MouseButton) -> UInt8 {
         switch button {
         case .left: 1
@@ -264,24 +383,29 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         }
     }
 
+    /// The GFN wire bitmask for each gamepad button. Bit 0x0800 is unused by the protocol.
+    private static let gfnButtonBits: [(button: GamepadButtons, bit: UInt16)] = [
+        (.dpadUp, 0x0001),
+        (.dpadDown, 0x0002),
+        (.dpadLeft, 0x0004),
+        (.dpadRight, 0x0008),
+        (.start, 0x0010),
+        (.select, 0x0020),
+        (.leftStick, 0x0040),
+        (.rightStick, 0x0080),
+        (.leftShoulder, 0x0100),
+        (.rightShoulder, 0x0200),
+        (.mode, 0x0400),
+        (.south, 0x1000),
+        (.east, 0x2000),
+        (.west, 0x4000),
+        (.north, 0x8000)
+    ]
+
     static func gfnGamepadButtons(_ buttons: GamepadButtons) -> UInt16 {
-        var value: UInt16 = 0
-        if buttons.contains(.dpadUp) { value |= 0x0001 }
-        if buttons.contains(.dpadDown) { value |= 0x0002 }
-        if buttons.contains(.dpadLeft) { value |= 0x0004 }
-        if buttons.contains(.dpadRight) { value |= 0x0008 }
-        if buttons.contains(.start) { value |= 0x0010 }
-        if buttons.contains(.select) { value |= 0x0020 }
-        if buttons.contains(.leftStick) { value |= 0x0040 }
-        if buttons.contains(.rightStick) { value |= 0x0080 }
-        if buttons.contains(.leftShoulder) { value |= 0x0100 }
-        if buttons.contains(.rightShoulder) { value |= 0x0200 }
-        if buttons.contains(.mode) { value |= 0x0400 }
-        if buttons.contains(.south) { value |= 0x1000 }
-        if buttons.contains(.east) { value |= 0x2000 }
-        if buttons.contains(.west) { value |= 0x4000 }
-        if buttons.contains(.north) { value |= 0x8000 }
-        return value
+        gfnButtonBits.reduce(into: UInt16(0)) { value, entry in
+            if buttons.contains(entry.button) { value |= entry.bit }
+        }
     }
 
     static func gfnControllerBitmap(playerIndex: Int) -> UInt16 {
@@ -438,117 +562,4 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         125: (40, 0x50),
         126: (38, 0x48)
     ]
-
-    private func resumeAnswer(_ answer: StreamAnswer) {
-        guard let continuation = takeContinuation() else { return }
-        answerTimeoutTask?.cancel()
-        answerTimeoutTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
-        startStatsTelemetry()
-        continuation.resume(returning: answer)
-    }
-
-    private func resumeError(_ error: Error) {
-        guard let continuation = takeContinuation() else { return }
-        answerTimeoutTask?.cancel()
-        answerTimeoutTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
-        statsTelemetryTask?.cancel()
-        statsTelemetryTask = nil
-        continuation.resume(throwing: error)
-    }
-
-    private func startAnswerTimeout(sessionID: String) {
-        answerTimeoutTask?.cancel()
-        answerTimeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: 20_000_000_000)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled else { return }
-            self?.resumeError(NativeWebRTCTransportError.connectionFailed("Native WebRTC answer was not created within 20 seconds for session \(sessionID)."))
-        }
-    }
-
-    private func installContinuation(_ continuation: CheckedContinuation<StreamAnswer, Error>) {
-        continuationLock.withLock { self.continuation = continuation }
-    }
-
-    private func takeContinuation() -> CheckedContinuation<StreamAnswer, Error>? {
-        continuationLock.withLock {
-            let value = continuation
-            continuation = nil
-            return value
-        }
-    }
-
-    private var hasPendingContinuation: Bool {
-        continuationLock.withLock { continuation != nil }
-    }
-
-    private func handleLocalIceCandidate(_ payload: NSDictionary) {
-        let candidate = Self.stringValue(payload["candidate"])
-        guard !candidate.isEmpty else { return }
-        let iceCandidate = StreamIceCandidate(
-            sdp: candidate,
-            sdpMid: Self.stringValue(payload["sdpMid"]),
-            sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"]),
-            usernameFragment: Self.stringValue(payload["usernameFragment"]),
-            isEndOfCandidates: false
-        )
-        _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
-    }
-
-    private func currentRemoteCoOpVideoRelay() -> OPNRemoteCoOpHostVideoRelay? {
-        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay }
-    }
-
-    private func currentRemoteCoOpAudioRelay() -> OPNRemoteCoOpHostAudioRelay? {
-        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay }
-    }
-
-    private func handleEnded(message: String) {
-        if hasPendingContinuation {
-            resumeError(NativeWebRTCTransportError.connectionFailed(message))
-            return
-        }
-        guard !isDisconnecting, !didEmitEnd else { return }
-        didEmitEnd = true
-        statsTelemetryTask?.cancel()
-        statsTelemetryTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.ended", level: .warning, message: message)
-        Task { @MainActor [onEnded] in onEnded?(message) }
-    }
-
-    private func startStatsTelemetry() {
-        statsTelemetryTask?.cancel()
-        statsTelemetryTask = Task { [session] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                let stats = session.latestStatsSnapshot()
-                guard stats.available else { continue }
-                let attributes = ["codec": stats.codec, "resolution": stats.resolution]
-                WebRTCMediaTelemetry.record("webrtc.media.latency_ms", kind: .gauge, value: stats.latencyMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.jitter_ms", kind: .gauge, value: stats.jitterMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.inbound_bitrate_mbps", kind: .gauge, value: stats.inboundBitrateMbps, unit: "megabit/second", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.frame_interval_ms", kind: .gauge, value: stats.videoFrameIntervalMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.max_frame_interval_ms", kind: .gauge, value: stats.videoMaxFrameIntervalMs, unit: "millisecond", attributes: attributes)
-            }
-        }
-    }
-}
-
-public enum NativeWebRTCTransportError: LocalizedError, Sendable {
-    case connectionFailed(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .connectionFailed(let message):
-            message
-        }
-    }
 }

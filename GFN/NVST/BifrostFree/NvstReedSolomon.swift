@@ -114,58 +114,84 @@ public enum NvstReedSolomon {
         let missingData = (0..<dataCount).filter { shards[$0] == nil }
         guard !missingData.isEmpty else { return [:] }
 
-        // One equation per surviving shard: a present data shard pins its own value, a present
-        // parity shard contributes its Cauchy row. `dataCount` independent equations solve the
-        // block.
+        guard var system = equations(shards: &shards, dataCount: dataCount, parityCount: parityCount, size: size) else {
+            return nil
+        }
+        guard solve(&system, dataCount: dataCount, size: size) else { return nil }
+
+        var recovered: [Int: [UInt8]] = [:]
+        for index in missingData { recovered[index] = system.values[index] }
+        return recovered
+    }
+
+    /// The linear system `recover` solves: one `rows` entry per equation, with the matching shard
+    /// payload in `values`.
+    private struct LinearSystem {
         var rows: [[UInt8]] = []
         var values: [[UInt8]] = []
+    }
+
+    /// One equation per surviving shard: a present data shard pins its own value, a present parity
+    /// shard contributes its Cauchy row. `dataCount` independent equations solve the block; fewer
+    /// than that returns nil. Consumed shards are moved out of `shards`.
+    private static func equations(shards: inout [[UInt8]?], dataCount: Int, parityCount: Int, size: Int) -> LinearSystem? {
+        var system = LinearSystem()
         for dataIndex in 0..<dataCount {
             guard let shard = shards[dataIndex], shard.count == size else { continue }
             shards[dataIndex] = nil
             var row = [UInt8](repeating: 0, count: dataCount)
             row[dataIndex] = 1
-            rows.append(row)
-            values.append(shard)
+            system.rows.append(row)
+            system.values.append(shard)
         }
-        for parityIndex in 0..<parityCount where rows.count < dataCount {
+        for parityIndex in 0..<parityCount where system.rows.count < dataCount {
             guard let shard = shards[dataCount + parityIndex], shard.count == size else { continue }
             shards[dataCount + parityIndex] = nil
             var row = [UInt8](repeating: 0, count: dataCount)
             for dataIndex in 0..<dataCount {
                 row[dataIndex] = parityCoefficient(parityCount: parityCount, dataIndex: dataIndex, parityIndex: parityIndex)
             }
-            rows.append(row)
-            values.append(shard)
+            system.rows.append(row)
+            system.values.append(shard)
         }
-        guard rows.count == dataCount else { return nil }
+        return system.rows.count == dataCount ? system : nil
+    }
 
-        // Gauss-Jordan over GF(2^8), applying every row operation to the shard payloads too.
+    /// Gauss-Jordan over GF(2^8), applying every row operation to the shard payloads too. Returns
+    /// false when a column has no pivot, which means the surviving shards are not independent.
+    private static func solve(_ system: inout LinearSystem, dataCount: Int, size: Int) -> Bool {
         for column in 0..<dataCount {
-            guard let pivot = (column..<dataCount).first(where: { rows[$0][column] != 0 }) else { return nil }
+            guard let pivot = (column..<dataCount).first(where: { system.rows[$0][column] != 0 }) else { return false }
             if pivot != column {
-                rows.swapAt(pivot, column)
-                values.swapAt(pivot, column)
+                system.rows.swapAt(pivot, column)
+                system.values.swapAt(pivot, column)
             }
-            let scale = inverse(rows[column][column])
-            if scale != 1 {
-                for index in 0..<dataCount { rows[column][index] = multiply(rows[column][index], scale) }
-                var scaled = [UInt8](repeating: 0, count: size)
-                addScaled(&scaled, values[column], by: scale)
-                values[column] = scaled
-            }
-            for other in 0..<dataCount where other != column {
-                let factor = rows[other][column]
-                guard factor != 0 else { continue }
-                for index in 0..<dataCount {
-                    rows[other][index] ^= multiply(rows[column][index], factor)
-                }
-                let source = values[column]
-                addScaled(&values[other], source, by: factor)
-            }
+            normalize(&system, column: column, dataCount: dataCount, size: size)
+            eliminate(&system, column: column, dataCount: dataCount)
         }
+        return true
+    }
 
-        var recovered: [Int: [UInt8]] = [:]
-        for index in missingData { recovered[index] = values[index] }
-        return recovered
+    /// Scales the pivot row so its leading coefficient is 1.
+    private static func normalize(_ system: inout LinearSystem, column: Int, dataCount: Int, size: Int) {
+        let scale = inverse(system.rows[column][column])
+        guard scale != 1 else { return }
+        for index in 0..<dataCount { system.rows[column][index] = multiply(system.rows[column][index], scale) }
+        var scaled = [UInt8](repeating: 0, count: size)
+        addScaled(&scaled, system.values[column], by: scale)
+        system.values[column] = scaled
+    }
+
+    /// Clears `column` from every row but the pivot.
+    private static func eliminate(_ system: inout LinearSystem, column: Int, dataCount: Int) {
+        for other in 0..<dataCount where other != column {
+            let factor = system.rows[other][column]
+            guard factor != 0 else { continue }
+            for index in 0..<dataCount {
+                system.rows[other][index] ^= multiply(system.rows[column][index], factor)
+            }
+            let source = system.values[column]
+            addScaled(&system.values[other], source, by: factor)
+        }
     }
 }

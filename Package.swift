@@ -22,8 +22,7 @@ let package = Package(
         // target and a build tool plugin would run on every build of both.
         //
         //   swift package plugin --allow-writing-to-package-directory swiftlint lint \
-        //     --strict --baseline swiftlint-baseline.json \
-        //     App GFN Model OPN View ViewModel Tests
+        //     --strict App GFN Model OPN View ViewModel Tests
         .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1")
     ],
     targets: [
@@ -37,6 +36,7 @@ let package = Package(
                 "DerivedData",
                 "AGENTS.md",
                 "CHANGELOG.md",
+                "CHANGELOG-legacy.md",
                 "DESIGN.md",
                 "LICENSE",
                 "README.md",

@@ -57,7 +57,7 @@ struct NativeNVSTNormalizedSessionSource {
         return []
     }
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
         if let value = value as? NSString { return (value as String).trimmingCharacters(in: .whitespacesAndNewlines) }
         return ""
@@ -67,7 +67,7 @@ struct NativeNVSTNormalizedSessionSource {
         values.first { !$0.isEmpty } ?? ""
     }
 
-    private static func bool(_ values: Any?...) -> Bool {
+    static func bool(_ values: Any?...) -> Bool {
         for value in values {
             if let value = value as? Bool { return value }
             if let value = value as? NSNumber { return value.boolValue }
@@ -156,7 +156,6 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
     init(allocation: NativeNVSTSessionAllocation, streamingProfileJSON: String, clientAppVersion: String) {
         let source = NativeNVSTNormalizedSessionSource(allocation: allocation)
         let rawSession = source.rawSession
-        let sessionInfo = source.sessionInfo
         let settings = source.settings
         let requestData = source.requestData
         let sessionControlInfo = rawSession["sessionControlInfo"] as? [String: Any] ?? [:]
@@ -173,18 +172,67 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         let serverType = Self.positiveInt(allocation.serverType, rawSession["serverType"], requestData["serverType"], fallback: 0)
         let traceParent = Self.firstNonEmpty(Self.string((rawSession["spanData"] as? [String: Any])?["traceparent"]), Self.string((requestData["spanData"] as? [String: Any])?["traceparent"]))
 
-        prepare = Prepare(
+        prepare = Self.prepare(address: address,
+                               port: port,
+                               deviceId: deviceId,
+                               clientAppVersion: clientAppVersion,
+                               tokenType: tokenType,
+                               hasToken: !token.isEmpty,
+                               serverType: serverType,
+                               traceParent: traceParent)
+        start = Self.start(source: source,
+                           allocation: allocation,
+                           streamingDisplayData: streamingDisplayData,
+                           streamingProfileJSON: streamingProfileJSON,
+                           address: address,
+                           port: port,
+                           appId: appId,
+                           deviceId: deviceId,
+                           locale: locale,
+                           audioMode: audioMode,
+                           serverType: serverType)
+        missingFields = Self.missingFields(prepare: prepare, start: start)
+    }
+
+    /// The `prepare` half of the payload: everything the native client needs before it opens a
+    /// connection.
+    private static func prepare(address: String,
+                                port: Int,
+                                deviceId: String,
+                                clientAppVersion: String,
+                                tokenType: String,
+                                hasToken: Bool,
+                                serverType: Int,
+                                traceParent: String) -> Prepare {
+        Prepare(
             address: address,
             port: port,
             deviceId: deviceId,
             clientAppVersion: clientAppVersion,
             tokenType: tokenType,
-            hasToken: !token.isEmpty,
+            hasToken: hasToken,
             serverType: serverType,
             serverAddress: address,
             traceParent: traceParent
         )
-        start = Start(
+    }
+
+    /// The `start` half: what the seat is told about the game, the account and the display.
+    private static func start(source: NativeNVSTNormalizedSessionSource,
+                              allocation: NativeNVSTSessionAllocation,
+                              streamingDisplayData: [String: Any],
+                              streamingProfileJSON: String,
+                              address: String,
+                              port: Int,
+                              appId: Int,
+                              deviceId: String,
+                              locale: String,
+                              audioMode: String,
+                              serverType: Int) -> Start {
+        let rawSession = source.rawSession
+        let requestData = source.requestData
+        let sessionInfo = source.sessionInfo
+        return Start(
             address: address,
             serverType: serverType,
             port: port,
@@ -222,7 +270,11 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
             hasStreamingDisplayDataInfo: !streamingDisplayData.isEmpty,
             hasCurrentPhysicalResolution: rawSession["currentPhysicalResolution"] != nil || requestData["currentPhysicalResolution"] != nil || sessionInfo["currentPhysicalResolution"] != nil
         )
+    }
 
+    /// The required fields the seat's allocation never carried. Reported together so one launch
+    /// failure names everything that is wrong, not just the first thing.
+    private static func missingFields(prepare: Prepare, start: Start) -> [String] {
         var missing: [String] = []
         if prepare.address.isEmpty { missing.append("address") }
         if prepare.port <= 0 { missing.append("port") }
@@ -232,9 +284,9 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         if !prepare.hasToken { missing.append("token") }
         if start.serverType <= 0 { missing.append("serverType") }
         if start.appId <= 0 { missing.append("appId") }
-        if !Self.hasValidStreamingProfile(start.streamingProfileJSON) { missing.append("streamingProfile") }
+        if !hasValidStreamingProfile(start.streamingProfileJSON) { missing.append("streamingProfile") }
         if start.audioModeFormat.isEmpty { missing.append("audioModeFormat") }
-        missingFields = missing
+        return missing
     }
 
     func validate() throws {
@@ -273,7 +325,7 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         return int(selectedVideoMode["width"]) > 0 && int(selectedVideoMode["height"]) > 0 && int(selectedVideoMode["fps"]) > 0
     }
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
         if let value = value as? NSNumber { return value.stringValue }
         return ""
@@ -291,14 +343,14 @@ struct NativeNVSTLaunchPayload: Equatable, Sendable {
         return fallback
     }
 
-    private static func int(_ value: Any?) -> Int {
+    static func int(_ value: Any?) -> Int {
         if let value = value as? Int { return value }
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 }
         return 0
     }
 
-    private static func bool(_ values: Any?..., fallback: Bool = false) -> Bool {
+    static func bool(_ values: Any?..., fallback: Bool = false) -> Bool {
         for value in values {
             if let value = value as? Bool { return value }
             if let value = value as? NSNumber { return value.boolValue }

@@ -10,7 +10,7 @@ import Foundation
 /// requests (catalog metadata enrichment) that would otherwise crowd out the
 /// artwork downloads the visible frame depends on.
 final class OPNRequestConcurrencyLimiter: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private let limit: Int
     private var running = 0
     private var pending: [@Sendable () -> Void] = []

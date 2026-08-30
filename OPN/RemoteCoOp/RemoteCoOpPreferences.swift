@@ -1,7 +1,7 @@
 import Foundation
 
 public enum OPNRemoteCoOpPreferencesStore {
-    private static let storage = OPNAppPreferenceStorage.standard
+    static let storage = OPNAppPreferenceStorage.standard
     private static let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
     private static let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
     private static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
@@ -124,25 +124,25 @@ public enum OPNRemoteCoOpPreferencesStore {
         load().effectiveReservedGuestSlots
     }
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         if let value = value as? String { return value }
         if let value = value as? NSString { return value as String }
         if let value = value as? NSNumber { return value.stringValue }
         return ""
     }
 
-    private static func string(_ value: Any?, defaultValue: String) -> String {
+    static func string(_ value: Any?, defaultValue: String) -> String {
         OPNRemoteCoOpPreferences.normalizedURLString(string(value), fallback: defaultValue)
     }
 
-    private static func int(_ value: Any?, defaultValue: Int) -> Int {
+    static func int(_ value: Any?, defaultValue: Int) -> Int {
         if let value = value as? Int { return value }
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String, let parsed = Int(value) { return parsed }
         return defaultValue
     }
 
-    private static func bool(_ value: Any?, defaultValue: Bool) -> Bool {
+    static func bool(_ value: Any?, defaultValue: Bool) -> Bool {
         if let value = value as? Bool { return value }
         if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String {

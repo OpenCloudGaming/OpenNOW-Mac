@@ -25,7 +25,7 @@ public protocol OPNRemoteCoOpSignalingSession: Sendable {
 }
 
 public final class OPNInProcessRemoteCoOpSignalingSession: OPNRemoteCoOpSignalingSession, @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
     private var commandContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingCommand>.Continuation] = [:]
     private var sentCommands: [OPNRemoteCoOpSignalingCommand] = []
@@ -99,7 +99,7 @@ public final class OPNInProcessRemoteCoOpSignalingSession: OPNRemoteCoOpSignalin
 
 public actor OPNRemoteCoOpHostCoordinator {
     private let hostSession: OPNRemoteCoOpHostSession
-    private let signaling: any OPNRemoteCoOpSignalingSession
+    let signaling: any OPNRemoteCoOpSignalingSession
 
     public init(hostSession: OPNRemoteCoOpHostSession, signaling: any OPNRemoteCoOpSignalingSession) {
         self.hostSession = hostSession

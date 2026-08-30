@@ -166,7 +166,7 @@ public final class NativeWebRTCGamepadMonitor {
     /// the binding engine. The keyboard also owns button navigation while active.
     public var onScreenKeyboardCapture: ((InputDeviceID, SteamControllerInputSnapshot) -> Bool)?
 
-    private let mappingProvider: any SteamControllerMappingProviding
+    let mappingProvider: any SteamControllerMappingProviding
 
     init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
         self.mappingProvider = mappingProvider
@@ -511,24 +511,32 @@ public final class NativeWebRTCGamepadMonitor {
         }
     }
 
+    /// Which `GCExtendedGamepad` control backs each button. A table rather than one `if` per
+    /// button; `nil` means the pad does not expose that control.
+    // `nonisolated`, not `nonisolated(unsafe)`: with a `@Sendable` accessor the tuple array is
+    // genuinely Sendable, so `buttons(from:)` can read it off the main actor with no escape hatch.
+    nonisolated private static let buttonInputs: [(input: @Sendable (GCExtendedGamepad) -> GCControllerButtonInput?, button: GamepadButtons)] = [
+        ({ $0.buttonA }, .south),
+        ({ $0.buttonB }, .east),
+        ({ $0.buttonX }, .west),
+        ({ $0.buttonY }, .north),
+        ({ $0.leftShoulder }, .leftShoulder),
+        ({ $0.rightShoulder }, .rightShoulder),
+        ({ $0.leftThumbstickButton }, .leftStick),
+        ({ $0.rightThumbstickButton }, .rightStick),
+        ({ $0.dpad.up }, .dpadUp),
+        ({ $0.dpad.down }, .dpadDown),
+        ({ $0.dpad.left }, .dpadLeft),
+        ({ $0.dpad.right }, .dpadRight),
+        ({ $0.buttonOptions }, .select),
+        ({ $0.buttonMenu }, .start),
+        ({ $0.buttonHome }, .mode)
+    ]
+
     nonisolated static func buttons(from gamepad: GCExtendedGamepad) -> GamepadButtons {
-        var buttons: GamepadButtons = []
-        if gamepad.buttonA.isPressed { buttons.insert(.south) }
-        if gamepad.buttonB.isPressed { buttons.insert(.east) }
-        if gamepad.buttonX.isPressed { buttons.insert(.west) }
-        if gamepad.buttonY.isPressed { buttons.insert(.north) }
-        if gamepad.leftShoulder.isPressed { buttons.insert(.leftShoulder) }
-        if gamepad.rightShoulder.isPressed { buttons.insert(.rightShoulder) }
-        if gamepad.leftThumbstickButton?.isPressed == true { buttons.insert(.leftStick) }
-        if gamepad.rightThumbstickButton?.isPressed == true { buttons.insert(.rightStick) }
-        if gamepad.dpad.up.isPressed { buttons.insert(.dpadUp) }
-        if gamepad.dpad.down.isPressed { buttons.insert(.dpadDown) }
-        if gamepad.dpad.left.isPressed { buttons.insert(.dpadLeft) }
-        if gamepad.dpad.right.isPressed { buttons.insert(.dpadRight) }
-        if gamepad.buttonOptions?.isPressed == true { buttons.insert(.select) }
-        if gamepad.buttonMenu.isPressed { buttons.insert(.start) }
-        if gamepad.buttonHome?.isPressed == true { buttons.insert(.mode) }
-        return buttons
+        buttonInputs.reduce(into: GamepadButtons()) { result, entry in
+            if entry.input(gamepad)?.isPressed == true { result.insert(entry.button) }
+        }
     }
 }
 

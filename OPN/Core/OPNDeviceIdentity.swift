@@ -2,7 +2,7 @@ import Foundation
 
 @objc(OPNDeviceIdentity)
 public final class OPNDeviceIdentity: NSObject {
-    private static let lock = NSLock()
+    static let lock = NSLock()
     nonisolated(unsafe) private static var cachedCloudmatchDeviceId = ""
 
     @objc(stableCloudmatchDeviceId)

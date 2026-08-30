@@ -147,30 +147,28 @@ final class GamepadUINavigator: ObservableObject {
         onCommand?(command)
     }
 
+    /// The UI command each navigable button maps to. A table rather than a `switch` so the set
+    /// and the mapping stay one declaration apart.
+    private static let commands: [(button: GamepadButtons, command: ControllerInputCommand)] = [
+        (.dpadUp, .move(.up)),
+        (.dpadDown, .move(.down)),
+        (.dpadLeft, .move(.left)),
+        (.dpadRight, .move(.right)),
+        (.south, .confirm),
+        (.east, .back),
+        (.west, .search),
+        (.north, .actions),
+        (.start, .menu),
+        (.select, .actions),
+        (.leftShoulder, .pageLeft),
+        (.rightShoulder, .pageRight)
+    ]
+
     static func command(for button: GamepadButtons) -> ControllerInputCommand? {
-        switch button {
-        case .dpadUp: return .move(.up)
-        case .dpadDown: return .move(.down)
-        case .dpadLeft: return .move(.left)
-        case .dpadRight: return .move(.right)
-        case .south: return .confirm
-        case .east: return .back
-        case .west: return .search
-        case .north: return .actions
-        case .start: return .menu
-        case .select: return .actions
-        case .leftShoulder: return .pageLeft
-        case .rightShoulder: return .pageRight
-        default: return nil
-        }
+        commands.first { $0.button == button }?.command
     }
 
-    private static let navigableButtons: [GamepadButtons] = [
-        .dpadUp, .dpadDown, .dpadLeft, .dpadRight,
-        .south, .east, .west, .north,
-        .start, .select,
-        .leftShoulder, .rightShoulder,
-    ]
+    private static let navigableButtons: [GamepadButtons] = commands.map(\.button)
 
 
     private static func makeGlyphs() -> ControllerInputGlyphSet {

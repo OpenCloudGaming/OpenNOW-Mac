@@ -131,16 +131,27 @@ public struct LCARSClientHeaders: Equatable, Sendable {
             request.setValue(cascadePreviewToken, forHTTPHeaderField: "NV-Additional")
             if !previewTime.isEmpty { request.setValue(previewTime, forHTTPHeaderField: "NV-Preview-Time") }
         }
-        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
-        if !clientId.isEmpty { request.setValue(clientId, forHTTPHeaderField: "NV-Client-ID") }
-        if !clientType.isEmpty { request.setValue(clientType, forHTTPHeaderField: "NV-Client-Type") }
-        if !clientVersion.isEmpty { request.setValue(clientVersion, forHTTPHeaderField: "NV-Client-Version") }
-        if !clientStreamer.isEmpty { request.setValue(clientStreamer, forHTTPHeaderField: "NV-Client-Streamer") }
-        if !deviceOS.isEmpty { request.setValue(deviceOS, forHTTPHeaderField: "NV-Device-OS") }
-        if !deviceType.isEmpty { request.setValue(deviceType, forHTTPHeaderField: "NV-Device-Type") }
-        if !deviceMake.isEmpty { request.setValue(deviceMake, forHTTPHeaderField: "NV-Device-Make") }
-        if !deviceModel.isEmpty { request.setValue(deviceModel, forHTTPHeaderField: "NV-Device-Model") }
-        if !browserType.isEmpty { request.setValue(browserType, forHTTPHeaderField: "NV-Browser-Type") }
+        applyIdentityHeaders(to: &request, accessToken: accessToken)
+    }
+
+    /// The client-identity block. Every field is skipped when empty, so the set is one table rather
+    /// than one `if` per header.
+    private func applyIdentityHeaders(to request: inout URLRequest, accessToken: String) {
+        let headers: [(field: String, value: String)] = [
+            ("Authorization", accessToken.isEmpty ? "" : "GFNJWT \(accessToken)"),
+            ("NV-Client-ID", clientId),
+            ("NV-Client-Type", clientType),
+            ("NV-Client-Version", clientVersion),
+            ("NV-Client-Streamer", clientStreamer),
+            ("NV-Device-OS", deviceOS),
+            ("NV-Device-Type", deviceType),
+            ("NV-Device-Make", deviceMake),
+            ("NV-Device-Model", deviceModel),
+            ("NV-Browser-Type", browserType)
+        ]
+        for header in headers where !header.value.isEmpty {
+            request.setValue(header.value, forHTTPHeaderField: header.field)
+        }
     }
 }
 
@@ -280,7 +291,7 @@ public enum LCARSRequestFactory {
         return Insecure.SHA1.hash(data: Data(trimmed.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func jsonString(_ value: Any?) -> String? {
+    static func jsonString(_ value: Any?) -> String? {
         guard let value else { return nil }
         guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return nil }
         return text
@@ -318,7 +329,7 @@ public enum LCARSServiceError: LocalizedError, Equatable, Sendable {
 }
 
 public actor LCARSService<Transport: LCARSHTTPTransport> {
-    private let configuration: LCARSConfiguration
+    let configuration: LCARSConfiguration
     private let transport: Transport
     private var fetchedKeys = Set<String>()
 

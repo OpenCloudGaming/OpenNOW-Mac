@@ -16,7 +16,7 @@ import MetalFX
 
 @objc(OPNMetalFXUpscaler)
 final class OPNMetalFXUpscaler: NSObject {
-    private let device: (any MTLDevice)?
+    let device: (any MTLDevice)?
     private var spatialScaler: AnyObject?
     private var inputWidth = 0
     private var inputHeight = 0
@@ -47,6 +47,49 @@ final class OPNMetalFXUpscaler: NSObject {
 #endif
     }
 
+#if canImport(MetalFX)
+    /// Rebuilds the spatial scaler when the source or destination geometry changed. A scaler is
+    /// bound to one input/output size and format pair.
+    @available(macOS 13.0, *)
+    private func rebuildScalerIfNeeded(source sourceTexture: any MTLTexture, destination destinationTexture: any MTLTexture) {
+        let dimensionsChanged = spatialScaler == nil ||
+            inputWidth != sourceTexture.width ||
+            inputHeight != sourceTexture.height ||
+            outputWidth != destinationTexture.width ||
+            outputHeight != destinationTexture.height ||
+            inputPixelFormat != sourceTexture.pixelFormat ||
+            outputPixelFormat != destinationTexture.pixelFormat
+        guard dimensionsChanged, let device else { return }
+        let descriptor = MTLFXSpatialScalerDescriptor()
+        descriptor.colorTextureFormat = sourceTexture.pixelFormat
+        descriptor.outputTextureFormat = destinationTexture.pixelFormat
+        descriptor.inputWidth = sourceTexture.width
+        descriptor.inputHeight = sourceTexture.height
+        descriptor.outputWidth = destinationTexture.width
+        descriptor.outputHeight = destinationTexture.height
+        descriptor.colorProcessingMode = .perceptual
+        spatialScaler = descriptor.makeSpatialScaler(device: device) as AnyObject?
+        inputWidth = sourceTexture.width
+        inputHeight = sourceTexture.height
+        outputWidth = destinationTexture.width
+        outputHeight = destinationTexture.height
+        inputPixelFormat = sourceTexture.pixelFormat
+        outputPixelFormat = destinationTexture.pixelFormat
+    }
+
+    private func disableUnderMetalCapture() {
+        disabledByCaptureScaler = true
+        spatialScaler = nil
+        neutralMotionTexture = nil
+        inputWidth = 0
+        inputHeight = 0
+        outputWidth = 0
+        outputHeight = 0
+        inputPixelFormat = .invalid
+        outputPixelFormat = .invalid
+    }
+#endif
+
     @objc(encodeTexture:toTexture:commandBuffer:fallback:)
     func encodeTexture(
         _ sourceTexture: (any MTLTexture)?,
@@ -55,50 +98,20 @@ final class OPNMetalFXUpscaler: NSObject {
         fallback: AutoreleasingUnsafeMutablePointer<NSString?>?
     ) -> Bool {
 #if canImport(MetalFX)
-        guard isAvailable, let device, let sourceTexture, let destinationTexture, let commandBuffer else {
+        guard isAvailable, device != nil, let sourceTexture, let destinationTexture, let commandBuffer else {
             fallback?.pointee = "MetalFX unavailable"
             return false
         }
         if #available(macOS 13.0, *) {
-            let dimensionsChanged = spatialScaler == nil ||
-                inputWidth != sourceTexture.width ||
-                inputHeight != sourceTexture.height ||
-                outputWidth != destinationTexture.width ||
-                outputHeight != destinationTexture.height ||
-                inputPixelFormat != sourceTexture.pixelFormat ||
-                outputPixelFormat != destinationTexture.pixelFormat
-            if dimensionsChanged {
-                let descriptor = MTLFXSpatialScalerDescriptor()
-                descriptor.colorTextureFormat = sourceTexture.pixelFormat
-                descriptor.outputTextureFormat = destinationTexture.pixelFormat
-                descriptor.inputWidth = sourceTexture.width
-                descriptor.inputHeight = sourceTexture.height
-                descriptor.outputWidth = destinationTexture.width
-                descriptor.outputHeight = destinationTexture.height
-                descriptor.colorProcessingMode = .perceptual
-                spatialScaler = descriptor.makeSpatialScaler(device: device) as AnyObject?
-                inputWidth = sourceTexture.width
-                inputHeight = sourceTexture.height
-                outputWidth = destinationTexture.width
-                outputHeight = destinationTexture.height
-                inputPixelFormat = sourceTexture.pixelFormat
-                outputPixelFormat = destinationTexture.pixelFormat
-            }
+            rebuildScalerIfNeeded(source: sourceTexture, destination: destinationTexture)
             guard let scaler = spatialScaler as? MTLFXSpatialScaler else {
                 fallback?.pointee = "MetalFX scaler creation failed"
                 return false
             }
-            let scalerClassName = String(describing: type(of: scaler as AnyObject))
-            if scalerClassName.contains("CaptureMTLFXSpatialScaler") {
-                disabledByCaptureScaler = true
-                spatialScaler = nil
-                neutralMotionTexture = nil
-                inputWidth = 0
-                inputHeight = 0
-                outputWidth = 0
-                outputHeight = 0
-                inputPixelFormat = .invalid
-                outputPixelFormat = .invalid
+            // Xcode's Metal capture layer substitutes its own scaler, which produces a black
+            // frame; fall back to the plain blit for the rest of the process's life.
+            if String(describing: type(of: scaler as AnyObject)).contains("CaptureMTLFXSpatialScaler") {
+                disableUnderMetalCapture()
                 fallback?.pointee = "MetalFX disabled under Xcode Metal capture"
                 return false
             }

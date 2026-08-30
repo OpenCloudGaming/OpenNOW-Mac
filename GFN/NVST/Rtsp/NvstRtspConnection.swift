@@ -62,7 +62,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
 
     private let target: NvstRtspEndpoints.Target
     private let timeout: Duration
-    private let logger: (@Sendable (String) -> Void)?
+    let logger: (@Sendable (String) -> Void)?
     private var connection: NWConnection?
     private var frameReader = NvstWebSocketFrameReader()
     private var responseBuffer = Data()
@@ -200,7 +200,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
             + " failed=\(failure.map { _ in 1 } ?? 0) rtt=\(String(format: "%.1f", lastRoundTripMilliseconds))"
     }
     private var lastPingSentAt: UInt64?
-    private var lastRoundTripMilliseconds: Double = -1
+    var lastRoundTripMilliseconds: Double = -1
     private var pongsAccounted = 0
 
     private func notePongs() {
@@ -261,7 +261,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
 
     // MARK: - Internals
 
-    private static let queue = DispatchQueue(label: "com.opennow.nvst.rtsp")
+    static let queue = DispatchQueue(label: "com.opennow.nvst.rtsp")
 
     private func tlsOptions() -> NWProtocolTLS.Options {
         let options = NWProtocolTLS.Options()
@@ -394,7 +394,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
 
 /// A set-once flag shared with a timeout task.
 private final class OneShotFlag: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var value = false
 
     func set() { lock.lock(); value = true; lock.unlock() }
@@ -403,7 +403,7 @@ private final class OneShotFlag: @unchecked Sendable {
 
 /// Guards a `CheckedContinuation` that Network.framework callbacks may invoke more than once.
 private final class OneShot<Value: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var continuation: CheckedContinuation<Value, Error>?
 
     init(_ continuation: CheckedContinuation<Value, Error>) {

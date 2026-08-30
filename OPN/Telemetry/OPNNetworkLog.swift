@@ -193,23 +193,30 @@ public enum OPNNetworkLog {
         return true
     }
 
+    /// URL errors that describe the network rather than the request: they are expected in the
+    /// field, so they log as warnings instead of errors.
+    private static let transientURLErrorCodes: Set<URLError.Code> = [
+        .cancelled,
+        .timedOut,
+        .cannotFindHost,
+        .cannotConnectToHost,
+        .networkConnectionLost,
+        .notConnectedToInternet,
+        .serverCertificateUntrusted,
+        .serverCertificateHasBadDate,
+        .serverCertificateHasUnknownRoot,
+        .serverCertificateNotYetValid,
+        .secureConnectionFailed,
+        .badURL
+    ]
+
     private static func failureLogLevel(operation: String, error: Error?) -> String {
         if operation == "stream.measureRegion" { return "warning" }
         guard let error else { return "warning" }
-        let urlErrorCode = (error as? URLError)?.code
-        if urlErrorCode == .cancelled { return "warning" }
-        if urlErrorCode == .timedOut { return "warning" }
-        if urlErrorCode == .cannotFindHost { return "warning" }
-        if urlErrorCode == .cannotConnectToHost { return "warning" }
-        if urlErrorCode == .networkConnectionLost { return "warning" }
-        if urlErrorCode == .notConnectedToInternet { return "warning" }
-        if urlErrorCode == .serverCertificateUntrusted { return "warning" }
-        if urlErrorCode == .serverCertificateHasBadDate { return "warning" }
-        if urlErrorCode == .serverCertificateHasUnknownRoot { return "warning" }
-        if urlErrorCode == .serverCertificateNotYetValid { return "warning" }
-        if urlErrorCode == .secureConnectionFailed { return "warning" }
-        if urlErrorCode == .badURL { return "warning" }
-        return "error"
+        // An error that is not a `URLError` at all is still an error: it is a protocol or transport
+        // failure of ours, not the network being the network.
+        guard let urlErrorCode = (error as? URLError)?.code else { return "error" }
+        return transientURLErrorCodes.contains(urlErrorCode) ? "warning" : "error"
     }
 
     private static func shouldLogGraphQLStart(operationName: String) -> Bool {

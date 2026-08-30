@@ -29,10 +29,10 @@ public final class NvstFeedbackSender: @unchecked Sendable {
         }
     }
 
-    private let lock = NSLock()
+    let lock = NSLock()
     private var write: (@Sendable (Data) -> Void)?
     private var timer: DispatchSourceTimer?
-    private let queue = DispatchQueue(label: "com.opennow.nvst.feedback")
+    let queue = DispatchQueue(label: "com.opennow.nvst.feedback")
     private var senderSSRC: UInt32 = 0
     private var mediaSSRC: UInt32 = 0
     private var highestExtendedSequence: UInt32 = 0

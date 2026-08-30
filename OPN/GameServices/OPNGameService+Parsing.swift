@@ -9,6 +9,18 @@ extension OPNGameService {
     func parseGameItem(_ app: NSDictionary?) -> OPNGameInfo {
         guard let app else { return OPNGameInfo() }
         var game = OPNGameInfo()
+        applyIdentity(app, to: &game)
+        applyItemMetadata(app, to: &game)
+        applyGfnMetadata(app, to: &game)
+        applyImages(app, to: &game)
+        applyVariants(app, to: &game)
+        applyVariantRollup(to: &game)
+        applyGenresAndFeatures(app, to: &game)
+        return game
+    }
+
+    /// Titles, descriptions and the flat scalar fields the catalog carries at the top level.
+    private func applyIdentity(_ app: NSDictionary, to game: inout OPNGameInfo) {
         game.id = safeString(app["id"]) ?? ""
         game.uuid = game.id
         game.title = safeString(app["title"]) ?? ""
@@ -26,40 +38,46 @@ extension OPNGameService {
         appendStringValues(&game.supportedControls, app["supportedControls"])
         assignContentRatings(app["contentRatings"], to: &game)
         game.nvidiaTech = parseFeatureFlags(app["nvidiaTech"])
-        if let itemMetadata = app["itemMetadata"] as? NSDictionary {
-            if game.shortDescription.isEmpty { game.shortDescription = firstSafeString(itemMetadata, keys: ["shortDescription", "summary"]) ?? "" }
-            if game.longDescription.isEmpty { game.longDescription = firstSafeString(itemMetadata, keys: ["longDescription", "description"]) ?? "" }
-            if game.description.isEmpty { game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription }
-        }
-        if let itemMetadata = app["itemMetadata"] as? NSDictionary {
-            appendStringValues(&game.campaignIds, itemMetadata["campaignIds"])
-            if game.promoTag.isEmpty { game.promoTag = safeString(itemMetadata["promoTag"]) ?? "" }
-        }
-        if let gfn = app["gfn"] as? NSDictionary {
-            game.playabilityState = safeString(gfn["playabilityState"]) ?? ""
-            game.membershipTierLabel = safeString(gfn["minimumMembershipTierLabel"]) ?? ""
-            game.playType = safeString(gfn["playType"]) ?? ""
-            game.isPatching = isAppPatchingStatus(gfn["playabilityState"])
-            if game.promoTag.isEmpty { game.promoTag = safeString(gfn["promoTag"]) ?? "" }
-            if let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary {
-                appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
-                game.skuPlayabilityText = safeString(catalogSkuStrings["SKU_BASED_PLAYABILITY_TEXT"]) ?? ""
-                game.skuUnplayableDialogHeader = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_HEADER"]) ?? ""
-                game.skuUnplayableDialogBody = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE"]) ?? ""
-                game.skuUnplayableDialogBodyEcommerceRestricted = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE_ECOMM_RESTRICTED"]) ?? ""
-            }
-        }
+    }
+
+    /// `itemMetadata` only ever fills in what the top level left empty.
+    private func applyItemMetadata(_ app: NSDictionary, to game: inout OPNGameInfo) {
+        guard let itemMetadata = app["itemMetadata"] as? NSDictionary else { return }
+        if game.shortDescription.isEmpty { game.shortDescription = firstSafeString(itemMetadata, keys: ["shortDescription", "summary"]) ?? "" }
+        if game.longDescription.isEmpty { game.longDescription = firstSafeString(itemMetadata, keys: ["longDescription", "description"]) ?? "" }
+        if game.description.isEmpty { game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription }
+        appendStringValues(&game.campaignIds, itemMetadata["campaignIds"])
+        if game.promoTag.isEmpty { game.promoTag = safeString(itemMetadata["promoTag"]) ?? "" }
+    }
+
+    /// Playability, membership tier and the SKU-based copy the seat serves alongside them.
+    private func applyGfnMetadata(_ app: NSDictionary, to game: inout OPNGameInfo) {
         if let library = app["library"] as? NSDictionary {
             game.isFavorited = safeBool(library["favorited"])
         }
+        guard let gfn = app["gfn"] as? NSDictionary else { return }
+        game.playabilityState = safeString(gfn["playabilityState"]) ?? ""
+        game.membershipTierLabel = safeString(gfn["minimumMembershipTierLabel"]) ?? ""
+        game.playType = safeString(gfn["playType"]) ?? ""
+        game.isPatching = isAppPatchingStatus(gfn["playabilityState"])
+        if game.promoTag.isEmpty { game.promoTag = safeString(gfn["promoTag"]) ?? "" }
+        guard let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary else { return }
+        appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
+        game.skuPlayabilityText = safeString(catalogSkuStrings["SKU_BASED_PLAYABILITY_TEXT"]) ?? ""
+        game.skuUnplayableDialogHeader = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_HEADER"]) ?? ""
+        game.skuUnplayableDialogBody = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE"]) ?? ""
+        game.skuUnplayableDialogBodyEcommerceRestricted = safeString(catalogSkuStrings["SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE_ECOMM_RESTRICTED"]) ?? ""
+    }
+
+    /// The `images` map plus the loose top-level image keys, then the hero/tile fallbacks.
+    private func applyImages(_ app: NSDictionary, to game: inout OPNGameInfo) {
         if let images = app["images"] as? NSDictionary {
             for case let key as String in images.allKeys {
                 let urls = imageStrings(from: images[key]).map { Self.optimizeImageURL($0, width: 1200) }.uniqueValues()
                 if !urls.isEmpty { game.imageUrlsByType[key] = urls }
             }
             let landscape = firstLandscapeImageString(images)
-            let poster = firstPosterImageString(images)
-            let primary = landscape ?? poster
+            let primary = landscape ?? firstPosterImageString(images)
             if let landscape { game.heroImageUrl = Self.optimizeImageURL(landscape, width: 1200) }
             if let primary { game.imageUrl = Self.optimizeImageURL(primary, width: 900) }
             game.screenshotUrls = imageStrings(from: images["SCREENSHOTS"]).map { Self.optimizeImageURL($0, width: 720) }.uniqueValues()
@@ -76,61 +94,85 @@ extension OPNGameService {
         if game.imageUrl.isEmpty {
             game.imageUrl = game.imageUrlsByType["TV_BANNER"]?.first ?? game.imageUrlsByType["KEY_IMAGE"]?.first ?? game.imageUrlsByType["GAME_BOX_ART"]?.first ?? ""
         }
-        if let variants = app["variants"] as? [NSDictionary] {
-            for item in variants {
-                var variant = OPNGameVariant()
-                variant.id = safeString(item["id"]) ?? ""
-                variant.shortName = safeString(item["shortName"]) ?? ""
-                variant.appStore = Self.normalizedVariantAppStore(safeString(item["appStore"]) ?? "")
-                variant.storeUrl = safeString(item["storeUrl"]) ?? ""
-                variant.developerName = safeString(item["developerName"]) ?? ""
-                variant.publisherName = safeString(item["publisherName"]) ?? ""
-                variant.releaseDate = firstSafeString(item, keys: ["streetDate", "releaseDate", "releasedAt"]) ?? ""
-                appendStringValues(&variant.supportedControls, item["supportedControls"])
-                appendStringValues(&variant.subscriptionIds, item["subscriptions"])
-                variant.paymentModelTypes = parsePaymentModelTypes(item["paymentModels"])
-                variant.minimumSizeInBytes = safeInt(item["minimumSizeInBytes"])
-                variant.cloudSaveSupported = safeBool(item["cloudSaveSupported"])
-                if let appStoreInfo = item["appStoreInfo"] as? NSDictionary {
-                    variant.appStoreLabel = safeString(appStoreInfo["label"]) ?? ""
-                    variant.appStoreSmallImageUrl = safeString(appStoreInfo["smallImageUrl"]) ?? ""
-                }
-                if let gfn = item["gfn"] as? NSDictionary {
-                    variant.serviceStatus = safeString(gfn["status"]) ?? ""
-                    variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
-                    let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
-                    variant.patchStatusPrimaryText = patchText.primary
-                    variant.patchStatusSecondaryText = patchText.secondary
-                    variant.installTimeInMinutes = safeInt(gfn["installTimeInMinutes"])
-                    variant.supportedLanguages = parseSupportedLanguages(gfn["supportedLanguages"])
-                    variant.gfnFeatureLabels = parseGfnFeatureLabels(gfn["features"])
-                    if let library = gfn["library"] as? NSDictionary {
-                        let libraryStatus = firstSafeString(library, keys: ["status"]) ?? ""
-                        variant.libraryStatus = libraryStatus
-                        variant.libraryPlayStatus = safeString(library["playStatus"]) ?? ""
-                        variant.libraryInstalled = safeBool(library["installed"])
-                        variant.librarySubscription = safeString(library["subscription"]) ?? ""
-                        variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
-                        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: gfn["stateDetails"])
-                        if variant.patchStatusPrimaryText.isEmpty {
-                            let patchText = patchStatusText(status: library["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
-                            variant.patchStatusPrimaryText = patchText.primary
-                            variant.patchStatusSecondaryText = patchText.secondary
-                        }
-                        variant.librarySelected = safeBool(library["selected"])
-                        if variant.librarySelected || Self.libraryStatusIsOwned(libraryStatus) { variant.inLibrary = true }
-                    }
-                }
-                if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
-                guard Self.variantIsRelevant(variant) else { continue }
-                if let index = game.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: variant) }) {
-                    _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
-                } else {
-                    if !variant.appStore.isEmpty { game.availableStores.append(variant.appStore) }
-                    game.variants.append(variant)
-                }
+    }
+
+    /// One entry per store the title is sold through. Variants from the same store merge rather
+    /// than stack, so a title listed twice does not appear twice in the detail panel.
+    private func applyVariants(_ app: NSDictionary, to game: inout OPNGameInfo) {
+        guard let variants = app["variants"] as? [NSDictionary] else { return }
+        for item in variants {
+            let variant = parseVariant(item)
+            if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
+            guard Self.variantIsRelevant(variant) else { continue }
+            if let index = game.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: variant) }) {
+                _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
+            } else {
+                if !variant.appStore.isEmpty { game.availableStores.append(variant.appStore) }
+                game.variants.append(variant)
             }
         }
+    }
+
+    private func parseVariant(_ item: NSDictionary) -> OPNGameVariant {
+        var variant = OPNGameVariant()
+        variant.id = safeString(item["id"]) ?? ""
+        variant.shortName = safeString(item["shortName"]) ?? ""
+        variant.appStore = Self.normalizedVariantAppStore(safeString(item["appStore"]) ?? "")
+        variant.storeUrl = safeString(item["storeUrl"]) ?? ""
+        variant.developerName = safeString(item["developerName"]) ?? ""
+        variant.publisherName = safeString(item["publisherName"]) ?? ""
+        variant.releaseDate = firstSafeString(item, keys: ["streetDate", "releaseDate", "releasedAt"]) ?? ""
+        appendStringValues(&variant.supportedControls, item["supportedControls"])
+        appendStringValues(&variant.subscriptionIds, item["subscriptions"])
+        variant.paymentModelTypes = parsePaymentModelTypes(item["paymentModels"])
+        variant.minimumSizeInBytes = safeInt(item["minimumSizeInBytes"])
+        variant.cloudSaveSupported = safeBool(item["cloudSaveSupported"])
+        if let appStoreInfo = item["appStoreInfo"] as? NSDictionary {
+            variant.appStoreLabel = safeString(appStoreInfo["label"]) ?? ""
+            variant.appStoreSmallImageUrl = safeString(appStoreInfo["smallImageUrl"]) ?? ""
+        }
+        if let gfn = item["gfn"] as? NSDictionary {
+            applyVariantGfn(gfn, to: &variant)
+        }
+        return variant
+    }
+
+    /// Service status and patch state for one variant.
+    private func applyVariantGfn(_ gfn: NSDictionary, to variant: inout OPNGameVariant) {
+        variant.serviceStatus = safeString(gfn["status"]) ?? ""
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
+        let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+        variant.patchStatusPrimaryText = patchText.primary
+        variant.patchStatusSecondaryText = patchText.secondary
+        variant.installTimeInMinutes = safeInt(gfn["installTimeInMinutes"])
+        variant.supportedLanguages = parseSupportedLanguages(gfn["supportedLanguages"])
+        variant.gfnFeatureLabels = parseGfnFeatureLabels(gfn["features"])
+        guard let library = gfn["library"] as? NSDictionary else { return }
+        applyVariantLibrary(library, gfn: gfn, to: &variant)
+    }
+
+    /// The account's own view of a variant: owned, installed, and which store it plays from. The
+    /// library's status wins over the catalog's when it has one.
+    private func applyVariantLibrary(_ library: NSDictionary, gfn: NSDictionary, to variant: inout OPNGameVariant) {
+        let libraryStatus = firstSafeString(library, keys: ["status"]) ?? ""
+        variant.libraryStatus = libraryStatus
+        variant.libraryPlayStatus = safeString(library["playStatus"]) ?? ""
+        variant.libraryInstalled = safeBool(library["installed"])
+        variant.librarySubscription = safeString(library["subscription"]) ?? ""
+        variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: gfn["stateDetails"])
+        if variant.patchStatusPrimaryText.isEmpty {
+            let patchText = patchStatusText(status: library["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+            variant.patchStatusPrimaryText = patchText.primary
+            variant.patchStatusSecondaryText = patchText.secondary
+        }
+        variant.librarySelected = safeBool(library["selected"])
+        if variant.librarySelected || Self.libraryStatusIsOwned(libraryStatus) { variant.inLibrary = true }
+    }
+
+    /// What the parsed variants say about the title as a whole, including which app id a launch
+    /// should use.
+    private func applyVariantRollup(to game: inout OPNGameInfo) {
         var firstNumericVariant = ""
         for variant in game.variants {
             if variant.inLibrary { game.isInLibrary = true }
@@ -143,6 +185,10 @@ extension OPNGameService {
             if numeric, firstNumericVariant.isEmpty { firstNumericVariant = variant.id }
         }
         if game.launchAppId.isEmpty { game.launchAppId = firstNumericVariant }
+    }
+
+    /// Genres arrive as either bare strings or `{name:}` objects depending on the endpoint.
+    private func applyGenresAndFeatures(_ app: NSDictionary, to game: inout OPNGameInfo) {
         if let genres = app["genres"] as? [Any] {
             for item in genres {
                 if let text = item as? String { appendUnique(&game.genres, text) }
@@ -152,7 +198,6 @@ extension OPNGameService {
         if let features = (app["featureLabels"] ?? app["features"]) as? [String] {
             for feature in features { appendUnique(&game.featureLabels, feature) }
         }
-        return game
     }
 
     func firstSafeString(_ dictionary: NSDictionary, keys: [String]) -> String? {
@@ -370,32 +415,76 @@ extension OPNGameService {
         }
     }
 
+    /// Fields a merge fills in when the destination is still empty. Listed rather than written out
+    /// one `if` per field, because the rule is the same for every one of them.
+    // Computed, not stored: `WritableKeyPath` is non-Sendable by design, so a `static let` would
+    // need a `nonisolated(unsafe)` the reader has to take on trust. These are read once per
+    // merged record, well off any hot path.
+    private static var sameStoreStringFields: [WritableKeyPath<OPNGameVariant, String>] { [
+        \.shortName, \.appStoreLabel, \.appStoreSmallImageUrl, \.storeUrl,
+        \.developerName, \.publisherName, \.releaseDate,
+        \.libraryStatus, \.libraryPlayStatus, \.librarySubscription
+    ] }
+
+    /// A store-metadata merge fills in the identity fields too — the catalog row it merges into may
+    /// have come from a source that never carried them.
+    private static var storeMetadataStringFields: [WritableKeyPath<OPNGameVariant, String>] {
+        sameStoreStringFields + [\.id, \.appStore, \.serviceStatus, \.patchStatusPrimaryText, \.patchStatusSecondaryText]
+    }
+
+    private static var mergeableListFields: [WritableKeyPath<OPNGameVariant, [String]>] { [
+        \.supportedControls, \.subscriptionIds, \.paymentModelTypes, \.supportedLanguages, \.gfnFeatureLabels
+    ] }
+
+    private static var mergeableFlagFields: [WritableKeyPath<OPNGameVariant, Bool>] { [
+        \.libraryInstalled, \.cloudSaveSupported, \.librarySelected, \.inLibrary
+    ] }
+
+    private static var mergeableCountFields: [WritableKeyPath<OPNGameVariant, Int>] { [
+        \.minimumSizeInBytes, \.installTimeInMinutes
+    ] }
+
+    /// Copies every listed field that `target` still lacks. Returns whether anything changed.
+    @discardableResult
+    private func fillEmptyFields(_ target: inout OPNGameVariant,
+                                 from source: OPNGameVariant,
+                                 stringFields: [WritableKeyPath<OPNGameVariant, String>]) -> Bool {
+        var changed = false
+        for field in stringFields where target[keyPath: field].isEmpty && !source[keyPath: field].isEmpty {
+            target[keyPath: field] = source[keyPath: field]
+            changed = true
+        }
+        for field in Self.mergeableListFields where target[keyPath: field].isEmpty && !source[keyPath: field].isEmpty {
+            target[keyPath: field] = source[keyPath: field]
+            changed = true
+        }
+        for field in Self.mergeableFlagFields where !target[keyPath: field] && source[keyPath: field] {
+            target[keyPath: field] = true
+            changed = true
+        }
+        for field in Self.mergeableCountFields where target[keyPath: field] <= 0 && source[keyPath: field] > 0 {
+            target[keyPath: field] = source[keyPath: field]
+            changed = true
+        }
+        return changed
+    }
+
+    /// Two listings of the same title on the same store. The library-selected one is authoritative
+    /// about the launch id and the service status; everything else is filled in where missing.
     func mergeVariantFromSameStore(target: inout OPNGameVariant, source: OPNGameVariant) -> Bool {
         var changed = false
-        if !source.id.isEmpty, target.id.isEmpty || (!target.librarySelected && source.librarySelected) { target.id = source.id; changed = true }
-        if target.shortName.isEmpty, !source.shortName.isEmpty { target.shortName = source.shortName; changed = true }
-        if target.appStoreLabel.isEmpty, !source.appStoreLabel.isEmpty { target.appStoreLabel = source.appStoreLabel; changed = true }
-        if target.appStoreSmallImageUrl.isEmpty, !source.appStoreSmallImageUrl.isEmpty { target.appStoreSmallImageUrl = source.appStoreSmallImageUrl; changed = true }
-        if target.storeUrl.isEmpty, !source.storeUrl.isEmpty { target.storeUrl = source.storeUrl; changed = true }
-        if target.developerName.isEmpty, !source.developerName.isEmpty { target.developerName = source.developerName; changed = true }
-        if target.publisherName.isEmpty, !source.publisherName.isEmpty { target.publisherName = source.publisherName; changed = true }
-        if target.releaseDate.isEmpty, !source.releaseDate.isEmpty { target.releaseDate = source.releaseDate; changed = true }
-        if target.supportedControls.isEmpty, !source.supportedControls.isEmpty { target.supportedControls = source.supportedControls; changed = true }
-        if !source.serviceStatus.isEmpty, target.serviceStatus.isEmpty || (!target.librarySelected && source.librarySelected) { target.serviceStatus = source.serviceStatus; changed = true }
-        if target.libraryStatus.isEmpty, !source.libraryStatus.isEmpty { target.libraryStatus = source.libraryStatus; changed = true }
-        if target.libraryPlayStatus.isEmpty, !source.libraryPlayStatus.isEmpty { target.libraryPlayStatus = source.libraryPlayStatus; changed = true }
-        if !target.libraryInstalled, source.libraryInstalled { target.libraryInstalled = true; changed = true }
-        if target.librarySubscription.isEmpty, !source.librarySubscription.isEmpty { target.librarySubscription = source.librarySubscription; changed = true }
-        if target.subscriptionIds.isEmpty, !source.subscriptionIds.isEmpty { target.subscriptionIds = source.subscriptionIds; changed = true }
-        if target.paymentModelTypes.isEmpty, !source.paymentModelTypes.isEmpty { target.paymentModelTypes = source.paymentModelTypes; changed = true }
-        if target.minimumSizeInBytes <= 0, source.minimumSizeInBytes > 0 { target.minimumSizeInBytes = source.minimumSizeInBytes; changed = true }
-        if !target.cloudSaveSupported, source.cloudSaveSupported { target.cloudSaveSupported = true; changed = true }
-        if target.installTimeInMinutes <= 0, source.installTimeInMinutes > 0 { target.installTimeInMinutes = source.installTimeInMinutes; changed = true }
-        if target.supportedLanguages.isEmpty, !source.supportedLanguages.isEmpty { target.supportedLanguages = source.supportedLanguages; changed = true }
-        if target.gfnFeatureLabels.isEmpty, !source.gfnFeatureLabels.isEmpty { target.gfnFeatureLabels = source.gfnFeatureLabels; changed = true }
-        if !target.librarySelected, source.librarySelected { target.librarySelected = true; changed = true }
-        if !target.inLibrary, source.inLibrary { target.inLibrary = true; changed = true }
-        return changed
+        // Both overrides run before `fillEmptyFields`, which itself sets `librarySelected`: read
+        // after it, `!target.librarySelected` is never true and the authoritative branch is dead.
+        if !source.id.isEmpty, target.id.isEmpty || (!target.librarySelected && source.librarySelected) {
+            target.id = source.id
+            changed = true
+        }
+        if !source.serviceStatus.isEmpty, target.serviceStatus.isEmpty || (!target.librarySelected && source.librarySelected) {
+            target.serviceStatus = source.serviceStatus
+            changed = true
+        }
+        let filled = fillEmptyFields(&target, from: source, stringFields: Self.sameStoreStringFields)
+        return filled || changed
     }
 
     func mergeMissingStoreMetadata(target: inout OPNGameInfo, metadata: OPNGameInfo) {
@@ -404,32 +493,7 @@ extension OPNGameService {
         for store in metadata.availableStores where !target.availableStores.contains(where: { $0.caseInsensitiveCompare(store) == .orderedSame }) { target.availableStores.append(store) }
         for metadataVariant in metadata.variants {
             if let index = target.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: metadataVariant) }) {
-                if target.variants[index].id.isEmpty { target.variants[index].id = metadataVariant.id }
-                if target.variants[index].shortName.isEmpty { target.variants[index].shortName = metadataVariant.shortName }
-                if target.variants[index].appStore.isEmpty { target.variants[index].appStore = metadataVariant.appStore }
-                if target.variants[index].appStoreLabel.isEmpty { target.variants[index].appStoreLabel = metadataVariant.appStoreLabel }
-                if target.variants[index].appStoreSmallImageUrl.isEmpty { target.variants[index].appStoreSmallImageUrl = metadataVariant.appStoreSmallImageUrl }
-                if target.variants[index].storeUrl.isEmpty { target.variants[index].storeUrl = metadataVariant.storeUrl }
-                if target.variants[index].developerName.isEmpty { target.variants[index].developerName = metadataVariant.developerName }
-                if target.variants[index].publisherName.isEmpty { target.variants[index].publisherName = metadataVariant.publisherName }
-                if target.variants[index].releaseDate.isEmpty { target.variants[index].releaseDate = metadataVariant.releaseDate }
-                if target.variants[index].supportedControls.isEmpty { target.variants[index].supportedControls = metadataVariant.supportedControls }
-                if target.variants[index].serviceStatus.isEmpty { target.variants[index].serviceStatus = metadataVariant.serviceStatus }
-                if target.variants[index].libraryStatus.isEmpty { target.variants[index].libraryStatus = metadataVariant.libraryStatus }
-                if target.variants[index].libraryPlayStatus.isEmpty { target.variants[index].libraryPlayStatus = metadataVariant.libraryPlayStatus }
-                if !target.variants[index].libraryInstalled { target.variants[index].libraryInstalled = metadataVariant.libraryInstalled }
-                if target.variants[index].librarySubscription.isEmpty { target.variants[index].librarySubscription = metadataVariant.librarySubscription }
-                if target.variants[index].subscriptionIds.isEmpty { target.variants[index].subscriptionIds = metadataVariant.subscriptionIds }
-                if target.variants[index].paymentModelTypes.isEmpty { target.variants[index].paymentModelTypes = metadataVariant.paymentModelTypes }
-                if target.variants[index].minimumSizeInBytes <= 0 { target.variants[index].minimumSizeInBytes = metadataVariant.minimumSizeInBytes }
-                if !target.variants[index].cloudSaveSupported { target.variants[index].cloudSaveSupported = metadataVariant.cloudSaveSupported }
-                if target.variants[index].installTimeInMinutes <= 0 { target.variants[index].installTimeInMinutes = metadataVariant.installTimeInMinutes }
-                if target.variants[index].supportedLanguages.isEmpty { target.variants[index].supportedLanguages = metadataVariant.supportedLanguages }
-                if target.variants[index].gfnFeatureLabels.isEmpty { target.variants[index].gfnFeatureLabels = metadataVariant.gfnFeatureLabels }
-                if target.variants[index].patchStatusPrimaryText.isEmpty { target.variants[index].patchStatusPrimaryText = metadataVariant.patchStatusPrimaryText }
-                if target.variants[index].patchStatusSecondaryText.isEmpty { target.variants[index].patchStatusSecondaryText = metadataVariant.patchStatusSecondaryText }
-                if !target.variants[index].librarySelected { target.variants[index].librarySelected = metadataVariant.librarySelected }
-                if !target.variants[index].inLibrary { target.variants[index].inLibrary = metadataVariant.inLibrary }
+                fillEmptyFields(&target.variants[index], from: metadataVariant, stringFields: Self.storeMetadataStringFields)
             } else if !metadataVariant.appStore.isEmpty {
                 target.variants.append(metadataVariant)
                 if !target.availableStores.contains(where: { $0.caseInsensitiveCompare(metadataVariant.appStore) == .orderedSame }) { target.availableStores.append(metadataVariant.appStore) }

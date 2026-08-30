@@ -17,7 +17,7 @@ public final class NvstUdpPortReservation: @unchecked Sendable {
         }
     }
 
-    private let lock = NSLock()
+    let lock = NSLock()
     private var descriptor: Int32
     public let port: UInt16
 
@@ -85,8 +85,8 @@ public final class NvstUdpPortReservation: @unchecked Sendable {
 /// its own socket, and this reservation only carries the shared local ICE credentials (both sockets
 /// authenticate with one 4-character ufrag) plus the Mjolnir descriptor.
 public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Sendable {
-    private let lock = NSLock()
-    private var bundle: NvstUdpPortReservation?
+    let lock = NSLock()
+    var bundle: NvstUdpPortReservation?
     private var mjolnir: NvstUdpPortReservation?
     private var audio: NvstUdpPortReservation?
     private let dtlsFingerprint: String?

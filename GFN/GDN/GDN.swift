@@ -296,7 +296,7 @@ public enum GDNRequestFactory {
         return cloudVariablesRequest(queryItems: items, configuration: configuration, timeoutInterval: timeoutInterval)
     }
 
-    private static func jsonString(_ value: [String: Any]) -> String? {
+    static func jsonString(_ value: [String: Any]) -> String? {
         guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return nil }
         return text
     }
@@ -333,7 +333,7 @@ public enum GDNServiceError: LocalizedError, Equatable, Sendable {
 }
 
 public struct GDNService<Transport: GDNHTTPTransport>: Sendable {
-    private let configuration: GDNConfiguration
+    let configuration: GDNConfiguration
     private let transport: Transport
 
     public init(configuration: GDNConfiguration = .gfnPC, transport: Transport) {

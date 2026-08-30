@@ -264,7 +264,7 @@ struct CatalogView: View {
         .preferredColorScheme(.dark)
     }
 
-    private func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat, topInset: CGFloat) -> CGSize {
+    func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat, topInset: CGFloat) -> CGSize {
         guard topInset > 0, availableWidth > 0, availableHeight > 0 else {
             return CGSize(width: availableWidth, height: availableHeight)
         }

@@ -251,26 +251,61 @@ public enum NVSTSessionDescriptionBuilder {
         buildAnswerExtension(settings: NVSTSessionDescriptionSettings(dictionary: settings), credentials: credentials)
     }
 
+    /// The derived numbers every attribute block below is built from.
+    private struct AnswerTuning {
+        let width: Int
+        let height: Int
+        let fps: Int
+        let maxBitrateKbps: Int
+        let minBitrateKbps: Int
+        let initialBitrateKbps: Int
+        let bitDepth: Int
+        let codec: String
+        let prefilterMode: Int
+        let prefilterSharpness: Int
+        let prefilterDenoise: Int
+        let prefilterModel: Int
+        let maxReferenceFrames: Int
+        let isAv1: Bool
+        let isHighFps: Bool
+        let is120Fps: Bool
+        let is240Fps: Bool
+
+        init(_ settings: NVSTSessionDescriptionSettings) {
+            let parts = settings.resolution.split(separator: "x").compactMap { Int($0) }
+            width = parts.first ?? 1920
+            height = parts.count > 1 ? parts[1] : 1080
+            fps = settings.fps
+            maxBitrateKbps = max(1000, settings.maxBitrateMbps * 1000)
+            minBitrateKbps = max(5000, maxBitrateKbps * 35 / 100)
+            initialBitrateKbps = max(minBitrateKbps, maxBitrateKbps * 70 / 100)
+            bitDepth = settings.colorQuality.hasPrefix("10bit") ? 10 : 8
+            codec = normalizedNVSTCodec(settings.codec)
+            prefilterMode = max(0, min(settings.prefilterMode, 2))
+            prefilterSharpness = max(0, min(settings.prefilterSharpness, 10))
+            prefilterDenoise = max(0, min(settings.prefilterDenoise, 10))
+            prefilterModel = max(0, settings.prefilterModel)
+            maxReferenceFrames = codec == "H265" ? 1 : 4
+            isAv1 = codec == "AV1"
+            isHighFps = settings.fps >= 90
+            is120Fps = settings.fps == 120
+            is240Fps = settings.fps >= 240
+        }
+    }
+
     public static func buildAnswerExtension(settings: NVSTSessionDescriptionSettings, credentials: NVSTIceCredentials) -> String {
-        let parts = settings.resolution.split(separator: "x").compactMap { Int($0) }
-        let width = parts.first ?? 1920
-        let height = parts.count > 1 ? parts[1] : 1080
-        let fps = settings.fps
-        let maxBitrateKbps = max(1000, settings.maxBitrateMbps * 1000)
-        let minBitrateKbps = max(5000, maxBitrateKbps * 35 / 100)
-        let initialBitrateKbps = max(minBitrateKbps, maxBitrateKbps * 70 / 100)
-        let bitDepth = settings.colorQuality.hasPrefix("10bit") ? 10 : 8
-        let codec = normalizedNVSTCodec(settings.codec)
-        let prefilterMode = max(0, min(settings.prefilterMode, 2))
-        let prefilterSharpness = max(0, min(settings.prefilterSharpness, 10))
-        let prefilterDenoise = max(0, min(settings.prefilterDenoise, 10))
-        let prefilterModel = max(0, settings.prefilterModel)
-        let maxReferenceFrames = codec == "H265" ? 1 : 4
-        let isAv1 = codec == "AV1"
-        let isHighFps = fps >= 90
-        let is120Fps = fps == 120
-        let is240Fps = fps >= 240
-        var lines = [
+        let tuning = AnswerTuning(settings)
+        var lines = baseLines(credentials: credentials)
+        if tuning.isHighFps { lines.append(contentsOf: highFpsLines(tuning)) }
+        if tuning.is240Fps { lines.append(contentsOf: frameRate240Lines) }
+        lines.append(contentsOf: focusAndPacingLines(tuning))
+        if tuning.isAv1 { lines.append(contentsOf: av1QuantizerLines) }
+        lines.append(contentsOf: streamLines(tuning))
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func baseLines(credentials: NVSTIceCredentials) -> [String] {
+        [
             "v=0",
             "o=SdpTest test_id_13 14 IN IPv4 127.0.0.1",
             "s=-",
@@ -300,26 +335,29 @@ public enum NVSTSessionDescriptionBuilder {
             "a=video.packetSize:1140",
             "a=packetPacing.minNumPacketsPerGroup:15",
         ]
-        if isHighFps {
-            lines.append(contentsOf: [
-                "a=bwe.iirFilterFactor:8",
-                "a=video.encoderFeatureSetting:47",
-                "a=video.encoderPreset:6",
-                "a=vqos.resControl.cpmRtc.badNwSkipFramesCount:600",
-                "a=vqos.resControl.cpmRtc.decodeTimeThresholdMs:9",
-                "a=video.fbcDynamicFpsGrabTimeoutMs:\(is120Fps ? 6 : 18)",
-                "a=vqos.resControl.cpmRtc.serverResolutionUpdateCoolDownCount:\(is120Fps ? 6000 : 12000)",
-            ])
-        }
-        if is240Fps {
-            lines.append(contentsOf: [
-                "a=video.enableNextCaptureMode:1",
-                "a=vqos.maxStreamFpsEstimate:240",
-                "a=video.videoSplitEncodeStripsPerFrame:3",
-                "a=video.updateSplitEncodeStateDynamically:1",
-            ])
-        }
-        lines.append(contentsOf: [
+    }
+
+    private static func highFpsLines(_ tuning: AnswerTuning) -> [String] {
+        [
+            "a=bwe.iirFilterFactor:8",
+            "a=video.encoderFeatureSetting:47",
+            "a=video.encoderPreset:6",
+            "a=vqos.resControl.cpmRtc.badNwSkipFramesCount:600",
+            "a=vqos.resControl.cpmRtc.decodeTimeThresholdMs:9",
+            "a=video.fbcDynamicFpsGrabTimeoutMs:\(tuning.is120Fps ? 6 : 18)",
+            "a=vqos.resControl.cpmRtc.serverResolutionUpdateCoolDownCount:\(tuning.is120Fps ? 6000 : 12000)",
+        ]
+    }
+
+    private static let frameRate240Lines: [String] = [
+        "a=video.enableNextCaptureMode:1",
+        "a=vqos.maxStreamFpsEstimate:240",
+        "a=video.videoSplitEncodeStripsPerFrame:3",
+        "a=video.updateSplitEncodeStateDynamically:1",
+    ]
+
+    private static func focusAndPacingLines(_ tuning: AnswerTuning) -> [String] {
+        [
             "a=vqos.adjustStreamingFpsDuringOutOfFocus:1",
             "a=vqos.resControl.cpmRtc.ignoreOutOfFocusWindowState:1",
             "a=vqos.resControl.perfHistory.rtcIgnoreOutOfFocusWindowState:1",
@@ -327,7 +365,7 @@ public enum NVSTSessionDescriptionBuilder {
             "a=vqos.resControl.cpmRtc.enable:0",
             "a=vqos.resControl.cpmRtc.minResolutionPercent:100",
             "a=vqos.resControl.cpmRtc.resolutionChangeHoldonMs:999999",
-            "a=packetPacing.numGroups:\(is120Fps ? 3 : 5)",
+            "a=packetPacing.numGroups:\(tuning.is120Fps ? 3 : 5)",
             "a=packetPacing.maxDelayUs:1000",
             "a=packetPacing.minNumPacketsFrame:10",
             "a=video.rtpNackQueueLength:1024",
@@ -336,55 +374,57 @@ public enum NVSTSessionDescriptionBuilder {
             "a=vqos.drc.qpMaxResThresholdAdj:4",
             "a=vqos.grc.qpMaxResThresholdAdj:4",
             "a=vqos.drc.iirFilterFactor:100",
-        ])
-        if isAv1 {
-            lines.append(contentsOf: [
-                "a=vqos.drc.minQpHeadroom:20",
-                "a=vqos.drc.lowerQpThreshold:100",
-                "a=vqos.drc.upperQpThreshold:200",
-                "a=vqos.drc.minAdaptiveQpThreshold:180",
-                "a=vqos.drc.qpCodecThresholdAdj:0",
-                "a=vqos.drc.qpMaxResThresholdAdj:20",
-                "a=vqos.dfc.minQpHeadroom:20",
-                "a=vqos.dfc.qpLowerLimit:100",
-                "a=vqos.dfc.qpMaxUpperLimit:200",
-                "a=vqos.dfc.qpMinUpperLimit:180",
-                "a=vqos.dfc.qpMaxResThresholdAdj:20",
-                "a=vqos.dfc.qpCodecThresholdAdj:0",
-                "a=vqos.grc.minQpHeadroom:20",
-                "a=vqos.grc.lowerQpThreshold:100",
-                "a=vqos.grc.upperQpThreshold:200",
-                "a=vqos.grc.minAdaptiveQpThreshold:180",
-                "a=vqos.grc.qpMaxResThresholdAdj:20",
-                "a=vqos.grc.qpCodecThresholdAdj:0",
-                "a=video.minQp:25",
-                "a=video.enableAv1RcPrecisionFactor:1",
-            ])
-        }
-        lines.append(contentsOf: [
-            "a=video.clientViewportWd:\(width)",
-            "a=video.clientViewportHt:\(height)",
-            "a=video.maxFPS:\(fps)",
-            "a=video.initialBitrateKbps:\(initialBitrateKbps)",
-            "a=video.initialPeakBitrateKbps:\(maxBitrateKbps)",
-            "a=vqos.bw.maximumBitrateKbps:\(maxBitrateKbps)",
-            "a=vqos.bw.minimumBitrateKbps:\(minBitrateKbps)",
-            "a=vqos.bw.peakBitrateKbps:\(maxBitrateKbps)",
-            "a=vqos.bw.serverPeakBitrateKbps:\(maxBitrateKbps)",
+        ]
+    }
+
+    private static let av1QuantizerLines: [String] = [
+        "a=vqos.drc.minQpHeadroom:20",
+        "a=vqos.drc.lowerQpThreshold:100",
+        "a=vqos.drc.upperQpThreshold:200",
+        "a=vqos.drc.minAdaptiveQpThreshold:180",
+        "a=vqos.drc.qpCodecThresholdAdj:0",
+        "a=vqos.drc.qpMaxResThresholdAdj:20",
+        "a=vqos.dfc.minQpHeadroom:20",
+        "a=vqos.dfc.qpLowerLimit:100",
+        "a=vqos.dfc.qpMaxUpperLimit:200",
+        "a=vqos.dfc.qpMinUpperLimit:180",
+        "a=vqos.dfc.qpMaxResThresholdAdj:20",
+        "a=vqos.dfc.qpCodecThresholdAdj:0",
+        "a=vqos.grc.minQpHeadroom:20",
+        "a=vqos.grc.lowerQpThreshold:100",
+        "a=vqos.grc.upperQpThreshold:200",
+        "a=vqos.grc.minAdaptiveQpThreshold:180",
+        "a=vqos.grc.qpMaxResThresholdAdj:20",
+        "a=vqos.grc.qpCodecThresholdAdj:0",
+        "a=video.minQp:25",
+        "a=video.enableAv1RcPrecisionFactor:1",
+    ]
+
+    private static func streamLines(_ tuning: AnswerTuning) -> [String] {
+        [
+            "a=video.clientViewportWd:\(tuning.width)",
+            "a=video.clientViewportHt:\(tuning.height)",
+            "a=video.maxFPS:\(tuning.fps)",
+            "a=video.initialBitrateKbps:\(tuning.initialBitrateKbps)",
+            "a=video.initialPeakBitrateKbps:\(tuning.maxBitrateKbps)",
+            "a=vqos.bw.maximumBitrateKbps:\(tuning.maxBitrateKbps)",
+            "a=vqos.bw.minimumBitrateKbps:\(tuning.minBitrateKbps)",
+            "a=vqos.bw.peakBitrateKbps:\(tuning.maxBitrateKbps)",
+            "a=vqos.bw.serverPeakBitrateKbps:\(tuning.maxBitrateKbps)",
             "a=vqos.bw.enableBandwidthEstimation:1",
             "a=vqos.bw.disableBitrateLimit:0",
-            "a=vqos.grc.maximumBitrateKbps:\(maxBitrateKbps)",
+            "a=vqos.grc.maximumBitrateKbps:\(tuning.maxBitrateKbps)",
             "a=vqos.grc.enable:0",
-            "a=video.maxNumReferenceFrames:\(maxReferenceFrames)",
+            "a=video.maxNumReferenceFrames:\(tuning.maxReferenceFrames)",
             "a=video.mapRtpTimestampsToFrames:1",
             "a=video.encoderCscMode:3",
             "a=video.dynamicRangeMode:0",
-            "a=video.bitDepth:\(bitDepth)",
-            "a=video.scalingFeature1:\(isAv1 ? 1 : 0)",
-            "a=video.prefilterParams.prefilterMode:\(prefilterMode)",
-            "a=video.prefilterParams.prefilterModel:\(prefilterModel)",
-            "a=video.prefilterParams.sharpnessLevel:\(prefilterSharpness)",
-            "a=video.prefilterParams.denoiseLevel:\(prefilterDenoise)",
+            "a=video.bitDepth:\(tuning.bitDepth)",
+            "a=video.scalingFeature1:\(tuning.isAv1 ? 1 : 0)",
+            "a=video.prefilterParams.prefilterMode:\(tuning.prefilterMode)",
+            "a=video.prefilterParams.prefilterModel:\(tuning.prefilterModel)",
+            "a=video.prefilterParams.sharpnessLevel:\(tuning.prefilterSharpness)",
+            "a=video.prefilterParams.denoiseLevel:\(tuning.prefilterDenoise)",
             "m=audio 0 RTP/AVP",
             "a=msid:audio",
             "m=mic 0 RTP/AVP",
@@ -397,8 +437,7 @@ public enum NVSTSessionDescriptionBuilder {
             "a=ri.enablePartiallyReliableTransferGamepad:15",
             "a=ri.enablePartiallyReliableTransferHid:4294967295",
             "",
-        ])
-        return lines.joined(separator: "\n") + "\n"
+        ]
     }
 
     public static func buildAnswerExtension(settings: [String: Any], credentials: NVSTIceCredentials, remoteNVSTSdp: String, serverOverrides: String = "") -> String {

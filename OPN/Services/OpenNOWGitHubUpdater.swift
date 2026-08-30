@@ -38,7 +38,7 @@ actor OpenNOWGitHubUpdater {
 
     private let owner: String
     private let repository: String
-    private let session: URLSession
+    let session: URLSession
 
     init(owner: String, repository: String) {
         self.owner = owner

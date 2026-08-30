@@ -19,7 +19,7 @@ public final class NvstBifrostFreeVideoRenderer {
     /// `setSize` are both nonisolated, so frames never have to hop to the main actor.
     public final class NvstBifrostFreeVideoSink: @unchecked Sendable {
         private weak var videoView: OPNMetalVideoView?
-        private let lock = NSLock()
+        let lock = NSLock()
         private var lastSize = CGSize.zero
         private var renderedFrames: UInt64 = 0
 

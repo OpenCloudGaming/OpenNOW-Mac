@@ -63,7 +63,7 @@ public extension WebRTCMediaTelemetrySink {
 }
 
 public enum WebRTCMediaTelemetry {
-    private static let lock = NSLock()
+    static let lock = NSLock()
     private nonisolated(unsafe) static var sink: (any WebRTCMediaTelemetrySink)?
 
     public static func configure(sink: (any WebRTCMediaTelemetrySink)?) {

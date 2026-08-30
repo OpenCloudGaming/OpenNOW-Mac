@@ -190,16 +190,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         // where querying window/backingScaleFactor trips AppKit's main-thread checker.
         // Defer the drawable-size recompute to the main actor; rendering proceeds into
         // the current drawable and catches up a frame later.
-        if drawableSizeNeedsUpdate() {
-            if Thread.isMainThread {
-                updateDrawableSizeForCurrentBackingScale()
-            } else {
-                Task { @MainActor [weak self] in
-                    guard let self, self.drawableSizeNeedsUpdate() else { return }
-                    self.updateDrawableSizeForCurrentBackingScale()
-                }
-            }
-        }
+        synchronizeDrawableSize()
 
         os_unfair_lock_lock(&frameLock)
         let snapshot = (videoFrame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar)
@@ -212,16 +203,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         let sourceSize = snapshot.2.width > 0 && snapshot.2.height > 0 ? snapshot.2 : CGSize(width: Int(frame.width), height: Int(frame.height))
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
-        var enhancement = localVideoEnhancement()
-        if adaptiveEnhancementPenalty > 0, let enhancementRenderer {
-            if enhancement.mode == 4 {
-                enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
-            } else if enhancement.mode == 3, !enhancementRenderer.isMetalFXAvailable {
-                enhancement.mode = 2
-            } else if enhancement.mode == 2, adaptiveEnhancementPenalty > 1 {
-                enhancement.mode = 0
-            }
-        }
+        let enhancement = budgetedEnhancement()
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
         let needsCustomPath = enhancement.mode > 0 || enhancement.fillMode.needsCustomRenderPath
@@ -289,8 +271,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return CGSize(width: width, height: max(1, cappedHeight))
     }
 
-    private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
-        guard let enhancementRenderer else { return false }
+    /// Fills in the shared settings object for this frame. Fill with upscaling off borrows the
+    /// spatial path in its cheapest form: `lowCostSpatial` selects the plain-sample `fast_*`
+    /// shaders, so the picture area is untouched and only the bar columns cost anything extra.
+    private func configuredEnhancementSettings(enhancement: VideoEnhancement,
+                                               sourceSize: CGSize,
+                                               renderer: OPNVideoEnhancementRenderer) -> OPNVideoEnhancementSettings {
         let settings = enhancementSettings
         // Fill with upscaling off: borrow the spatial path in its cheapest form.
         // lowCostSpatial selects the plain-sample `fast_*` shaders, so the picture
@@ -301,7 +287,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         case 3: settings.configuredTier = .metalFX
         case 2: settings.configuredTier = .spatial
         case 0: settings.configuredTier = .spatial
-        default: settings.configuredTier = automaticEnhancementTier(renderer: enhancementRenderer, device: metalView.device)
+        default: settings.configuredTier = automaticEnhancementTier(renderer: renderer, device: metalView.device)
         }
         settings.pillarboxFillMode = Int(enhancement.pillarboxFillMode)
         settings.pillarboxFillDim = Float(enhancement.pillarboxFillDim) / 100.0
@@ -313,6 +299,70 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.captureEnhancedPixelBuffer = owner?.wantsEnhancedVideoFrames() == true
         settings.lowCostSpatial = fillOnly || adaptiveEnhancementPenalty > 0
+        return settings
+    }
+
+    /// Copies an accepted enhanced frame's result into the HUD diagnostics and the adaptive budget.
+    private func applyEnhancementSuccess(_ result: OPNVideoEnhancementResult,
+                                         drawSerial: UInt64,
+                                         targetFrameTimeMs: Double,
+                                         diagnostics: inout RenderDiagnostics) {
+        diagnostics.pixelFormat = result.pixelFormat.isEmpty ? "unknown" : result.pixelFormat
+        diagnostics.renderMode = result.renderMode.isEmpty ? "Upscaler" : result.renderMode
+        diagnostics.frameSource = result.frameSource.isEmpty ? "processed frame" : result.frameSource
+        diagnostics.renderPath = result.renderPath.isEmpty ? "OPNVideoEnhancementRenderer" : result.renderPath
+        diagnostics.fallback = result.fallbackReason
+        diagnostics.enhancementConfiguredTier = result.configuredTier.isEmpty ? "Upscaler" : result.configuredTier
+        diagnostics.enhancementActiveTier = result.activeTier.isEmpty ? "Enhanced" : result.activeTier
+        diagnostics.enhancementFallbackReason = result.tierFallbackReason
+        diagnostics.sourceResolution = result.sourceResolution.isEmpty ? diagnostics.sourceResolution : result.sourceResolution
+        diagnostics.drawableResolution = result.drawableResolution.isEmpty ? diagnostics.drawableResolution : result.drawableResolution
+        diagnostics.enhancementDiagnostics = result.diagnostics
+        diagnostics.enhancementFrameTimeMs = result.frameTimeMs
+        enhancementDroppedFrameCount = result.droppedFrames
+        lastDrawnFrameSerial = drawSerial
+        recordDrawCadence()
+        adaptEnhancementBudget(frameTimeMs: result.frameTimeMs, targetFrameTimeMs: targetFrameTimeMs)
+        if let enhancedPixelBuffer = result.enhancedPixelBuffer {
+            owner?.handleEnhancedVideoFrame(enhancedPixelBuffer)
+            result.enhancedPixelBuffer = nil
+        }
+        lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
+    }
+
+    /// MTKView's internal display link invokes `draw(in:)` on a background render thread, where
+    /// querying window/backingScaleFactor trips AppKit's main-thread checker. Defer the recompute to
+    /// the main actor; rendering proceeds into the current drawable and catches up a frame later.
+    private func synchronizeDrawableSize() {
+        guard drawableSizeNeedsUpdate() else { return }
+        guard Thread.isMainThread else {
+            Task { @MainActor [weak self] in
+                guard let self, self.drawableSizeNeedsUpdate() else { return }
+                self.updateDrawableSizeForCurrentBackingScale()
+            }
+            return
+        }
+        updateDrawableSizeForCurrentBackingScale()
+    }
+
+    /// The requested enhancement, stepped down while the adaptive budget is over. Each penalty
+    /// level drops to the next cheaper tier rather than switching the picture off outright.
+    private func budgetedEnhancement() -> VideoEnhancement {
+        var enhancement = localVideoEnhancement()
+        guard adaptiveEnhancementPenalty > 0, let enhancementRenderer else { return enhancement }
+        if enhancement.mode == 4 {
+            enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
+        } else if enhancement.mode == 3, !enhancementRenderer.isMetalFXAvailable {
+            enhancement.mode = 2
+        } else if enhancement.mode == 2, adaptiveEnhancementPenalty > 1 {
+            enhancement.mode = 0
+        }
+        return enhancement
+    }
+
+    private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
+        guard let enhancementRenderer else { return false }
+        let settings = configuredEnhancementSettings(enhancement: enhancement, sourceSize: sourceSize, renderer: enhancementRenderer)
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
@@ -323,27 +373,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             OpenNOWLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
         }
         if enhancedOK {
-            diagnostics.pixelFormat = result.pixelFormat.isEmpty ? "unknown" : result.pixelFormat
-            diagnostics.renderMode = result.renderMode.isEmpty ? "Upscaler" : result.renderMode
-            diagnostics.frameSource = result.frameSource.isEmpty ? "processed frame" : result.frameSource
-            diagnostics.renderPath = result.renderPath.isEmpty ? "OPNVideoEnhancementRenderer" : result.renderPath
-            diagnostics.fallback = result.fallbackReason
-            diagnostics.enhancementConfiguredTier = result.configuredTier.isEmpty ? "Upscaler" : result.configuredTier
-            diagnostics.enhancementActiveTier = result.activeTier.isEmpty ? "Enhanced" : result.activeTier
-            diagnostics.enhancementFallbackReason = result.tierFallbackReason
-            diagnostics.sourceResolution = result.sourceResolution.isEmpty ? diagnostics.sourceResolution : result.sourceResolution
-            diagnostics.drawableResolution = result.drawableResolution.isEmpty ? diagnostics.drawableResolution : result.drawableResolution
-            diagnostics.enhancementDiagnostics = result.diagnostics
-            diagnostics.enhancementFrameTimeMs = result.frameTimeMs
-            enhancementDroppedFrameCount = result.droppedFrames
-            lastDrawnFrameSerial = drawSerial
-            recordDrawCadence()
-            adaptEnhancementBudget(frameTimeMs: result.frameTimeMs, targetFrameTimeMs: settings.targetFrameTimeMs)
-            if let enhancedPixelBuffer = result.enhancedPixelBuffer {
-                owner?.handleEnhancedVideoFrame(enhancedPixelBuffer)
-                result.enhancedPixelBuffer = nil
-            }
-            lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
+            applyEnhancementSuccess(result, drawSerial: drawSerial, targetFrameTimeMs: settings.targetFrameTimeMs, diagnostics: &diagnostics)
             return true
         }
 
@@ -413,6 +443,88 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
     }
 
+}
+
+/// 2/3/4 are real tier codes (`renderEnhancedFrame`'s own switch: spatial/MetalFX/temporal) that a
+/// caller can now select explicitly. 1 predates tier selection — it only ever meant "some
+/// enhancement is on" — so it keeps resolving to MetalFX rather than becoming a new, unintended tier.
+private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
+    switch mode {
+    case 0: return 0
+    case 2: return 2
+    case 3: return 3
+    case 4: return 4
+    case 1: return 3
+    default: return 0
+    }
+}
+
+private struct VideoEnhancement {
+    var mode: Int32
+    var sharpness: Int32
+    var denoise: Int32
+    var targetHeight: Int32
+    var pillarboxFillMode: Int32
+    var pillarboxFillDim: Int32
+    var pillarboxFillColor: Int32
+
+    var fillMode: OPNPillarboxFillMode { OPNPillarboxFillMode.from(Int(pillarboxFillMode)) }
+}
+
+private struct RenderDiagnostics {
+    var pixelFormat = "unknown"
+    var renderMode = "I420"
+    var frameSource = "unknown"
+    var renderPath = "RTCMTLI420Renderer"
+    var fallback = ""
+    var enhancementConfiguredTier = "Off"
+    var enhancementActiveTier = "Native"
+    var enhancementFallbackReason = ""
+    var sourceResolution: String
+    var drawableResolution: String
+    var enhancementDiagnostics = ""
+    var enhancementFrameTimeMs = -1.0
+    var frameIntervalMs = -1.0
+    var maxFrameIntervalMs = -1.0
+}
+
+private func videoResolutionString(_ size: CGSize) -> String {
+    let width = Int(max(CGFloat(0), size.width).rounded())
+    let height = Int(max(CGFloat(0), size.height).rounded())
+    return width > 0 && height > 0 ? "\(width)x\(height)" : "unknown"
+}
+
+@MainActor
+private func metalDeviceIsAppleM1Class(_ device: (any MTLDevice)?) -> Bool {
+    device?.name.lowercased().hasPrefix("apple m1") == true
+}
+
+@MainActor
+private func automaticEnhancementTier(renderer: OPNVideoEnhancementRenderer, device: (any MTLDevice)?) -> OPNVideoEnhancementTier {
+    if metalDeviceIsAppleM1Class(device) {
+        return renderer.isMetalFXAvailable ? .metalFX : .spatial
+    }
+    if renderer.isTemporalAvailable { return .temporal }
+    return renderer.isMetalFXAvailable ? .metalFX : .spatial
+}
+
+private func pixelFormatName(_ format: OSType) -> String {
+    switch format {
+    case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
+    case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
+    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: return "x420/P010"
+    case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: return "xf20/P010"
+    case kCVPixelFormatType_32BGRA: return "BGRA"
+    case kCVPixelFormatType_32ARGB: return "ARGB"
+    default: return String(format: "0x%08x", format)
+    }
+}
+
+// MARK: - Renderer selection and diagnostics
+
+// Split out of the main declaration so it stays inside the size budget. Same file, so `private`
+// members stay reachable.
+extension OPNMetalVideoView {
     private func rendererForFrame(_ frame: RTCVideoFrame, diagnostics: inout RenderDiagnostics) -> OPNRTCMetalRenderer? {
         if let buffer = frame.buffer as? RTCCVPixelBuffer {
             diagnostics.frameSource = "CVPixelBuffer"
@@ -553,81 +665,5 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         drawIntervalTotalMs = 0
         drawIntervalMaxMs = 0
         drawIntervalCount = 0
-    }
-
-}
-
-/// 2/3/4 are real tier codes (`renderEnhancedFrame`'s own switch: spatial/MetalFX/temporal) that a
-/// caller can now select explicitly. 1 predates tier selection — it only ever meant "some
-/// enhancement is on" — so it keeps resolving to MetalFX rather than becoming a new, unintended tier.
-private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
-    switch mode {
-    case 0: return 0
-    case 2: return 2
-    case 3: return 3
-    case 4: return 4
-    case 1: return 3
-    default: return 0
-    }
-}
-
-private struct VideoEnhancement {
-    var mode: Int32
-    var sharpness: Int32
-    var denoise: Int32
-    var targetHeight: Int32
-    var pillarboxFillMode: Int32
-    var pillarboxFillDim: Int32
-    var pillarboxFillColor: Int32
-
-    var fillMode: OPNPillarboxFillMode { OPNPillarboxFillMode.from(Int(pillarboxFillMode)) }
-}
-
-private struct RenderDiagnostics {
-    var pixelFormat = "unknown"
-    var renderMode = "I420"
-    var frameSource = "unknown"
-    var renderPath = "RTCMTLI420Renderer"
-    var fallback = ""
-    var enhancementConfiguredTier = "Off"
-    var enhancementActiveTier = "Native"
-    var enhancementFallbackReason = ""
-    var sourceResolution: String
-    var drawableResolution: String
-    var enhancementDiagnostics = ""
-    var enhancementFrameTimeMs = -1.0
-    var frameIntervalMs = -1.0
-    var maxFrameIntervalMs = -1.0
-}
-
-private func videoResolutionString(_ size: CGSize) -> String {
-    let width = Int(max(CGFloat(0), size.width).rounded())
-    let height = Int(max(CGFloat(0), size.height).rounded())
-    return width > 0 && height > 0 ? "\(width)x\(height)" : "unknown"
-}
-
-@MainActor
-private func metalDeviceIsAppleM1Class(_ device: (any MTLDevice)?) -> Bool {
-    device?.name.lowercased().hasPrefix("apple m1") == true
-}
-
-@MainActor
-private func automaticEnhancementTier(renderer: OPNVideoEnhancementRenderer, device: (any MTLDevice)?) -> OPNVideoEnhancementTier {
-    if metalDeviceIsAppleM1Class(device) {
-        return renderer.isMetalFXAvailable ? .metalFX : .spatial
-    }
-    if renderer.isTemporalAvailable { return .temporal }
-    return renderer.isMetalFXAvailable ? .metalFX : .spatial
-}
-
-private func pixelFormatName(_ format: OSType) -> String {
-    switch format {
-    case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
-    case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
-    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: return "x420/P010"
-    case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: return "xf20/P010"
-    case kCVPixelFormatType_32BGRA: return "BGRA"
-    case kCVPixelFormatType_32ARGB: return "ARGB"
-    default: return String(format: "0x%08x", format)
     }
 }

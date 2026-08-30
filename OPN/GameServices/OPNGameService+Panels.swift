@@ -84,7 +84,7 @@ extension OPNGameService {
     /// several times per run (disk cache, parsed response, enriched response), so it
     /// tracks outstanding runs rather than completing once.
     final class PanelFetchGroup: @unchecked Sendable {
-        private let lock = NSLock()
+        let lock = NSLock()
         private var completions: [OPNPanelCallback]
         private var latestPanels: [OPNPanelResult] = []
         private var startedVpcIds: Set<String> = []

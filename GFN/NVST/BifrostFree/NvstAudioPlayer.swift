@@ -19,7 +19,7 @@ public final class NvstAudioPlayer: @unchecked Sendable {
 
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
-    private let lock = NSLock()
+    let lock = NSLock()
     private var ring: [Float]
     private var readIndex = 0
     private var writeIndex = 0

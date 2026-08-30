@@ -54,33 +54,60 @@ public enum NvstElementaryStream {
                 let header = base[offset]
                 let type: UInt8 = codec == .h264 ? (header & 0x1f) : ((header >> 1) & 0x3f)
                 let unit = UnsafeRawBufferPointer(start: base + offset, count: length)
-                switch codec {
-                case .h264:
-                    switch type {
-                    case 7: prepared.parameterSets.sequenceParameterSets.append(Data(unit)); return
-                    case 8: prepared.parameterSets.pictureParameterSets.append(Data(unit)); return
-                    // 9 AUD, 12 filler: VideoToolbox takes neither.
-                    case 9, 12: return
-                    default: break
-                    }
-                case .hevc:
-                    switch type {
-                    case 32: prepared.parameterSets.videoParameterSets.append(Data(unit)); return
-                    case 33: prepared.parameterSets.sequenceParameterSets.append(Data(unit)); return
-                    case 34: prepared.parameterSets.pictureParameterSets.append(Data(unit)); return
-                    // 35 AUD, 38 filler.
-                    case 35, 38: return
-                    default: break
-                    }
-                case .av1:
-                    break
+                switch disposition(ofNalType: type, codec: codec) {
+                case .videoParameterSet: prepared.parameterSets.videoParameterSets.append(Data(unit))
+                case .sequenceParameterSet: prepared.parameterSets.sequenceParameterSets.append(Data(unit))
+                case .pictureParameterSet: prepared.parameterSets.pictureParameterSets.append(Data(unit))
+                case .discard: break
+                case .sample:
+                    writer.u32BE(UInt32(length))
+                    writer.bytes(unit)
                 }
-                writer.u32BE(UInt32(length))
-                writer.bytes(unit)
             }
         }
         prepared.sample = writer.data
         return prepared
+    }
+
+    /// What `prepare` does with one NAL unit.
+    private enum NalDisposition {
+        case videoParameterSet
+        case sequenceParameterSet
+        case pictureParameterSet
+        /// Access-unit delimiters and filler data: VideoToolbox takes neither.
+        case discard
+        /// Picture data, appended to the length-prefixed sample.
+        case sample
+    }
+
+    private static func disposition(ofNalType type: UInt8, codec: NVSTVideoCodec) -> NalDisposition {
+        switch codec {
+        case .h264: h264Disposition(ofNalType: type)
+        case .hevc: hevcDisposition(ofNalType: type)
+        // AV1 has no Annex-B NAL framing; `prepare` returns before reaching this.
+        case .av1: .sample
+        }
+    }
+
+    private static func h264Disposition(ofNalType type: UInt8) -> NalDisposition {
+        switch type {
+        case 7: .sequenceParameterSet
+        case 8: .pictureParameterSet
+        // 9 AUD, 12 filler.
+        case 9, 12: .discard
+        default: .sample
+        }
+    }
+
+    private static func hevcDisposition(ofNalType type: UInt8) -> NalDisposition {
+        switch type {
+        case 32: .videoParameterSet
+        case 33: .sequenceParameterSet
+        case 34: .pictureParameterSet
+        // 35 AUD, 38 filler.
+        case 35, 38: .discard
+        default: .sample
+        }
     }
 
     /// Walks Annex-B NAL units in place, handing each one's header offset and length to `body`.

@@ -122,32 +122,50 @@ public enum NVSTSignalingMessageParser {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
 
         var result = NVSTSignalingParseResult()
+        applyPeerBookkeeping(json, peerName: peerName, currentPeerID: currentPeerID, into: &result)
+        guard !applyControlFields(json, into: &result) else { return result }
+        return parsePeerMessage(json, into: &result)
+    }
+
+    /// Peer identity and ack bookkeeping, which ride alongside every message shape.
+    private static func applyPeerBookkeeping(_ json: [String: Any],
+                                             peerName: String,
+                                             currentPeerID: Int,
+                                             into result: inout NVSTSignalingParseResult) {
         if let peerInfo = json["peer_info"] as? [String: Any],
            let pid = intValue(peerInfo["id"]),
            stringValue(peerInfo["name"]) == peerName || currentPeerID == 0 {
             result.assignedPeerID = pid
         }
 
-        if let ackID = intValue(json["ackid"]) {
-            let peerInfo = json["peer_info"] as? [String: Any]
-            let ourPID = intValue(peerInfo?["id"])
-            if ourPID == nil || ourPID != currentPeerID {
-                result.ackIDToSend = ackID
-            }
+        guard let ackID = intValue(json["ackid"]) else { return }
+        let peerInfo = json["peer_info"] as? [String: Any]
+        let ourPID = intValue(peerInfo?["id"])
+        if ourPID == nil || ourPID != currentPeerID {
+            result.ackIDToSend = ackID
         }
+    }
+
+    /// Acks, heartbeats and errors carry no peer payload. True means the message is complete.
+    private static func applyControlFields(_ json: [String: Any], into result: inout NVSTSignalingParseResult) -> Bool {
         if let ack = intValue(json["ack"]) {
             result.acknowledgedID = ack
-            return result
+            return true
         }
         if json["hb"] != nil {
             result.shouldRespondToHeartbeat = true
-            return result
+            return true
         }
         if let error = stringValue(json["error"]), !error.isEmpty {
             result.error = error
-            return result
+            return true
         }
+        return false
+    }
 
+    /// The `peer_msg` envelope: an offer, an ICE candidate, or a "BYE".
+    private static func parsePeerMessage(_ json: [String: Any],
+                                         into result: inout NVSTSignalingParseResult) -> NVSTSignalingParseResult {
         guard let peerMessage = json["peer_msg"] as? [String: Any],
               let messageText = stringValue(peerMessage["msg"]) else { return result }
         result.remotePeerID = intValue(peerMessage["from"])

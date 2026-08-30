@@ -1,5 +1,5 @@
 //
-//  ControllerSettingsFocus.swift
+//  ControllerSettingsFocusModel.swift
 //  OpenNOW
 //
 
@@ -23,8 +23,8 @@ struct ControllerFocusOrderKey: PreferenceKey {
 /// Coordinate space the row positions are measured in.
 let controllerSettingsFocusSpace = "opn-settings-focus"
 
-private struct ControllerSettingsFocusKey: EnvironmentKey {
-    static let defaultValue: ControllerSettingsFocus? = nil
+private struct ControllerSettingsFocusModelKey: EnvironmentKey {
+    static let defaultValue: ControllerSettingsFocusModel? = nil
 }
 
 private struct ControllerFocusedRowKey: EnvironmentKey {
@@ -43,9 +43,9 @@ extension EnvironmentValues {
     /// Optional on purpose. These rows are shared components - `SteamControllerMappingView` renders
     /// some of them from the stream surface, outside any Settings page - and an `@EnvironmentObject`
     /// traps when it is missing. A nil registry simply means "no pad focus here".
-    var controllerSettingsFocus: ControllerSettingsFocus? {
-        get { self[ControllerSettingsFocusKey.self] }
-        set { self[ControllerSettingsFocusKey.self] = newValue }
+    var controllerSettingsFocus: ControllerSettingsFocusModel? {
+        get { self[ControllerSettingsFocusModelKey.self] }
+        set { self[ControllerSettingsFocusModelKey.self] = newValue }
     }
 
     /// The focused row, published as a plain value. `@Environment` holding the registry object does

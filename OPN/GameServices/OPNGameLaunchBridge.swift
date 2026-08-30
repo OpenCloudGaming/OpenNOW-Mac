@@ -52,7 +52,7 @@ public enum OPNGameLaunchPlan: Equatable, Sendable {
 public final class OPNGameLaunchBridge {
     public static let shared = OPNGameLaunchBridge()
 
-    private let gameService: any GameLaunchServiceConfiguring
+    let gameService: any GameLaunchServiceConfiguring
 
     init(gameService: any GameLaunchServiceConfiguring = OPNGameService.shared) {
         self.gameService = gameService

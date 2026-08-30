@@ -150,17 +150,24 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(accept, forHTTPHeaderField: "Accept")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
-        if !clientId.isEmpty { request.setValue(clientId, forHTTPHeaderField: "nv-client-id") }
-        if !clientType.isEmpty { request.setValue(clientType, forHTTPHeaderField: "nv-client-type") }
-        if !clientVersion.isEmpty { request.setValue(clientVersion, forHTTPHeaderField: "nv-client-version") }
-        if !clientStreamer.isEmpty { request.setValue(clientStreamer, forHTTPHeaderField: "nv-client-streamer") }
-        if !deviceOS.isEmpty { request.setValue(deviceOS, forHTTPHeaderField: "nv-device-os") }
-        if !deviceType.isEmpty { request.setValue(deviceType, forHTTPHeaderField: "nv-device-type") }
-        if !deviceMake.isEmpty { request.setValue(deviceMake, forHTTPHeaderField: "nv-device-make") }
-        if !deviceModel.isEmpty { request.setValue(deviceModel, forHTTPHeaderField: "nv-device-model") }
-        if !browserType.isEmpty { request.setValue(browserType, forHTTPHeaderField: "nv-browser-type") }
-        if !deviceId.isEmpty { request.setValue(deviceId, forHTTPHeaderField: "x-device-id") }
+        // Every remaining header is skipped when its value is empty, so the whole set is one table
+        // rather than one `if` per field.
+        let optionalHeaders: [(field: String, value: String)] = [
+            ("Authorization", accessToken.isEmpty ? "" : "GFNJWT \(accessToken)"),
+            ("nv-client-id", clientId),
+            ("nv-client-type", clientType),
+            ("nv-client-version", clientVersion),
+            ("nv-client-streamer", clientStreamer),
+            ("nv-device-os", deviceOS),
+            ("nv-device-type", deviceType),
+            ("nv-device-make", deviceMake),
+            ("nv-device-model", deviceModel),
+            ("nv-browser-type", browserType),
+            ("x-device-id", deviceId)
+        ]
+        for header in optionalHeaders where !header.value.isEmpty {
+            request.setValue(header.value, forHTTPHeaderField: header.field)
+        }
         if includeOrigin {
             request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
             request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
@@ -547,7 +554,7 @@ public enum CloudMatchServiceError: LocalizedError, Equatable, Sendable {
 }
 
 public struct CloudMatchService<Transport: CloudMatchHTTPTransport>: Sendable {
-    private let configuration: CloudMatchConfiguration
+    let configuration: CloudMatchConfiguration
     private let transport: Transport
 
     public init(configuration: CloudMatchConfiguration = .gfnPC, transport: Transport) {

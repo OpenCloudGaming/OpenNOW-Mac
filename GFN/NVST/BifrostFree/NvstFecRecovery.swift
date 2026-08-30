@@ -65,7 +65,7 @@ public final class NvstFecRecovery: @unchecked Sendable {
         var recoveryDone = false
     }
 
-    private let lock = NSLock()
+    let lock = NSLock()
     private var findings = Findings()
     private var blocks: [UInt64: Block] = [:]
     private var blockOrder: [UInt64] = []
@@ -95,19 +95,7 @@ public final class NvstFecRecovery: @unchecked Sendable {
 
         let key = UInt64(packet.frameIndex) << 8 | UInt64(packet.fecCurrentBlock)
         if blocks[key] == nil {
-            blocks[key] = Block(sourceCount: sourceCount,
-                                parityCount: parityCount,
-                                percentage: packet.fecPercentage,
-                                currentBlock: packet.fecCurrentBlock,
-                                lastBlock: packet.fecLastBlock)
-            blockOrder.append(key)
-            while blockOrder.count > Self.retainedBlocks {
-                let evicted = blocks.removeValue(forKey: blockOrder.removeFirst())
-                if let evicted, !evicted.recoveryDone,
-                   evicted.shards.count < evicted.sourceCount {
-                    findings.unrecoverableBlocks += 1
-                }
-            }
+            startBlockLocked(key: key, packet: packet, sourceCount: sourceCount, parityCount: parityCount)
         }
         // Removed from the dictionary for the duration of the mutation: while it is out, the
         // block's shard storage is uniquely owned, so the insert below updates in place instead
@@ -115,18 +103,43 @@ public final class NvstFecRecovery: @unchecked Sendable {
         guard var block = blocks.removeValue(forKey: key) else { return [] }
         defer { blocks[key] = block }
         guard block.sourceCount == sourceCount, block.parityCount == parityCount else { return [] }
-        block.shards[packet.fecIndex] = plaintext
-        if block.templateHeader == nil, packet.fecIndex < UInt32(sourceCount) {
-            block.templateHeader = [UInt8](plaintext.prefix(Self.headerLength))
-            block.templateFecIndex = packet.fecIndex
-            block.templateSequence = packet.sequenceNumber
-            block.templateStreamSequence = packet.streamSequence
-        }
-
+        ingest(plaintext: plaintext, packet: packet, into: &block, sourceCount: sourceCount)
         verifyIfComplete(&block)
+        return recover(&block, sourceCount: sourceCount, parityCount: parityCount)
+    }
 
-        // Repair as soon as enough shards exist: with one loss that is the moment the first
-        // parity packet lands — long before the reorder window would finalize the gap.
+    /// Registers a block never seen before, evicting the oldest once the retention window is full.
+    /// The caller already holds `lock`.
+    private func startBlockLocked(key: UInt64, packet: NvstRtpVideoPacket, sourceCount: Int, parityCount: Int) {
+        blocks[key] = Block(sourceCount: sourceCount,
+                            parityCount: parityCount,
+                            percentage: packet.fecPercentage,
+                            currentBlock: packet.fecCurrentBlock,
+                            lastBlock: packet.fecLastBlock)
+        blockOrder.append(key)
+        while blockOrder.count > Self.retainedBlocks {
+            let evicted = blocks.removeValue(forKey: blockOrder.removeFirst())
+            if let evicted, !evicted.recoveryDone,
+               evicted.shards.count < evicted.sourceCount {
+                findings.unrecoverableBlocks += 1
+            }
+        }
+    }
+
+    /// Stores the shard, and adopts the first source packet seen as the header template used to
+    /// rebuild the headers of the missing ones.
+    private func ingest(plaintext: Data, packet: NvstRtpVideoPacket, into block: inout Block, sourceCount: Int) {
+        block.shards[packet.fecIndex] = plaintext
+        guard block.templateHeader == nil, packet.fecIndex < UInt32(sourceCount) else { return }
+        block.templateHeader = [UInt8](plaintext.prefix(Self.headerLength))
+        block.templateFecIndex = packet.fecIndex
+        block.templateSequence = packet.sequenceNumber
+        block.templateStreamSequence = packet.streamSequence
+    }
+
+    /// Repairs as soon as enough shards exist: with one loss that is the moment the first parity
+    /// packet lands — long before the reorder window would finalize the gap.
+    private func recover(_ block: inout Block, sourceCount: Int, parityCount: Int) -> [Data] {
         guard findings.isArmed, !block.recoveryDone, block.templateHeader != nil else { return [] }
         let missingSources = (0..<sourceCount).filter { block.shards[UInt32($0)] == nil }
         guard !missingSources.isEmpty, block.shards.count >= sourceCount else { return [] }
@@ -149,9 +162,10 @@ public final class NvstFecRecovery: @unchecked Sendable {
         }
         block.recoveryDone = true
         findings.recoveredPackets += recovered.count
+        let rebuilt = block
         return recovered.keys.sorted().compactMap { index in
             recovered[index].map { shard in
-                Data(rebuiltHeader(for: block, missingIndex: UInt32(index)))
+                Data(rebuiltHeader(for: rebuilt, missingIndex: UInt32(index)))
                     + Data(shard[Self.headerLength...])
             }
         }

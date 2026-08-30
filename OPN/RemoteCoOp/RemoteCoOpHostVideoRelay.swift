@@ -8,7 +8,7 @@ public protocol OPNRemoteCoOpHostVideoSink: AnyObject, Sendable {
 }
 
 public final class OPNRemoteCoOpHostVideoRelay: @unchecked Sendable {
-    private let lock = NSLock()
+    let lock = NSLock()
     private var sinks: [UUID: any OPNRemoteCoOpHostVideoSink] = [:]
 
     public init() {}

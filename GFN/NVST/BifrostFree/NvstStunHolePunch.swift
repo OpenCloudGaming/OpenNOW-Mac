@@ -166,42 +166,57 @@ public enum NvstStunHolePunch {
     /// that need to tell a seat's STUN error from noise should classify with
     /// `validateBindingResponse` first.
     public static func parseBindingResponse(_ packet: Data, integrityKey: Data, transactionID: Data) throws -> NvstSocketEndpoint? {
+        guard try isBindingSuccess(packet, transactionID: transactionID) else { return nil }
+        // MESSAGE-INTEGRITY covers the message through its own attribute, with length adjusted.
+        guard integrityMatches(packet, key: integrityKey) == true else { throw NvstStunError.invalidIntegrity }
+        guard let mappedAttribute = attribute(packet, type: NvstStunAttribute.xorMappedAddress) else {
+            throw NvstStunError.missingMappedAddress
+        }
+        return try mappedEndpoint(mappedAttribute.value, transactionID: transactionID)
+    }
+
+    /// Header, transaction and FINGERPRINT checks. False means a well-formed non-success response.
+    private static func isBindingSuccess(_ packet: Data, transactionID: Data) throws -> Bool {
         guard packet.count >= 20 else { throw NvstStunError.notStun }
         var reader = NvstByteReader(packet)
         guard let messageType = try? reader.u16BE(),
               let declaredLength = try? reader.u16BE(),
               let cookie = try? reader.u32BE() else { throw NvstStunError.notStun }
         guard cookie == stunMagicCookie else { throw NvstStunError.notStun }
-        if messageType != stunBindingSuccessResponse { return nil }
+        if messageType != stunBindingSuccessResponse { return false }
         guard packet.count == 20 + Int(declaredLength) else { throw NvstStunError.malformed("length") }
         guard let transaction = try? reader.bytes(12), transaction == transactionID else { throw NvstStunError.malformed("transaction id") }
-
         // FINGERPRINT covers everything before it.
         guard fingerprintMatches(packet) == true else { throw NvstStunError.invalidFingerprint }
-        // MESSAGE-INTEGRITY covers the message through its own attribute, with length adjusted.
-        guard integrityMatches(packet, key: integrityKey) == true else { throw NvstStunError.invalidIntegrity }
+        return true
+    }
 
-        guard let mappedAttribute = attribute(packet, type: NvstStunAttribute.xorMappedAddress) else {
-            throw NvstStunError.missingMappedAddress
-        }
-        let mapped = mappedAttribute.value
+    /// Decodes a XOR-MAPPED-ADDRESS attribute value into an endpoint.
+    private static func mappedEndpoint(_ mapped: Data, transactionID: Data) throws -> NvstSocketEndpoint {
         guard mapped.count >= 8 else { throw NvstStunError.missingMappedAddress }
-        var mappedReader = NvstByteReader(mapped)
-        guard (try? mappedReader.skip(1)) != nil,
-              let family = try? mappedReader.u8(),
-              let xorPort = try? mappedReader.u16BE() else { throw NvstStunError.missingMappedAddress }
+        var reader = NvstByteReader(mapped)
+        guard (try? reader.skip(1)) != nil,
+              let family = try? reader.u8(),
+              let xorPort = try? reader.u16BE() else { throw NvstStunError.missingMappedAddress }
         let port = xorPort ^ UInt16(truncatingIfNeeded: stunMagicCookie >> 16)
         var host = "?"
-        if family == 0x01, mapped.count >= 8 {
-            let address = ((try? mappedReader.u32BE()) ?? 0) ^ stunMagicCookie
+        if family == 0x01 {
+            let address = ((try? reader.u32BE()) ?? 0) ^ stunMagicCookie
             host = "\(address >> 24 & 0xff).\(address >> 16 & 0xff).\(address >> 8 & 0xff).\(address & 0xff)"
-        } else if family == 0x02, mapped.count >= 20, transactionID.count >= 12 {
-            var addr = [UInt8](repeating: 0, count: 16)
-            for index in 0..<4 { addr[index] = mapped[mapped.startIndex + 4 + index] ^ UInt8((stunMagicCookie >> (8 * (3 - index))) & 0xff) }
-            for index in 0..<12 { addr[4 + index] = mapped[mapped.startIndex + 8 + index] ^ transactionID[transactionID.startIndex + index] }
-            host = Self.formatIPv6(addr)
+        } else if family == 0x02 {
+            host = xorMappedIPv6Host(mapped, transactionID: transactionID) ?? "?"
         }
         return NvstSocketEndpoint(host: host, port: port)
+    }
+
+    /// Un-XORs the 16-byte IPv6 address of a XOR-MAPPED-ADDRESS value: the first four bytes against
+    /// the magic cookie, the remaining twelve against the transaction ID.
+    private static func xorMappedIPv6Host(_ mapped: Data, transactionID: Data) -> String? {
+        guard mapped.count >= 20, transactionID.count >= 12 else { return nil }
+        var addr = [UInt8](repeating: 0, count: 16)
+        for index in 0..<4 { addr[index] = mapped[mapped.startIndex + 4 + index] ^ UInt8((stunMagicCookie >> (8 * (3 - index))) & 0xff) }
+        for index in 0..<12 { addr[4 + index] = mapped[mapped.startIndex + 8 + index] ^ transactionID[transactionID.startIndex + index] }
+        return Self.formatIPv6(addr)
     }
 
     /// Builds a XOR-MAPPED-ADDRESS STUN value (family byte + x-port + x-address).

@@ -11,7 +11,7 @@ struct NativeNVSTNetworkPath: Equatable, Sendable {
 
 final class NativeNVSTNetworkPathMonitor: @unchecked Sendable {
     private let monitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "io.opencg.opennow.nvst.network-path")
+    let queue = DispatchQueue(label: "io.opencg.opennow.nvst.network-path")
 
     func updates() -> AsyncStream<NativeNVSTNetworkPath> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in

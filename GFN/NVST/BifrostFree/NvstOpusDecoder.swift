@@ -32,7 +32,7 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     public static let channels: UInt32 = 2
 
     private let converter: AudioConverterRef
-    private let lock = NSLock()
+    let lock = NSLock()
     private var output: [Float]
 
     private var decodedPacketCount: UInt64 = 0
@@ -132,7 +132,7 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     /// an allocation the queue owns also lets each invocation consume exactly one packet — an
     /// earlier version removed the head and immediately re-inserted it, which happened to work only
     /// because the converter never asked twice within one call.
-    private final class Queue {
+    final class Queue {
         var packets: [Data] = []
         var consumedPackets: UInt64 = 0
         /// The converter keeps this pointer for the whole fill, so it must outlive the input
@@ -153,7 +153,58 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     }
 
     /// An Opus packet cannot exceed 1275 bytes per frame; the seat's measure about 51.
-    private let queue = Queue(capacity: 4096)
+    let queue = Queue(capacity: 4096)
+
+    /// Hands the converter the next queued packet. Static so it is not rebuilt on every call and
+    /// `decode` stays readable; `context` is the unretained `Queue`.
+    private static let inputProc: AudioConverterComplexInputDataProc = { _, packetCount, data, descriptions, context in
+        let queue = Unmanaged<Queue>.fromOpaque(context!).takeUnretainedValue()
+        guard !queue.packets.isEmpty else {
+            packetCount.pointee = 0
+            return NvstOpusDecoder.noDataAvailable
+        }
+        let next = queue.packets.removeFirst()
+        queue.consumedPackets += 1
+        let count = next.count
+        next.copyBytes(to: queue.scratch, count: count)
+        queue.description.pointee = AudioStreamPacketDescription(
+            mStartOffset: 0,
+            mVariableFramesInPacket: 0,
+            mDataByteSize: UInt32(count)
+        )
+        data.pointee.mBuffers.mData = UnsafeMutableRawPointer(queue.scratch)
+        data.pointee.mBuffers.mDataByteSize = UInt32(count)
+        data.pointee.mBuffers.mNumberChannels = NvstOpusDecoder.channels
+        data.pointee.mNumberBuffers = 1
+        descriptions?.pointee = queue.description
+        packetCount.pointee = 1
+        return noErr
+    }
+
+    /// One converter pass into `output`. `frames` is in-out: capacity in, frames produced out.
+    /// The caller already holds `lock`.
+    private func fillLocked(frames: inout UInt32) -> OSStatus {
+        var status: OSStatus = noErr
+        output.withUnsafeMutableBufferPointer { buffer in
+            var list = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(
+                    mNumberChannels: Self.channels,
+                    mDataByteSize: UInt32(buffer.count * 4),
+                    mData: buffer.baseAddress
+                )
+            )
+            status = AudioConverterFillComplexBuffer(
+                converter,
+                Self.inputProc,
+                Unmanaged.passUnretained(queue).toOpaque(),
+                &frames,
+                &list,
+                nil
+            )
+        }
+        return status
+    }
 
     /// Decodes one Opus packet, returning whatever interleaved stereo float samples became
     /// available. Early packets can legitimately yield nothing while the decoder fills.
@@ -175,47 +226,7 @@ public final class NvstOpusDecoder: @unchecked Sendable {
 
         while true {
             var frames = UInt32(framesPerPacket)
-            var status: OSStatus = noErr
-            output.withUnsafeMutableBufferPointer { buffer in
-                var list = AudioBufferList(
-                    mNumberBuffers: 1,
-                    mBuffers: AudioBuffer(
-                        mNumberChannels: Self.channels,
-                        mDataByteSize: UInt32(buffer.count * 4),
-                        mData: buffer.baseAddress
-                    )
-                )
-                status = AudioConverterFillComplexBuffer(
-                    converter,
-                    { _, packetCount, data, descriptions, context in
-                        let queue = Unmanaged<Queue>.fromOpaque(context!).takeUnretainedValue()
-                        guard !queue.packets.isEmpty else {
-                            packetCount.pointee = 0
-                            return NvstOpusDecoder.noDataAvailable
-                        }
-                        let next = queue.packets.removeFirst()
-                        queue.consumedPackets += 1
-                        let count = next.count
-                        next.copyBytes(to: queue.scratch, count: count)
-                        queue.description.pointee = AudioStreamPacketDescription(
-                            mStartOffset: 0,
-                            mVariableFramesInPacket: 0,
-                            mDataByteSize: UInt32(count)
-                        )
-                        data.pointee.mBuffers.mData = UnsafeMutableRawPointer(queue.scratch)
-                        data.pointee.mBuffers.mDataByteSize = UInt32(count)
-                        data.pointee.mBuffers.mNumberChannels = NvstOpusDecoder.channels
-                        data.pointee.mNumberBuffers = 1
-                        descriptions?.pointee = queue.description
-                        packetCount.pointee = 1
-                        return noErr
-                    },
-                    Unmanaged.passUnretained(queue).toOpaque(),
-                    &frames,
-                    &list,
-                    nil
-                )
-            }
+            let status = fillLocked(frames: &frames)
             if frames > 0 {
                 decodedFrameCount += UInt64(frames)
                 framesPerPacketCounts[Int(frames), default: 0] += 1
@@ -238,7 +249,9 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     public var framesPerPacketSummary: String {
         lock.lock()
         defer { lock.unlock() }
-        return framesPerPacketSeen.sorted { $0.value > $1.value }
+        // The storage directly, not `framesPerPacketSeen`: that accessor takes `lock` too, and
+        // `NSLock` is not recursive, so going through it deadlocks this thread with the lock held.
+        return framesPerPacketCounts.sorted { $0.value > $1.value }
             .prefix(4)
             .map { "\($0.key)x\($0.value)" }
             .joined(separator: ",")

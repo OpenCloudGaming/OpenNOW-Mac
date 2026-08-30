@@ -38,13 +38,13 @@ public extension StreamSignalingChannel {
 }
 
 public actor WebRTCStreamingPath {
-    private let sessionProvider: any StreamSessionProvider
+    let sessionProvider: any StreamSessionProvider
     private let transport: any WebRTCStreamTransport
-    private let signaling: (any StreamSignalingChannel)?
+    let signaling: (any StreamSignalingChannel)?
     private let mediaSession: WebRTCMediaSession
     private var state: StreamingPathState = .idle
     private var activeSession: StreamSessionDescriptor?
-    private var startedAt: ContinuousClock.Instant?
+    var startedAt: ContinuousClock.Instant?
     private var remoteIceCandidateTask: Task<Void, Never>?
     private var localIceCandidateTask: Task<Void, Never>?
     private var remoteEndTask: Task<Void, Never>?
@@ -107,34 +107,7 @@ public actor WebRTCStreamingPath {
         try await stopOfferSessionIfCancelled(offer.session)
         try await publishProgress(configuration: configuration, step: .negotiateWebRTC, message: "Negotiating WebRTC...", progress: progress)
         try await stopOfferSessionIfCancelled(offer.session)
-        let answer: StreamAnswer
-        do {
-            answer = try await transport.connect(offer: offer, mediaReceiver: mediaSession)
-        } catch {
-            cancelIceCandidateForwarding()
-            if error is CancellationError || Task.isCancelled {
-                await transport.disconnect()
-                try? await sessionProvider.finishSession(offer.session, reason: .userRequested)
-                throw error
-            }
-            WebRTCMediaTelemetry.capture("webrtc.path.transport.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
-            throw error
-        }
-        try await stopOfferSessionIfCancelled(offer.session)
-        if let signaling {
-            do {
-                try await signaling.sendAnswer(answer, for: offer.session)
-            } catch {
-                cancelIceCandidateForwarding()
-                if error is CancellationError || Task.isCancelled {
-                    await transport.disconnect()
-                    try? await sessionProvider.finishSession(offer.session, reason: .userRequested)
-                    throw error
-                }
-                WebRTCMediaTelemetry.capture("webrtc.path.signaling_answer.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
-                throw error
-            }
-        }
+        try await negotiate(offer: offer)
         try await stopOfferSessionIfCancelled(offer.session)
 
         let runningSession = StreamSessionDescriptor(
@@ -150,6 +123,36 @@ public actor WebRTCStreamingPath {
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected.", isReady: true, progress: progress)
         WebRTCMediaTelemetry.capture("webrtc.path.connected", level: .info, message: "WebRTC streaming path connected.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         return runningSession
+    }
+
+    /// The WebRTC leg: connect the transport, then hand the answer back over signaling. Both steps
+    /// tear the session down on cancellation rather than leaving a seat allocated.
+    private func negotiate(offer: StreamOffer) async throws {
+        let answer: StreamAnswer
+        do {
+            answer = try await transport.connect(offer: offer, mediaReceiver: mediaSession)
+        } catch {
+            try await failNegotiation(error, offer: offer, event: "webrtc.path.transport.error")
+        }
+        try await stopOfferSessionIfCancelled(offer.session)
+        guard let signaling else { return }
+        do {
+            try await signaling.sendAnswer(answer, for: offer.session)
+        } catch {
+            try await failNegotiation(error, offer: offer, event: "webrtc.path.signaling_answer.error")
+        }
+    }
+
+    /// Always throws: reports the failure and, when it was a cancellation, releases the seat first.
+    private func failNegotiation(_ error: Error, offer: StreamOffer, event: String) async throws -> Never {
+        cancelIceCandidateForwarding()
+        if error is CancellationError || Task.isCancelled {
+            await transport.disconnect()
+            try? await sessionProvider.finishSession(offer.session, reason: .userRequested)
+            throw error
+        }
+        WebRTCMediaTelemetry.capture(event, level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
+        throw error
     }
 
     private func cancelStartingSession() async {

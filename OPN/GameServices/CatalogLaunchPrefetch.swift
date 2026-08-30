@@ -53,8 +53,8 @@ final class CatalogLaunchPrefetch {
         case failed
     }
 
-    private let gameService = OPNGameService.shared
-    private let imageCache = CatalogImageCache.shared
+    let gameService = OPNGameService.shared
+    let imageCache = CatalogImageCache.shared
 
     private(set) var accountIdentifier = ""
     private var panels: [PanelKind: [OPNCatalogPanelObject]] = [:]
@@ -62,7 +62,7 @@ final class CatalogLaunchPrefetch {
     private var gameLists: [GameListKind: [OPNCatalogGameObject]] = [:]
     private var gameListStates: [GameListKind: FetchState] = [:]
     private var observer: ((Event) -> Void)?
-    private var startedAt: ContinuousClock.Instant?
+    var startedAt: ContinuousClock.Instant?
     private var didPrefetchHeroImages = false
     private var didPrefetchRailImages = false
 

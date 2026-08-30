@@ -105,66 +105,82 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         var selectedVideoScore: UInt64 = 0
 
         for stat in report.statistics.values {
-            if stat.type == "codec" {
+            switch stat.type {
+            case "codec":
                 if let mimeType = string(stat.values["mimeType"]), !mimeType.isEmpty { codecs[stat.id] = mimeType }
-                continue
+            case "candidate-pair":
+                applyCandidatePair(stat, to: &parsed)
+            case "inbound-rtp":
+                guard isVideo(stat) else { continue }
+                applyInboundVideo(stat, to: &parsed, selectedVideoScore: &selectedVideoScore, inboundCodecId: &inboundCodecId)
+            default:
+                break
             }
-            if stat.type == "candidate-pair" {
-                let nominated = number(stat.values["nominated"])
-                let state = string(stat.values["state"])
-                let rtt = number(stat.values["currentRoundTripTime"]) ?? number(stat.values["roundTripTime"])
-                if (nominated == nil || nominated?.boolValue == true), (state == nil || state == "succeeded"), let rtt {
-                    parsed["latencyMs"] = rtt.doubleValue * 1_000
-                    parsed["available"] = true
-                }
-                continue
-            }
-            guard stat.type == "inbound-rtp", isVideo(stat) else { continue }
-            let jitter = number(stat.values["jitter"])
-            let packetsReceived = number(stat.values["packetsReceived"])
-            let packetsLost = number(stat.values["packetsLost"])
-            let bytesReceived = number(stat.values["bytesReceived"])
-            let framesReceived = number(stat.values["framesReceived"])
-            let framesDecoded = number(stat.values["framesDecoded"])
-            let framesDropped = number(stat.values["framesDropped"])
-            let framesPerSecond = number(stat.values["framesPerSecond"])
-            let frameWidth = number(stat.values["frameWidth"]) ?? number(stat.values["width"])
-            let frameHeight = number(stat.values["frameHeight"]) ?? number(stat.values["height"])
-            let totalDecodeTime = number(stat.values["totalDecodeTime"])
-            let codecId = string(stat.values["codecId"])
-
-            var videoScore = bytesReceived?.uint64Value ?? 0
-            if videoScore == 0 { videoScore = framesDecoded?.uint64Value ?? 0 }
-            if videoScore == 0 { videoScore = framesReceived?.uint64Value ?? 0 }
-            if videoScore < selectedVideoScore {
-                parsed["available"] = true
-                continue
-            }
-            selectedVideoScore = videoScore
-            let selectedFramesDecoded = framesDecoded?.uint64Value ?? 0
-
-            if let jitter { parsed["jitterMs"] = jitter.doubleValue * 1_000 }
-            if let packetsReceived { parsed["packetsReceived"] = packetsReceived.uint64Value }
-            if let packetsLost { parsed["packetsLost"] = packetsLost.int64Value }
-            if let bytesReceived { parsed["bytesReceived"] = bytesReceived.uint64Value }
-            if let framesReceived { parsed["framesReceived"] = framesReceived.uint64Value }
-            if framesDecoded != nil { parsed["framesDecoded"] = selectedFramesDecoded }
-            if let framesDropped { parsed["framesDropped"] = framesDropped.uint64Value }
-            if let frameWidth, let frameHeight, frameWidth.intValue > 0, frameHeight.intValue > 0 {
-                parsed["resolution"] = "\(frameWidth.intValue)x\(frameHeight.intValue)"
-            }
-            if let framesPerSecond, framesPerSecond.doubleValue > 0 { parsed["renderFps"] = framesPerSecond.doubleValue }
-            if let totalDecodeTime, totalDecodeTime.doubleValue > 0, selectedFramesDecoded > 0 {
-                parsed["decodeTimeMs"] = (totalDecodeTime.doubleValue * 1_000) / Double(selectedFramesDecoded)
-            }
-            if let codecId, !codecId.isEmpty { inboundCodecId = codecId }
-            parsed["available"] = true
         }
 
         if !inboundCodecId.isEmpty {
             parsed["codec"] = normalizeCodecName(codecs[inboundCodecId] ?? inboundCodecId)
         }
         return parsed
+    }
+
+    /// The nominated ICE pair's round trip is the stream's latency figure.
+    private static func applyCandidatePair(_ stat: RTCStatistics, to parsed: inout [String: Any]) {
+        let nominated = number(stat.values["nominated"])
+        let state = string(stat.values["state"])
+        let rtt = number(stat.values["currentRoundTripTime"]) ?? number(stat.values["roundTripTime"])
+        guard nominated == nil || nominated?.boolValue == true,
+              state == nil || state == "succeeded",
+              let rtt else { return }
+        parsed["latencyMs"] = rtt.doubleValue * 1_000
+        parsed["available"] = true
+    }
+
+    /// One `inbound-rtp` video stat. A session can carry several; the one that has actually moved
+    /// the most data wins, so a stalled second stream cannot overwrite the live figures.
+    private static func applyInboundVideo(_ stat: RTCStatistics,
+                                          to parsed: inout [String: Any],
+                                          selectedVideoScore: inout UInt64,
+                                          inboundCodecId: inout String) {
+        let framesDecoded = number(stat.values["framesDecoded"])
+        let framesReceived = number(stat.values["framesReceived"])
+        let bytesReceived = number(stat.values["bytesReceived"])
+
+        var videoScore = bytesReceived?.uint64Value ?? 0
+        if videoScore == 0 { videoScore = framesDecoded?.uint64Value ?? 0 }
+        if videoScore == 0 { videoScore = framesReceived?.uint64Value ?? 0 }
+        guard videoScore >= selectedVideoScore else {
+            parsed["available"] = true
+            return
+        }
+        selectedVideoScore = videoScore
+        let selectedFramesDecoded = framesDecoded?.uint64Value ?? 0
+
+        if let jitter = number(stat.values["jitter"]) { parsed["jitterMs"] = jitter.doubleValue * 1_000 }
+        if let packetsReceived = number(stat.values["packetsReceived"]) { parsed["packetsReceived"] = packetsReceived.uint64Value }
+        if let packetsLost = number(stat.values["packetsLost"]) { parsed["packetsLost"] = packetsLost.int64Value }
+        if let bytesReceived { parsed["bytesReceived"] = bytesReceived.uint64Value }
+        if let framesReceived { parsed["framesReceived"] = framesReceived.uint64Value }
+        if framesDecoded != nil { parsed["framesDecoded"] = selectedFramesDecoded }
+        if let framesDropped = number(stat.values["framesDropped"]) { parsed["framesDropped"] = framesDropped.uint64Value }
+        applyVideoTiming(stat, to: &parsed, framesDecoded: selectedFramesDecoded)
+        if let codecId = string(stat.values["codecId"]), !codecId.isEmpty { inboundCodecId = codecId }
+        parsed["available"] = true
+    }
+
+    /// Resolution, render rate and the per-frame decode cost derived from the running total.
+    private static func applyVideoTiming(_ stat: RTCStatistics, to parsed: inout [String: Any], framesDecoded: UInt64) {
+        let frameWidth = number(stat.values["frameWidth"]) ?? number(stat.values["width"])
+        let frameHeight = number(stat.values["frameHeight"]) ?? number(stat.values["height"])
+        if let frameWidth, let frameHeight, frameWidth.intValue > 0, frameHeight.intValue > 0 {
+            parsed["resolution"] = "\(frameWidth.intValue)x\(frameHeight.intValue)"
+        }
+        if let framesPerSecond = number(stat.values["framesPerSecond"]), framesPerSecond.doubleValue > 0 {
+            parsed["renderFps"] = framesPerSecond.doubleValue
+        }
+        if let totalDecodeTime = number(stat.values["totalDecodeTime"]), totalDecodeTime.doubleValue > 0, framesDecoded > 0 {
+            parsed["decodeTimeMs"] = (totalDecodeTime.doubleValue * 1_000) / Double(framesDecoded)
+        }
     }
 
     private static func isVideo(_ stat: RTCStatistics) -> Bool {
@@ -175,7 +191,7 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
 
     private static func number(_ value: NSObject?) -> NSNumber? { value as? NSNumber }
 
-    private static func string(_ value: NSObject?) -> String? { value as? String }
+    static func string(_ value: NSObject?) -> String? { value as? String }
 
     private static func normalizeCodecName(_ value: String) -> String {
         let upper = value.uppercased()

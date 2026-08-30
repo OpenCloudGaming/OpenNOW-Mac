@@ -180,7 +180,7 @@ public struct StreamSessionLimitUpdate: Codable, Equatable, Sendable {
         return nil
     }
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         if let value = value as? String { return value }
         if let value = value as? NSNumber { return value.stringValue }
         return ""

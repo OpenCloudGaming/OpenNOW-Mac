@@ -119,7 +119,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
     }
 
-    private func primaryAction() {
+    func primaryAction() {
         if game.isLaunchPatching {
             onQueueForPatching()
         } else if game.cardPrimaryActionIsLaunchable {
