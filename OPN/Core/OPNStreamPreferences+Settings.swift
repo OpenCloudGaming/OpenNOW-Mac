@@ -211,7 +211,7 @@ extension OPNStreamPreferences {
         profile.maxBitrateMbps = profile.bitrate.mbps
         profile.colorQualityIndex = clampedInt(dictionary, k.colorQualityIndex, 0, colorQualityOptions.count)
         profile.colorQuality = colorQualityOptions[profile.colorQualityIndex]
-        profile.transportModeIndex = clampedInt(dictionary, k.transportModeIndex, 0, transportModeOptions.count)
+        profile.transportModeIndex = clampedInt(dictionary, k.transportModeIndex, 1, transportModeOptions.count)
         profile.transportMode = transportModeOptions[profile.transportModeIndex]
         profile.streamingQualityProfileIndex = clampedInt(dictionary, k.streamingQualityProfileIndex, 0, streamingQualityProfileOptions.count)
         profile.streamingQualityProfileOption = streamingQualityProfileOptions[profile.streamingQualityProfileIndex]

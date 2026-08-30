@@ -261,7 +261,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var codecIndex = 0
     public var bitrateIndex = 2
     public var colorQualityIndex = 0
-    public var transportModeIndex = 0
+    public var transportModeIndex = 1
     public var streamingQualityProfileIndex = 0
     public var hudStreamingModeIndex = 0
     public var sdrColorSpaceIndex = 2
@@ -285,7 +285,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var recordingVideoBitrateMbps = 0
     public var recordingAudioBitrateKbps = 160
     public var recordingEnhancedVideoEnabled = true
-    public var transportMode = OPNStreamPreferences.transportModeOptions[0]
+    public var transportMode = OPNStreamPreferences.transportModeOptions[1]
     public var streamingQualityProfile = 0
     public var streamingQualityProfileOption = OPNStreamPreferences.streamingQualityProfileOptions[0]
     public var enableCloudGsync = false
