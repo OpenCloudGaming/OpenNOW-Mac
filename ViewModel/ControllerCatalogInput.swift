@@ -516,8 +516,10 @@ extension ControllerCatalogViewModel {
             catalog.showCatalogDestination(Self.destination(for: item))
         case .desktopMode:
             host.onExitControllerMode()
-        case .switchAccount(let account):
+        case .switchAccount(let account, _):
             host.onSwitch(account)
+        case .addAccount:
+            host.onAddAccount()
         case .signOut:
             host.onSignOut()
         }

@@ -156,9 +156,11 @@ struct CatalogMainMenuPanel: View {
 struct CatalogAccountDropdownOverlay: View {
     let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    let signedOutAccountEmails: Set<String>
     @Binding var isPresented: Bool
     let topInset: CGFloat
     let onSwitch: (LoginAccount) -> Void
+    let onAddAccount: () -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
@@ -170,7 +172,7 @@ struct CatalogAccountDropdownOverlay: View {
                     .contentShape(Rectangle())
                     .onTapGesture { isPresented = false }
 
-                CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, isPresented: $isPresented, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $isPresented, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
                     .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
                     .padding(.trailing, 22)
             }
@@ -183,8 +185,10 @@ struct CatalogAccountDropdownOverlay: View {
 struct CatalogAccountDropdownPanel: View {
     let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    let signedOutAccountEmails: Set<String>
     @Binding var isPresented: Bool
     let onSwitch: (LoginAccount) -> Void
+    let onAddAccount: () -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
@@ -224,10 +228,13 @@ struct CatalogAccountDropdownPanel: View {
                     .padding(.vertical, 5 * uiScale)
                 ForEach(accounts) { account in
                     let isActive = account === viewModel.account
+                    // A signed-out account still has a row here, but nothing to restore: say so
+                    // rather than let the switch fail with a message no one sees.
+                    let needsSignIn = !isActive && signedOutAccountEmails.contains(account.email)
                     CatalogAccountDropdownRow(
                         title: account.displayName,
-                        subtitle: nil,
-                        systemImage: isActive ? "checkmark" : "person",
+                        subtitle: needsSignIn ? "Signed out — sign in again" : nil,
+                        systemImage: isActive ? "checkmark" : (needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person"),
                         isActive: isActive,
                         role: nil
                     ) {
@@ -236,6 +243,18 @@ struct CatalogAccountDropdownPanel: View {
                             onSwitch(account)
                         }
                     }
+                }
+                // Signing in an extra account never signs the current one out, so this belongs in
+                // the account list rather than behind Sign Out.
+                CatalogAccountDropdownRow(
+                    title: "Add Account",
+                    subtitle: "Sign in without signing out",
+                    systemImage: "plus",
+                    isActive: false,
+                    role: nil
+                ) {
+                    isPresented = false
+                    onAddAccount()
                 }
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))

@@ -29,6 +29,13 @@ final class LoginViewModel: ObservableObject {
     @Published var pendingGameShortcut: GFNGameShortcut?
     @Published var deviceCodeUserCode = ""
     @Published var deviceCodeVerificationURI = ""
+    /// Accounts whose keychain tokens are gone — signed out, or forgotten mid-flight. Their rows
+    /// stay in the account list forever, so the UI needs this to tell them from switchable ones.
+    @Published private(set) var signedOutAccountEmails: Set<String> = []
+    /// Set when the login wall has to take over while a session is still active: either a switch
+    /// hit an account with no saved session, or another account is being added. Neither touches
+    /// the session that is signed in — cancelling returns straight to it.
+    @Published private(set) var signInRequest: LoginSignInRequest?
 
     let authService: any LoginAuthServing
     private let providerInfoService: any GameProviderInfoServing
@@ -86,6 +93,7 @@ final class LoginViewModel: ObservableObject {
         self.accounts = accounts
         self.sessions = sessions
         self.devices = devices
+        refreshSignedOutAccounts()
     }
 
     func bootstrap() {
@@ -180,7 +188,63 @@ final class LoginViewModel: ObservableObject {
     }
 
     func activateAccount(_ account: LoginAccount) {
+        // Signing out purges the tokens but keeps the account row, so a listed account is not
+        // necessarily a restorable one. Send those to the login wall instead of failing silently.
+        guard hasUsableSession(for: account) else {
+            beginReauthentication(for: account)
+            return
+        }
         Task { _ = await restoreAccountSession(account) }
+    }
+
+    func hasUsableSession(for account: LoginAccount) -> Bool {
+        sessions.contains { $0.accountEmail == account.email && !$0.accessToken.isEmpty }
+    }
+
+    func refreshSignedOutAccounts() {
+        signedOutAccountEmails = Set(accounts.filter { !hasUsableSession(for: $0) }.map(\.email))
+    }
+
+    var reauthAccountEmail: String? {
+        guard case .reauthenticate(let email) = signInRequest else { return nil }
+        return email
+    }
+
+    var reauthAccount: LoginAccount? {
+        guard let reauthAccountEmail else { return nil }
+        return accounts.first { $0.email == reauthAccountEmail }
+    }
+
+    var isAddingAccount: Bool { signInRequest == .addAccount }
+
+    /// Another account is still signed in, so cancelling the re-sign-in has a session to return to.
+    var canCancelReauthentication: Bool { activeSession != nil }
+
+    func beginReauthentication(for account: LoginAccount) {
+        selectRememberedAccount(account)
+        successMessage = ""
+        validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
+        signInRequest = .reauthenticate(email: account.email)
+        OpenNOWLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
+    }
+
+    /// Signs in an additional account. The account that is signed in keeps its tokens, so it stays
+    /// in the list and switchable once the new one is added.
+    func beginAddAccount() {
+        email = ""
+        selectedProvider = providers.first ?? LoginProvider.nvidia
+        rememberSession = true
+        successMessage = ""
+        validationMessage = ""
+        signInRequest = .addAccount
+        OpenNOWLog.info(.auth, "Add-account sign-in requested accounts=\(accounts.count)")
+    }
+
+    func cancelReauthentication() {
+        guard signInRequest != nil else { return }
+        signInRequest = nil
+        validationMessage = ""
+        successMessage = ""
     }
 
     func signOut() {
@@ -194,13 +258,20 @@ final class LoginViewModel: ObservableObject {
 
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
-        for session in sessions where session.accountEmail == account.email {
+        let email = account.email
+        for session in sessions where session.accountEmail == email {
             // Deleting the row alone would orphan the keychain item it points at.
             session.purgeTokens()
             modelContext.delete(session)
         }
         modelContext.delete(account)
         trySave()
+        // Drop the deleted models here too: the @Query refresh that would do it is asynchronous,
+        // and anything reading these arrays before it lands would touch a deleted object.
+        accounts.removeAll { $0.email == email }
+        sessions.removeAll { $0.accountEmail == email }
+        if reauthAccountEmail == email { signInRequest = nil }
+        refreshSignedOutAccounts()
     }
 
     func markActive(accountEmail: String) {
@@ -392,6 +463,12 @@ struct LoginProvider: Identifiable, Hashable, Sendable {
         loginProviderCode: "NVIDIA",
         streamingServiceUrl: "https://prod.cloudmatchbeta.nvidiagrid.net/"
     )
+}
+
+/// Why the login wall is showing while a session may still be active.
+enum LoginSignInRequest: Equatable {
+    case reauthenticate(email: String)
+    case addAccount
 }
 
 enum LoginField: Hashable {

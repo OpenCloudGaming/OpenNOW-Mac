@@ -19,13 +19,17 @@ struct LoginView: View {
     var body: some View {
         ZStack {
             LoginBackdrop()
-            if let activeAccount = viewModel.activeAccount, let activeSession = viewModel.activeSession {
+            // A pending re-sign-in hands the window back to the login wall even though a session
+            // is still active: the account being switched to has no tokens left to restore.
+            if viewModel.signInRequest == nil, let activeAccount = viewModel.activeAccount, let activeSession = viewModel.activeSession {
                 CatalogView(
                     account: activeAccount,
                     session: activeSession,
                     accounts: accounts,
+                    signedOutAccountEmails: viewModel.signedOutAccountEmails,
                     pendingGameShortcut: $viewModel.pendingGameShortcut,
                     onSwitch: viewModel.activateAccount,
+                    onAddAccount: viewModel.beginAddAccount,
                     onSignOut: viewModel.signOut,
                     onForget: viewModel.forgetAccount,
                     onRefreshAuth: viewModel.refreshActiveSession,

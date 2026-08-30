@@ -62,6 +62,8 @@ extension LoginViewModel {
                      clientExpiry: clientExpiry)
         primaryDevice.lastUsedAt = now
         trySave()
+        cancelReauthentication()
+        refreshSignedOutAccounts()
         OpenNOWLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
     }
 

@@ -63,7 +63,8 @@ enum ControllerActionMenuItem {
     case favorites
     case recordings
     case settings
-    case switchAccount(LoginAccount)
+    case switchAccount(LoginAccount, needsSignIn: Bool)
+    case addAccount
     case signOut
 
     var title: String {
@@ -76,7 +77,9 @@ enum ControllerActionMenuItem {
         case .favorites: return "Go to Favorites"
         case .recordings: return "Open Recordings"
         case .settings: return "Open Settings"
-        case .switchAccount(let account): return "Switch to \(account.displayName)"
+        case .switchAccount(let account, let needsSignIn):
+            return needsSignIn ? "Sign in as \(account.displayName)" : "Switch to \(account.displayName)"
+        case .addAccount: return "Add Account"
         case .signOut: return "Sign Out"
         }
     }
@@ -99,6 +102,7 @@ enum ControllerActionMenuItem {
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
         case .switchAccount: return "person.crop.circle"
+        case .addAccount: return "person.badge.plus"
         case .signOut: return "rectangle.portrait.and.arrow.right"
         }
     }

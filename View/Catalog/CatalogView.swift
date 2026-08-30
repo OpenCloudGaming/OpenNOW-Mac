@@ -124,7 +124,10 @@ extension View {
 
 struct CatalogView: View {
     let accounts: [LoginAccount]
+    /// Listed accounts whose tokens are gone: switching to one needs a fresh sign-in.
+    let signedOutAccountEmails: Set<String>
     let onSwitch: (LoginAccount) -> Void
+    let onAddAccount: () -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     let onRefreshAuth: () async -> Bool
@@ -148,15 +151,19 @@ struct CatalogView: View {
         account: LoginAccount,
         session: LoginSession,
         accounts: [LoginAccount],
+        signedOutAccountEmails: Set<String>,
         pendingGameShortcut: Binding<GFNGameShortcut?>,
         onSwitch: @escaping (LoginAccount) -> Void,
+        onAddAccount: @escaping () -> Void,
         onSignOut: @escaping () -> Void,
         onForget: @escaping (LoginAccount) -> Void,
         onRefreshAuth: @escaping () async -> Bool,
         onWindowTitleChange: @escaping (String?) -> Void
     ) {
         self.accounts = accounts
+        self.signedOutAccountEmails = signedOutAccountEmails
         self.onSwitch = onSwitch
+        self.onAddAccount = onAddAccount
         self.onSignOut = onSignOut
         self.onForget = onForget
         self.onRefreshAuth = onRefreshAuth
@@ -197,7 +204,7 @@ struct CatalogView: View {
             } else {
                 ZStack {
                     if controllerModeEnabled {
-                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
                             .transition(.opacity)
                     } else {
                         VStack(spacing: 0) {
@@ -220,7 +227,7 @@ struct CatalogView: View {
                         }
 
                         if showsAccountMenu {
-                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
                                 .transition(.opacity)
                                 .zIndex(13)
                         }

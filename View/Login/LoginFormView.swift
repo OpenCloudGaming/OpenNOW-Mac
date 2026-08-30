@@ -23,14 +23,14 @@ struct LoginFormView: View {
                     .frame(width: metrics.panelWidth, height: proxy.size.height)
 
                 if isShowingSignIn {
-                    SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: { isShowingSignIn = false })
+                    SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: closeSignIn)
                         // Inset lives outside the panel's own background so it never paints it.
                         .padding(OpenNOWDesign.Spacing.pageHorizontal)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background {
                             OpenNOWDesign.Surface.scrim
                                 .contentShape(Rectangle())
-                                .onTapGesture { isShowingSignIn = false }
+                                .onTapGesture { closeSignIn() }
                         }
                         .transition(.opacity)
                 }
@@ -52,6 +52,12 @@ struct LoginFormView: View {
         }
         .animation(.snappy, value: isShowingSignIn)
         .animation(.snappy, value: viewModel.isShowingTermsOfUse)
+        // A switch to a signed-out account lands here with the wall behind it; open the sign-in
+        // panel straight away rather than making the user find GET IN again.
+        .onAppear { if viewModel.signInRequest != nil { isShowingSignIn = true } }
+        .onChange(of: viewModel.signInRequest) { _, request in
+            if request != nil { isShowingSignIn = true }
+        }
     }
 
     private func leftPanel(metrics: VendorLoginWallMetrics) -> some View {
@@ -132,6 +138,13 @@ struct LoginFormView: View {
         .padding(.leading, metrics.contentLeft)
         .padding(.trailing, metrics.contentRight)
         .frame(width: metrics.panelWidth, alignment: .leading)
+    }
+
+    /// Closing the panel also drops a pending re-sign-in, which is what returns the window to the
+    /// account that is still signed in.
+    private func closeSignIn() {
+        isShowingSignIn = false
+        viewModel.cancelReauthentication()
     }
 
     private func openSignIn() {
@@ -265,7 +278,7 @@ private struct SignInModal: View {
 
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
                 HStack(alignment: .top) {
-                    Text("Sign in to GeForce NOW")
+                    Text(modalTitle)
                         .font(.nvidiaSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                     Spacer(minLength: OpenNOWDesign.Spacing.small)
@@ -290,8 +303,53 @@ private struct SignInModal: View {
         .onExitCommand(perform: onClose)
     }
 
+    private var modalTitle: String {
+        switch viewModel.signInRequest {
+        case .reauthenticate: return "Sign in to switch account"
+        case .addAccount: return "Add another account"
+        case nil: return "Sign in to GeForce NOW"
+        }
+    }
+
+    /// Explains why the wall is up over a session that is still signed in, and offers the way back.
+    private var signInRequestBanner: (label: String, message: String)? {
+        switch viewModel.signInRequest {
+        case .reauthenticate:
+            guard let account = viewModel.reauthAccount else { return nil }
+            return ("SWITCHING ACCOUNT", "\(account.displayName) is signed out, so its saved session is gone. Sign in again to switch to it.")
+        case .addAccount:
+            return ("ADDING ACCOUNT", "Sign in with the account you want to add. The account you are already signed in to stays saved and switchable.")
+        case nil:
+            return nil
+        }
+    }
+
     private var formContent: some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+            if let banner = signInRequestBanner {
+                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall) {
+                    Text(banner.label)
+                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.accent)
+                        .tracking(0.8)
+                    Text(banner.message)
+                        .font(.nvidiaSans(size: 13, weight: .regular))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if viewModel.canCancelReauthentication {
+                        Button("Keep using the current account", action: onClose)
+                            .buttonStyle(.plain)
+                            .font(.nvidiaSans(size: 12, weight: .bold))
+                            .foregroundStyle(OpenNOWDesign.accent)
+                    }
+                }
+                .padding(OpenNOWDesign.Spacing.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.06))
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            }
+
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
                 Text("SERVICE PROVIDER")
                     .font(.nvidiaSans(size: 11, weight: .bold))

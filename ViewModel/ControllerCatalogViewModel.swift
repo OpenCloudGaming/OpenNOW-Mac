@@ -64,7 +64,9 @@ enum ControllerFocusEffect: Equatable {
 @MainActor
 struct ControllerCatalogHost {
     var accounts: [LoginAccount] = []
+    var signedOutAccountEmails: Set<String> = []
     var onSwitch: (LoginAccount) -> Void = { _ in }
+    var onAddAccount: () -> Void = {}
     var onSignOut: () -> Void = {}
     var onExitControllerMode: () -> Void = {}
 }
@@ -275,8 +277,9 @@ final class ControllerCatalogViewModel: ObservableObject {
         if catalog.isBrowseMode { items.append(.clearSearch) }
         items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
         for account in host.accounts where account.id != catalog.account.id {
-            items.append(.switchAccount(account))
+            items.append(.switchAccount(account, needsSignIn: host.signedOutAccountEmails.contains(account.email)))
         }
+        items.append(.addAccount)
         items.append(.signOut)
         return items
     }

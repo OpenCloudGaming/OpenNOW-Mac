@@ -52,8 +52,10 @@ struct ControllerLayoutMetrics {
 struct ControllerCatalogView: View {
     let viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    let signedOutAccountEmails: Set<String>
     let topInset: CGFloat
     let onSwitch: (LoginAccount) -> Void
+    let onAddAccount: () -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
 
@@ -183,7 +185,9 @@ struct ControllerCatalogView: View {
                 catalog: viewModel,
                 host: ControllerCatalogHost(
                     accounts: accounts,
+                    signedOutAccountEmails: signedOutAccountEmails,
                     onSwitch: onSwitch,
+                    onAddAccount: onAddAccount,
                     onSignOut: onSignOut,
                     onExitControllerMode: { controllerModeEnabled = false }
                 )

@@ -201,6 +201,7 @@ extension LoginViewModel {
             if storedSession.canContinueOffline && !storedSession.isExpired {
                 markActive(accountEmail: account.email)
                 trySave()
+                refreshSignedOutAccounts()
                 successMessage = "Using saved offline session for \(account.displayName)."
                 OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
                 return true
@@ -230,6 +231,8 @@ extension LoginViewModel {
         currentAuthorizationURL = ""
         oauthCallbackText = ""
         trySave()
+        cancelReauthentication()
+        refreshSignedOutAccounts()
         await jarvisAuthService.clearSession()
         successMessage = "Signed out."
         OpenNOWLog.info(.auth, "Sign out completed")
