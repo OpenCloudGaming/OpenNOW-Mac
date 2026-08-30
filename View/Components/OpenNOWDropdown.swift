@@ -108,6 +108,9 @@ struct OpenNOWDropdownMenu<Label: View>: View {
         }
         .onExitCommand { isPresented = false }
         .onChange(of: items.map(\.id)) { _, _ in isPresented = false }
+        // The panel is an overlay, so it still obeys sibling paint order: without this an open
+        // menu draws underneath any control laid out after it.
+        .zIndex(isPresented ? 1 : 0)
     }
 
     private var anchorSpacing: CGFloat {

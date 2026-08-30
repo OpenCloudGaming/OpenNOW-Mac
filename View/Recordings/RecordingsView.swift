@@ -93,6 +93,7 @@ struct RecordingsView: View {
             sortAndFilters
                 .padding(.horizontal, 18 * uiScale)
                 .padding(.top, 14 * uiScale)
+                .zIndex(1)
 
             if model.recordings.isEmpty {
                 RecordingEmptyState(kind: .library, action: { model.reload(showMessage: true) }, uiScale: uiScale)
@@ -199,6 +200,7 @@ struct RecordingsView: View {
                     .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.48))
             }
+            .zIndex(1)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7 * uiScale) {
