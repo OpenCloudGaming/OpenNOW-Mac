@@ -252,17 +252,17 @@ struct CatalogStorePickerOverlay: View {
             HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
                 if let option { storeIconView(iconURL: option.iconURL, size: 20) }
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
-                    Text(successAccountTitle(storeName: storeName, account: account))
+                    Text(CatalogStorePresentation.successAccountTitle(storeName: storeName, account: account))
                         .nvidiaFont(size: 14, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
-                    Text(successAccountSubtitle(storeName: storeName, account: account))
+                    Text(CatalogStorePresentation.successAccountSubtitle(storeName: storeName, account: account))
                         .nvidiaFont(size: 12, weight: .medium)
                         .foregroundStyle(OpenNOWDesign.Text.secondary)
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                         Image(systemName: "checkmark.circle.fill")
                             .nvidiaFont(size: 12, weight: .bold)
                             .foregroundStyle(OpenNOWDesign.accent)
-                        Text(successSyncText(account: account))
+                        Text(CatalogStorePresentation.successSyncText(account: account))
                             .nvidiaFont(size: 12, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Text.secondary)
                     }
@@ -308,20 +308,6 @@ struct CatalogStorePickerOverlay: View {
         }
     }
 
-    private func successAccountTitle(storeName: String, account: CatalogStoreAccount?) -> String {
-        guard let account, !account.userDisplayName.isEmpty else { return storeName }
-        return "\(storeName) | \(account.userDisplayName)"
-    }
-
-    private func successAccountSubtitle(storeName: String, account: CatalogStoreAccount?) -> String {
-        account?.hasAccountLinkingData == true ? "Your \(storeName) account is connected." : "Your game store is selected."
-    }
-
-    private func successSyncText(account: CatalogStoreAccount?) -> String {
-        guard let account else { return "Manual ownership selected" }
-        if account.hasAccountSyncingData { return "Automatic game library sync enabled" }
-        return "Automatic sign-in available when supported"
-    }
 }
 
 struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {

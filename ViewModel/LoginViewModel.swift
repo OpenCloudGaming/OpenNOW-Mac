@@ -4,12 +4,10 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import AppKit
 import Combine
 import CryptoKit
 import Foundation
 import SwiftData
-import SwiftUI
 
 @MainActor
 final class LoginViewModel: ObservableObject {
@@ -20,7 +18,6 @@ final class LoginViewModel: ObservableObject {
     @Published var rememberSession = true
     @Published var acceptedTerms = false
     @Published var isShowingTermsOfUse = false
-    @Published var isShowingAccountPicker = false
     @Published var validationMessage = ""
     @Published var successMessage = ""
     @Published var isLoadingProviders = false
@@ -119,12 +116,6 @@ final class LoginViewModel: ObservableObject {
         OPNAppPreferenceStorage.standard.removeObject(forKey: Self.termsAcceptedKey)
         isShowingTermsOfUse = false
         validationMessage = "You must accept the GeForce NOW Terms of Use to continue."
-    }
-
-    func toggleAccountPicker() {
-        withAnimation(.snappy) {
-            isShowingAccountPicker.toggle()
-        }
     }
 
     func selectRememberedAccount(_ account: LoginAccount) {

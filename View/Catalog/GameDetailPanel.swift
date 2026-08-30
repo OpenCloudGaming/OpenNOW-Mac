@@ -212,7 +212,7 @@ struct GameDetailPanel: View {
 
     private func capabilityChips(game: OPNCatalogGameObject) -> some View {
         FlowLayout(spacing: 5) {
-            ForEach(capabilityLabels(game: game), id: \.self) { chip in
+            ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { chip in
                 HStack(spacing: 5) {
                     if chip == "For Premium Members" {
                         Image(systemName: "checkmark.circle.fill")
@@ -230,38 +230,15 @@ struct GameDetailPanel: View {
         .frame(maxWidth: 520, alignment: .leading)
     }
 
-    private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
-        var labels: [String] = []
-        if !game.skuPlayabilityText.isEmpty { labels.append(game.skuPlayabilityText) }
-        if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
-        for technology in supportedTechnologyLabels(game: game).prefix(2) { appendUnique(technology, to: &labels) }
-        if labels.isEmpty { labels.append("Cloud Ready") }
-        return labels
-    }
-
     private func detailEyebrow(game: OPNCatalogGameObject) -> some View {
         FlowLayout(spacing: 8) {
-            ForEach(detailMetadata(game: game), id: \.self) { item in
+            ForEach(GameDetailPresentation.detailMetadata(game: game), id: \.self) { item in
                 Text(item.uppercased())
                     .nvidiaFont(size: 11, weight: .bold)
                     .tracking(0.8)
                     .foregroundStyle(.white.opacity(0.68))
             }
         }
-    }
-
-    private func detailMetadata(game: OPNCatalogGameObject) -> [String] {
-        var values: [String] = []
-        appendUnique(game.primaryStoreLabel, to: &values)
-        appendUnique(game.ratingLabel, to: &values)
-        for genre in game.genres.prefix(2) { appendUnique(genre, to: &values) }
-        return values
-    }
-
-    private func appendUnique(_ value: String, to values: inout [String]) {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !values.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
-        values.append(trimmed)
     }
 
     private func detailActions(game: OPNCatalogGameObject) -> some View {
@@ -378,24 +355,24 @@ struct GameDetailPanel: View {
         }
     }
 
+    /// Resolves the parts of the current selection that the detail copy depends on. Everything the
+    /// copy itself does lives in `GameDetailPresentation`.
+    private func accessContext(game: OPNCatalogGameObject) -> GameDetailAccessContext {
+        let option = selectedPlatformOption
+        let variant = selectedVariant
+        return GameDetailAccessContext(
+            isQueuedForPatching: viewModel.isQueuedForPatching(game),
+            isSelectedVariantPatching: variant?.isPatching == true,
+            isSelectedVariantOwned: selectedVariantIsOwned(game),
+            hasSelectedVariant: variant != nil,
+            selectedPlatformHasAccess: selectedPlatformHasAccess(game),
+            subscriptionOptionTitle: option?.hasSubscriptionEntitlement == true ? option?.title : nil,
+            ownershipStoreName: (variant?.appStore.isEmpty == false) ? viewModel.displayName(forStore: variant?.appStore ?? "") : nil
+        )
+    }
+
     private func accessBody(game: OPNCatalogGameObject) -> String {
-        if game.isLaunchPatching || selectedVariant?.isPatching == true {
-            if viewModel.isQueuedForPatching(game) {
-                return "Queued to launch automatically after GeForce NOW finishes patching this game."
-            }
-            let secondary = game.patchStatusSecondaryDisplayText
-            return secondary.isEmpty ? "GeForce NOW is \(game.patchStatusPrimaryDisplayText.lowercased()). Launch will be available after patching finishes." : secondary
-        }
-        if selectedVariantIsOwned(game) {
-            return "Access unlocked with your membership. Game ownership required to play."
-        }
-        if let option = selectedPlatformOption, option.hasSubscriptionEntitlement {
-            return "Access unlocked through your \(option.title) subscription."
-        }
-        if let selectedVariant, !selectedVariant.appStore.isEmpty {
-            return "Game ownership required on \(viewModel.displayName(forStore: selectedVariant.appStore)) to play."
-        }
-        return "Access requires a GeForce NOW membership and supported game ownership."
+        GameDetailPresentation.accessBody(game: game, context: accessContext(game: game))
     }
 
     private func detailMetadataScrollArea(game: OPNCatalogGameObject, panelHeight: CGFloat) -> some View {
@@ -425,7 +402,7 @@ struct GameDetailPanel: View {
     }
 
     private func shortDescription(game: OPNCatalogGameObject) -> some View {
-        Text(detailShortDescription(game: game))
+        Text(GameDetailPresentation.shortDescription(game: game))
             .nvidiaFont(size: 15, weight: .medium)
             .foregroundStyle(.white.opacity(0.90))
             .lineSpacing(3)
@@ -434,7 +411,7 @@ struct GameDetailPanel: View {
     }
 
     private func fullDescription(game: OPNCatalogGameObject) -> some View {
-        let description = detailLongDescription(game: game)
+        let description = GameDetailPresentation.longDescription(game: game)
         return VStack(alignment: .leading, spacing: 8) {
             if !description.isEmpty {
                 Text("FULL DESCRIPTION")
@@ -451,19 +428,6 @@ struct GameDetailPanel: View {
         .frame(maxWidth: 660, alignment: .leading)
     }
 
-    private func detailShortDescription(game: OPNCatalogGameObject) -> String {
-        let value = game.shortDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !value.isEmpty { return value }
-        return "Play instantly through GeForce NOW cloud streaming."
-    }
-
-    private func detailLongDescription(game: OPNCatalogGameObject) -> String {
-        let longDescription = game.longDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !longDescription.isEmpty { return longDescription }
-        let gameDescription = game.gameDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        return gameDescription == detailShortDescription(game: game) ? "" : gameDescription
-    }
-
     private var divider: some View {
         Rectangle()
             .fill(Color.white.opacity(0.24))
@@ -471,53 +435,26 @@ struct GameDetailPanel: View {
     }
 
     private func nvidiaTechRows(game: OPNCatalogGameObject) -> some View {
-        let technologies = nvidiaTechnologies(game: game)
+        let technologies = GameDetailPresentation.supportedTechnologyLabels(game: game)
         return VStack(alignment: .leading, spacing: 7) {
             ForEach(technologies.prefix(2), id: \.self) { technology in
-                CatalogFeatureAvailabilityRow(title: technology, message: featureMessage(technology), locked: featureIsLocked(technology))
+                CatalogFeatureAvailabilityRow(title: technology, message: GameDetailPresentation.featureMessage(technology), locked: GameDetailPresentation.featureIsLocked(technology))
             }
         }
         .padding(.vertical, technologies.isEmpty ? 0 : 2)
         .frame(maxWidth: 660, alignment: .leading)
     }
 
-    private func nvidiaTechnologies(game: OPNCatalogGameObject) -> [String] {
-        supportedTechnologyLabels(game: game)
-    }
-
-    private func supportedTechnologyLabels(game: OPNCatalogGameObject) -> [String] {
-        var values: [String] = []
-        for rawValue in game.nvidiaTech + game.featureLabels + game.skuTags {
-            if let label = supportedTechnologyLabel(rawValue) { appendUnique(label, to: &values) }
-        }
-        return values
-    }
-
-    private func supportedTechnologyLabel(_ rawValue: String) -> String? {
-        let value = rawValue.lowercased()
-        if value.contains("reflex") { return "Reflex" }
-        if value.contains("rtx") || value.contains("ray tracing") || value.contains("raytracing") { return "RTX" }
-        return nil
-    }
-
-    private func featureMessage(_ feature: String) -> String {
-        feature.localizedCaseInsensitiveContains("reflex") ? "Upgrade your membership to unlock" : "Ready - You may need to turn this on in-game"
-    }
-
-    private func featureIsLocked(_ feature: String) -> Bool {
-        feature.localizedCaseInsensitiveContains("reflex")
-    }
-
     private func ratingBlock(game: OPNCatalogGameObject) -> some View {
         HStack(alignment: .top, spacing: 18) {
             if !game.ratingLabel.isEmpty {
-                CatalogRatingBadge(game: game, shortRating: esrbShortRating(game.ratingLabel))
+                CatalogRatingBadge(game: game, shortRating: GameDetailPresentation.esrbShortRating(game.ratingLabel))
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
                     .nvidiaFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.92))
-                ForEach(ratingDescriptors(game: game), id: \.self) { descriptor in
+                ForEach(GameDetailPresentation.ratingDescriptors(game: game), id: \.self) { descriptor in
                     Text(descriptor)
                         .nvidiaFont(size: 12, weight: .medium)
                         .foregroundStyle(.white.opacity(0.70))
@@ -542,24 +479,6 @@ struct GameDetailPanel: View {
         .buttonStyle(.plain)
     }
 
-    private func esrbShortRating(_ rating: String) -> String {
-        let uppercased = rating.uppercased()
-        if uppercased.contains("EVERYONE 10") { return "E10" }
-        if uppercased.contains("EVERYONE") { return "E" }
-        if uppercased.contains("TEEN") { return "T" }
-        if uppercased.contains("MATURE") { return "M" }
-        if uppercased.contains("ADULT") { return "A" }
-        return String(uppercased.prefix(1))
-    }
-
-    private func ratingDescriptors(game: OPNCatalogGameObject) -> [String] {
-        var descriptors = game.ratingDescriptors + game.ratingInteractiveElements
-        if descriptors.isEmpty { descriptors = game.contentRatings.filter { $0.caseInsensitiveCompare(game.ratingLabel) != .orderedSame } }
-        descriptors.removeAll { ["ESRB", "PEGI", "USK", "CLASSIND", "GRAC", "IARC"].contains($0.uppercased()) }
-        if descriptors.isEmpty { descriptors = game.genres.prefix(2).map { $0.capitalized } }
-        return Array(descriptors.prefix(3))
-    }
-
     private var selectedVariant: OPNCatalogGameVariantObject? {
         viewModel.selectedVariant(in: viewModel.selectedGame)
     }
@@ -569,10 +488,7 @@ struct GameDetailPanel: View {
     }
 
     private func primaryActionTitle(game: OPNCatalogGameObject) -> String {
-        if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "QUEUED" : "QUEUE" }
-        if selectedPlatformHasAccess(game) { return "PLAY" }
-        if selectedVariant != nil { return "MARK OWNED" }
-        return "PLAY"
+        GameDetailPresentation.primaryActionTitle(game: game, context: accessContext(game: game))
     }
 
     private func primaryAction(game: OPNCatalogGameObject) {
@@ -633,51 +549,14 @@ struct GameDetailPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             CatalogDetailRow(label: "Publisher", value: game.publisherName)
             CatalogDetailRow(label: "Developer", value: game.developerName)
-            CatalogDetailRow(label: "Input", value: inputLine(game: game, selectedVariant: selectedVariant))
-            CatalogDetailRow(label: "Players", value: playerLine(game: game))
-            CatalogDetailRow(label: "Release Date", value: releaseDateLine(game: game))
+            CatalogDetailRow(label: "Input", value: GameDetailPresentation.inputLine(game: game, selectedVariant: selectedVariant))
+            CatalogDetailRow(label: "Players", value: GameDetailPresentation.playerLine(game: game))
+            CatalogDetailRow(label: "Release Date", value: GameDetailPresentation.releaseDateLine(game: game))
             CatalogDetailRow(label: "Stores", value: game.storeLine)
             CatalogDetailRow(label: "Genres", value: game.genreLine)
         }
     }
 
-    private func releaseDateLine(game: OPNCatalogGameObject) -> String {
-        let value = game.releaseDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return "" }
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: value) {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return value
-    }
-
-    private func inputLine(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?) -> String {
-        var labels: [String] = []
-        let controls = selectedVariant?.supportedControls.isEmpty == false ? selectedVariant?.supportedControls ?? [] : game.supportedControls
-        for control in controls { appendUnique(readableControlLabel(control), to: &labels) }
-        return labels.joined(separator: ", ")
-    }
-
-    private func readableControlLabel(_ value: String) -> String {
-        let normalized = value.replacingOccurrences(of: "_", with: " ").lowercased()
-        if normalized.contains("keyboard") || normalized.contains("mouse") { return "Keyboard & Mouse" }
-        if normalized.contains("gamepad partial") { return "Partial Gamepad" }
-        if normalized.contains("gamepad") || normalized.contains("controller") { return "Gamepad" }
-        if normalized.contains("touch") { return "Touchscreen" }
-        if normalized.contains("wheel") { return "Wheel" }
-        if normalized.contains("flight") || normalized.contains("hotas") { return "Flight Controls" }
-        return value.capitalized
-    }
-
-    private func playerLine(game: OPNCatalogGameObject) -> String {
-        let local = game.maxLocalPlayers
-        let online = game.maxOnlinePlayers
-        guard local > 0 || online > 0 else { return "" }
-        if online > 1, local > 1 { return "1-\(local) local, online multiplayer" }
-        if online > 1 { return "Single player, online multiplayer" }
-        if local > 1 { return "1-\(local) local players" }
-        return "Single player"
-    }
 }
 
 struct CatalogDetailRow: View {

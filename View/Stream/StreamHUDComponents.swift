@@ -269,44 +269,6 @@ private struct StreamHUDDropdownRow: View {
     }
 }
 
-/// Per-device gamepad edge tracking for HUD navigation. A plain class on
-/// purpose: mutating it from input callbacks must not invalidate the view.
-@MainActor
-final class StreamHUDGamepadTracker {
-    enum NavigationStep {
-        case move(Int)
-        case activate
-        case back
-    }
-
-    var lastButtons: [InputDeviceID: GamepadButtons] = [:]
-    var lastStickStep: [InputDeviceID: Int] = [:]
-
-    func reset() {
-        lastButtons.removeAll()
-        lastStickStep.removeAll()
-    }
-
-    func navigationStep(_ state: GamepadState) -> NavigationStep? {
-        let previousButtons = lastButtons[state.deviceID] ?? state.buttons
-        let pressed = state.buttons.subtracting(previousButtons)
-        lastButtons[state.deviceID] = state.buttons
-
-        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
-        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
-        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
-        let previousStickStep = lastStickStep[state.deviceID] ?? 0
-        lastStickStep[state.deviceID] = stickStep
-
-        if pressed.contains(.south) { return .activate }
-        if pressed.contains(.east) { return .back }
-        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
-        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
-        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
-        return nil
-    }
-}
-
 struct StreamUnifiedSidebar<Content: View>: View {
     let title: String
     let closeAction: () -> Void
@@ -488,52 +450,6 @@ struct StreamHUDBatteryCard: View {
         case 15..<30: return "battery.25percent"
         default: return "battery.0percent"
         }
-    }
-}
-
-struct StreamSessionSidebarLimit: Equatable {
-    let startedAt: Date
-    let durationSeconds: Int
-
-    init?(session: StreamSessionDescriptor, fallbackStartedAt: Date = Date()) {
-        guard let duration = Int(session.metadata["sessionLimitSeconds"] ?? ""), duration > 0 else { return nil }
-        let startedAtEpoch = Double(session.metadata["startedAtEpochSeconds"] ?? "")
-        let startedAt = startedAtEpoch.map { Date(timeIntervalSince1970: $0) } ?? fallbackStartedAt
-        self.startedAt = startedAt
-        self.durationSeconds = duration
-    }
-
-    init?(update: StreamSessionLimitUpdate, receivedAt: Date = Date()) {
-        let durationSeconds = max(3600, update.remainingSeconds)
-        self.startedAt = receivedAt.addingTimeInterval(-Double(durationSeconds - update.remainingSeconds))
-        self.durationSeconds = durationSeconds
-    }
-
-    func remainingSeconds(at now: Date) -> Int {
-        max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
-    }
-}
-
-private struct WebRTCMediaSessionLimit: Equatable {
-    let startedAt: Date
-    let durationSeconds: Int
-
-    init?(session: StreamSessionDescriptor, fallbackStartedAt: Date = Date()) {
-        guard let duration = Int(session.metadata["sessionLimitSeconds"] ?? ""), duration > 0 else { return nil }
-        let startedAtEpoch = Double(session.metadata["startedAtEpochSeconds"] ?? "")
-        let startedAt = startedAtEpoch.map { Date(timeIntervalSince1970: $0) } ?? fallbackStartedAt
-        self.startedAt = startedAt
-        self.durationSeconds = duration
-    }
-
-    init?(update: StreamSessionLimitUpdate, receivedAt: Date = Date()) {
-        let durationSeconds = max(3600, update.remainingSeconds)
-        self.startedAt = receivedAt.addingTimeInterval(-Double(durationSeconds - update.remainingSeconds))
-        self.durationSeconds = durationSeconds
-    }
-
-    func remainingSeconds(at now: Date) -> Int {
-        max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
     }
 }
 

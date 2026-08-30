@@ -1,13 +1,12 @@
 //
-//  WebRTCMediaStreamSurfaceTypes.swift
+//  StreamRuntimeSettings.swift
 //  OpenNOW
 //
+//  Runtime video/audio settings carried between the stream host and the render surface. Pure value
+//  types: no UI framework, so the model layer can own them and tests can build them directly.
+//
 
-import AppKit
-import Combine
-import GameController
 import Foundation
-import SwiftUI
 
 enum StreamInputAction {
     case send
@@ -135,16 +134,4 @@ struct StreamRuntimeSettings: Equatable {
 struct VideoEnhancementMode: Equatable {
     let label: String
     let value: Int
-}
-
-struct NativeWebRTCStreamSurface: NSViewRepresentable {
-    let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
-
-    func makeNSView(context: Context) -> NativeWebRTCStreamView {
-        let view = NativeWebRTCStreamView(frame: .zero)
-        Task { @MainActor in onResolve(view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NativeWebRTCStreamView, context: Context) {}
 }

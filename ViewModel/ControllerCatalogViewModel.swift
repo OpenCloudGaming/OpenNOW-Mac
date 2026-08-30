@@ -58,8 +58,36 @@ enum ControllerFocusEffect: Equatable {
     case moveGame(delta: Int)
 }
 
+/// The side effects controller mode needs that are not the catalog's: switching account, signing
+/// out, and dropping back to desktop mode. Held rather than passed per call because the input
+/// handlers are installed once, on appear, and fire from the controller thread afterwards.
+@MainActor
+struct ControllerCatalogHost {
+    var accounts: [LoginAccount] = []
+    var onSwitch: (LoginAccount) -> Void = { _ in }
+    var onSignOut: () -> Void = {}
+    var onExitControllerMode: () -> Void = {}
+}
+
 @MainActor
 final class ControllerCatalogViewModel: ObservableObject {
+    /// The catalog this shell drives. Optional only because the view model is created by
+    /// `@StateObject` before the view's `catalog` property is reachable; `bind` fills it in on
+    /// appear and it is non-nil for the whole time input can arrive.
+    private(set) var catalog: CatalogViewModel?
+    private(set) var host = ControllerCatalogHost()
+
+    /// Controller mode has no physical keyboard to assume, so catalog search reuses the stream's
+    /// on-screen keyboard rather than leaving the field untypeable on a pad.
+    let searchKeyboard = StreamOnScreenKeyboardController()
+    let inputRouter = ControllerInputRouter()
+    let steamNavigator = GamepadUINavigator()
+
+    @Published var isSearchKeyboardVisible = false
+    @Published var searchPicker: ControllerSearchPicker?
+    @Published var searchPickerIndex = 0
+    @Published var embeddedPageCommand: ControllerPageCommand?
+
     @Published var focusArea = ControllerCatalogFocusArea.navigation
     @Published var selectedNavigationIndex = 0
     @Published var selectedRailIndex = 0
@@ -146,6 +174,105 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     func clampRailSelection(sectionCount: Int) {
         selectedRailIndex = min(max(selectedRailIndex, 0), max(sectionCount - 1, 0))
+    }
+
+    // MARK: - Binding
+
+    /// Called from the view's `onAppear`. Binding once, rather than on every render, is deliberate
+    /// and matches what the view did before: the input handlers were installed in `onAppear` and
+    /// captured the view struct as it was at that moment, accounts and callbacks included.
+    func bind(catalog: CatalogViewModel, host: ControllerCatalogHost) {
+        self.catalog = catalog
+        self.host = host
+        configureSearchKeyboard()
+        inputRouter.onCommand = { [weak self] command in self?.handleInput(command) }
+        steamNavigator.onCommand = { [weak self] command in self?.handleInput(command) }
+        steamNavigator.start(capturingInput: true)
+    }
+
+    func unbind() {
+        inputRouter.onCommand = nil
+        steamNavigator.onCommand = nil
+        steamNavigator.stop()
+    }
+
+    var activeGlyphs: ControllerInputGlyphSet {
+        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
+    }
+
+    // MARK: - Derived catalog state
+
+    var isSearchOverlayPresented: Bool {
+        isSearchVisible || catalog?.selectedShowAllSection != nil
+    }
+
+    var hasModalOverlay: Bool {
+        hasControllerOverlay
+            || catalog?.selectedShowAllSection != nil
+            || catalog?.isLaunchFlowVisible == true
+            || catalog?.isStorePickerVisible == true
+    }
+
+    /// Search is not in the bar, so while its overlay is up the bar keeps highlighting the
+    /// destination underneath - which is also the one LB/RB pages away from.
+    var activeNavigationItem: ControllerNavigationItem {
+        guard let catalog else { return .home }
+        if catalog.selectedMainPage == .recordings { return .recordings }
+        if catalog.selectedMainPage == .settings { return .settings }
+        switch catalog.selectedCatalogDestination {
+        case .home: return .home
+        case .library: return .library
+        case .favorites: return .favorites
+        }
+    }
+
+    var focusedHeroGame: OPNCatalogGameObject? {
+        guard let catalog else { return nil }
+        if isDetailVisible, let selectedGame = catalog.selectedGame { return selectedGame }
+        let sections = catalog.catalogSections
+        if sections.indices.contains(selectedRailIndex) {
+            let section = sections[selectedRailIndex]
+            if let firstGame = section.visibleGames(expanded: false).first { return firstGame }
+        }
+        return catalog.heroRotationGames.first ?? sections.flatMap(\.games).first
+    }
+
+    /// Destinations LB/RB step through, in nav-bar order. `.actions` opens a menu rather than
+    /// going anywhere, so it is not a stop on the way.
+    var pageableNavigationItems: [ControllerNavigationItem] {
+        navigationItems.filter { $0 != .actions }
+    }
+
+    var currentSection: CatalogSectionModel? {
+        guard let catalog else { return nil }
+        let sections = catalog.catalogSections
+        guard sections.indices.contains(selectedRailIndex) else { return nil }
+        return sections[selectedRailIndex]
+    }
+
+    var searchRowCount: Int {
+        guard let catalog else { return 2 }
+        return 2 + (catalog.catalogGames.isEmpty ? 0 : 1)
+    }
+
+    var actionMenuItems: [ControllerActionMenuItem] {
+        guard let catalog else { return [] }
+        var items: [ControllerActionMenuItem] = [.refresh]
+        if catalog.isBrowseMode { items.append(.clearSearch) }
+        items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
+        for account in host.accounts where account.id != catalog.account.id {
+            items.append(.switchAccount(account))
+        }
+        items.append(.signOut)
+        return items
+    }
+
+    func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
+        var actions: [ControllerDetailAction] = [.primary, .favorite]
+        if game.variants.count > 1 { actions.append(.store) }
+        if catalog?.selectedVariant(in: game) != nil { actions.append(.ownership) }
+        actions.append(contentsOf: [.share, .shortcut, .visitStore, .close])
+        return actions
     }
 }
 

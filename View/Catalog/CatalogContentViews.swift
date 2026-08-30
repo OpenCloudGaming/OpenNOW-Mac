@@ -567,7 +567,6 @@ struct CatalogEmptyDestinationView: View {
 }
 
 struct CatalogRailView: View {
-    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     let onShowAll: () -> Void
@@ -689,25 +688,7 @@ struct CatalogRailView: View {
     }
 
     private func prefetchNearVisibleImages() {
-        var urls: [URL] = []
-        var seen = Set<String>()
-        for game in games.prefix(8) {
-            appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
-        }
-        for tile in section.tiles.prefix(4) {
-            appendPrefetchURL(tile.imageUrl, width: 768, urls: &urls, seen: &seen)
-        }
-        imageCache.prefetch(urls)
-    }
-
-    private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
-        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
-        let key = url.absoluteString
-        guard !seen.contains(key) else { return }
-        seen.insert(key)
-        urls.append(url)
+        viewModel.prefetchRailImages(section: section, games: games)
     }
 
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
@@ -723,7 +704,6 @@ struct CatalogRailView: View {
 }
 
 struct CatalogDestinationGridView: View {
-    let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
     @Environment(\.opnUIScale) private var uiScale
@@ -786,22 +766,7 @@ struct CatalogDestinationGridView: View {
     }
 
     private func prefetchGridImages() {
-        var urls: [URL] = []
-        var seen = Set<String>()
-        for game in section.games.prefix(18) {
-            appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
-        }
-        imageCache.prefetch(urls)
-    }
-
-    private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
-        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
-        let key = url.absoluteString
-        guard !seen.contains(key) else { return }
-        seen.insert(key)
-        urls.append(url)
+        viewModel.prefetchGridImages(section: section)
     }
 }
 

@@ -6,98 +6,6 @@
 import AppKit
 import SwiftUI
 
-private enum ControllerDetailAction: Equatable {
-    case primary
-    case favorite
-    case store
-    case ownership
-    case share
-    case shortcut
-    case visitStore
-    case close
-
-    @MainActor func title(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, viewModel: CatalogViewModel) -> String {
-        switch self {
-        case .primary:
-            if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
-            if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
-            if selectedVariant != nil { return "Mark Owned" }
-            return "Play"
-        case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
-        case .store: return "Change Store"
-        case .ownership:
-            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Unmark Owned" }
-            return "Mark Owned"
-        case .share: return "Share"
-        case .shortcut: return "Add Shortcut"
-        case .visitStore: return "Visit Store"
-        case .close: return "Close"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .primary: return "play.fill"
-        case .favorite: return "heart.fill"
-        case .store: return "bag.fill"
-        case .ownership: return "checkmark.seal.fill"
-        case .share: return "square.and.arrow.up"
-        case .shortcut: return "plus.rectangle.on.rectangle"
-        case .visitStore: return "safari.fill"
-        case .close: return "xmark"
-        }
-    }
-}
-
-private enum ControllerActionMenuItem {
-    case refresh
-    case clearSearch
-    case desktopMode
-    case home
-    case library
-    case favorites
-    case recordings
-    case settings
-    case switchAccount(LoginAccount)
-    case signOut
-
-    var title: String {
-        switch self {
-        case .refresh: return "Refresh Catalog"
-        case .clearSearch: return "Clear Search and Filters"
-        case .desktopMode: return "Switch to Desktop Mode"
-        case .home: return "Go to Home"
-        case .library: return "Go to Library"
-        case .favorites: return "Go to Favorites"
-        case .recordings: return "Open Recordings"
-        case .settings: return "Open Settings"
-        case .switchAccount(let account): return "Switch to \(account.displayName)"
-        case .signOut: return "Sign Out"
-        }
-    }
-
-    var isRefresh: Bool {
-        switch self {
-        case .refresh: return true
-        default: return false
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .refresh: return "arrow.clockwise"
-        case .clearSearch: return "line.3.horizontal.decrease.circle"
-        case .desktopMode: return "macwindow"
-        case .home: return "gamecontroller.fill"
-        case .library: return "rectangle.stack.fill"
-        case .favorites: return "heart.fill"
-        case .recordings: return "play.rectangle.fill"
-        case .settings: return "gearshape.fill"
-        case .switchAccount: return "person.crop.circle"
-        case .signOut: return "rectangle.portrait.and.arrow.right"
-        }
-    }
-}
 
 private struct ControllerLayoutMetrics {
     let size: CGSize
@@ -150,21 +58,13 @@ struct ControllerCatalogView: View {
     let onForget: (LoginAccount) -> Void
 
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
-    /// Controller mode has no physical keyboard to assume, so catalog search reuses the stream's
-    /// on-screen keyboard rather than leaving the field untypeable on a pad.
-    @StateObject private var searchKeyboard = StreamOnScreenKeyboardController()
-    @State private var isSearchKeyboardVisible = false
-    @State private var searchPicker: ControllerSearchPicker?
-    @State private var searchPickerIndex = 0
-    @State private var embeddedPageCommand: ControllerPageCommand?
     @Environment(\.opnUIScale) private var uiScale
-    @StateObject private var inputRouter = ControllerInputRouter()
-    @StateObject private var steamNavigator = GamepadUINavigator()
+    /// Owns the shell's whole controller state machine, and the input router, gamepad navigator and
+    /// on-screen keyboard it drives. Still a `@StateObject` on this view, so its lifetime is exactly
+    /// what it was when each of those was declared here separately.
     @StateObject private var controllerViewModel = ControllerCatalogViewModel()
 
-    private var activeGlyphs: ControllerInputGlyphSet {
-        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
-    }
+    private var activeGlyphs: ControllerInputGlyphSet { controllerViewModel.activeGlyphs }
 
     private var navigationItems: [ControllerNavigationItem] { controllerViewModel.navigationItems }
 
@@ -184,7 +84,7 @@ struct ControllerCatalogView: View {
                         isFocused: (controllerViewModel.focusArea == .navigation || viewModel.selectedMainPage != .games) && !hasModalOverlay,
                         activeItem: activeNavigationItem,
                         layout: layout,
-                        select: selectNavigationItem
+                        select: controllerViewModel.selectNavigationItem
                     )
                     if isSearchOverlayPresented && viewModel.selectedMainPage == .games {
                         // In the page slot, not over the whole window: search is a destination in
@@ -196,11 +96,11 @@ struct ControllerCatalogView: View {
                             filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                             resultIndex: controllerViewModel.searchResultIndex,
                             layout: layout,
-                            selectResult: { game in openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
-                            close: { closeSearchOverlay() },
+                            selectResult: { game in controllerViewModel.openDetails(game, sectionId: viewModel.selectedShowAllSection?.id ?? "catalog-results") },
+                            close: { controllerViewModel.closeSearchOverlay() },
                             focusSearchRow: { controllerViewModel.searchRowIndex = 0 },
-                            openSortPicker: { openSortPicker() },
-                            openFilterPicker: { group in openFilterPicker(group: group) }
+                            openSortPicker: { controllerViewModel.openSortPicker() },
+                            openFilterPicker: { group in controllerViewModel.openFilterPicker(group: group) }
                         )
                         .transition(.opacity)
                     } else {
@@ -214,16 +114,16 @@ struct ControllerCatalogView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
-                if isSearchOverlayPresented, let searchPicker {
+                if isSearchOverlayPresented, let searchPicker = controllerViewModel.searchPicker {
                     ControllerSearchPickerOverlay(
                         picker: searchPicker,
-                        selectedIndex: searchPickerIndex,
+                        selectedIndex: controllerViewModel.searchPickerIndex,
                         selectedOptionIds: viewModel.selectedFilterIds,
                         selectedSortId: viewModel.selectedSortId,
                         glyphs: activeGlyphs,
                         layout: layout,
-                        select: { index in applySearchPickerSelection(at: index) },
-                        close: { closeSearchPicker() }
+                        select: { index in controllerViewModel.applySearchPickerSelection(at: index) },
+                        close: { controllerViewModel.closeSearchPicker() }
                     )
                     .transition(.opacity)
                     .zIndex(31)
@@ -237,8 +137,8 @@ struct ControllerCatalogView: View {
                         actions: detailActions(for: game),
                         glyphs: activeGlyphs,
                         layout: layout,
-                        perform: executeDetailAction,
-                        close: closeDetails
+                        perform: controllerViewModel.executeDetailAction,
+                        close: controllerViewModel.closeDetails
                     )
                     .transition(.opacity)
                     .zIndex(35)
@@ -252,11 +152,15 @@ struct ControllerCatalogView: View {
             // visible content is laid out in and can never anchor past the
             // window's trailing edge.
             .overlay {
-                if isSearchOverlayPresented && isSearchKeyboardVisible {
-                    StreamOnScreenKeyboardOverlay(controller: searchKeyboard)
+                if isSearchOverlayPresented && controllerViewModel.isSearchKeyboardVisible {
+                    StreamOnScreenKeyboardOverlay(controller: controllerViewModel.searchKeyboard)
                         .transition(.opacity)
                 }
             }
+            // Replaces the `withAnimation(.easeOut(duration: 0.18))` that used to wrap every
+            // mutation of this flag. Same curve, same duration - driven by the value rather than by
+            // a transaction, so the view model does not have to import SwiftUI to animate.
+            .animation(.easeOut(duration: 0.18), value: controllerViewModel.isSearchKeyboardVisible)
             .overlay {
                 if controllerViewModel.isActionMenuVisible {
                     ControllerActionMenuOverlay(
@@ -266,28 +170,30 @@ struct ControllerCatalogView: View {
                         layout: layout,
                         topInset: topInset,
                         isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
-                        perform: executeActionMenuItem,
-                        close: closeActionMenu
+                        perform: controllerViewModel.executeActionMenuItem,
+                        close: controllerViewModel.closeActionMenu
                     )
                     .transition(.opacity)
                 }
             }
         }
-        .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
+        .background(ControllerKeyboardInputBridge { command in controllerViewModel.inputRouter.sendKeyboardCommand(command) })
         .onAppear {
-            inputRouter.onCommand = handleInput
-            steamNavigator.onCommand = handleInput
-            steamNavigator.start(capturingInput: true)
-            synchronizeNavigationSelection()
+            controllerViewModel.bind(
+                catalog: viewModel,
+                host: ControllerCatalogHost(
+                    accounts: accounts,
+                    onSwitch: onSwitch,
+                    onSignOut: onSignOut,
+                    onExitControllerMode: { controllerModeEnabled = false }
+                )
+            )
+            controllerViewModel.synchronizeNavigationSelection()
         }
-        .onDisappear {
-            inputRouter.onCommand = nil
-            steamNavigator.onCommand = nil
-            steamNavigator.stop()
-        }
-        .onChange(of: viewModel.selectedMainPage) { _, _ in synchronizeNavigationSelection() }
-        .onChange(of: viewModel.selectedCatalogDestination) { _, _ in synchronizeNavigationSelection() }
-        .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in clampRailSelection() }
+        .onDisappear { controllerViewModel.unbind() }
+        .onChange(of: viewModel.selectedMainPage) { _, _ in controllerViewModel.synchronizeNavigationSelection() }
+        .onChange(of: viewModel.selectedCatalogDestination) { _, _ in controllerViewModel.synchronizeNavigationSelection() }
+        .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in controllerViewModel.clampRailSelection(sectionCount: viewModel.catalogSections.count) }
         .onChange(of: viewModel.catalogGames.map(\.catalogIdentity)) { _, _ in
             controllerViewModel.searchResultIndex = min(controllerViewModel.searchResultIndex, max(viewModel.catalogGames.count - 1, 0))
         }
@@ -302,612 +208,49 @@ struct ControllerCatalogView: View {
                 selectedRailIndex: controllerViewModel.selectedRailIndex,
                 selectedGameIndices: $controllerViewModel.selectedGameIndices,
                 layout: layout,
-                openDetails: openDetails,
-                showAll: openShowAll,
-                openSearch: { openSearchOverlay() }
+                openDetails: controllerViewModel.openDetails,
+                showAll: controllerViewModel.openShowAll,
+                openSearch: { controllerViewModel.openSearchOverlay() }
             )
         case .recordings:
             ControllerEmbeddedPage(title: "Recordings", subtitle: "Saved gameplay videos", layout: layout) {
                 RecordingsView()
-                    .environment(\.controllerPageCommand, embeddedPageCommand)
+                    .environment(\.controllerPageCommand, controllerViewModel.embeddedPageCommand)
             }
         case .settings:
             ControllerEmbeddedPage(title: "Settings", subtitle: "Streaming, account, interface, and system options", layout: layout) {
                 SettingsView(viewModel: viewModel)
-                    .environment(\.controllerPageCommand, embeddedPageCommand)
+                    .environment(\.controllerPageCommand, controllerViewModel.embeddedPageCommand)
             }
         }
     }
 
-    private var isSearchOverlayPresented: Bool {
-        controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil
+    // Everything below forwards to `controllerViewModel`. The shell's state machine — focus,
+    // overlays, navigation, and what confirming an item does — lives there so it can be tested
+    // without a rendered catalog; this view only renders it.
+
+    private var isSearchOverlayPresented: Bool { controllerViewModel.isSearchOverlayPresented }
+
+    private var hasModalOverlay: Bool { controllerViewModel.hasModalOverlay }
+
+    private var activeNavigationItem: ControllerNavigationItem { controllerViewModel.activeNavigationItem }
+
+    private var focusedHeroGame: OPNCatalogGameObject? { controllerViewModel.focusedHeroGame }
+
+    private var actionMenuItems: [ControllerActionMenuItem] { controllerViewModel.actionMenuItems }
+
+    private func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
+        controllerViewModel.detailActions(for: game)
     }
 
-    private var hasModalOverlay: Bool {
-        controllerViewModel.hasControllerOverlay || viewModel.selectedShowAllSection != nil || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
-    }
-
-    private var activeNavigationItem: ControllerNavigationItem {
-        // Search is not in the bar, so while its overlay is up the bar keeps highlighting the
-        // destination underneath - which is also the one LB/RB pages away from.
-        if viewModel.selectedMainPage == .recordings { return .recordings }
-        if viewModel.selectedMainPage == .settings { return .settings }
-        switch viewModel.selectedCatalogDestination {
-        case .home: return .home
-        case .library: return .library
-        case .favorites: return .favorites
-        }
-    }
-
-    private var focusedHeroGame: OPNCatalogGameObject? {
-        if controllerViewModel.isDetailVisible, let selectedGame = viewModel.selectedGame { return selectedGame }
-        let sections = viewModel.catalogSections
-        if sections.indices.contains(controllerViewModel.selectedRailIndex) {
-            let section = sections[controllerViewModel.selectedRailIndex]
-            let games = section.visibleGames(expanded: false)
-            if let firstGame = games.first { return firstGame }
-        }
-        return viewModel.heroRotationGames.first ?? sections.flatMap(\.games).first
-    }
-
+    /// Stays in the view: `ControllerHint` is the hint bar's own glyph vocabulary, not shell state.
     private var hints: [ControllerHint] {
         if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
-        if isSearchKeyboardVisible { return [.move, .select, .back] }
+        if controllerViewModel.isSearchKeyboardVisible { return [.move, .select, .back] }
         if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
         if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
         return [.move, .select, .back, .search, .menu]
-    }
-
-    private var actionMenuItems: [ControllerActionMenuItem] {
-        var items: [ControllerActionMenuItem] = [.refresh]
-        if viewModel.isBrowseMode { items.append(.clearSearch) }
-        items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
-        for account in accounts where account.id != viewModel.account.id {
-            items.append(.switchAccount(account))
-        }
-        items.append(.signOut)
-        return items
-    }
-
-    private func handleInput(_ command: ControllerInputCommand) {
-        if handleSharedOverlayInput(command) { return }
-        if controllerViewModel.isActionMenuVisible { handleActionMenuInput(command); return }
-        if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { handleSearchInput(command); return }
-        if controllerViewModel.isDetailVisible { handleDetailInput(command); return }
-        handlePageInput(command)
-    }
-
-    private func handleSharedOverlayInput(_ command: ControllerInputCommand) -> Bool {
-        if viewModel.isLaunchFlowVisible {
-            switch command {
-            case .back:
-                viewModel.cancelVendorLaunch()
-                return true
-            case .confirm:
-                if viewModel.launchFlowState == .activeSessionPrompt {
-                    if viewModel.canResumeActiveLaunchSession { viewModel.resumeActiveLaunchSession() }
-                    else { viewModel.endActiveSessionAndLaunchSelectedGame() }
-                    return true
-                }
-                return false
-            default:
-                return true
-            }
-        }
-
-        if viewModel.isStorePickerVisible {
-            switch command {
-            case .back:
-                viewModel.closeStorePicker()
-            case .move(.up), .move(.left):
-                moveSelectedStore(delta: -1)
-            case .move(.down), .move(.right):
-                moveSelectedStore(delta: 1)
-            case .confirm:
-                confirmStorePickerStage()
-            default:
-                break
-            }
-            return true
-        }
-        return false
-    }
-
-    private func handlePageInput(_ command: ControllerInputCommand) {
-        // Recordings and Settings embed desktop views that have no controller focus model of their
-        // own. Routing d-pad moves into `moveFocus` there silently drove the games rails behind the
-        // page - the catalog visibly changed underneath while nothing on screen responded - so
-        // those pages keep focus in the navigation bar and only accept page switching and Back.
-        guard viewModel.selectedMainPage == .games else {
-            handleEmbeddedPageInput(command)
-            return
-        }
-        switch command {
-        case .move(let direction):
-            moveFocus(direction)
-        case .confirm:
-            confirmFocusedItem()
-        case .back:
-            if viewModel.selectedMainPage != .games || viewModel.selectedCatalogDestination != .home {
-                viewModel.showCatalogDestination(.home)
-                controllerViewModel.focusArea = .content
-            }
-        case .search:
-            openSearchOverlay()
-        case .actions:
-            if controllerViewModel.focusArea == .content, let section = currentSection {
-                openShowAll(section)
-            } else {
-                openActionMenu()
-            }
-        case .menu:
-            openActionMenu()
-        case .pageLeft:
-            cycleNavigation(delta: -1)
-        case .pageRight:
-            cycleNavigation(delta: 1)
-        }
-    }
-
-    private func handleEmbeddedPageInput(_ command: ControllerInputCommand) {
-        switch command {
-        case .move, .confirm:
-            // The page owns its own selection, so the command goes to it rather than being
-            // interpreted here. LB/RB stay with the shell for switching destination.
-            embeddedPageCommand = ControllerPageCommand(command: command, sequence: (embeddedPageCommand?.sequence ?? 0) + 1)
-        case .back:
-            viewModel.showCatalogDestination(.home)
-            controllerViewModel.focusArea = .content
-        case .search:
-            openSearchOverlay()
-        case .actions, .menu:
-            openActionMenu()
-        case .pageLeft:
-            cycleNavigation(delta: -1)
-        case .pageRight:
-            cycleNavigation(delta: 1)
-        }
-    }
-
-    private func handleActionMenuInput(_ command: ControllerInputCommand) {
-        let items = actionMenuItems
-        switch command {
-        case .move(.up): controllerViewModel.moveActionMenuIndex(delta: -1, itemCount: items.count)
-        case .move(.down): controllerViewModel.moveActionMenuIndex(delta: 1, itemCount: items.count)
-        case .confirm:
-            guard items.indices.contains(controllerViewModel.actionMenuIndex) else { return }
-            executeActionMenuItem(items[controllerViewModel.actionMenuIndex])
-        case .back, .menu, .actions: closeActionMenu()
-        default: break
-        }
-    }
-
-    private func handleSearchInput(_ command: ControllerInputCommand) {
-        if searchPicker != nil {
-            handleSearchPickerInput(command)
-            return
-        }
-        if isSearchKeyboardVisible {
-            handleSearchKeyboardInput(command)
-            return
-        }
-        switch command {
-        case .move(.up): controllerViewModel.moveSearchRowIndex(delta: -1, rowCount: searchRowCount)
-        case .move(.down): controllerViewModel.moveSearchRowIndex(delta: 1, rowCount: searchRowCount)
-        case .move(.left): moveSearchSelection(delta: -1)
-        case .move(.right): moveSearchSelection(delta: 1)
-        case .confirm: confirmSearchSelection()
-        case .actions: viewModel.clearSearchAndFilters()
-        case .back, .search: closeSearchOverlay()
-        case .pageLeft: cycleNavigation(delta: -1)
-        case .pageRight: cycleNavigation(delta: 1)
-        default: break
-        }
-    }
-
-    private func handleSearchKeyboardInput(_ command: ControllerInputCommand) {
-        switch command {
-        case .move(.up): searchKeyboard.handleNavigationAction(.move(dx: 0, dy: -1))
-        case .move(.down): searchKeyboard.handleNavigationAction(.move(dx: 0, dy: 1))
-        case .move(.left): searchKeyboard.handleNavigationAction(.move(dx: -1, dy: 0))
-        case .move(.right): searchKeyboard.handleNavigationAction(.move(dx: 1, dy: 0))
-        case .confirm: searchKeyboard.handleNavigationAction(.activate)
-        case .actions: searchKeyboard.handleNavigationAction(.backspace)
-        case .pageLeft: searchKeyboard.handleNavigationAction(.shift)
-        case .pageRight: searchKeyboard.handleNavigationAction(.space)
-        case .back, .search, .menu: closeSearchKeyboard()
-        }
-    }
-
-    private func handleDetailInput(_ command: ControllerInputCommand) {
-        guard let game = viewModel.selectedGame else { return }
-        let actions = detailActions(for: game)
-        switch command {
-        case .move(.left), .move(.up): controllerViewModel.moveDetailActionIndex(delta: -1, actionCount: actions.count)
-        case .move(.right), .move(.down): controllerViewModel.moveDetailActionIndex(delta: 1, actionCount: actions.count)
-        case .confirm:
-            guard actions.indices.contains(controllerViewModel.detailActionIndex) else { return }
-            executeDetailAction(actions[controllerViewModel.detailActionIndex])
-        case .back: closeDetails()
-        case .search: openSearchOverlay()
-        case .actions, .menu: openActionMenu()
-        default: break
-        }
-    }
-
-    private func moveFocus(_ direction: ControllerInputDirection) {
-        switch controllerViewModel.moveFocus(direction, navigationItemCount: navigationItems.count) {
-        case .none: break
-        case .moveRail(let delta): moveRail(delta: delta)
-        case .moveGame(let delta): moveGame(delta: delta)
-        }
-    }
-
-    private func confirmFocusedItem() {
-        if controllerViewModel.focusArea == .search {
-            openSearchOverlay()
-            return
-        }
-        if controllerViewModel.focusArea == .navigation {
-            guard navigationItems.indices.contains(controllerViewModel.selectedNavigationIndex) else { return }
-            selectNavigationItem(navigationItems[controllerViewModel.selectedNavigationIndex])
-            return
-        }
-        guard let section = currentSection else { return }
-        let games = section.visibleGames(expanded: false)
-        let index = clampedSelectedGameIndex(for: section, gameCount: games.count)
-        guard games.indices.contains(index) else { return }
-        openDetails(games[index], sectionId: section.id)
-    }
-
-    /// Destinations LB/RB step through, in nav-bar order. `.actions` opens a menu rather than
-    /// going anywhere, so it is not a stop on the way.
-    private var pageableNavigationItems: [ControllerNavigationItem] {
-        navigationItems.filter { $0 != .actions }
-    }
-
-    private func cycleNavigation(delta: Int) {
-        let items = pageableNavigationItems
-        guard !items.isEmpty else { return }
-        let current = items.firstIndex(of: activeNavigationItem) ?? 0
-        let next = min(max(current + delta, 0), items.count - 1)
-        guard next != current else { return }
-        let target = items[next]
-        // Paging off the search overlay has to dismiss it; selecting a destination alone would
-        // change the page underneath and leave the overlay covering it.
-        if controllerViewModel.isSearchVisible {
-            closeSearchOverlay()
-        }
-        selectNavigationItem(target)
-    }
-
-    private func selectNavigationItem(_ item: ControllerNavigationItem) {
-        controllerViewModel.selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? controllerViewModel.selectedNavigationIndex
-        switch item {
-        case .home:
-            viewModel.showCatalogDestination(.home)
-            controllerViewModel.focusArea = .content
-        case .library:
-            viewModel.showCatalogDestination(.library)
-            controllerViewModel.focusArea = .content
-        case .favorites:
-            viewModel.showCatalogDestination(.favorites)
-            controllerViewModel.focusArea = .content
-        case .search:
-            openSearchOverlay()
-        case .recordings:
-            viewModel.showRecordings()
-            controllerViewModel.focusArea = .navigation
-        case .settings:
-            viewModel.showSettings(.general)
-            controllerViewModel.focusArea = .navigation
-        case .actions:
-            openActionMenu()
-        }
-    }
-
-    private var currentSection: CatalogSectionModel? {
-        let sections = viewModel.catalogSections
-        guard sections.indices.contains(controllerViewModel.selectedRailIndex) else { return nil }
-        return sections[controllerViewModel.selectedRailIndex]
-    }
-
-    private func moveRail(delta: Int) {
-        controllerViewModel.moveRail(delta: delta, sectionCount: viewModel.catalogSections.count)
-    }
-
-    private func moveGame(delta: Int) {
-        guard let section = currentSection else { return }
-        let gameCount = section.visibleGames(expanded: false).count
-        guard gameCount > 0 else { return }
-        let index = clampedSelectedGameIndex(for: section, gameCount: gameCount)
-        controllerViewModel.setSelectedGameIndex(index + delta, for: section, gameCount: gameCount)
-    }
-
-    private func clampedSelectedGameIndex(for section: CatalogSectionModel, gameCount: Int) -> Int {
-        controllerViewModel.selectedGameIndex(for: section, gameCount: gameCount)
-    }
-
-    private func openDetails(_ game: OPNCatalogGameObject, sectionId: String) {
-        viewModel.selectGame(game, inSection: sectionId)
-        controllerViewModel.detailActionIndex = 0
-        controllerViewModel.isDetailVisible = true
-        controllerViewModel.isSearchVisible = false
-    }
-
-    private func closeDetails() {
-        controllerViewModel.isDetailVisible = false
-        viewModel.selectGame(nil)
-    }
-
-    /// Captures the view model and a binding rather than `self`: these handlers live on a
-    /// `@StateObject` that outlives every render, so capturing the view would pin a stale copy of
-    /// its whole scope - accounts, callbacks and all - until the next open.
-    private func configureSearchKeyboard() {
-        let viewModel = viewModel
-        let isVisible = $isSearchKeyboardVisible
-        searchKeyboard.onOutput = { output in
-            switch output {
-            case .text(let text):
-                viewModel.searchQuery.append(text)
-            case .keyPress(let keyCode):
-                switch keyCode {
-                case 51: // backspace
-                    guard !viewModel.searchQuery.isEmpty else { return }
-                    viewModel.searchQuery.removeLast()
-                case 36, 76: // return / enter
-                    viewModel.browseCatalog()
-                    withAnimation(.easeOut(duration: 0.18)) { isVisible.wrappedValue = false }
-                default:
-                    break
-                }
-            }
-        }
-        searchKeyboard.onDismiss = {
-            withAnimation(.easeOut(duration: 0.18)) { isVisible.wrappedValue = false }
-        }
-    }
-
-    private func openSearchKeyboard() {
-        searchKeyboard.reset()
-        configureSearchKeyboard()
-        withAnimation(.easeOut(duration: 0.18)) { isSearchKeyboardVisible = true }
-    }
-
-    private func closeSearchKeyboard() {
-        withAnimation(.easeOut(duration: 0.18)) { isSearchKeyboardVisible = false }
-    }
-
-    private func openSortPicker() {
-        let options = viewModel.sortOptions.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) }
-        guard !options.isEmpty else { return }
-        searchPickerIndex = options.firstIndex { $0.id == viewModel.selectedSortId } ?? 0
-        searchPicker = ControllerSearchPicker(title: "Sort", kind: .sort, options: options)
-    }
-
-    private func openFilterPicker(group: OPNCatalogFilterGroupObject) {
-        guard !group.options.isEmpty else { return }
-        var options = [ControllerSearchPicker.Option(id: ControllerSearchPicker.clearOptionId, label: "None")]
-        options.append(contentsOf: group.options.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) })
-        searchPickerIndex = options.firstIndex { viewModel.selectedFilterIds.contains($0.id) } ?? 0
-        searchPicker = ControllerSearchPicker(title: group.label, kind: .filter(groupId: group.id), options: options)
-    }
-
-    private func closeSearchPicker() {
-        searchPicker = nil
-    }
-
-    private func applySearchPickerSelection(at index: Int) {
-        guard let searchPicker, searchPicker.options.indices.contains(index) else { return }
-        let option = searchPicker.options[index]
-        switch searchPicker.kind {
-        case .sort:
-            viewModel.setSort(option.id)
-        case .filter(let groupId):
-            guard let group = viewModel.visibleFilterGroups.first(where: { $0.id == groupId }) else { break }
-            // One option per group: clear whatever this group already had before applying. "None"
-            // stops there, which is how a group gets turned back off.
-            for existing in group.options where viewModel.selectedFilterIds.contains(existing.id) {
-                viewModel.toggleFilter(existing.id)
-            }
-            if option.id != ControllerSearchPicker.clearOptionId, !viewModel.selectedFilterIds.contains(option.id) {
-                viewModel.toggleFilter(option.id)
-            }
-        }
-        closeSearchPicker()
-    }
-
-    private func handleSearchPickerInput(_ command: ControllerInputCommand) {
-        guard let searchPicker else { return }
-        switch command {
-        case .move(.up): searchPickerIndex = max(searchPickerIndex - 1, 0)
-        case .move(.down): searchPickerIndex = min(searchPickerIndex + 1, max(searchPicker.options.count - 1, 0))
-        case .confirm: applySearchPickerSelection(at: searchPickerIndex)
-        case .back, .search, .menu, .actions: closeSearchPicker()
-        default: break
-        }
-    }
-
-    private func openSearchOverlay() {
-        controllerViewModel.isSearchVisible = true
-        controllerViewModel.isActionMenuVisible = false
-        controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex, max(searchRowCount - 1, 0))
-        // Closing search clears `catalogGames`, so a reopen needs the browse even once the filter
-        // and sort definitions are already in hand - otherwise the results grid comes back empty
-        // and only fills in once something is typed.
-        if viewModel.catalogGames.isEmpty || viewModel.sortOptions.isEmpty || viewModel.filterGroups.isEmpty {
-            viewModel.browseCatalog()
-        }
-    }
-
-    private func closeSearchOverlay() {
-        controllerViewModel.isSearchVisible = false
-        isSearchKeyboardVisible = false
-        viewModel.closeShowAll()
-    }
-
-    private func openActionMenu() {
-        controllerViewModel.actionMenuIndex = min(controllerViewModel.actionMenuIndex, max(actionMenuItems.count - 1, 0))
-        controllerViewModel.isActionMenuVisible = true
-    }
-
-    private func closeActionMenu() {
-        controllerViewModel.isActionMenuVisible = false
-    }
-
-    private func openShowAll(_ section: CatalogSectionModel) {
-        viewModel.openShowAll(section)
-        controllerViewModel.isSearchVisible = true
-        controllerViewModel.searchRowIndex = 0
-        controllerViewModel.searchResultIndex = 0
-        for group in viewModel.visibleFilterGroups {
-            if let index = group.options.firstIndex(where: { viewModel.selectedFilterIds.contains($0.id) }) {
-                controllerViewModel.searchFilterOptionIndices[group.id] = index
-            } else {
-                controllerViewModel.searchFilterOptionIndices[group.id] = 0
-            }
-        }
-    }
-
-    private func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
-        var actions: [ControllerDetailAction] = [.primary, .favorite]
-        if game.variants.count > 1 { actions.append(.store) }
-        if viewModel.selectedVariant(in: game) != nil { actions.append(.ownership) }
-        actions.append(contentsOf: [.share, .shortcut, .visitStore, .close])
-        return actions
-    }
-
-    private func executeDetailAction(_ action: ControllerDetailAction) {
-        guard let game = viewModel.selectedGame else { return }
-        let selectedVariant = viewModel.selectedVariant(in: game)
-        switch action {
-        case .primary:
-            if game.isLaunchPatching || selectedVariant?.isPatching == true {
-                viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
-            } else if viewModel.selectedPlatformHasAccess(in: game) || selectedVariant == nil {
-                viewModel.launchSelectedGame()
-            } else {
-                viewModel.handleUnownedSelectedVariantPrimaryAction()
-            }
-        case .favorite:
-            viewModel.toggleFavoriteSelectedGame()
-        case .store:
-            viewModel.changeSelectedGameStore()
-        case .ownership:
-            if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true {
-                viewModel.removeSelectedVariantOwned()
-            } else {
-                viewModel.markSelectedVariantOwned()
-            }
-        case .share:
-            viewModel.shareSelectedGame()
-        case .shortcut:
-            viewModel.addShortcutForSelectedGame()
-        case .visitStore:
-            viewModel.openStoreForSelectedVariant()
-        case .close:
-            closeDetails()
-        }
-    }
-
-    private var searchRowCount: Int {
-        2 + (viewModel.catalogGames.isEmpty ? 0 : 1)
-    }
-
-    private func moveSearchSelection(delta: Int) {
-        if controllerViewModel.searchRowIndex == 1 {
-            let chipCount = ControllerSearchBar.count(groupCount: viewModel.visibleFilterGroups.count, hasClear: viewModel.selectedFilterCount > 0)
-            let currentChip = controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] ?? 0
-            let next = min(max(currentChip + delta, 0), chipCount - 1)
-            controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] = next
-            return
-        }
-        if controllerViewModel.searchRowIndex == 2, !viewModel.catalogGames.isEmpty {
-            controllerViewModel.searchResultIndex = min(max(controllerViewModel.searchResultIndex + delta, 0), viewModel.catalogGames.count - 1)
-        }
-    }
-
-    private func confirmSearchSelection() {
-        if controllerViewModel.searchRowIndex == 0 {
-            openSearchKeyboard()
-            return
-        }
-        if controllerViewModel.searchRowIndex == 1 {
-            let chipIndex = controllerViewModel.searchFilterOptionIndices[ControllerSearchBar.indexKey] ?? 0
-            if chipIndex == ControllerSearchBar.sortIndex {
-                openSortPicker()
-            } else if chipIndex <= viewModel.visibleFilterGroups.count {
-                openFilterPicker(group: viewModel.visibleFilterGroups[chipIndex - 1])
-            } else {
-                viewModel.clearSearchAndFilters()
-            }
-            return
-        }
-        if controllerViewModel.searchRowIndex == 2, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
-            openDetails(viewModel.catalogGames[controllerViewModel.searchResultIndex], sectionId: "catalog-results")
-        }
-    }
-
-    private func executeActionMenuItem(_ item: ControllerActionMenuItem) {
-        if !item.isRefresh { closeActionMenu() }
-        switch item {
-        case .refresh:
-            guard !viewModel.isCatalogRefreshInProgress else { return }
-            viewModel.refresh()
-        case .clearSearch:
-            viewModel.clearSearchAndFilters()
-        case .desktopMode:
-            controllerModeEnabled = false
-        case .home:
-            viewModel.showCatalogDestination(.home)
-        case .library:
-            viewModel.showCatalogDestination(.library)
-        case .favorites:
-            viewModel.showCatalogDestination(.favorites)
-        case .recordings:
-            viewModel.showRecordings()
-        case .settings:
-            viewModel.showSettings(.general)
-        case .switchAccount(let account):
-            onSwitch(account)
-        case .signOut:
-            onSignOut()
-        }
-    }
-
-    private func moveSelectedStore(delta: Int) {
-        guard let game = viewModel.selectedGame else { return }
-        let options = viewModel.platformOptions(for: game)
-        guard options.count > 1 else { return }
-        let currentIndex = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-        let currentOptionIndex = options.firstIndex { $0.variantIndex == currentIndex } ?? 0
-        let nextOptionIndex = min(max(currentOptionIndex + delta, 0), options.count - 1)
-        viewModel.focusGameStoreVariant(at: options[nextOptionIndex].variantIndex)
-    }
-
-    private func confirmStorePickerStage() {
-        switch viewModel.ownershipFlowStage {
-        case .storeSelection, .hidden:
-            guard let option = viewModel.selectedPlatformOption(in: viewModel.selectedGame) else { return }
-            viewModel.selectGameStoreVariant(at: option.variantIndex)
-        case .manualMark:
-            viewModel.confirmSelectedVariantOwned()
-        case .success:
-            viewModel.finishOwnershipFlow()
-        case .resyncing:
-            break
-        }
-    }
-
-    private func synchronizeNavigationSelection() {
-        let item = activeNavigationItem
-        controllerViewModel.selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? 0
-        clampRailSelection()
-    }
-
-    private func clampRailSelection() {
-        controllerViewModel.clampRailSelection(sectionCount: viewModel.catalogSections.count)
     }
 }
 
@@ -1423,37 +766,6 @@ private struct ControllerEmbeddedPage<Content: View>: View {
 /// An open list of options for one chip in the filter bar. Confirming a chip used to advance it
 /// blind to its next option, so there was no way to see what a group offered or pick a specific
 /// sort - only to cycle and watch the results change.
-struct ControllerSearchPicker: Equatable {
-    /// Stands for "no filter from this group". Filter groups are single-choice, so without it a
-    /// group could only ever be switched between its options, never turned back off.
-    static let clearOptionId = "__opn_filter_none__"
-
-    struct Option: Equatable {
-        let id: String
-        let label: String
-    }
-
-    enum Kind: Equatable {
-        case sort
-        case filter(groupId: String)
-    }
-
-    let title: String
-    let kind: Kind
-    let options: [Option]
-}
-
-enum ControllerSearchBar {
-    static let indexKey = "_barIndex"
-    static let sortIndex = 0
-
-    static func filterIndex(_ groupIndex: Int) -> Int { groupIndex + 1 }
-    static func clearIndex(groupCount: Int) -> Int { groupCount + 1 }
-
-    static func count(groupCount: Int, hasClear: Bool) -> Int {
-        1 + groupCount + (hasClear ? 1 : 0)
-    }
-}
 
 private struct ControllerSearchOverlay: View {
     @Bindable var viewModel: CatalogViewModel

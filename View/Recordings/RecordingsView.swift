@@ -30,40 +30,19 @@ struct RecordingsView: View {
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(RecordingRightsNoticePreference.key) private var rightsNoticeAcknowledged = false
     @Environment(\.opnUIScale) private var uiScale
-    @State private var recordings: [WebRTCStreamRecording] = []
-    @State private var selectedRecording: WebRTCStreamRecording?
-    @State private var player: AVPlayer?
-    @State private var message = ""
-    @State private var pendingDelete: WebRTCStreamRecording?
-    @State private var searchText = ""
-    @State private var sortOrder: RecordingSortOrder = .newest
-    @State private var activeFilters = Set<RecordingFilter>()
-    @State private var copiedPathRecordingID: UUID?
-    @State private var editorViewModel: RecordingEditorViewModel?
-    @State private var playerTimeSeconds = 0.0
-    @State private var playerTimeObserver: Any?
-    @State private var editorPreviewTask: Task<Void, Never>?
-    @State private var editorPreviewDurationSeconds = 0.0
+    /// Owns the library, the selection, the player and the editor preview pipeline. A
+    /// `@StateObject` on this view, so its lifetime is what the fourteen `@State` properties it
+    /// replaced had.
+    @StateObject private var model = RecordingsViewModel()
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
 
-    private var visibleRecordings: [WebRTCStreamRecording] {
-        let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return recordings
-            .filter { recording in
-                guard !normalizedQuery.isEmpty else { return true }
-                return recording.title.lowercased().contains(normalizedQuery)
-                    || recording.applicationID.lowercased().contains(normalizedQuery)
-                    || recording.videoURL.lastPathComponent.lowercased().contains(normalizedQuery)
-            }
-            .filter { recording in
-                activeFilters.allSatisfy { $0.matches(recording) }
-            }
-            .sorted(using: sortOrder)
-    }
+    private var visibleRecordings: [WebRTCStreamRecording] { model.visibleRecordings }
 
-    private var stats: RecordingLibraryStats {
-        RecordingLibraryStats(recordings: recordings)
+    /// Formatting the library summary is the view's job; `RecordingLibraryStats` only counts.
+    private var librarySubtitle: String {
+        guard let newest = model.stats.newest else { return "Gameplay capture library" }
+        return "Latest: \(relativeDateText(newest.createdAt))"
     }
 
     var body: some View {
@@ -81,66 +60,64 @@ struct RecordingsView: View {
                 RecordingRightsNotice(onAcknowledge: { rightsNoticeAcknowledged = true }, uiScale: uiScale)
             }
         }
-        .onAppear { reload(showMessage: false) }
+        .onAppear { model.reload(showMessage: false) }
         .onChange(of: controllerPageCommand) { _, pageCommand in
             guard let pageCommand else { return }
-            applyControllerCommand(pageCommand.command, in: visibleRecordings)
+            model.applyControllerCommand(pageCommand.command, in: visibleRecordings)
         }
         .onChange(of: visibleRecordings.map(\.id)) { _, ids in
-            guard let selectedRecording, !ids.contains(selectedRecording.id) else { return }
-            select(visibleRecordings.first, autoplay: false)
+            model.reconcileSelection(withVisibleIDs: ids)
         }
         .onChange(of: recordingEditorEarlyBetaEnabled) { _, enabled in
-            guard !enabled, editorViewModel != nil else { return }
-            closeEditor()
-            message = "Recording editor early beta disabled. Editing tools are locked."
+            guard !enabled, model.editorViewModel != nil else { return }
+            model.closeEditorForDisabledBeta()
         }
-        .confirmationDialog(deleteDialogTitle, isPresented: deleteDialogPresented) {
-            Button("Delete Recording", role: .destructive) { deletePendingRecording() }
-            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        .confirmationDialog(model.deleteDialogTitle, isPresented: deleteDialogPresented) {
+            Button("Delete Recording", role: .destructive) { model.deletePendingRecording() }
+            Button("Cancel", role: .cancel) { model.pendingDelete = nil }
         } message: {
             Text("This permanently removes the video file and metadata from OpenNOW recordings.")
         }
         .onDisappear {
-            cancelEditorPreview()
-            removePlayerTimeObserver()
+            model.cancelEditorPreview()
+            model.removePlayerTimeObserver()
         }
     }
 
     private var recordingsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             libraryHeader
-            RecordingSearchField(text: $searchText, uiScale: uiScale)
+            RecordingSearchField(text: $model.searchText, uiScale: uiScale)
                 .padding(.horizontal, 18 * uiScale)
                 .padding(.top, 4 * uiScale)
             sortAndFilters
                 .padding(.horizontal, 18 * uiScale)
                 .padding(.top, 14 * uiScale)
 
-            if recordings.isEmpty {
-                RecordingEmptyState(kind: .library, action: { reload(showMessage: true) }, uiScale: uiScale)
+            if model.recordings.isEmpty {
+                RecordingEmptyState(kind: .library, action: { model.reload(showMessage: true) }, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visibleRecordings.isEmpty {
-                RecordingEmptyState(kind: .search, action: clearSearchAndFilters, uiScale: uiScale)
+                RecordingEmptyState(kind: .search, action: model.clearSearchAndFilters, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 10 * uiScale) {
                         ForEach(visibleRecordings) { recording in
-                            RecordingRow(recording: recording, isSelected: selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled, uiScale: uiScale) {
-                                select(recording, autoplay: true)
+                            RecordingRow(recording: recording, isSelected: model.selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled, uiScale: uiScale) {
+                                model.select(recording, autoplay: true)
                             }
                             .contextMenu {
-                                Button("Open Recording") { open(recording) }
+                                Button("Open Recording") { model.open(recording) }
                                 if recordingEditorEarlyBetaEnabled {
-                                    Button("Edit Recording") { startEditing(recording) }
+                                    Button("Edit Recording") { model.startEditing(recording, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) }
                                 } else {
-                                    Button("Enable in Settings > Experimental Features") { showRecordingEditorBetaSettingsMessage() }
+                                    Button("Enable in Settings > Experimental Features") { model.showRecordingEditorBetaSettingsMessage() }
                                 }
-                                Button("Reveal in Finder") { reveal(recording) }
-                                Button("Copy File Path") { copyPath(recording) }
+                                Button("Reveal in Finder") { model.reveal(recording) }
+                                Button("Copy File Path") { model.copyPath(recording) }
                                 Divider()
-                                Button("Delete", role: .destructive) { pendingDelete = recording }
+                                Button("Delete", role: .destructive) { model.pendingDelete = recording }
                             }
                         }
                     }
@@ -164,13 +141,13 @@ struct RecordingsView: View {
                     Text("Saved Videos")
                         .font(.recordingsNvidia(size: 25 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
-                    Text(stats.subtitle)
+                    Text(librarySubtitle)
                         .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(1)
                 }
                 Spacer()
-                Button { reload(showMessage: true) } label: {
+                Button { model.reload(showMessage: true) } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.recordingsNvidia(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
@@ -183,9 +160,9 @@ struct RecordingsView: View {
             }
 
             HStack(spacing: 8 * uiScale) {
-                RecordingMetric(title: "VIDEOS", value: "\(recordings.count)", uiScale: uiScale)
-                RecordingMetric(title: "RUNTIME", value: durationText(stats.totalDurationSeconds), uiScale: uiScale)
-                RecordingMetric(title: "SIZE", value: compactFileSizeText(stats.totalBytes), uiScale: uiScale)
+                RecordingMetric(title: "VIDEOS", value: "\(model.recordings.count)", uiScale: uiScale)
+                RecordingMetric(title: "RUNTIME", value: durationText(model.stats.totalDurationSeconds), uiScale: uiScale)
+                RecordingMetric(title: "SIZE", value: compactFileSizeText(model.stats.totalBytes), uiScale: uiScale)
             }
 
         }
@@ -199,12 +176,12 @@ struct RecordingsView: View {
             HStack(spacing: 10 * uiScale) {
                 OpenNOWDropdownMenu(
                     items: RecordingSortOrder.allCases.map { order in
-                        OpenNOWDropdownItem(id: order.id, title: order.title, isSelected: order == sortOrder) { sortOrder = order }
+                        OpenNOWDropdownItem(id: order.id, title: order.title, isSelected: order == model.sortOrder) { model.sortOrder = order }
                     }
                 ) {
                     HStack(spacing: 8 * uiScale) {
                         Image(systemName: "arrow.up.arrow.down")
-                        Text(sortOrder.title)
+                        Text(model.sortOrder.title)
                         Image(systemName: "chevron.down")
                             .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
                     }
@@ -226,8 +203,8 @@ struct RecordingsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7 * uiScale) {
                     ForEach(RecordingFilter.allCases) { filter in
-                        RecordingFilterChip(filter: filter, isActive: activeFilters.contains(filter), uiScale: uiScale) {
-                            toggleFilter(filter)
+                        RecordingFilterChip(filter: filter, isActive: model.activeFilters.contains(filter), uiScale: uiScale) {
+                            model.toggleFilter(filter)
                         }
                     }
                 }
@@ -238,10 +215,10 @@ struct RecordingsView: View {
     private var playerPane: some View {
         ZStack {
             RecordingsBackdrop()
-            if let selectedRecording, let player {
+            if let selectedRecording = model.selectedRecording, let player = model.player {
                 selectedPlayer(recording: selectedRecording, player: player)
             } else {
-                RecordingEmptyPlayer(message: message, uiScale: uiScale)
+                RecordingEmptyPlayer(message: model.message, uiScale: uiScale)
             }
         }
     }
@@ -269,26 +246,26 @@ struct RecordingsView: View {
 
             RecordingInspector(
                 recording: recording,
-                copiedPath: copiedPathRecordingID == recording.id,
-                message: message,
+                copiedPath: model.copiedPathRecordingID == recording.id,
+                message: model.message,
                 editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled,
                 uiScale: uiScale,
-                onRestart: { restart(recording) },
-                onEdit: { startEditing(recording) },
-                onEditorLocked: showRecordingEditorBetaSettingsMessage,
-                onOpen: { open(recording) },
-                onReveal: { reveal(recording) },
-                onCopyPath: { copyPath(recording) },
-                onDelete: { pendingDelete = recording }
+                onRestart: { model.restart(recording) },
+                onEdit: { model.startEditing(recording, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) },
+                onEditorLocked: model.showRecordingEditorBetaSettingsMessage,
+                onOpen: { model.open(recording) },
+                onReveal: { model.reveal(recording) },
+                onCopyPath: { model.copyPath(recording) },
+                onDelete: { model.pendingDelete = recording }
             )
-            if let editorViewModel, editorViewModel.primaryRecording.id == recording.id {
+            if let editorViewModel = model.editorViewModel, editorViewModel.primaryRecording.id == recording.id {
                 RecordingEditorView(
                     viewModel: editorViewModel,
-                    playheadSeconds: playerTimeSeconds,
-                    onSeek: seekEditorPreview,
-                    onCancel: closeEditor,
-                    onSaved: editedRecordingSaved,
-                    onPreviewChanged: { refreshEditedPreview(debounce: true) }
+                    playheadSeconds: model.playerTimeSeconds,
+                    onSeek: model.seekEditorPreview,
+                    onCancel: model.closeEditor,
+                    onSaved: model.editedRecordingSaved,
+                    onPreviewChanged: { model.refreshEditedPreview(debounce: true) }
                 )
                 .frame(maxHeight: 390)
             }
@@ -296,260 +273,7 @@ struct RecordingsView: View {
     }
 
     private var deleteDialogPresented: Binding<Bool> {
-        Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
-    }
-
-    private var deleteDialogTitle: String {
-        guard let pendingDelete else { return "Delete recording?" }
-        return "Delete \"\(pendingDelete.title)\"?"
-    }
-
-    private func reload(showMessage: Bool) {
-        recordings = WebRTCStreamRecordingLibrary.loadRecordings()
-        if let selectedRecording, let refreshed = recordings.first(where: { $0.id == selectedRecording.id }) {
-            self.selectedRecording = refreshed
-            if player == nil { select(refreshed, autoplay: false) }
-        } else {
-            select(visibleRecordings.first, autoplay: false)
-        }
-        if showMessage {
-            message = recordings.isEmpty ? "No recordings found in your GeForce NOW movies folder." : "Loaded \(recordings.count) recording\(recordings.count == 1 ? "" : "s")."
-        }
-    }
-
-    /// Up/down walk the recordings list, left/right cycle the sort order, and confirm plays the
-    /// highlighted recording. Selecting a row already loads it into the player pane, so moving the
-    /// selection is enough to browse the library from a pad.
-    /// The visible list is passed in: it is two filters plus a sort with no memoization, and the
-    /// old shape read it three times per press. Nothing is highlighted until something is selected,
-    /// so the first press only takes the selection rather than also acting on it.
-    private func applyControllerCommand(_ command: ControllerInputCommand, in recordings: [WebRTCStreamRecording]) {
-        guard !recordings.isEmpty else { return }
-        guard let selectedRecording, recordings.contains(where: { $0.id == selectedRecording.id }) else {
-            select(recordings.first, autoplay: command == .confirm)
-            return
-        }
-        switch command {
-        case .move(.up), .move(.left):
-            moveSelection(delta: -1, from: selectedRecording, in: recordings)
-        case .move(.down), .move(.right):
-            moveSelection(delta: 1, from: selectedRecording, in: recordings)
-        case .confirm:
-            select(selectedRecording, autoplay: true)
-        default:
-            break
-        }
-    }
-
-    private func moveSelection(delta: Int, from selected: WebRTCStreamRecording, in recordings: [WebRTCStreamRecording]) {
-        guard let current = recordings.firstIndex(where: { $0.id == selected.id }) else { return }
-        let next = min(max(current + delta, 0), recordings.count - 1)
-        guard next != current else { return }
-        select(recordings[next], autoplay: false)
-    }
-
-    private func select(_ recording: WebRTCStreamRecording?, autoplay: Bool) {
-        removePlayerTimeObserver()
-        if let recording, editorViewModel?.primaryRecording.id != recording.id {
-            cancelEditorPreview()
-            editorViewModel = nil
-        }
-        selectedRecording = recording
-        guard let recording else {
-            cancelEditorPreview()
-            player?.pause()
-            player = nil
-            playerTimeSeconds = 0
-            return
-        }
-        player?.pause()
-        let nextPlayer = AVPlayer(url: recording.videoURL)
-        player = nextPlayer
-        playerTimeSeconds = 0
-        playerTimeObserver = nextPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { time in
-            let seconds = max(0, time.seconds.isFinite ? time.seconds : 0)
-            MainActor.assumeIsolated {
-                playerTimeSeconds = seconds
-                syncEditorSelectionForPreviewTime(seconds)
-            }
-        }
-        if autoplay { nextPlayer.play() }
-    }
-
-    private func restart(_ recording: WebRTCStreamRecording) {
-        if editorViewModel?.primaryRecording.id == recording.id {
-            seekEditorPreview(seconds: 0)
-            player?.play()
-            return
-        }
-        guard selectedRecording?.id == recording.id else {
-            select(recording, autoplay: true)
-            return
-        }
-        player?.seek(to: .zero)
-        player?.play()
-    }
-
-    private func seek(_ recording: WebRTCStreamRecording, seconds: Double) {
-        guard selectedRecording?.id == recording.id else { return }
-        let time = CMTime(seconds: min(max(0, seconds), max(0, recording.durationSeconds)), preferredTimescale: 600)
-        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        playerTimeSeconds = max(0, time.seconds)
-    }
-
-    private func seekEditorPreview(seconds: Double) {
-        guard editorViewModel != nil else {
-            if let selectedRecording { seek(selectedRecording, seconds: seconds) }
-            return
-        }
-        let duration = editorPreviewDurationSeconds > 0 ? editorPreviewDurationSeconds : max(0, editorViewModel?.outputDurationSeconds ?? seconds)
-        let boundedSeconds = min(max(0, seconds), duration)
-        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
-        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        playerTimeSeconds = boundedSeconds
-        syncEditorSelectionForPreviewTime(boundedSeconds)
-    }
-
-    private func startEditing(_ recording: WebRTCStreamRecording) {
-        guard recordingEditorEarlyBetaEnabled else {
-            showRecordingEditorBetaSettingsMessage()
-            return
-        }
-        if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
-        player?.pause()
-        editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
-        refreshEditedPreview(debounce: false, preservePlaybackTime: false)
-        message = "Editing \(recording.title). Export saves a new video."
-    }
-
-    private func closeEditor() {
-        cancelEditorPreview()
-        editorViewModel = nil
-        if let selectedRecording { select(selectedRecording, autoplay: false) }
-        message = "Editor closed."
-    }
-
-    private func showRecordingEditorBetaSettingsMessage() {
-        message = "Enable Recording Editor Early Beta in Settings > Experimental Features."
-    }
-
-    private func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
-        cancelEditorPreview()
-        editorViewModel = nil
-        reload(showMessage: false)
-        if let refreshed = recordings.first(where: { $0.id == recording.id }) {
-            select(refreshed, autoplay: true)
-        }
-        message = "Saved \(recording.title) as a new video."
-    }
-
-    private func refreshEditedPreview(debounce: Bool, preservePlaybackTime: Bool = true) {
-        guard let editorViewModel else { return }
-        let request = editorViewModel.request()
-        let signature = editorViewModel.previewSignature
-        let targetSeconds = preservePlaybackTime ? playerTimeSeconds : 0
-        let shouldResumePlayback = player?.timeControlStatus == .playing
-        editorPreviewTask?.cancel()
-        editorPreviewTask = Task {
-            if debounce {
-                try? await Task.sleep(for: .milliseconds(150))
-                if Task.isCancelled { return }
-            }
-            do {
-                let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    guard self.editorViewModel?.previewSignature == signature else { return }
-                    self.applyEditedPreview(preview, targetSeconds: targetSeconds, shouldResumePlayback: shouldResumePlayback)
-                }
-            } catch {
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    self.message = error.localizedDescription
-                }
-            }
-        }
-    }
-
-    private func applyEditedPreview(_ preview: WebRTCStreamRecordingPreview, targetSeconds: Double, shouldResumePlayback: Bool) {
-        guard let player else { return }
-        let item = AVPlayerItem(asset: preview.asset)
-        item.audioMix = preview.audioMix
-        item.videoComposition = preview.videoComposition
-        editorPreviewDurationSeconds = preview.durationSeconds
-        player.replaceCurrentItem(with: item)
-        let boundedSeconds = min(max(0, targetSeconds), max(0, preview.durationSeconds))
-        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        playerTimeSeconds = boundedSeconds
-        syncEditorSelectionForPreviewTime(boundedSeconds)
-        if shouldResumePlayback {
-            player.play()
-        } else {
-            player.pause()
-        }
-    }
-
-    private func syncEditorSelectionForPreviewTime(_ outputSeconds: Double) {
-        guard let editorViewModel else { return }
-        let sourceTimelineSeconds = outputSeconds * max(0.25, editorViewModel.playbackRate)
-        guard let target = editorViewModel.sourceTime(forTimelineSeconds: sourceTimelineSeconds) else { return }
-        editorViewModel.selectPreviewSegment(target.segment)
-    }
-
-    private func cancelEditorPreview() {
-        editorPreviewTask?.cancel()
-        editorPreviewTask = nil
-        editorPreviewDurationSeconds = 0
-    }
-
-    private func removePlayerTimeObserver() {
-        guard let playerTimeObserver else { return }
-        player?.removeTimeObserver(playerTimeObserver)
-        self.playerTimeObserver = nil
-    }
-
-    private func reveal(_ recording: WebRTCStreamRecording) {
-        NSWorkspace.shared.activateFileViewerSelecting([recording.videoURL])
-        message = "Revealed \(recording.videoURL.lastPathComponent) in Finder."
-    }
-
-    private func open(_ recording: WebRTCStreamRecording) {
-        NSWorkspace.shared.open(recording.videoURL)
-        message = "Opened \(recording.videoURL.lastPathComponent)."
-    }
-
-    private func copyPath(_ recording: WebRTCStreamRecording) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(recording.videoURL.path, forType: .string)
-        copiedPathRecordingID = recording.id
-        message = "Copied recording path."
-    }
-
-    private func clearSearchAndFilters() {
-        searchText = ""
-        activeFilters.removeAll()
-    }
-
-    private func toggleFilter(_ filter: RecordingFilter) {
-        if activeFilters.contains(filter) {
-            activeFilters.remove(filter)
-        } else {
-            activeFilters.insert(filter)
-        }
-    }
-
-    private func deletePendingRecording() {
-        guard let recording = pendingDelete else { return }
-        do {
-            try WebRTCStreamRecordingLibrary.delete(recording)
-            pendingDelete = nil
-            message = "Deleted \(recording.title)."
-            reload(showMessage: false)
-        } catch {
-            message = error.localizedDescription
-            pendingDelete = nil
-        }
+        Binding(get: { model.pendingDelete != nil }, set: { if !$0 { model.pendingDelete = nil } })
     }
 }
 
@@ -1099,96 +823,6 @@ struct RecordingActionButtonStyle: ButtonStyle {
     }
 }
 
-private struct RecordingLibraryStats {
-    let count: Int
-    let totalDurationSeconds: Double
-    let totalBytes: Int64
-    let newest: WebRTCStreamRecording?
-
-    init(recordings: [WebRTCStreamRecording]) {
-        count = recordings.count
-        totalDurationSeconds = recordings.reduce(0) { $0 + $1.durationSeconds }
-        totalBytes = recordings.reduce(0) { $0 + $1.fileSizeBytes }
-        newest = recordings.max { $0.createdAt < $1.createdAt }
-    }
-
-    var subtitle: String {
-        guard let newest else { return "Gameplay capture library" }
-        return "Latest: \(relativeDateText(newest.createdAt))"
-    }
-}
-
-private enum RecordingSortOrder: String, CaseIterable, Identifiable {
-    case newest
-    case oldest
-    case longest
-    case largest
-    case title
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .newest: return "Newest first"
-        case .oldest: return "Oldest first"
-        case .longest: return "Longest"
-        case .largest: return "Largest"
-        case .title: return "Title A-Z"
-        }
-    }
-}
-
-private extension Array where Element == WebRTCStreamRecording {
-    func sorted(using order: RecordingSortOrder) -> [WebRTCStreamRecording] {
-        switch order {
-        case .newest: return sorted { $0.createdAt > $1.createdAt }
-        case .oldest: return sorted { $0.createdAt < $1.createdAt }
-        case .longest: return sorted { $0.durationSeconds > $1.durationSeconds }
-        case .largest: return sorted { $0.fileSizeBytes > $1.fileSizeBytes }
-        case .title: return sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        }
-    }
-}
-
-private enum RecordingFilter: String, CaseIterable, Identifiable {
-    case fourK
-    case qhd
-    case fullHD
-    case enhanced
-    case large
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .fourK: return "4K"
-        case .qhd: return "1440p+"
-        case .fullHD: return "1080p+"
-        case .enhanced: return "Enhanced"
-        case .large: return "Large"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .fourK: return "4k.tv"
-        case .qhd: return "display"
-        case .fullHD: return "rectangle.inset.filled"
-        case .enhanced: return "sparkles"
-        case .large: return "externaldrive.fill"
-        }
-    }
-
-    func matches(_ recording: WebRTCStreamRecording) -> Bool {
-        switch self {
-        case .fourK: return recording.width >= 3840 || recording.height >= 2160
-        case .qhd: return recording.width >= 2560 || recording.height >= 1440
-        case .fullHD: return recording.width >= 1920 || recording.height >= 1080
-        case .enhanced: return recording.enhancedVideo
-        case .large: return recording.fileSizeBytes >= 1_000_000_000
-        }
-    }
-}
 
 private func dateText(_ date: Date) -> String {
     let formatter = DateFormatter()

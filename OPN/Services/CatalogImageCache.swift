@@ -472,7 +472,15 @@ nonisolated private final class CatalogImageCacheContainerStore: @unchecked Send
     }
 
     /// For writes whose result nobody waits on. Keeps image loads off the queue's critical path.
-    func performAsync(_ work: @escaping (ModelContext) -> Void) {
+    ///
+    /// `work` is `@Sendable` because `queue.async` requires it: the closure outlives this call and
+    /// crosses onto the persistence queue, so anything it captures has to be safe to send. Every
+    /// caller captures only value types today (the fetch keys, the encoded bytes, the header
+    /// strings); the annotation is what makes the compiler keep it that way, rather than letting a
+    /// future caller quietly capture a model object and race the context this queue exists to
+    /// serialise. `ModelContext` itself is not Sendable, but it arrives as a parameter from inside
+    /// the queue rather than being captured, which is exactly the arrangement that stays safe.
+    func performAsync(_ work: @escaping @Sendable (ModelContext) -> Void) {
         queue.async { [self] in
             guard let context = resolvedContext() else { return }
             work(context)

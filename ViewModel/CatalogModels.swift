@@ -2,7 +2,6 @@
 //  OpenNOW
 //
 
-import AppKit
 import Foundation
 
 struct CatalogSectionModel: Identifiable, Equatable {

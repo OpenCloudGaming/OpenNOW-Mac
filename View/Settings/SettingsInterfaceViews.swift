@@ -12,16 +12,11 @@ struct InterfaceSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScaleStorage = OpenNOWInterfacePreferences.defaultUIScale
-    @StateObject private var inputRouter = ControllerInputRouter()
-    @StateObject private var steamNavigator = GamepadUINavigator()
+    @StateObject private var model = InterfaceSettingsViewModel()
 
-    private var isAnyControllerConnected: Bool {
-        inputRouter.isControllerConnected || steamNavigator.isSteamControllerConnected
-    }
+    private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
-    private var activeGlyphs: ControllerInputGlyphSet {
-        inputRouter.isControllerConnected ? inputRouter.glyphs : steamNavigator.glyphs
-    }
+    private var activeGlyphs: ControllerInputGlyphSet { model.activeGlyphs }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -89,8 +84,8 @@ struct InterfaceSettingsPage: View {
                 }
             }
         }
-        .onAppear { steamNavigator.start() }
-        .onDisappear { steamNavigator.stop() }
+        .onAppear { model.steamNavigator.start() }
+        .onDisappear { model.steamNavigator.stop() }
     }
 }
 

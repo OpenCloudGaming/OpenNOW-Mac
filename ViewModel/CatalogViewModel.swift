@@ -4,7 +4,6 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import AppKit
 import Foundation
 import Observation
 
@@ -266,18 +265,26 @@ final class CatalogViewModel {
     private let launchBridge: any GameLaunchBridging
     private let imageCache: any CatalogImageServing
     private let discordPresence: any DiscordPresenceServing
+    private let systemIntegration: any SystemIntegrationServing
     private let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
         self.launchBridge = launchBridge
         self.imageCache = imageCache
         self.discordPresence = discordPresence
+        self.systemIntegration = systemIntegration
         self.onRefreshAuth = onRefreshAuth
+    }
+
+    /// Narrow door onto the image cache for `CatalogImagePrefetch`, which lives in its own file and
+    /// therefore cannot see the private property.
+    func prefetchImages(_ urls: [URL]) {
+        imageCache.prefetch(urls)
     }
 
     func start() {
@@ -764,7 +771,7 @@ final class CatalogViewModel {
             return
         }
         if let url = URL(string: tile.actionUrl), !tile.actionUrl.isEmpty {
-            NSWorkspace.shared.open(url)
+            systemIntegration.open(url)
         }
     }
 
@@ -1340,7 +1347,7 @@ final class CatalogViewModel {
         guard variantIndex >= 0, variantIndex < selectedGame.variants.count else { return }
         let variant = selectedGame.variants[variantIndex]
         if let url = URL(string: variant.storeUrl), !variant.storeUrl.isEmpty {
-            NSWorkspace.shared.open(url)
+            systemIntegration.open(url)
             return
         }
         gameService.resolveStoreURL(game: selectedGame.swiftValue, variantIndex: variantIndex) { [weak self] success, storeURL, error in
@@ -1349,7 +1356,7 @@ final class CatalogViewModel {
                 self.errorMessage = error.isEmpty ? "No store URL is available for this game." : error
                 return
             }
-            NSWorkspace.shared.open(url)
+            systemIntegration.open(url)
         }
     }
 
@@ -1357,8 +1364,7 @@ final class CatalogViewModel {
         guard let selectedGame else { return }
         let title = selectedGame.title.isEmpty ? "GeForce NOW game" : selectedGame.title
         let url = selectedGame.primaryStoreURL ?? URL(string: "https://play.geforcenow.com/")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString([title, url?.absoluteString].compactMap { $0 }.joined(separator: "\n"), forType: .string)
+        systemIntegration.copyToPasteboard([title, url?.absoluteString].compactMap { $0 }.joined(separator: "\n"))
         actionMessage = "Copied share details."
     }
 
@@ -1490,7 +1496,7 @@ final class CatalogViewModel {
             }
             let shortcut = GFNGameShortcut(sourceURL: nil, displayName: title, cmsId: cmsId, shortName: shortName, parentGameId: shortName)
             try shortcut.write(to: shortcutURL)
-            Self.applyShortcutIcon(to: shortcutURL)
+            systemIntegration.applyAppIcon(toFileAt: shortcutURL)
             actionMessage = "Added GeForce NOW shortcut to Desktop."
         } catch {
             errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
@@ -2388,12 +2394,6 @@ final class CatalogViewModel {
         let sanitized = title.components(separatedBy: invalidCharacters).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = sanitized.isEmpty ? "GeForce NOW Game" : sanitized
         return "\(baseName) on GeForce NOW.gfnpc"
-    }
-
-    private static func applyShortcutIcon(to url: URL) {
-        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-              let icon = NSImage(contentsOf: iconURL) else { return }
-        NSWorkspace.shared.setIcon(icon, forFile: url.path)
     }
 
     private func requestSelectedGameReveal(for game: OPNCatalogGameObject, sectionId: String) {

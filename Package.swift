@@ -14,7 +14,17 @@ let package = Package(
         .library(name: "OpenNOW", targets: ["OpenNOW"])
     ],
     dependencies: [
-        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0")
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0"),
+        // Layering lint (see docs/MVVMMigrationPlan.md). Ships SwiftLint as a prebuilt binary
+        // artifact rather than building it from source, so resolving costs seconds, not minutes.
+        // Wired as a *command* plugin only — deliberately not attached to the OpenNOW target as a
+        // build tool plugin, because this package builds through both SwiftPM and the Xcode app
+        // target and a build tool plugin would run on every build of both.
+        //
+        //   swift package plugin --allow-writing-to-package-directory swiftlint lint \
+        //     --strict --baseline swiftlint-baseline.json \
+        //     App GFN Model OPN View ViewModel Tests
+        .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1")
     ],
     targets: [
         .target(
@@ -39,7 +49,6 @@ let package = Package(
                 "Resources",
                 "Tests",
                 "docs",
-                "View/.DS_Store",
                 "View/Assets.xcassets",
                 "WebRTC.framework",
                 "build",

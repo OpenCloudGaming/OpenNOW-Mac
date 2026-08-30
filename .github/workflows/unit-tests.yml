@@ -73,6 +73,40 @@ jobs:
           path: ~/Library/Logs/DiagnosticReports/
           if-no-files-found: ignore
 
+  lint:
+    name: Lint Layering
+    runs-on: macos-26
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Cache SwiftLint plugin artifact
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/lint/artifacts
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftlint-v1-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftlint-v1-
+
+      # Enforces the MVVM layering rules in docs/MVVMMigrationPlan.md. Existing violations are
+      # recorded in swiftlint-baseline.json and ignored; anything new fails the build.
+      #
+      # The path list must match the one used to write the baseline exactly. SwiftLint records the
+      # paths as given, and --baseline matches on them, so a different path list silently stops
+      # suppressing and every baselined violation comes back as a failure.
+      - name: Lint
+        run: |
+          set -euo pipefail
+          swift package --scratch-path .build/lint \
+            plugin --allow-writing-to-package-directory \
+            swiftlint lint --strict --baseline swiftlint-baseline.json \
+            App GFN Model OPN View ViewModel Tests
+        shell: bash
+
   app-build:
     name: Build macOS App
     runs-on: macos-26

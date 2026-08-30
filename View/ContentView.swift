@@ -11,35 +11,35 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    private static let defaultWindowTitle = "OpenNOW"
-
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LoginAccount.lastLoginAt, order: .reverse) private var accounts: [LoginAccount]
     @Query(sort: \LoginSession.issuedAt, order: .reverse) private var sessions: [LoginSession]
     @Query private var devices: [LoginDeviceRegistration]
 
     @StateObject private var viewModel = LoginViewModel()
+    /// Owns the bootstrap, the startup animation's lifetime, the window title, and the file-open
+    /// notification observer that used to be subscribed from inside `body`.
+    @StateObject private var root = AppRootViewModel()
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
-    @State private var windowTitle = Self.defaultWindowTitle
-    @State private var didBootstrap = false
-    @State private var isShowingStartupLoading = true
-    @State private var usesQuickStartupIntro = false
 
     var body: some View {
         ZStack {
             LoginView(viewModel: viewModel, accounts: accounts) { title in
-                windowTitle = title ?? Self.defaultWindowTitle
+                root.setWindowTitle(title)
             }
-            .accessibilityHidden(isShowingStartupLoading)
+            .accessibilityHidden(root.isShowingStartupLoading)
 
-            if isShowingStartupLoading {
-                OpenNOWStartupLoadingView(
-                    duration: usesQuickStartupIntro ? OpenNOWStartupAnimation.quickDuration : OpenNOWStartupAnimation.duration
-                )
-                .transition(.opacity)
-                .zIndex(100)
+            if root.isShowingStartupLoading {
+                OpenNOWStartupLoadingView(duration: root.startupAnimationDuration)
+                    .transition(.opacity)
+                    .zIndex(100)
             }
         }
+            // Replaces the `withAnimation(.easeInOut(duration:))` that used to wrap the dismissal.
+            // Same curve and duration, scoped to the container holding the overlay rather than to
+            // the whole root, so an unrelated LoginView change in the same transaction is not
+            // swept into it.
+            .animation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration), value: root.isShowingStartupLoading)
             // Keep the floor low enough for Split View tiles and forced frames:
             // when macOS sizes the window below the SwiftUI minimum, content
             // pins at that minimum and the trailing edge (header avatar, the
@@ -47,59 +47,24 @@ struct ContentView: View {
             .frame(minWidth: 640, minHeight: 480)
             .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
-            .background(WindowTitleConfigurator(title: windowTitle))
+            .background(WindowTitleConfigurator(title: root.windowTitle))
             .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
+            .onDisappear { root.unbind() }
+            // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
+            // before it calls `onAppear`, so the two would race.
             .task {
-                await bootstrapAppStartIfNeeded()
+                await root.bootstrapIfNeeded(login: viewModel, syncModelState: syncViewModel)
             }
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
-            .onOpenURL { url in handleOpenURL(url) }
-            .onReceive(NotificationCenter.default.publisher(for: .openNOWDidOpenFile)) { notification in
-                guard let url = notification.object as? URL else { return }
-                viewModel.handleOpenedFile(url)
-            }
+            .onOpenURL { url in root.handleOpenURL(url) }
     }
 
-    private func bootstrapAppStartIfNeeded() async {
-        guard !didBootstrap else { return }
-        didBootstrap = true
-        syncViewModel()
-        viewModel.bootstrap()
-        drainOpenedFiles()
-        usesQuickStartupIntro = viewModel.activeSession != nil
-        await dismissStartupLoading()
-    }
-
-    private func dismissStartupLoading() async {
-        let delay = usesQuickStartupIntro
-            ? OpenNOWStartupAnimation.quickDismissalDelayNanoseconds
-            : OpenNOWStartupAnimation.dismissalDelayNanoseconds
-        do {
-            try await Task.sleep(nanoseconds: delay)
-        } catch {
-            isShowingStartupLoading = false
-            return
-        }
-        withAnimation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration)) {
-            isShowingStartupLoading = false
-        }
-    }
-
-    private func drainOpenedFiles() {
-        for url in OpenNOWFileOpenCoordinator.shared.drainPendingFileURLs() {
-            viewModel.handleOpenedFile(url)
-        }
-    }
-
+    /// Stays in the view: it reads the live `@Query` results, which only a view can observe.
     private func syncViewModel() {
         viewModel.update(modelContext: modelContext, accounts: accounts, sessions: sessions, devices: devices)
-    }
-
-    private func handleOpenURL(_ url: URL) {
-        viewModel.handleOAuthCallback(url)
     }
 }
 

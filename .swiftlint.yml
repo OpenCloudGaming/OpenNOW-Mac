@@ -1,0 +1,118 @@
+# SwiftLint configuration for OpenNOW.
+#
+# Purpose is narrow: enforce the MVVM layering rules from docs/MVVMMigrationPlan.md and provide a
+# size burn-down for the views that still carry logic. It is not a style linter — every stylistic
+# rule stays disabled so the diff noise stays zero.
+#
+# Existing violations are absorbed by swiftlint-baseline.json. Regenerate it after each migration
+# phase lands, so the baseline only ever shrinks:
+#
+#   swiftlint --write-baseline swiftlint-baseline.json
+#
+# CI runs:
+#
+#   swiftlint lint --strict --baseline swiftlint-baseline.json
+
+only_rules:
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - custom_rules
+
+# Deliberately no `excluded:` key. Setting it makes SwiftLint report paths relative to the config
+# instead of absolute, and `--baseline` matches on the stored path — so a config with `excluded:`
+# silently suppresses nothing and every baselined violation comes back. Verified against 0.65.1.
+#
+# Scope comes from the explicit path list passed on the command line instead:
+#
+#   swiftlint lint App GFN Model OPN View ViewModel Tests
+#
+# which keeps .build/, DerivedData/, build/ and WebRTC.framework/ out without touching `excluded:`.
+
+# Size limits double as the R1/R2 burn-down chart. Today's worst offenders are absorbed by the
+# baseline; anything new has to come in under these.
+file_length:
+  warning: 600
+  error: 1200
+  ignore_comment_only_lines: true
+
+type_body_length:
+  warning: 400
+  error: 800
+
+function_body_length:
+  warning: 60
+  error: 120
+
+cyclomatic_complexity:
+  warning: 12
+  error: 20
+
+custom_rules:
+  # R3 — view models never import SwiftUI.
+  no_swiftui_in_view_model:
+    name: "SwiftUI in ViewModel"
+    included: ".*/ViewModel/.*\\.swift"
+    regex: '^import SwiftUI'
+    match_kinds:
+      - keyword
+      - identifier
+    message: "View models must not import SwiftUI. Expose plain state; let the view render it."
+    severity: error
+
+  # R3 — AppKit only through an injected protocol. Phase 1 landed SystemIntegrationServing, which
+  # was the last real use, so this is an error rather than a warning.
+  no_appkit_in_view_model:
+    name: "AppKit in ViewModel"
+    included: ".*/ViewModel/.*\\.swift"
+    regex: '^import AppKit'
+    match_kinds:
+      - keyword
+      - identifier
+    message: "View models reach AppKit through an injected protocol (see SystemIntegrationServing), not directly."
+    severity: error
+
+  # R4 — the model layer stays framework-free.
+  no_ui_framework_in_model:
+    name: "UI framework in Model"
+    included: ".*/Model/.*\\.swift"
+    regex: '^import (SwiftUI|AppKit)'
+    match_kinds:
+      - keyword
+      - identifier
+    message: "Model/ must not import a UI framework."
+    severity: error
+
+  # R5 — the service layer stays framework-free.
+  no_swiftui_in_service_layer:
+    name: "SwiftUI in service layer"
+    included: ".*/(OPN|GFN)/.*\\.swift"
+    regex: '^import SwiftUI'
+    match_kinds:
+      - keyword
+      - identifier
+    message: "OPN/ and GFN/ are the service layer. SwiftUI views belong in View/."
+    severity: error
+
+  # R6 — views receive services, they do not construct them. Deliberately does not fire on types
+  # whose name ends in ViewModel or Model: owning its own view model is what a view is supposed to
+  # do, and both suffixes now only occur on types that live under ViewModel/.
+  #
+  # The lookahead uses [^\n]* rather than .* on purpose. SwiftLint compiles custom rules with
+  # dot-matches-newline, so a plain .* would scan the whole rest of the file and silently suppress
+  # every violation in any file that declares a view model further down.
+  view_constructs_service:
+    name: "View constructs a service"
+    included: ".*/View/.*\\.swift"
+    regex: '@StateObject\s+(?:private\s+)?var\s+\w+\s*(?::\s*\w+\s*)?=\s*(?![^\n]*(?:ViewModel|Model)\s*\()[A-Z]\w*\('
+    message: "Inject services through the view model or @Environment instead of constructing them in the view."
+    severity: warning
+
+  # R7 — long-lived side effects belong in the view model, not the view body.
+  view_owns_long_lived_effect:
+    name: "Long-lived effect in View"
+    included: ".*/View/.*\\.swift"
+    regex: '(Timer\.scheduledTimer|NotificationCenter\.default\.addObserver)'
+    message: "Start and stop timers and notification observers in the view model, where the lifetime is explicit."
+    severity: warning
