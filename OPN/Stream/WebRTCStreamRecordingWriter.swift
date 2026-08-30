@@ -27,9 +27,11 @@ extension WebRTCStreamRecorder {
     }
 
     func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
-        guard isRecording,
-              selectVideoFrameSourceIfNeeded(source),
-              let configuration,
+        guard isRecording, selectVideoFrameSourceIfNeeded(source) else { return }
+        // Recorded before the writer is consulted: the first-frame watchdog needs to tell "no
+        // frames are arriving" from "the encoder has not taken one yet".
+        offeredVideoFrame = true
+        guard let configuration,
               let outputURL,
               prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
               let writer,
@@ -160,6 +162,8 @@ extension WebRTCStreamRecorder {
         startedAt = nil
         firstHostTime = nil
         capturedVideoFrame = false
+        offeredVideoFrame = false
+        firstFrameTimeoutExtensions = 0
         finishing = false
         failed = false
         setActiveRecordingId(nil, enhancedVideoPreferred: false)
@@ -223,22 +227,52 @@ extension WebRTCStreamRecorder {
         emit(.recording(startedAt: startedAt, elapsedSeconds: max(0, now - (firstHostTime ?? now))))
     }
 
+    /// Delivers statuses to the main actor **in order**. One unstructured task per status carries
+    /// no ordering guarantee, and a `.finishing` overtaking the terminal `.finished` left the UI
+    /// on a non-terminal status that nothing would ever follow — the Record button stayed disabled
+    /// for the rest of the session. Every `emit` runs on `queue`, so chaining each delivery onto
+    /// the previous one is enough to serialise them.
     func emit(_ status: WebRTCStreamRecordingStatus) {
-        Task { @MainActor [onStatusChanged] in onStatusChanged?(status) }
+        let handler = statusHandler
+        let previous = statusDeliveryTask
+        statusDeliveryTask = Task { @MainActor in
+            await previous?.value
+            handler?(status)
+        }
     }
 
+    /// The codec that can actually encode this frame size in hardware. Apple's H.264 encoder tops
+    /// out around 4K, so a 5120x2160 NVST stream has to be recorded as HEVC or the encoder falls
+    /// back to software and the recording costs more than the stream does.
+    static func videoCodec(width: Int, height: Int) -> AVVideoCodecType {
+        width > 4096 || height > 2304 ? .hevc : .h264
+    }
+
+    /// Ceiling for the automatic bitrate. The `width * height * fps / 8` heuristic was written for
+    /// WebRTC resolutions; at native NVST's 5120x2160@120 it asks for ~166 Mbps, which is what
+    /// every user who never touched the setting would get, encoded in real time next to a 5K
+    /// decode. 60 Mbps is past visually lossless for HEVC at that size. An explicit setting is
+    /// still honoured as-is — this only bounds the guess.
+    static let automaticVideoBitrateCeiling = 60_000_000
+
     func videoSettings(configuration: WebRTCStreamRecordingConfiguration, width: Int, height: Int) -> [String: Any] {
-        let bitrate = configuration.videoBitrateMbps > 0 ? configuration.videoBitrateMbps * 1_000_000 : max(4_000_000, width * height * configuration.fps / 8)
+        let bitrate = configuration.videoBitrateMbps > 0
+            ? configuration.videoBitrateMbps * 1_000_000
+            : min(Self.automaticVideoBitrateCeiling, max(4_000_000, width * height * configuration.fps / 8))
+        let codec = Self.videoCodec(width: width, height: height)
+        var compression: [String: Any] = [
+            AVVideoAverageBitRateKey: bitrate,
+            AVVideoExpectedSourceFrameRateKey: configuration.fps,
+            AVVideoMaxKeyFrameIntervalKey: configuration.fps * 2,
+        ]
+        // The H.264 profile constant is not a valid HEVC profile; passing it makes the input fail
+        // to initialise rather than fall back.
+        if codec == .h264 { compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel }
         return [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: codec,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: bitrate,
-                AVVideoExpectedSourceFrameRateKey: configuration.fps,
-                AVVideoMaxKeyFrameIntervalKey: configuration.fps * 2,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-            ],
+            AVVideoCompressionPropertiesKey: compression,
         ]
     }
 
@@ -252,8 +286,11 @@ extension WebRTCStreamRecorder {
             writer.shouldOptimizeForNetworkUse = false
             let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings(configuration: configuration, width: width, height: height))
             videoInput.expectsMediaDataInRealTime = true
+            // Take the format from the frame rather than forcing BGRA. The NVST decoder emits NV12,
+            // which is the encoder's native input — declaring BGRA here would mean a full-frame
+            // colour conversion per frame, which 5120x2160 does not survive.
             let attributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferPixelFormatTypeKey as String: Self.adaptorPixelFormat(for: pixelBuffer),
                 kCVPixelBufferWidthKey as String: width,
                 kCVPixelBufferHeightKey as String: height,
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:],
@@ -306,12 +343,39 @@ extension WebRTCStreamRecorder {
                   !self.capturedVideoFrame,
                   !self.finishing,
                   !self.failed else { return }
+            // Frames arriving but none accepted is a busy encoder, not a dead video path: an
+            // `AVAssetWriterInput` can report not-ready for seconds while it spins up, and killing
+            // the recording then loses one that was working. Only "nothing offered at all" is the
+            // failure this watchdog exists for.
+            if self.offeredVideoFrame, self.firstFrameTimeoutExtensions < Self.maxFirstFrameTimeoutExtensions {
+                self.firstFrameTimeoutExtensions += 1
+                self.offeredVideoFrame = false
+                self.scheduleFirstFrameTimeout(recordingId: recordingId)
+                return
+            }
             self.fail(WebRTCStreamRecorderError.videoFramesUnavailable)
         }
     }
 
     static func isWritableBGRA(_ pixelBuffer: CVPixelBuffer) -> Bool {
         CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA
+    }
+
+    /// The pixel format to declare on the writer's adaptor, taken from the first frame so no
+    /// conversion is inserted. Formats the encoder cannot take directly still go in as BGRA, which
+    /// is what every frame arriving through `appendVideoFrame` has already been converted to.
+    static func adaptorPixelFormat(for pixelBuffer: CVPixelBuffer) -> OSType {
+        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+             kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_32BGRA:
+            return format
+        default:
+            return kCVPixelFormatType_32BGRA
+        }
     }
 
     func i420BGRAFramebufferPool(width: Int, height: Int) -> CVPixelBufferPool? {

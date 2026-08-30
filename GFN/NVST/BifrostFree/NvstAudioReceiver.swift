@@ -60,6 +60,11 @@ public final class NvstAudioReceiver: @unchecked Sendable {
 
     public var onDiagnostic: (@Sendable (String) -> Void)?
 
+    /// Decoded PCM on its way to the player: interleaved stereo `Float` at 48 kHz. When audio runs
+    /// on this socket it never touches libwebrtc's audio device, so this is the only place a
+    /// recorder can see it. Called on the receive queue; copy and return.
+    public var onDecodedPCM: (@Sendable ([Float]) -> Void)?
+
     /// The port the seat is told to send audio to.
     public let localPort: UInt16
 
@@ -287,7 +292,10 @@ public final class NvstAudioReceiver: @unchecked Sendable {
         lastTimestamp = timestamp
         lock.unlock()
         do {
-            if let pcm = try decoder.decode(payload) { player.enqueue(pcm) }
+            if let pcm = try decoder.decode(payload) {
+                player.enqueue(pcm)
+                onDecodedPCM?(pcm)
+            }
         } catch {
             onDiagnostic?("NVST audio decode error: \(error.localizedDescription)")
         }

@@ -97,6 +97,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var showingControllerMapping = false
     @Published var hudFocusID: String?
     var hudGamepadTracker = StreamHUDGamepadTracker()
+    @Published var recordingStatus = WebRTCStreamRecordingStatus.idle
+    var recordingStatusResetTask: Task<Void, Never>?
+    /// The settings the session actually started with, kept because the recording configuration is
+    /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
+    var resolvedStreamSettings: WebRTCMediaResolvedStreamSettings?
     @Published var streamControlsFocusIndex = 0
     @Published var onScreenKeyboardVisible = false
     var restorePointerLockOnKeyboardHide = false
@@ -110,6 +115,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         }
         let launch = prepareLaunch(nativeView: nativeView)
         let resolvedStreamSettings = launch.settings
+        self.resolvedStreamSettings = resolvedStreamSettings
         let transport = makeTransport(nativeView: nativeView, settings: resolvedStreamSettings)
         let path = NativeNVSTStreamingPath(sessionProvider: sessionProvider, transport: transport, automaticRecovery: .singleAttempt)
         let inputDispatcher = NativeNVSTInputDispatcher { input in
@@ -225,6 +231,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 await bifrostFree.setRemoteCursorVisibilityHandler { [weak nativeView] isVisible in
                     nativeView?.setRemoteCursorVisible(isVisible)
                 }
+            }
+        }
+        Task {
+            await transport.setRecordingStatusHandler { [weak self] status in
+                self?.handleRecordingStatusChanged(status)
             }
         }
         return transport

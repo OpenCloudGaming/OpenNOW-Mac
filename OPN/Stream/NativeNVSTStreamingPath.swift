@@ -36,6 +36,9 @@ public protocol NativeNVSTTransport: Sendable {
     func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws
     func setL4SEnabled(_ enabled: Bool) async throws
     func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws
+    func startRecording(configuration: WebRTCStreamRecordingConfiguration) async
+    func stopRecording() async
+    func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?) async
     func pause() async throws
     func disconnect() async
     func resetForRecovery() async
@@ -57,6 +60,12 @@ public extension NativeNVSTTransport {
     func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
     func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws { throw NativeNVSTError.notRunning }
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
+
+    /// Recording is optional for a transport. The status handler is the only channel the UI
+    /// listens on, so a transport that never installs one simply leaves the HUD at `.idle`.
+    func startRecording(configuration: WebRTCStreamRecordingConfiguration) async {}
+    func stopRecording() async {}
+    func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?) async {}
 
     func pause() async throws {
         throw NativeNVSTError.notRunning
@@ -241,6 +250,24 @@ public actor NativeNVSTStreamingPath {
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setMicrophoneEnabled(enabled)
+    }
+
+    /// Returns whether the recorder was actually started. The caller shows "Starting" optimistically
+    /// and the recorder is the only thing that ever emits a status, so a silent refusal here would
+    /// leave the HUD stuck on it forever with no way back.
+    @discardableResult
+    public func startRecording(configuration: WebRTCStreamRecordingConfiguration) async -> Bool {
+        guard activeSession != nil else { return false }
+        await transport.startRecording(configuration: configuration)
+        return true
+    }
+
+    public func stopRecording() async {
+        await transport.stopRecording()
+    }
+
+    public func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?) async {
+        await transport.setRecordingStatusHandler(handler)
     }
 
     public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {

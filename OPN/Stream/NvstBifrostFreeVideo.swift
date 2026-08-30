@@ -25,7 +25,12 @@ extension NvstBifrostFreeTransport {
             Task { await self?.invalidateFrame(frameIndex) }
         }
         let sink = pixelBufferSink
+        // The recorder is fed here rather than from the renderer, so a recording keeps its frames
+        // when the surface is hidden, and so nothing on the decode thread has to reach the main
+        // actor. It costs one uncontended lock per frame while idle.
+        let recorder = self.recorder
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
+            recorder.appendNativePixelBuffer(pixelBuffer)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
@@ -200,6 +205,12 @@ extension NvstBifrostFreeTransport {
             logger?("NVST bundle seat offered \(count) audio track(s)")
             Task { await self?.noteRemoteAudio(trackCount: count) }
         }
+        // Straight to the recorder, no actor hop: this runs on the CoreAudio render thread, where
+        // waiting on anything is a priority inversion. The recorder copies and returns.
+        let recorder = self.recorder
+        bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
+            recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+        }
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task { await self?.startQosFeedback() }
         }
@@ -276,6 +287,14 @@ extension NvstBifrostFreeTransport {
         do {
             let receiver = try NvstAudioReceiver(existingDescriptor: descriptor)
             receiver.onDiagnostic = { [weak self] message in self?.logger?(message) }
+            // In this mode audio never reaches libwebrtc's audio device, so the bundle's playout
+            // tee sees nothing; without this the recording would get a silent audio track.
+            let recorder = self.recorder
+            receiver.onDecodedPCM = { samples in
+                recorder.appendGameAudioSamples(samples,
+                                                sampleRate: NvstAudioPlayer.sampleRate,
+                                                channels: UInt32(NvstAudioPlayer.channels))
+            }
             // The audio stream's own SETUP names the port the seat sends audio from; punching the
             // video port instead reached nothing at all.
             let peerPort = handoff.audioPeerPort ?? handoff.videoPeerPort

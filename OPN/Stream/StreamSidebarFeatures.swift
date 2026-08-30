@@ -17,6 +17,7 @@ struct StreamSidebarCapabilities: Equatable, Sendable {
     static let webRTC = StreamSidebarCapabilities(availableFeatures: Set(StreamSidebarFeature.allCases))
     static let nativeNVST = StreamSidebarCapabilities(availableFeatures: [
         .microphone,
+        .recording,
         .antiAFK,
         .floatingStats,
         .networkHealth,

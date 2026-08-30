@@ -252,6 +252,7 @@ extension NvstBifrostFreeTransport {
     /// the caller: `NativeNVSTStreamingPath.pause` separately tells CloudMatch to keep the cloud
     /// seat alive (`sessionProvider.finishSession(reason: .paused)`) so it can be resumed later.
     public func pause() async throws {
+        recorder.stop()
         await teardown(reason: "pause")
     }
 

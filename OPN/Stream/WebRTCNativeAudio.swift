@@ -20,16 +20,29 @@ private let coreAudioRecordingCallback: AURenderCallback = { refCon, actionFlags
     return device.captureRecording(actionFlags: actionFlags, timestamp: timestamp, busNumber: Int(busNumber), frameCount: frameCount)
 }
 
-@objc(OPNCoreAudioRTCDevice)
-final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
-    weak var owner: OPNLibWebRTCStreamSession?
+/// What the CoreAudio RTC device needs from whoever owns it. Extracted from
+/// `OPNLibWebRTCStreamSession` so the native NVST bundle can use the same audio device: NVST has no
+/// libwebrtc session, but it does need the playout tee this device provides, because that is the
+/// only place decoded game audio crosses out of libwebrtc and into our code.
+protocol OPNCoreAudioRTCDeviceOwner: AnyObject {
+    func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32)
+    func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32)
+    func handleCapturedMicrophoneLevel(_ level: Double)
+    func isMicrophoneCaptureEnabled() -> Bool
+}
 
-    private let audioQueue = DispatchQueue(label: "io.opencg.opennow.webrtc.coreaudio")
+final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
+    weak var owner: (any OPNCoreAudioRTCDeviceOwner)?
+
+    let audioQueue = DispatchQueue(label: "io.opencg.opennow.webrtc.coreaudio")
     private var playoutUnit: AudioUnit?
     private var recordingUnit: AudioUnit?
-    private var outputDevice = AudioDeviceID(kAudioObjectUnknown)
+    var outputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var recordingScratch = [Int16]()
+    let monitorsDefaultDeviceChanges: Bool
+    /// Bumped by every default-output notification so a burst collapses into one rebind.
+    var selfDeviceChangeGeneration: UInt64 = 0
     private weak var delegate: RTCAudioDeviceDelegate?
     private var lastMicrophoneLevelReportNanoseconds: UInt64 = 0
 
@@ -47,14 +60,30 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private(set) var isRecordingInitialized = false
     private(set) var isRecording = false
 
-    @objc(initWithOwner:)
-    init(owner: OPNLibWebRTCStreamSession?) {
+    /// Whether the default output device this device bound to still exists. `false` means CoreAudio
+    /// reported no default output at all, in which case playout cannot start and the caller is
+    /// better off with libwebrtc's own device.
+    var hasUsableOutputDevice: Bool {
+        audioQueue.sync { outputDevice != AudioDeviceID(kAudioObjectUnknown) }
+    }
+
+    /// Follows the default output device itself instead of waiting to be told.
+    ///
+    /// `OPNLibWebRTCAudio` drives `handleDefaultDeviceChange()` for the libwebrtc session, but it is
+    /// tied to an `OPNLibWebRTCSessionImpl` the NVST bundle never creates — so without this the
+    /// bundle's playout unit stays pinned to whatever device was default when the stream started,
+    /// and plugging in headphones mid-session leaves the game playing out the speakers. Off by
+    /// default so the WebRTC path keeps its single driver and does not hot-swap twice per change.
+    init(owner: (any OPNCoreAudioRTCDeviceOwner)?, monitorsDefaultDeviceChanges: Bool = false) {
         self.owner = owner
+        self.monitorsDefaultDeviceChanges = monitorsDefaultDeviceChanges
         super.init()
         updateDeviceParameters()
+        if monitorsDefaultDeviceChanges { startSelfDeviceMonitoring() }
     }
 
     deinit {
+        stopSelfDeviceMonitoring()
         _ = terminateDevice()
     }
 
@@ -606,7 +635,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         return id.contains("audio") || id.contains("mic")
     }
 
-    fileprivate static func defaultAudioDevice(_ selector: AudioObjectPropertySelector) -> AudioDeviceID {
+    static func defaultAudioDevice(_ selector: AudioObjectPropertySelector) -> AudioDeviceID {
         var device = AudioDeviceID(kAudioObjectUnknown)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         var address = propertyAddress(selector)

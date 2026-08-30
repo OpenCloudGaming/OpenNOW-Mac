@@ -56,7 +56,7 @@ extension NvstWebRtcBundle {
         }
 
         startWebRtcLoggingIfRequested()
-        let factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
+        let factory = makePeerConnectionFactory()
         let configuration = Self.bundleConfiguration()
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         guard let connection = factory.peerConnection(with: configuration, constraints: constraints, delegate: self) else {
@@ -197,6 +197,24 @@ extension NvstWebRtcBundle {
         return nil
     }
 
+    /// Builds the factory with our own audio device rather than libwebrtc's default: its playout
+    /// callback is the only point where decoded game audio is visible to us, and that is what a
+    /// recording needs. It is the same device the WebRTC transport already ships, but it follows
+    /// the default output device itself here — nothing on this path drives
+    /// `handleDefaultDeviceChange()`.
+    ///
+    /// With no default output device there is nothing to bind to and playout would never start, so
+    /// libwebrtc's own device takes over: audio still plays, recordings are silent.
+    private func makePeerConnectionFactory() -> RTCPeerConnectionFactory {
+        let audioDevice = OPNCoreAudioRTCDevice(owner: self, monitorsDefaultDeviceChanges: true)
+        guard audioDevice.hasUsableOutputDevice else {
+            logger?("NVST bundle found no default output device; using libwebrtc's audio device (recording will have no audio)")
+            return RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
+        }
+        self.audioDevice = audioDevice
+        return RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil, audioDevice: audioDevice)
+    }
+
     func store(factory: RTCPeerConnectionFactory, connection: RTCPeerConnection) {
         lock.withLock {
             self.factory = factory
@@ -219,6 +237,9 @@ extension NvstWebRtcBundle {
         openCustomChannels = [:]
         peerConnection = nil
         factory = nil
+        // Released with the factory so the CoreAudio units are torn down when the session ends,
+        // not whenever the bundle happens to be deallocated.
+        audioDevice = nil
         let waiting = hostCandidateContinuation
         hostCandidateContinuation = nil
         let sink = callbackLogger

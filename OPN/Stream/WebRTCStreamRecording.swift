@@ -160,7 +160,21 @@ public enum WebRTCStreamRecordingStatus: Equatable, Sendable {
 }
 
 final class WebRTCStreamRecorder: @unchecked Sendable {
-    var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?
+    /// Written by whoever owns the recorder, read on `queue` by `emit`. Locked because those are
+    /// different threads and the NVST transport installs the handler from its actor.
+    var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)? {
+        get { statusHandlerLock.withLock { storedStatusHandler } }
+        set { statusHandlerLock.withLock { storedStatusHandler = newValue } }
+    }
+
+    private let statusHandlerLock = NSLock()
+    private var storedStatusHandler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?
+    var statusHandler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)? {
+        statusHandlerLock.withLock { storedStatusHandler }
+    }
+
+    /// The previous status delivery, so `emit` can keep them in order. Touched only on `queue`.
+    var statusDeliveryTask: Task<Void, Never>?
 
     enum VideoFrameSource {
         case native
@@ -189,6 +203,14 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     var lastPresentationTime = CMTime.zero
     var lastStatusHostTime: CFTimeInterval = 0
     var capturedVideoFrame = false
+    /// A frame reached the writer, whether or not the encoder took it. Distinguishes a stalled
+    /// encoder from a video path that is delivering nothing.
+    var offeredVideoFrame = false
+    var firstFrameTimeoutExtensions = 0
+    /// How many extra `firstFrameTimeout` windows a recording gets while frames keep arriving but
+    /// the encoder has still not accepted one. Bounded so a permanently stuck encoder still fails
+    /// rather than recording forever into nothing.
+    static let maxFirstFrameTimeoutExtensions = 3
     var recordingWidth = 0
     var recordingHeight = 0
     var finishing = false
@@ -224,6 +246,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.lastPresentationTime = .zero
                 self.lastStatusHostTime = 0
                 self.capturedVideoFrame = false
+                self.offeredVideoFrame = false
+                self.firstFrameTimeoutExtensions = 0
                 self.recordingWidth = 0
                 self.recordingHeight = 0
                 self.finishing = false
@@ -277,9 +301,46 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         }
     }
 
+    /// Appends a decoded frame that is already a `CVPixelBuffer`, with no libwebrtc frame around
+    /// it. The native NVST transport owns its VideoToolbox decoder, so its frames arrive here
+    /// directly instead of through `appendVideoFrame`, skipping the I420/BGRA conversion that path
+    /// needs — the writer takes the decoder's format as-is.
+    func appendNativePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        guard let recordingId = beginVideoFrameAppend(source: .native) else { return }
+        appendPixelBuffer(pixelBuffer, recordingId: recordingId, source: .native, captureHostTime: CACurrentMediaTime())
+    }
+
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
         guard let recordingId = beginVideoFrameAppend(source: .enhanced) else { return }
         appendPixelBuffer(pixelBuffer, recordingId: recordingId, source: .enhanced, captureHostTime: CACurrentMediaTime())
+    }
+
+    /// Appends decoded PCM that never passed through an audio device: interleaved `Float` samples,
+    /// which is what the NVST Opus decoder produces when audio runs on its own socket instead of
+    /// through libwebrtc. Converted here rather than at the call site so both audio feeds land in
+    /// the same Int16 writer path.
+    func appendGameAudioSamples(_ samples: [Float], sampleRate: Double, channels: UInt32) {
+        let channelCount = max(1, Int(channels))
+        guard !samples.isEmpty, samples.count % channelCount == 0 else { return }
+        var interleaved = [Int16](unsafeUninitializedCapacity: samples.count) { buffer, initializedCount in
+            for index in 0..<samples.count {
+                let clamped = min(max(samples[index], -1), 1)
+                buffer[index] = Int16(clamped * 32767)
+            }
+            initializedCount = samples.count
+        }
+        let frameCount = UInt32(samples.count / channelCount)
+        let data = interleaved.withUnsafeMutableBytes { Data($0) }
+        queue.async {
+            guard self.isRecording,
+                  self.capturedVideoFrame,
+                  self.writer?.status == .writing,
+                  let input = self.audioInput,
+                  input.isReadyForMoreMediaData else { return }
+            guard let time = self.presentationTime() else { return }
+            guard let sampleBuffer = Self.makeAudioSampleBuffer(data: data, frameCount: frameCount, sampleRate: sampleRate, channels: channels, presentationTime: time) else { return }
+            input.append(sampleBuffer)
+        }
     }
 
     func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {

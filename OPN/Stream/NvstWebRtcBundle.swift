@@ -206,7 +206,28 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     /// The seat's periodic `0x0101` statistics: game render rate and its latency estimate.
     public var onSeatStats: (@Sendable (NvstSeatStats) -> Void)?
     public var onRemoteAudio: (@Sendable (Int) -> Void)?
+    /// Decoded playout PCM (Int16 interleaved) on its way to the output device, so a recording can
+    /// capture game audio. Called on the CoreAudio render thread: it must copy and return, never
+    /// block, and never hop to an actor.
+    public var onGameAudioFrame: (@Sendable (UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
+    /// Held for the lifetime of the bundle because `OPNCoreAudioRTCDevice.owner` is weak and the
+    /// factory holds only the device.
+    var audioDevice: OPNCoreAudioRTCDevice?
     /// Fires when `control_channel_partially_reliable` opens, so QoS feedback can start.
     public var onPartiallyReliableControlOpen: (@Sendable () -> Void)?
 
+}
+
+/// The bundle owns the CoreAudio RTC device so decoded game audio crosses into our code, which is
+/// what a recording needs. Microphone capture is not implemented on this transport
+/// (`NvstBifrostFreeTransport.setMicrophoneEnabled`), so the capture side stays inert and libwebrtc
+/// keeps receiving the silence the device already hands it.
+extension NvstWebRtcBundle: OPNCoreAudioRTCDeviceOwner {
+    func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
+        onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels)
+    }
+
+    func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {}
+    func handleCapturedMicrophoneLevel(_ level: Double) {}
+    func isMicrophoneCaptureEnabled() -> Bool { false }
 }

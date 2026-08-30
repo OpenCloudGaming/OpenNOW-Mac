@@ -9,7 +9,7 @@ typealias OPNLibWebRTCAnswerHandler = @convention(block) (NSString, NSString) ->
 typealias OPNLibWebRTCIceCandidateHandler = @convention(block) (NSDictionary) -> Void
 typealias OPNLibWebRTCStateHandler = @convention(block) (Bool, NSString) -> Void
 
-final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
+final class OPNLibWebRTCStreamSession: NSObject, OPNCoreAudioRTCDeviceOwner, @unchecked Sendable {
     static let maxGamepadControllers = 4
 
     let statsQueue = DispatchQueue(label: "io.opencg.opennow.webrtc.stats")

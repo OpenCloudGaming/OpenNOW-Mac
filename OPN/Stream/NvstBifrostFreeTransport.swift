@@ -49,6 +49,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     public typealias PixelBufferSink = @Sendable (CVPixelBuffer, CMTime, Bool) -> Void
 
     let pixelBufferSink: PixelBufferSink?
+    /// The stream recorder, deliberately off this actor. Both feeds reach it from a realtime
+    /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
+    /// may `await`; the recorder does its own locking and queueing.
+    nonisolated let recorder = WebRTCStreamRecorder()
     let logger: (@Sendable (String) -> Void)?
     private let controlTimeout: Duration
     var reserver: NvstLocalBundleReserver?
@@ -372,11 +376,34 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
     }
 
+    // MARK: - Recording
+
+    public func startRecording(configuration: WebRTCStreamRecordingConfiguration) async {
+        recorder.start(configuration: configuration)
+        logger?("NVST recording started \(configuration.width)x\(configuration.height)@\(configuration.fps)")
+    }
+
+    public func stopRecording() async {
+        recorder.stop()
+    }
+
+    public func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?) async {
+        recorder.onStatusChanged = handler
+    }
+
     public func disconnect() async {
+        // Teardown before the writer is closed would strand a half-written file with no metadata,
+        // so every exit closes the recording first.
+        recorder.stop()
         await teardown(reason: "disconnect")
     }
 
     public func resetForRecovery() async {
+        // Recovery rebuilds the decoder and the bundle. Presentation timestamps come from wall
+        // clock, so carrying the writer across the gap would bake a frozen segment into the file —
+        // and a recovered session can come back at a different resolution than the adaptor was
+        // sized for. Close the recording and keep what was captured.
+        recorder.stop()
         await teardown(reason: "recovery")
     }
 

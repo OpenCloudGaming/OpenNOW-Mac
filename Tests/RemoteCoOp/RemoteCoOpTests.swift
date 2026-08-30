@@ -340,6 +340,18 @@ actor RemoteCoOpInputRecorder {
     func events() -> [UserInputEvent] {
         recordedEvents
     }
+
+    /// Waits for the host peer's coalescing drain to deliver `count` events, up to two seconds.
+    /// A fixed sleep raced it: the drain is a 4 ms `Task.sleep`, and in a loaded parallel test run
+    /// its wake-up slips well past the 30 ms the tests used to allow. Returns as soon as the count
+    /// is reached, or whatever arrived by the deadline so the expectation still reports the miss.
+    func waitForEvents(count: Int) async -> [UserInputEvent] {
+        for _ in 0..<200 {
+            if recordedEvents.count >= count { return recordedEvents }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return recordedEvents
+    }
 }
 
 final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFactory, @unchecked Sendable {

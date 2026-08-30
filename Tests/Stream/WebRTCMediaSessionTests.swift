@@ -253,8 +253,11 @@ struct WebRTCMediaSessionTests {
         try await Task.sleep(for: .milliseconds(100))
         recorder.stop()
 
+        // Up to 10 s, not 1 s: the status hops through `Task { @MainActor }`, and with the whole
+        // suite running in parallel the main actor can be busy for far longer than a second. The
+        // loop exits the moment the status lands, so a healthy run still finishes immediately.
         var terminalStatus: WebRTCStreamRecordingStatus?
-        for _ in 0..<20 {
+        for _ in 0..<200 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
             try await Task.sleep(for: .milliseconds(50))

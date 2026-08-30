@@ -310,9 +310,7 @@ struct RemoteCoOpHostingTests {
             let message = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: invite.id, participantID: participantID, input: packet)
             await peer.receiveDataChannelText(try OPNRemoteCoOpWireCodec.encode(message))
         }
-        try await Task.sleep(for: .milliseconds(30))
-
-        let events = await inputRecorder.events()
+        let events = await inputRecorder.waitForEvents(count: 2)
         #expect(events.count == 2)
         guard case .gamepad(let state) = events.last else {
             Issue.record("Expected routed gamepad event")
@@ -346,9 +344,7 @@ struct RemoteCoOpHostingTests {
         let message = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: invite.id, participantID: participantID, input: nextPress, inputs: [press, release, nextPress])
 
         await peer.receiveDataChannelText(try OPNRemoteCoOpWireCodec.encode(message))
-        try await Task.sleep(for: .milliseconds(30))
-
-        let events = await inputRecorder.events()
+        let events = await inputRecorder.waitForEvents(count: 3)
         #expect(events.count == 3)
         let buttons = events.compactMap { event -> GamepadButtons? in
             guard case .gamepad(let state) = event else { return nil }

@@ -220,6 +220,12 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
                 waitsForLiveResizeEnd = true
                 return
             }
+            // Zoom and move animations raise no live-resize flag and post no end notification;
+            // they are detected by the nested run loop they spin. See StreamWindowGeometryGate.
+            guard !StreamWindowGeometryGate.isRunningNestedRunLoop() else {
+                StreamWindowGeometryGate.whenGeometryIsMutable { [weak self] in self?.apply() }
+                return
+            }
             waitsForLiveResizeEnd = false
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
                 clearAppliedAspectRatio()
@@ -259,6 +265,11 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
             guard !Self.isLiveResizing(window) else {
                 needsDeferredAspectRatioClear = true
                 waitsForLiveResizeEnd = true
+                return
+            }
+            guard !StreamWindowGeometryGate.isRunningNestedRunLoop() else {
+                needsDeferredAspectRatioClear = true
+                StreamWindowGeometryGate.whenGeometryIsMutable { [weak self] in self?.apply() }
                 return
             }
             if appliedLockState == true {
@@ -303,7 +314,7 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
         }
 
         private static func isLiveResizing(_ window: NSWindow) -> Bool {
-            window.inLiveResize || window.contentView?.inLiveResize == true
+            StreamWindowGeometryGate.isLiveResizing(window)
         }
 
         private func removeFullScreenTransitionObservers() {

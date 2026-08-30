@@ -274,7 +274,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDStatusPanel: some View {
         StreamHUDWrappingRow(minimumItemWidth: 84) {
             StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, positive: model.microphoneEnabled && model.microphoneAvailable)
-            StreamHUDMetricCard(title: "Rec", value: "Unavailable", positive: false)
+            StreamHUDMetricCard(title: "Rec", value: model.recordingStatusText, positive: model.recordingCanStop)
             StreamHUDMetricCard(title: "AFK", value: model.antiAFKMouseMovementEnabled ? "On" : "Off", positive: model.antiAFKMouseMovementEnabled)
             if model.sessionLimit != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -311,12 +311,13 @@ extension NativeNVSTMediaStreamSurface {
                     action: model.toggleNativeMicrophone
                 )
                 StreamHUDActionRow(
-                    title: "Record",
-                    subtitle: "Unavailable with native NVST",
-                    systemName: "record.circle",
-                    isActive: false,
-                    isDisabled: !model.sidebarCapabilities.supports(.recording),
-                    action: {}
+                    title: model.recordingCanStop ? "Stop Recording" : "Record",
+                    subtitle: model.recordingStatusText,
+                    systemName: model.recordingCanStop ? "stop.circle" : "record.circle",
+                    isActive: model.recordingCanStop,
+                    isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || model.recordingIsBusy,
+                    isFocused: model.hudFocusID == "recording",
+                    action: model.toggleNativeRecording
                 )
                 StreamHUDActionRow(
                     title: model.pointerLocked ? "Release Mouse" : "Capture Mouse",

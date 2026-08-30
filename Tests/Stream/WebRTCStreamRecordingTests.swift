@@ -16,7 +16,10 @@ private actor StreamRecordingStatusRecorder {
     }
 }
 
-@Suite("WebRTCStreamRecording")
+/// Serialized: every test here drives a real `AVAssetWriter`. Run in parallel they put five
+/// concurrent video encoders on a CI runner with three cores and no hardware encoder, and the
+/// writer inputs then report not-ready for long enough to trip the first-frame watchdog.
+@Suite("WebRTCStreamRecording", .serialized)
 struct WebRTCStreamRecordingTests {
     @Test("recording writes a video file from pixel buffers")
     func recordingWritesVideoFileFromPixelBuffers() async throws {
@@ -253,6 +256,122 @@ struct WebRTCStreamRecordingTests {
         let leftovers = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         #expect(leftovers.filter { $0.pathExtension == "mp4" || $0.pathExtension == "json" }.isEmpty)
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    @Test("recording writes a video file from native NV12 frames")
+    func recordingWritesVideoFileFromNativePixelBuffers() async throws {
+        let recorder = WebRTCStreamRecorder()
+        let statuses = StreamRecordingStatusRecorder()
+        recorder.onStatusChanged = { status in
+            Task { await statuses.append(status) }
+        }
+
+        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+            title: "Native Frame Regression",
+            applicationID: "100",
+            width: 64,
+            height: 64,
+            fps: 30,
+            videoBitrateMbps: 1,
+            audioBitrateKbps: 128,
+            enhancedVideoEnabled: false
+        ))
+
+        var frameIndex = 0
+        var sawRecording = false
+        var framesAfterStart = 0
+        let feedDeadline = ContinuousClock.now + .seconds(15)
+        while ContinuousClock.now < feedDeadline {
+            if await statuses.terminalStatus() != nil { break }
+            guard let pixelBuffer = Self.makeNV12Frame(width: 64, height: 64, frameIndex: frameIndex) else {
+                Issue.record("Unable to create test NV12 pixel buffer")
+                return
+            }
+            recorder.appendNativePixelBuffer(pixelBuffer)
+            // Interleaved stereo float, the shape the NVST Opus decoder produces when audio runs on
+            // its own socket rather than through libwebrtc's audio device.
+            recorder.appendGameAudioSamples(Self.makeSineSamples(frameCount: 480, frameIndex: frameIndex), sampleRate: 48_000, channels: 2)
+            frameIndex += 1
+            if sawRecording { framesAfterStart += 1 }
+            if !sawRecording {
+                sawRecording = await statuses.values.contains { status in
+                    if case .recording = status { return true }
+                    return false
+                }
+            }
+            if sawRecording && framesAfterStart >= 8 { break }
+            try await Task.sleep(for: .milliseconds(34))
+        }
+        recorder.stop()
+
+        var terminalStatus: WebRTCStreamRecordingStatus?
+        for _ in 0..<40 {
+            terminalStatus = await statuses.terminalStatus()
+            if terminalStatus != nil { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        guard case .finished(let recording) = terminalStatus else {
+            Issue.record("Expected successful recording, got \(String(describing: terminalStatus))")
+            return
+        }
+        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+
+        #expect(FileManager.default.fileExists(atPath: recording.videoURL.path))
+        #expect(recording.fileSizeBytes > 0)
+        #expect(recording.durationSeconds > 0)
+        #expect(recording.width == 64)
+        #expect(recording.height == 64)
+        #expect(recording.enhancedVideo == false)
+        let asset = AVURLAsset(url: recording.videoURL)
+        #expect(try await asset.loadTracks(withMediaType: .video).first != nil)
+        // The float PCM path has to reach the file, not just be accepted: with audio on its own
+        // socket this is the recording's only audio source.
+        #expect(try await asset.loadTracks(withMediaType: .audio).first != nil)
+    }
+
+    private static func makeSineSamples(frameCount: Int, frameIndex: Int) -> [Float] {
+        var samples = [Float]()
+        samples.reserveCapacity(frameCount * 2)
+        for frame in 0..<frameCount {
+            let phase = Float(frameIndex * frameCount + frame) * 0.01
+            let value = sin(phase) * 0.25
+            samples.append(value)
+            samples.append(value)
+        }
+        return samples
+    }
+
+    private static func makeNV12Frame(width: Int, height: Int, frameIndex: Int) -> CVPixelBuffer? {
+        let attributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        var pixelBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+              let pixelBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        guard let luma = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0),
+              let chroma = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1) else { return nil }
+        let lumaRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+        let chromaRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
+        let lumaPixels = luma.assumingMemoryBound(to: UInt8.self)
+        let chromaPixels = chroma.assumingMemoryBound(to: UInt8.self)
+        for y in 0..<height {
+            for x in 0..<width {
+                lumaPixels[y * lumaRow + x] = UInt8((x + y + frameIndex * 13) % 256)
+            }
+        }
+        for y in 0..<(height / 2) {
+            for x in 0..<(width / 2) {
+                chromaPixels[y * chromaRow + x * 2] = UInt8((x + frameIndex * 7) % 256)
+                chromaPixels[y * chromaRow + x * 2 + 1] = UInt8((y + frameIndex * 5) % 256)
+            }
+        }
+        return pixelBuffer
     }
 
     private static func makeBGRAFrame(width: Int, height: Int, frameIndex: Int) -> CVPixelBuffer? {
