@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.1.0...v0.2.0) (2026-08-31)
+
+
+### Features
+
+* add desktop mode action on controller mode ui ([5436546](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5436546ad81b9a97ef2c98729948f821149a8339))
+* add menu animations ([91aa4fc](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/91aa4fc80e77a74ae52f043bb77ad5c753f45294))
+* add nvst recording ([b0b3b94](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b0b3b9486b5204923196f697191731e9efa51907))
+
 ## [0.1.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.0.1...v0.1.0) (2026-08-30)
 
 
