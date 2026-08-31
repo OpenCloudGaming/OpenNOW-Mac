@@ -78,7 +78,9 @@ The runner starts:
 
 It defaults printed join/TURN URLs to `198.12.95.48`, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
 
-Production browser invites use HTTP/WS against the public IP by default to avoid browser domain HTTPS upgrades. HTTPS/WSS remains supported when explicitly configured with a certificate that clients trust for the IP address.
+The broker always serves HTTPS/WSS. It cannot serve plaintext: browsers gate `RTCPeerConnection` and
+the Gamepad API behind a secure context, and `http://` on anything other than `localhost` is not one,
+so a guest page served over HTTP cannot build a peer connection at all.
 
 If the broker port is busy, the runner lets the broker fall back to the next available configured alternate and prints the actual browser/WebSocket URLs after the broker binds. By default, `32190` and `32191` are tried after `32188`.
 
@@ -104,6 +106,32 @@ node RemoteCoOp/run-servers.mjs
 ```
 
 Install `coturn` before running without `--dry-run`.
+
+## Running The Broker On The Host Mac
+
+The broker is signaling-only and small enough to run on the same machine as OpenNOW, which is the
+simplest way to test a guest join without deploying anything.
+
+```sh
+OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0 \
+OPENNOW_REMOTE_COOP_PUBLIC_HOST=127.0.0.1 \
+OPENNOW_REMOTE_COOP_INVITE_SECRET='pick-something-long' \
+node RemoteCoOp/server/broker.mjs
+```
+
+Then in OpenNOW, Settings > Gameplay > Remote Co-Op:
+
+- Signaling Server: `wss://127.0.0.1:32188/remote-coop`
+- Guest Join URL: `https://127.0.0.1:32188/`
+- Invite Signing Secret: the same string as above
+
+Relaunch the stream afterwards. Remote Co-Op preferences are frozen into the stream's launch
+metadata, because reserved controller slots are advertised to GeForce NOW before the session starts,
+so changes never apply to a session that is already running.
+
+`OPENNOW_REMOTE_COOP_PUBLIC_HOST` sets the generated certificate's subject alternative name and is
+added to the WebSocket origin allowlist. For a guest on another machine on the LAN, set it to the
+host's LAN address and use that address in both URLs above.
 
 ## Local Broker
 
@@ -136,7 +164,9 @@ OPENNOW_REMOTE_COOP_LOG_MESSAGES=0
 
 When `OPENNOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-separated `OPENNOW_REMOTE_COOP_PORT_ALTERNATES` list. Keep OpenNOW's Remote Co-Op Signaling Server and Guest Join URL settings aligned with the actual broker URL printed at startup.
 
-If broker certificate/key paths are configured, the broker serves HTTPS/WSS. Without them, it serves HTTP/WS.
+The broker always serves HTTPS/WSS. Supply `OPENNOW_REMOTE_COOP_BROKER_CERT` and
+`OPENNOW_REMOTE_COOP_BROKER_KEY` to use your own certificate; otherwise it generates a self-signed
+one into `RemoteCoOp/state/` on first run, and guests accept the browser warning once per origin.
 
 Static TURN credentials are also supported with `OPENNOW_REMOTE_COOP_TURN_USERNAME` and `OPENNOW_REMOTE_COOP_TURN_CREDENTIAL`, but shared-secret REST credentials are preferred for production.
 
@@ -228,7 +258,8 @@ OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600 \
 node RemoteCoOp/server/broker.mjs
 ```
 
-The Node broker can still terminate TLS directly with `OPENNOW_REMOTE_COOP_BROKER_CERT` and `OPENNOW_REMOTE_COOP_BROKER_KEY`, or it can keep binding to `127.0.0.1` behind a reverse proxy. The default production path intentionally uses the public IP over HTTP/WS.
+The Node broker terminates TLS itself with `OPENNOW_REMOTE_COOP_BROKER_CERT` and
+`OPENNOW_REMOTE_COOP_BROKER_KEY`, or it can bind `127.0.0.1` behind a reverse proxy that does.
 
 ## Transport Modes
 
@@ -299,7 +330,7 @@ Local validation:
 
 WAN validation:
 
-1. Deploy broker on public IP `198.12.95.48` with the selected high HTTP/WS port open.
+1. Deploy the broker on your public IP with the selected high HTTPS/WSS port open.
 2. Deploy TURN with the selected high UDP/TCP port and UDP relay range open.
 3. Configure OpenNOW Remote Co-Op invites to use the deployed broker URL.
 4. Test host and guest on different networks.

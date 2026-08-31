@@ -257,19 +257,30 @@ extension NvstBifrostFreeTransport {
     /// once it is out of the bitmap the seat will not accept one, and the game keeps whatever was
     /// held down at the moment it vanished.
     public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
-        guard let bundle, bundle.isInputReady else {
-            throw NativeNVSTError.transportFailed("NVST input is not negotiated yet.")
-        }
+        // The requested set is recorded before the readiness check, and this ordering is
+        // load-bearing.
+        //
+        // `presentStream` publishes the local topology as soon as the session connects, but input
+        // is negotiated separately and `activateInput` may not have run yet. Recording only on
+        // success meant a host with two controllers plugged in at launch lost the second one for
+        // the whole session: the announce threw, the caller swallowed it with `try?`, activation
+        // then seeded pad 0 alone, and `send` drops state for a pad that was never announced.
+        // Nothing re-announced it either, because `onTopologyChanged` only fires when the topology
+        // *changes* and it had not. Keeping the intent means activation announces the real set.
+        //
         // An empty topology still leaves the seat believing in pad 0: the activation descriptor
         // announced it, and `connectedBitmap(for:)` falls back to it rather than announcing no
         // devices at all. Normalising here keeps this set equal to what was actually announced, so
-        // the membership check above cannot disagree with the bitmap on the wire.
+        // `send`'s membership check cannot disagree with the bitmap on the wire.
         let indices = Set(topology.playerIndices).isEmpty ? Set([0]) : Set(topology.playerIndices)
         connectedGamepadIndices = indices
         // A pad that leaves must not keep its counter: the seat tracks the sequence per gamepad,
         // so a slot reused by the next guest would resume mid-stream and its first packets would
         // look stale.
         gamepadSequences = gamepadSequences.filter { indices.contains(Int($0.key)) }
+        guard let bundle, bundle.isInputReady else {
+            throw NativeNVSTError.transportFailed("NVST input is not negotiated yet.")
+        }
         let bitmap = NvstGamepadPacket.connectedBitmap(for: indices)
         guard registeredGamepadBitmap != bitmap else { return }
         sendGamepadRegistration(bitmap: bitmap, bundle: bundle, reason: "topology \(indices.sorted())")

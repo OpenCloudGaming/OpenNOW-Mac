@@ -10,11 +10,19 @@ import { spawnSync } from "node:child_process";
 const productionHost = "198.12.95.48";
 const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 32188);
 const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
-const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? productionHost;
+// Every interface, not a baked-in public address. The previous default was `productionHost`, an
+// address only one machine in the world has, so `node broker.mjs` failed to bind anywhere else —
+// including on a developer's own Mac, which is the configuration the guest page is easiest to test
+// from. Set OPENNOW_REMOTE_COOP_BIND_HOST to narrow it.
+const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "0.0.0.0";
 const MAX_FRAME_SIZE = 1024 * 1024;
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_DISPLAY_NAME_LENGTH = 64;
-const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
+// The guest page lives under `Resources/` so the macOS app bundles it: OpenNOW can host Remote
+// Co-Op itself, and serving the same files from both means the page can never drift from the
+// protocol the app speaks. This broker stays as the deployable option for guests who cannot reach
+// the host directly.
+const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../../Resources/RemoteCoOp/browser"));
 const stateRoot = join(fileURLToPath(new URL(".", import.meta.url)), "../state");
 
 const tls = readOrCreateTLSMaterial();
@@ -89,14 +97,30 @@ const server = await makeBrokerServer(async (request, response) => {
   }
 });
 
-const allowedOrigins = [
-  `${brokerHTTPProtocol}://${productionHost}:${port}`,
-  `${brokerHTTPProtocol}://${productionHost}`,
-  `${brokerHTTPProtocol}://localhost:${port}`,
-  `${brokerHTTPProtocol}://localhost`,
-  `${brokerHTTPProtocol}://127.0.0.1:${port}`,
-  `${brokerHTTPProtocol}://127.0.0.1`
-];
+// The origins a guest page may open a WebSocket from. This was built from `productionHost`, a
+// hardcoded address, rather than from the host this broker is actually reachable at — so any
+// deployment other than that one machine rejected every browser guest with `invalid_origin` while
+// serving them the page perfectly happily. Derived from the advertised public host now, with the
+// loopback forms kept for same-machine testing.
+const originHosts = [...new Set([
+  stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", ""),
+  bindHost === "0.0.0.0" || bindHost === "::" ? "" : bindHost,
+  "localhost",
+  "127.0.0.1",
+  ...splitEnv("OPENNOW_REMOTE_COOP_ALLOWED_ORIGIN_HOSTS", "")
+].filter(Boolean))];
+// Rebuilt once the socket is actually bound. The preferred port is only a request: the broker
+// falls back through OPENNOW_REMOTE_COOP_PORT_ALTERNATES when it is busy, and an origin list built
+// from the requested port would then reject guests arriving on the port they were actually served
+// from.
+let allowedOrigins = buildAllowedOrigins(port);
+
+function buildAllowedOrigins(activePort) {
+  return originHosts.flatMap(host => [
+    `${brokerHTTPProtocol}://${host}:${activePort}`,
+    `${brokerHTTPProtocol}://${host}`
+  ]);
+}
 
 server.on("upgrade", (request, socket) => {
   const origin = request.headers.origin;
@@ -148,7 +172,9 @@ function listenOnAvailablePort(index) {
     server.off("error", onError);
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : candidate;
+    allowedOrigins = buildAllowedOrigins(actualPort);
     console.log(`OpenNOW Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
+    logNetwork("ws.origins", { allowed: allowedOrigins.join(" ") });
     if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port, secure: brokerTLSEnabled });
   };
   server.once("error", onError);

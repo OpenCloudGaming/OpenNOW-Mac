@@ -65,6 +65,32 @@ public enum OPNRemoteCoOpLatencyMode: String, CaseIterable, Codable, Equatable, 
     }
 }
 
+/// Where the signaling rendezvous lives.
+public enum OPNRemoteCoOpHostingMode: String, CaseIterable, Codable, Equatable, Sendable {
+    /// OpenNOW serves the guest page and the signaling socket itself. Nothing to deploy, nothing to
+    /// configure, and no shared secret - the app both signs and verifies its own invites.
+    case local
+    /// A separately deployed broker, which both sides dial out to. The only option that works when
+    /// the guest cannot reach the host directly.
+    case externalBroker
+
+    public var label: String {
+        switch self {
+        case .local: return "This Mac"
+        case .externalBroker: return "External Broker"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .local:
+            return "OpenNOW hosts the invite itself. No setup, and best for guests on your network. A guest elsewhere needs a forwarded port."
+        case .externalBroker:
+            return "Use a deployed broker both you and the guest connect out to. Works behind any router, and needs the broker's signing secret."
+        }
+    }
+}
+
 public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
     public var urls: [String]
     public var username: String?
@@ -209,6 +235,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataSignalingServerURLKey = "remoteCoOpSignalingServerURL"
     public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
     public static let launchMetadataHideGuestInviteDetailsKey = "remoteCoOpHideGuestInviteDetails"
+    public static let launchMetadataHostingModeKey = "remoteCoOpHostingMode"
 
     public static let defaultSignalingServerURL = "wss://198.12.95.48:32188/remote-coop"
     public static let defaultGuestJoinBaseURL = "https://198.12.95.48:32188/"
@@ -223,6 +250,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public var signalingServerURL: String
     public var guestJoinBaseURL: String
     public var hideGuestInviteDetails: Bool
+    public var hostingMode: OPNRemoteCoOpHostingMode
 
     public init(isAlphaOptedIn: Bool = true,
                 isEnabled: Bool = false,
@@ -233,7 +261,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 requireHostApproval: Bool = true,
                 signalingServerURL: String = Self.defaultSignalingServerURL,
                 guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,
-                hideGuestInviteDetails: Bool = false) {
+                hideGuestInviteDetails: Bool = false,
+                hostingMode: OPNRemoteCoOpHostingMode = .local) {
         self.isAlphaOptedIn = isAlphaOptedIn
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
@@ -244,6 +273,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         self.signalingServerURL = Self.normalizedURLString(signalingServerURL, fallback: Self.defaultSignalingServerURL)
         self.guestJoinBaseURL = Self.normalizedURLString(guestJoinBaseURL, fallback: Self.defaultGuestJoinBaseURL)
         self.hideGuestInviteDetails = hideGuestInviteDetails
+        self.hostingMode = hostingMode
     }
 
     public var isAvailable: Bool {
@@ -278,6 +308,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             Self.launchMetadataSignalingServerURLKey: signalingServerURL,
             Self.launchMetadataGuestJoinBaseURLKey: guestJoinBaseURL,
             Self.launchMetadataHideGuestInviteDetailsKey: String(hideGuestInviteDetails),
+            Self.launchMetadataHostingModeKey: hostingMode.rawValue,
         ]
     }
 
@@ -292,7 +323,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
             signalingServerURL: migratedSignalingServerURL(string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL)),
             guestJoinBaseURL: migratedGuestJoinBaseURL(string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL)),
-            hideGuestInviteDetails: bool(metadata[launchMetadataHideGuestInviteDetailsKey], defaultValue: fallback.hideGuestInviteDetails)
+            hideGuestInviteDetails: bool(metadata[launchMetadataHideGuestInviteDetailsKey], defaultValue: fallback.hideGuestInviteDetails),
+            hostingMode: OPNRemoteCoOpHostingMode(rawValue: metadata[launchMetadataHostingModeKey] ?? "") ?? fallback.hostingMode
         )
     }
 
@@ -567,7 +599,8 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
                 joinURL: URL? = nil,
                 applicationID: String = "",
                 title: String = "",
-                hideGuestInviteDetails: Bool = false) {
+                hideGuestInviteDetails: Bool = false,
+                hostingMode: OPNRemoteCoOpHostingMode = .local) {
         self.id = id
         self.code = code
         self.createdAt = createdAt

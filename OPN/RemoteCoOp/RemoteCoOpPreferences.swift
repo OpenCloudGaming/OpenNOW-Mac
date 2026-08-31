@@ -14,6 +14,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
     private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
     private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
+    private static let hostingModeKey = "OpenNOW.RemoteCoOp.HostingMode"
 
     public static var isAlphaOptedIn: Bool {
         bool(storage.object(forKey: alphaOptInKey), defaultValue: false)
@@ -31,7 +32,8 @@ public enum OPNRemoteCoOpPreferencesStore {
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
             signalingServerURL: OPNRemoteCoOpPreferences.migratedSignalingServerURL(string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL)),
             guestJoinBaseURL: OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL(string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)),
-            hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false)
+            hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false),
+            hostingMode: OPNRemoteCoOpHostingMode(rawValue: string(storage.object(forKey: hostingModeKey))) ?? .local
         )
     }
 
@@ -47,6 +49,7 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
         storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
         storage.set(preferences.hideGuestInviteDetails, forKey: hideGuestInviteDetailsKey)
+        storage.set(preferences.hostingMode.rawValue, forKey: hostingModeKey)
         storage.synchronize()
     }
 
@@ -110,6 +113,13 @@ public enum OPNRemoteCoOpPreferencesStore {
         guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        save(preferences)
+    }
+
+    public static func setHostingMode(_ mode: OPNRemoteCoOpHostingMode) {
+        guard isAlphaOptedIn else { return }
+        var preferences = load()
+        preferences.hostingMode = mode
         save(preferences)
     }
 

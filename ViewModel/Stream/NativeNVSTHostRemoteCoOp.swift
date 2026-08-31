@@ -84,6 +84,7 @@ extension NativeNVSTHostViewModel {
         applyRemoteCoOpVideoScale(preferences: preferences)
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
+            await remoteCoOpEmbeddedServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             await remoteCoOpPeerController?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             await remoteCoOpPeerController?.updateQualityPreset(preferences.qualityPreset)
             await remoteCoOpPeerController?.updateLatencyMode(preferences.latencyMode)
@@ -114,13 +115,23 @@ extension NativeNVSTHostViewModel {
             await syncRemoteCoOpGamepadTopology()
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
-                let coordinator = makeRemoteCoOpCoordinator(preferences: preferences)
+                // Resolved before the invite because the link and the signed payload both carry
+                // these addresses, and when hosting locally they are not known until the server
+                // has bound a port.
+                let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
+                    preferences: preferences,
+                    networkConfiguration: remoteCoOpNetworkConfiguration,
+                    logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
+                )
+                let coordinator = makeRemoteCoOpCoordinator(preferences: preferences, hosting: hosting)
                 let invite = try await coordinator.startInvite(
                     applicationID: configuration.applicationID,
                     title: configuration.title,
-                    joinBaseURL: remoteCoOpJoinBaseURL(preferences),
-                    signalingServerURL: preferences.signalingServerURL
+                    joinBaseURL: hosting.joinBaseURL,
+                    signalingServerURL: hosting.signalingServerURL
                 )
+                remoteCoOpCertificateFingerprint = hosting.certificateFingerprint
+                remoteCoOpIsLocallyHosted = hosting.isLocallyHosted
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
                 remoteCoOpMessage = invite.joinURL == nil ? "Copied \(invite.code)" : "Link copied"
@@ -285,14 +296,15 @@ extension NativeNVSTHostViewModel {
 
     // MARK: - Signaling and peers
 
-    func makeRemoteCoOpCoordinator(preferences: OPNRemoteCoOpPreferences) -> OPNRemoteCoOpHostCoordinator {
+    func makeRemoteCoOpCoordinator(preferences: OPNRemoteCoOpPreferences, hosting: OPNRemoteCoOpHostingSession) -> OPNRemoteCoOpHostCoordinator {
         if let remoteCoOpHostCoordinator {
             if remoteCoOpPeerController == nil, let remoteCoOpSignalingSession {
                 remoteCoOpPeerController = makeRemoteCoOpPeerController(signaling: remoteCoOpSignalingSession, coordinator: remoteCoOpHostCoordinator)
             }
             return remoteCoOpHostCoordinator
         }
-        let signaling = makeRemoteCoOpSignalingSession(preferences: preferences)
+        let signaling = hosting.signaling
+        remoteCoOpEmbeddedServer = hosting.embeddedServer
         let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: remoteCoOpHostSession, signaling: signaling)
         remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode)
         remoteCoOpSignalingSession = signaling
@@ -311,6 +323,13 @@ extension NativeNVSTHostViewModel {
                 case .networkConfiguration(let configuration):
                     remoteCoOpNetworkConfiguration = configuration
                     await remoteCoOpPeerController?.updateNetworkConfiguration(configuration)
+                case .brokerError(let reason):
+                    // Almost always a rejected host registration, which is silent on the wire
+                    // otherwise: the invite looks created and guests queue up against a room the
+                    // host was never admitted to.
+                    remoteCoOpMessage = reason
+                    showNativeTransientStreamMessage("Remote Co-Op: \(reason)")
+                    WebRTCMediaTelemetry.capture("nvst.remote_coop.broker.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
                 default:
                     let routedEvents = await coordinator.handle(event)
                     forwardRemoteCoOpInput(routedEvents)
@@ -364,17 +383,6 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    func makeRemoteCoOpSignalingSession(preferences: OPNRemoteCoOpPreferences) -> any OPNRemoteCoOpSignalingSession {
-        if let serverURL = URL(string: preferences.signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)), serverURL.scheme?.hasPrefix("ws") == true {
-            return OPNRemoteCoOpWebSocketSignalingSession(serverURL: serverURL)
-        }
-        return OPNInProcessRemoteCoOpSignalingSession()
-    }
-
-    func remoteCoOpJoinBaseURL(_ preferences: OPNRemoteCoOpPreferences) -> URL? {
-        URL(string: preferences.guestJoinBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
     /// Tears the hosting side down and returns the neutral pad states the caller must still deliver.
     ///
     /// They are returned rather than sent because teardown runs from paths that are about to drop
@@ -396,6 +404,12 @@ extension NativeNVSTHostViewModel {
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil
+        // Closing the session stops the embedded server, but a session that never got as far as
+        // being stored would leave the listener bound and the port held.
+        await remoteCoOpEmbeddedServer?.stop()
+        remoteCoOpEmbeddedServer = nil
+        remoteCoOpCertificateFingerprint = nil
+        remoteCoOpIsLocallyHosted = false
         remoteCoOpHostCoordinator = nil
         return neutralEvents
     }

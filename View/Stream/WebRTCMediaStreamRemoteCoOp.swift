@@ -55,6 +55,7 @@ extension WebRTCMediaStreamSurface {
         remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: remoteCoOpSnapshot.invite, participants: remoteCoOpSnapshot.participants)
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
+            await remoteCoOpEmbeddedServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             await remoteCoOpPeerController?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             await remoteCoOpPeerController?.updateQualityPreset(preferences.qualityPreset)
             await remoteCoOpPeerController?.updateLatencyMode(preferences.latencyMode)
@@ -71,8 +72,15 @@ extension WebRTCMediaStreamSurface {
             neutralEvents.forEach { transport?.sendNow($0) }
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
-                let coordinator = makeRemoteCoOpCoordinator(preferences: preferences)
-                let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: remoteCoOpJoinBaseURL(preferences), signalingServerURL: preferences.signalingServerURL)
+                // Resolved before the invite: the link and the signed payload both carry these
+                // addresses, and hosting locally does not know them until a port is bound.
+                let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
+                    preferences: preferences,
+                    networkConfiguration: remoteCoOpNetworkConfiguration,
+                    logger: { message in WebRTCMediaTelemetry.capture("webrtc.remote_coop.server", level: .info, message: message) }
+                )
+                let coordinator = makeRemoteCoOpCoordinator(preferences: preferences, hosting: hosting)
+                let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: hosting.joinBaseURL, signalingServerURL: hosting.signalingServerURL)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
                 remoteCoOpMessage = invite.joinURL == nil ? "Copied \(invite.code)" : "Link copied"
@@ -161,14 +169,15 @@ extension WebRTCMediaStreamSurface {
         OPNRemoteCoOpPreferences.launchPreferences(from: configuration.metadata, fallback: OPNRemoteCoOpPreferencesStore.load())
     }
 
-    func makeRemoteCoOpCoordinator(preferences: OPNRemoteCoOpPreferences) -> OPNRemoteCoOpHostCoordinator {
+    func makeRemoteCoOpCoordinator(preferences: OPNRemoteCoOpPreferences, hosting: OPNRemoteCoOpHostingSession) -> OPNRemoteCoOpHostCoordinator {
         if let remoteCoOpHostCoordinator {
             if remoteCoOpPeerController == nil, let remoteCoOpSignalingSession {
                 remoteCoOpPeerController = makeRemoteCoOpPeerController(signaling: remoteCoOpSignalingSession, coordinator: remoteCoOpHostCoordinator)
             }
             return remoteCoOpHostCoordinator
         }
-        let signaling = makeRemoteCoOpSignalingSession(preferences: preferences)
+        let signaling = hosting.signaling
+        remoteCoOpEmbeddedServer = hosting.embeddedServer
         let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: remoteCoOpHostSession, signaling: signaling)
         remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode)
         remoteCoOpSignalingSession = signaling
@@ -187,6 +196,10 @@ extension WebRTCMediaStreamSurface {
                 case .networkConfiguration(let configuration):
                     remoteCoOpNetworkConfiguration = configuration
                     await remoteCoOpPeerController?.updateNetworkConfiguration(configuration)
+                case .brokerError(let reason):
+                    remoteCoOpMessage = reason
+                    showTransientStreamMessage("Remote Co-Op: \(reason)")
+                    WebRTCMediaTelemetry.capture("webrtc.remote_coop.broker.error", level: .warning, message: reason, attributes: ["applicationID": self.configuration.applicationID])
                 default:
                     let routedEvents = await coordinator.handle(event)
                     for routedEvent in routedEvents { transport?.sendNow(routedEvent) }
@@ -223,17 +236,6 @@ extension WebRTCMediaStreamSurface {
         }
     }
 
-    func makeRemoteCoOpSignalingSession(preferences: OPNRemoteCoOpPreferences) -> any OPNRemoteCoOpSignalingSession {
-        if let serverURL = URL(string: preferences.signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)), serverURL.scheme?.hasPrefix("ws") == true {
-            return OPNRemoteCoOpWebSocketSignalingSession(serverURL: serverURL)
-        }
-        return OPNInProcessRemoteCoOpSignalingSession()
-    }
-
-    func remoteCoOpJoinBaseURL(_ preferences: OPNRemoteCoOpPreferences) -> URL? {
-        URL(string: preferences.guestJoinBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
     func stopRemoteCoOpSession() async -> [UserInputEvent] {
         let neutralEvents: [UserInputEvent]
         if let remoteCoOpHostCoordinator {
@@ -249,6 +251,8 @@ extension WebRTCMediaStreamSurface {
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil
+        await remoteCoOpEmbeddedServer?.stop()
+        remoteCoOpEmbeddedServer = nil
         remoteCoOpHostCoordinator = nil
         return neutralEvents
     }

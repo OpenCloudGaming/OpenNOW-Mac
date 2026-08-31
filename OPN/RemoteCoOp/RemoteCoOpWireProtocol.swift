@@ -148,7 +148,9 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .networkConfiguration:
             guard let networkConfiguration else { return nil }
             return .networkConfiguration(networkConfiguration)
-        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .error:
+        case .error:
+            return .brokerError(reason ?? "The Remote Co-Op broker rejected this session.")
+        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat:
             return nil
         }
     }

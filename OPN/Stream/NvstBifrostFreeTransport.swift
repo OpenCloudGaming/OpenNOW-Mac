@@ -145,6 +145,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// a persistent count means a topology update was missed, and a burst right after a Remote
     /// Co-Op guest leaves is the expected tail of their coalesced input.
     var gamepadPacketsDroppedForUnannouncedPad = 0
+
+    /// Test seam: sets a pad's sequence counter so the topology's counter cleanup can be observed
+    /// without a negotiated bundle to send real state through.
+    func seedGamepadSequenceForTesting(pad: UInt16, sequence: UInt16) {
+        gamepadSequences[pad] = sequence
+    }
     var didActivateInput = false
     var qosReportsSent = 0
     var qosReportFailures = 0

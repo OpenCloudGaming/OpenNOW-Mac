@@ -258,11 +258,6 @@ struct SteamControllerSettingsPage: View {
 struct GameplaySettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    /// Write-only: the stored secret is never read back into the field. It is a signing key, and a
-    /// keychain item that renders itself into a view every time Settings opens is one screenshot
-    /// away from being someone else's.
-    @State private var remoteCoOpInviteSecretDraft = ""
-
     var body: some View {
         let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -325,30 +320,6 @@ struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
             }
 
-            if viewModel.remoteCoOpPreferences.isAlphaOptedIn {
-                SettingsCard(title: "Remote Co-Op", uiScale: uiScale) {
-                    SettingsToggleRow(title: "Enable Remote Co-Op", subtitle: "Allows the stream HUD to generate an invite code for a remote player. Changes apply to newly launched streams.", isOn: viewModel.remoteCoOpPreferences.isEnabled, uiScale: uiScale, action: viewModel.setRemoteCoOpEnabled)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsOptionRow(title: "Reserved Controllers", subtitle: "Advertises remote gamepad slots to GeForce NOW before launch. Player 2 requires at least one reserved slot.", options: ["None", "1 Guest", "2 Guests", "3 Guests"], selectedIndex: viewModel.remoteCoOpPreferences.reservedGuestSlots, uiScale: uiScale, action: viewModel.setRemoteCoOpReservedGuestSlots)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsOptionRow(title: "Transport", subtitle: viewModel.remoteCoOpPreferences.transportMode.description, options: OPNRemoteCoOpTransportMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpTransportModeIndex, uiScale: uiScale, action: viewModel.setRemoteCoOpTransportModeIndex)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsOptionRow(title: "Guest Quality", subtitle: "Caps the outbound Remote Co-Op stream sent to guests.", options: OPNRemoteCoOpQualityPreset.allCases.map(\.label), selectedIndex: selectedRemoteCoOpQualityPresetIndex, uiScale: uiScale, action: viewModel.setRemoteCoOpQualityPresetIndex)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsOptionRow(title: "Latency Mode", subtitle: viewModel.remoteCoOpPreferences.latencyMode.description, options: OPNRemoteCoOpLatencyMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpLatencyModeIndex, uiScale: uiScale, action: viewModel.setRemoteCoOpLatencyModeIndex)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, uiScale: uiScale, action: viewModel.setRemoteCoOpRequireHostApproval)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, uiScale: uiScale, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket URL of the Remote Co-Op broker. Must match the address the broker printed at startup.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, uiScale: uiScale, action: viewModel.setRemoteCoOpSignalingServerURL)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Base address of the browser join page invites link to.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, uiScale: uiScale, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
-                    SettingsDivider(uiScale: uiScale)
-                    SettingsSecureTextFieldRow(title: "Invite Signing Secret", subtitle: remoteCoOpInviteSecretSubtitle, text: $remoteCoOpInviteSecretDraft, placeholder: "OPENNOW_REMOTE_COOP_INVITE_SECRET", uiScale: uiScale, action: viewModel.setRemoteCoOpInviteSecret)
-                }
-            }
-
             SettingsCard(title: "Recording", uiScale: uiScale) {
                 SettingsSliderRow(title: "Video Bitrate", valueText: recordingVideoBitrateText, value: Double(viewModel.streamProfile.recordingVideoBitrateMbps), range: 0...200, step: 1, uiScale: uiScale, action: viewModel.setRecordingVideoBitrateMbps)
                 SettingsDivider(uiScale: uiScale)
@@ -397,28 +368,6 @@ struct GameplaySettingsPage: View {
 
     private var selectedMicrophoneDeviceIndex: Int {
         viewModel.microphoneDeviceOptions.firstIndex { $0.uniqueId == viewModel.streamProfile.microphoneDeviceId } ?? 0
-    }
-
-    /// The broker signs nothing itself: it verifies what the host signed, using the same secret.
-    /// Without a matching value it answers every join with "Invalid or expired invite token", so
-    /// this row says which of the two states the app is in rather than leaving it to be discovered
-    /// mid-session.
-    private var remoteCoOpInviteSecretSubtitle: String {
-        viewModel.remoteCoOpInviteSecretConfigured
-            ? "Stored in the keychain. Must match the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
-            : "Not set - guests cannot join. Paste the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
-    }
-
-    private var selectedRemoteCoOpTransportModeIndex: Int {
-        OPNRemoteCoOpTransportMode.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.transportMode) ?? 0
-    }
-
-    private var selectedRemoteCoOpQualityPresetIndex: Int {
-        OPNRemoteCoOpQualityPreset.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.qualityPreset) ?? 0
-    }
-
-    private var selectedRemoteCoOpLatencyModeIndex: Int {
-        OPNRemoteCoOpLatencyMode.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.latencyMode) ?? 0
     }
 
     private var streamingProfileMode: String {

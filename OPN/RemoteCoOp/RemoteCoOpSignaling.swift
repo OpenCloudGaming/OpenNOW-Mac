@@ -6,6 +6,11 @@ public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
     case guestDisconnected(UUID)
     case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
     case networkConfiguration(OPNRemoteCoOpNetworkConfiguration)
+    /// The broker refused something, most often the host's own registration. Previously dropped on
+    /// the floor, which made a rejected host indistinguishable from a healthy one: the HUD showed
+    /// "Invite Ready" while the broker had never put the host in a room, and every guest sat
+    /// waiting for a host that was never going to arrive.
+    case brokerError(String)
 }
 
 public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
@@ -164,7 +169,7 @@ public actor OPNRemoteCoOpHostCoordinator {
                 await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))
                 return []
             }
-        case .peerSignal, .networkConfiguration:
+        case .peerSignal, .networkConfiguration, .brokerError:
             return []
         }
     }

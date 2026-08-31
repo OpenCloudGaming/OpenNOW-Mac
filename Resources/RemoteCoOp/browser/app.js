@@ -20,6 +20,9 @@ const elements = {
   diagnosticsList: document.querySelector("#diagnostics-list"),
   copyDiagnosticsButton: document.querySelector("#copy-diagnostics-button"),
   playerBadge: document.querySelector("#player-badge"),
+  controllerGate: document.querySelector("#controller-gate"),
+  controllerGateTitle: document.querySelector("#controller-gate-title"),
+  controllerGateBody: document.querySelector("#controller-gate-body"),
   playerNumber: document.querySelector("#player-number"),
   disconnectButton: document.querySelector("#disconnect-button")
 };
@@ -45,6 +48,9 @@ let inputChannel = null;
 let statsHandle = 0;
 let diagnostics = initialDiagnostics();
 let sessionState = "Connecting";
+/// Whether a pad has been seen this session. The Gamepad API reports nothing until a button is
+/// pressed, so "not detected" is the normal opening state rather than an error.
+let controllerDetected = false;
 const playbackPromises = new WeakMap();
 
 renderInvite(inviteToken);
@@ -67,6 +73,13 @@ window.addEventListener("gamepadconnected", event => {
   if (elements.gamepadName) elements.gamepadName.textContent = event.gamepad.id;
   if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Ready";
   updateDiagnostics({ input: "controller connected" });
+  setControllerDetected(true, event.gamepad.id);
+});
+window.addEventListener("gamepaddisconnected", () => {
+  if (elements.gamepadName) elements.gamepadName.textContent = "Controller";
+  if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Waiting";
+  updateDiagnostics({ input: "controller disconnected" });
+  setControllerDetected(false);
 });
 window.addEventListener("pagehide", disconnect);
 document.addEventListener("visibilitychange", restartPollingIfActive);
@@ -228,9 +241,14 @@ function startPolling() {
     if (!gamepad) {
       if (elements.gamepadName) elements.gamepadName.textContent = "Controller";
       if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Waiting";
+      // `gamepadconnected` does not fire in every browser until a button is pressed, and a pad can
+      // also drop out mid-session, so the gate is driven from the poll rather than from the event
+      // alone.
+      setControllerDetected(false);
       return;
     }
     if (elements.gamepadName) elements.gamepadName.textContent = gamepad.id;
+    setControllerDetected(true, gamepad.id);
     const input = inputPacket(gamepad, time);
     const state = inputStateKey(input);
     const changed = state !== lastSentState;
@@ -526,6 +544,7 @@ function initialDiagnostics() {
     remoteCandidates: 0,
     selectedRoute: "not selected",
     inputChannel: "not created",
+    controller: "not detected",
     input: "waiting",
     inputSampling: "stopped",
     inputPackets: 0,
@@ -572,9 +591,12 @@ function diagnosticsRows() {
 }
 
 function inputDiagnosticsDetail() {
-  if (!diagnostics.lastInputSentAt) return `${diagnostics.input}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; 0 packets`;
+  // The controller state is part of this line because it is the usual answer to "the channel is
+  // open and nothing is arriving": guest input is gamepad-only, and a browser reports no pad at all
+  // until a button is pressed.
+  if (!diagnostics.lastInputSentAt) return `${diagnostics.input}; controller ${diagnostics.controller}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; 0 packets`;
   const ageMilliseconds = Math.max(0, Math.round(performance.now() - diagnostics.lastInputSentAt));
-  return `${diagnostics.input}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; ${diagnostics.inputPackets} packets; last sequence ${diagnostics.lastInputSequence}; sample-to-send ${diagnostics.lastInputSampleToSendMs} ms; ${ageMilliseconds} ms ago`;
+  return `${diagnostics.input}; controller ${diagnostics.controller}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; ${diagnostics.inputPackets} packets; last sequence ${diagnostics.lastInputSequence}; sample-to-send ${diagnostics.lastInputSampleToSendMs} ms; ${ageMilliseconds} ms ago`;
 }
 
 async function copyDiagnostics() {
@@ -873,6 +895,32 @@ function setState(title, detail, connected, playerNumber = null) {
     elements.networkDetail.textContent = detail;
   }
   updatePlayerBadge(title, playerNumber);
+  renderControllerGate();
+}
+
+/// Shows or hides the controller prompt.
+///
+/// Only meaningful once approved: before that the guest is waiting on the host, and a "press any
+/// button" prompt would be pointing at the wrong thing.
+function setControllerDetected(detected, name = "") {
+  const changed = controllerDetected !== detected;
+  controllerDetected = detected;
+  if (changed) {
+    updateDiagnostics({ controller: detected ? `detected: ${name || "controller"}` : "not detected" });
+  }
+  renderControllerGate();
+}
+
+function renderControllerGate() {
+  if (!elements.controllerGate) return;
+  const shouldShow = approved && !controllerDetected && !hasTerminalState();
+  elements.controllerGate.classList.toggle("hidden", !shouldShow);
+  elements.controllerGate.classList.toggle("is-detected", controllerDetected);
+  if (!shouldShow) return;
+  if (elements.controllerGateTitle) elements.controllerGateTitle.textContent = "Press any button";
+  if (elements.controllerGateBody) {
+    elements.controllerGateBody.textContent = "Your browser only sees a controller once you press one of its buttons.";
+  }
 }
 
 function hasTerminalState() {

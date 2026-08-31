@@ -53,6 +53,8 @@ public struct WebRTCMediaStreamSurface: View {
     @State var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
     @State var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     @State var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
+    /// Set only while OpenNOW is hosting the signaling itself, and stopped with the invite.
+    @State var remoteCoOpEmbeddedServer: OPNRemoteCoOpEmbeddedServer?
     @State var remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
     @State var remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
     @State var remoteCoOpListenTask: Task<Void, Never>?

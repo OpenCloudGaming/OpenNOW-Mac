@@ -42,6 +42,10 @@
 
             <button id="join-button" type="button">Join</button>
             <p class="status" id="join-status" role="status">Code required</p>
+            <p class="requirement" id="join-requirement">
+              <span class="requirement-mark" aria-hidden="true"></span>
+              Controller required. Keyboard and mouse are not supported for guests.
+            </p>
           </section>
         </section>
 
@@ -69,6 +73,19 @@
             </span>
             <strong id="player-number">P?</strong>
           </div>
+          <section class="controller-gate hidden" id="controller-gate" aria-live="polite">
+            <div class="controller-gate-card">
+              <span class="controller-gate-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M7.2 9.2h9.6c2.1 0 3.8 1.5 4.1 3.6l.5 3.5c.2 1.4-.9 2.7-2.3 2.7-.7 0-1.4-.3-1.8-.9l-1.6-2.1H8.3l-1.6 2.1c-.4.6-1.1.9-1.8.9-1.4 0-2.5-1.3-2.3-2.7l.5-3.5c.3-2.1 2-3.6 4.1-3.6Z" />
+                  <path d="M8 12v3M6.5 13.5h3M15.5 13.2h.1M18 14.8h.1" />
+                </svg>
+              </span>
+              <h2 id="controller-gate-title">Press any button</h2>
+              <p id="controller-gate-body">Your browser only sees a controller once you press one of its buttons.</p>
+              <p class="controller-gate-note">Keyboard and mouse are not supported for guests.</p>
+            </div>
+          </section>
           <button id="disconnect-button" class="disconnect-button" type="button">Leave</button>
           <button id="diagnostics-toggle" class="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="diagnostics-panel">i</button>
           <div class="diagnostics" id="diagnostics-panel" hidden>
@@ -81,6 +98,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./app.js?v=minimal-home-20260712"></script>
+    <script type="module" src="./app.js?v=controller-gate-20260831"></script>
   </body>
 </html>

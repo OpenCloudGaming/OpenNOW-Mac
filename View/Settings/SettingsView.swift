@@ -145,7 +145,7 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SettingsTabBar(selection: $viewModel.selectedSettingsGroup, uiScale: uiScale)
+            SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
                 .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
             SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
         }
@@ -186,8 +186,15 @@ struct SettingsView: View {
         }
     }
 
+    /// Excludes tabs the current configuration has no use for, so pad navigation and the tab bar
+    /// agree on what exists. Iterating `allCases` in one place and a filtered list in the other
+    /// would let the pad land on a tab that is not drawn.
+    private var visibleGroups: [CatalogSettingsGroup] {
+        CatalogSettingsGroup.visibleCases(remoteCoOpOptedIn: viewModel.remoteCoOpPreferences.isAlphaOptedIn)
+    }
+
     private func moveGroup(delta: Int) {
-        let groups = CatalogSettingsGroup.allCases
+        let groups = visibleGroups
         let current = groups.firstIndex(of: viewModel.selectedSettingsGroup) ?? 0
         let next = min(max(current + delta, 0), groups.count - 1)
         guard next != current else { return }
@@ -209,13 +216,14 @@ struct SettingsSurfaceBackground: View {
 
 struct SettingsTabBar: View {
     @Binding var selection: CatalogSettingsGroup
+    let groups: [CatalogSettingsGroup]
     let uiScale: CGFloat
 
     var body: some View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 8 * uiScale) {
-                    ForEach(CatalogSettingsGroup.allCases) { group in
+                    ForEach(groups) { group in
                         SettingsTabItem(
                             title: group.title,
                             icon: group.icon,
@@ -328,6 +336,8 @@ struct SettingsContent: View {
             ConnectionsSettingsGroup(viewModel: viewModel)
         case .controller:
             SteamControllerSettingsPage(uiScale: uiScale)
+        case .remoteCoOp:
+            RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .experimental:

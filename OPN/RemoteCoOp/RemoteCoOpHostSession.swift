@@ -87,7 +87,7 @@ public actor OPNRemoteCoOpHostSession {
             createdAt: now,
             expiresAt: expiresAt,
             token: token,
-            joinURL: Self.joinURL(baseURL: joinBaseURL, code: code, signalingServerURL: signalingServerURL),
+            joinURL: Self.joinURL(baseURL: joinBaseURL, token: token, signalingServerURL: signalingServerURL),
             applicationID: applicationID,
             title: title,
             hideGuestInviteDetails: preferences.hideGuestInviteDetails
@@ -191,15 +191,27 @@ public actor OPNRemoteCoOpHostSession {
         }
     }
 
-    private static func joinURL(baseURL: URL?, code: String, signalingServerURL: String) -> URL? {
+    /// The link a guest opens.
+    ///
+    /// `invite` carries the **signed token**, not the six-character code. The broker verifies the
+    /// signature before it will put a guest in a room, and a bare code cannot verify: its
+    /// `verifyInviteToken` requires two dot-separated segments and returns nil for anything else,
+    /// so the room lookup that would have accepted a code sits behind a gate the code can never
+    /// pass. Links carrying only the code were therefore rejected by every broker, which looked
+    /// from the host like a guest that joined and then waited forever.
+    ///
+    /// The guest page handles this: a token in the URL is parsed for its payload, and the input
+    /// normalisation that would uppercase it (and corrupt the base64url) is skipped for values that
+    /// came from the query string. The short code is still what it displays.
+    private static func joinURL(baseURL: URL?, token: String, signalingServerURL: String) -> URL? {
         guard let baseURL else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
-        let trimmedCode = String(code.trimmingCharacters(in: .whitespacesAndNewlines).prefix(6))
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedSignalingServerURL = signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
         var items = components?.queryItems ?? []
         items.removeAll { $0.name == "invite" }
         items.removeAll { $0.name == "server" }
-        items.append(URLQueryItem(name: "invite", value: trimmedCode))
+        items.append(URLQueryItem(name: "invite", value: trimmedToken))
         if Self.shouldAppendSignalingServer(baseURL: baseURL, signalingServerURL: trimmedSignalingServerURL) {
             items.append(URLQueryItem(name: "server", value: trimmedSignalingServerURL))
         }

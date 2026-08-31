@@ -372,3 +372,86 @@ import Testing
         #expect(throws: (any Error).self) { _ = try check.verify(token, now: now) }
     }
 }
+
+/// Regressions the Remote Co-Op gamepad work could cause for a host that has its own controllers.
+///
+/// `send` now drops state for a pad the seat was never told about, which is what stops a removed
+/// guest being resurrected by their own queued input. That same gate can silently kill a *local*
+/// controller if the announced set is ever narrower than reality, so these pin the paths that
+/// decide what gets announced.
+@Suite struct NativeNVSTLocalControllerTopologyTests {
+    /// A host with two controllers plugged in at launch. `presentStream` publishes the topology as
+    /// soon as the session connects, but input is negotiated separately and may not be ready - the
+    /// announce throws and the caller swallows it. The requested set must survive that, or
+    /// activation seeds pad 0 alone and player 2 is dead for the whole session with no further
+    /// topology change to rescue it.
+    @Test func aTopologyRequestedBeforeInputIsReadyIsStillRemembered() async {
+        let transport = NvstBifrostFreeTransport()
+        let topology = NativeWebRTCGamepadTopology(playerIndices: [0, 1])
+
+        await #expect(throws: (any Error).self) {
+            try await transport.updateGamepadTopology(topology)
+        }
+        #expect(await transport.connectedGamepadIndices == [0, 1])
+        // Which is the bitmap activation will announce once input negotiates.
+        #expect(NvstGamepadPacket.connectedBitmap(for: await transport.connectedGamepadIndices) == 0x0303)
+    }
+
+    /// Four local pads is the seat's maximum and must all be announced together.
+    @Test func fourLocalControllersAreAllAnnounced() async {
+        let transport = NvstBifrostFreeTransport()
+        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1, 2, 3]))
+        #expect(await transport.connectedGamepadIndices == [0, 1, 2, 3])
+        #expect(NvstGamepadPacket.connectedBitmap(for: await transport.connectedGamepadIndices) == 0x0F0F)
+    }
+
+    /// A Steam Controller reaches the seat through the same `GamepadState` path as a native pad, and
+    /// `NativeWebRTCGamepadMonitor` puts its slot in the same topology
+    /// (`Array(newControllerSlots.values) + Array(newSteamSlots.values)`). A Steam Controller on
+    /// player 1 alongside a native pad on player 2 must therefore announce both.
+    @Test func aSteamControllerSlotIsAnnouncedLikeAnyOtherPad() async {
+        let transport = NvstBifrostFreeTransport()
+        // What the monitor produces for one native pad in slot 0 and one Steam Controller in slot 1.
+        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1], hapticPlayerIndices: [0]))
+        #expect(await transport.connectedGamepadIndices == [0, 1])
+    }
+
+    /// A host with no controller at all still leaves the seat believing in pad 0, because the
+    /// activation descriptor announced it. Normalising an empty topology to pad 0 keeps the
+    /// announced bitmap and the set that gates state packets in agreement.
+    @Test func anEmptyTopologyKeepsPadZeroAnnounced() async {
+        let transport = NvstBifrostFreeTransport()
+        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: []))
+        #expect(await transport.connectedGamepadIndices == [0])
+        #expect(NvstGamepadPacket.connectedBitmap(for: await transport.connectedGamepadIndices) == 0x0101)
+    }
+
+    /// Unplugging a pad must release its sequence counter. The seat tracks the sequence per gamepad,
+    /// so a slot reused by the next controller or guest would resume mid-stream and its first
+    /// packets would look stale.
+    @Test func droppingAPadReleasesItsSequenceCounter() async {
+        let transport = NvstBifrostFreeTransport()
+        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1]))
+        await transport.seedGamepadSequenceForTesting(pad: 1, sequence: 900)
+        #expect(await transport.gamepadSequences[1] == 900)
+
+        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0]))
+        #expect(await transport.connectedGamepadIndices == [0])
+        #expect(await transport.gamepadSequences[1] == nil)
+    }
+
+    /// The host's own pad keeps working while a guest holds player 2, which is the whole point of
+    /// the union: the descriptor is not additive, so announcing only the guest would disconnect the
+    /// host's controller.
+    @Test func aGuestSlotDoesNotDisplaceTheHostsOwnPad() async {
+        let transport = NvstBifrostFreeTransport()
+        let hostOnly = NativeWebRTCGamepadTopology(playerIndices: [0])
+        try? await transport.updateGamepadTopology(hostOnly)
+        #expect(await transport.connectedGamepadIndices == [0])
+
+        // What `mergedGamepadTopology` builds once a guest is approved into slot 1.
+        let withGuest = NativeWebRTCGamepadTopology(playerIndices: hostOnly.playerIndices + [1])
+        try? await transport.updateGamepadTopology(withGuest)
+        #expect(await transport.connectedGamepadIndices == [0, 1])
+    }
+}

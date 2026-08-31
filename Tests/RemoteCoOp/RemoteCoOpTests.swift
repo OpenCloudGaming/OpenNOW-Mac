@@ -329,10 +329,18 @@ struct RemoteCoOpTests {
         #expect(invite.title == "Secret Game")
         #expect(invite.hideGuestInviteDetails)
         #expect(invite.code.count == 6)
-        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
-        #expect(components.queryItems?.first { $0.name == "invite" }?.value?.count == 6)
-        #expect(components.queryItems?.first { $0.name == "invite" }?.value != invite.token)
         #expect(components.queryItems?.contains(URLQueryItem(name: "server", value: "wss://signal.example.test/remote-coop")) == true)
+
+        // The link carries the signed token, because a bare code cannot pass the broker's signature
+        // gate. Privacy is preserved by what the payload *contains* rather than by withholding it:
+        // a private invite blanks the title and app ID at signing time, so handing the guest the
+        // whole token still tells them nothing about the game.
+        let linkedInvite = try #require(components.queryItems?.first { $0.name == "invite" }?.value)
+        #expect(linkedInvite == invite.token)
+        let linkedPayload = try signer.verify(linkedInvite)
+        #expect(linkedPayload.applicationID.isEmpty)
+        #expect(linkedPayload.title.isEmpty)
+        #expect(linkedPayload.hideGuestInviteDetails)
     }
 
     @Test("invite URLs omit same origin signaling server")
@@ -343,8 +351,29 @@ struct RemoteCoOpTests {
         let joinURL = try #require(invite.joinURL)
         let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
 
-        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
+        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.token)) == true)
         #expect(components.queryItems?.contains { $0.name == "server" } == false)
+    }
+
+    /// The guest link has to carry something the broker will accept. `verifyInviteToken` requires
+    /// two dot-separated segments and rejects everything else before it ever looks up a room, so a
+    /// link carrying the six-character code was refused by every broker — the guest connected, sat
+    /// in "Waiting", and the host was never told anyone had arrived.
+    @Test("invite URLs carry the signed token, not the short code")
+    func inviteURLsCarryTheSignedToken() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
+        let host = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1), inviteSigner: signer)
+
+        let invite = try await host.startInvite(joinBaseURL: URL(string: "https://join.example.test/")!, lifetimeSeconds: 120)
+        let joinURL = try #require(invite.joinURL)
+        let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
+        let linked = try #require(components.queryItems?.first { $0.name == "invite" }?.value)
+
+        #expect(linked == invite.token)
+        #expect(linked.split(separator: ".").count == 2)
+        #expect(linked != invite.code)
+        // Round-trips: what the link hands the broker is exactly what the host will verify back.
+        #expect(try signer.verify(linked).code == invite.code)
     }
 
     @Test("stream settings advertise reserved controller bitmap")

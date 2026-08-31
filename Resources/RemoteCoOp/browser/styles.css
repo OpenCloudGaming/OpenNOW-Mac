@@ -6,7 +6,7 @@
   --quiet: rgba(245, 247, 239, 0.38);
   --panel: rgba(13, 17, 13, 0.82);
   --line: rgba(245, 247, 239, 0.13);
-  --green: #76b900;
+  --green: #75e61a;
   --green-hot: #9bf00b;
   --red: #ff604f;
   --display: "Avenir Next Condensed", "Avenir Next", "Helvetica Neue", sans-serif;
@@ -24,7 +24,7 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at 52% 38%, rgba(118, 185, 0, 0.25), transparent 22rem),
+    radial-gradient(circle at 52% 38%, rgba(117, 230, 26, 0.25), transparent 22rem),
     linear-gradient(135deg, #0a0f0a, #050705 52%, #0c120c);
   overflow-x: hidden;
 }
@@ -59,23 +59,23 @@ input { font: inherit; }
 button {
   min-height: 54px;
   padding: 0 18px;
-  color: #071007;
-  background: linear-gradient(135deg, var(--green-hot), var(--green));
-  border: 1px solid rgba(202, 255, 92, 0.58);
-  border-radius: 2px;
-  box-shadow: 0 24px 62px rgba(118, 185, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  color: #0b1405;
+  background: var(--green);
+  border: 1px solid var(--green-hot);
+  border-radius: 0;
+  box-shadow: none;
   cursor: pointer;
   font-family: var(--display);
   font-size: 18px;
   font-weight: 950;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  transition: filter 140ms ease, border-color 140ms ease, opacity 140ms ease;
 }
 
 button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 30px 76px rgba(118, 185, 0, 0.33), inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  border-color: var(--green-hot);
+  filter: brightness(1.08);
 }
 
 button:disabled {
@@ -100,7 +100,7 @@ input:focus-visible {
 .compact {
   min-height: 34px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: 0;
   font-family: var(--mono);
   font-size: 12px;
 }
@@ -134,12 +134,12 @@ input:focus-visible {
   overflow: hidden;
   padding: clamp(18px, 3vw, 34px);
   background:
-    linear-gradient(115deg, transparent 0 58%, rgba(118, 185, 0, 0.12) 58.2% 58.8%, transparent 59%),
-    radial-gradient(circle at 50% 44%, rgba(118, 185, 0, 0.17), transparent 18rem),
+    linear-gradient(115deg, transparent 0 58%, rgba(117, 230, 26, 0.12) 58.2% 58.8%, transparent 59%),
+    radial-gradient(circle at 50% 44%, rgba(117, 230, 26, 0.17), transparent 18rem),
     rgba(7, 10, 7, 0.92);
   border: 1px solid var(--line);
-  border-radius: 28px;
-  box-shadow: 0 34px 110px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 0;
+  box-shadow: 0 34px 110px rgba(0, 0, 0, 0.58);
 }
 
 .home::before {
@@ -148,7 +148,7 @@ input:focus-visible {
   width: min(580px, 70vw);
   aspect-ratio: 1;
   content: "";
-  border: 1px solid rgba(118, 185, 0, 0.28);
+  border: 1px solid rgba(117, 230, 26, 0.28);
   transform: translateX(-50%) rotate(45deg);
   opacity: 0.38;
 }
@@ -173,9 +173,8 @@ input:focus-visible {
 .brand-mark {
   width: 38px;
   height: 38px;
-  background: linear-gradient(135deg, var(--green-hot), var(--green));
+  background: var(--green);
   clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 62%, 62% 100%, 0 100%);
-  box-shadow: 0 0 34px rgba(118, 185, 0, 0.44);
 }
 
 .brand-text {
@@ -220,13 +219,13 @@ input:focus-visible {
 .signal-mark span {
   position: absolute;
   inset: var(--inset, 0);
-  border: 1px solid rgba(118, 185, 0, 0.28);
+  border: 1px solid rgba(117, 230, 26, 0.28);
   transform: rotate(45deg);
 }
 
 .signal-mark span:nth-child(1) { --inset: 0; }
 .signal-mark span:nth-child(2) { --inset: 17%; border-color: rgba(155, 240, 11, 0.34); }
-.signal-mark span:nth-child(3) { --inset: 34%; background: rgba(118, 185, 0, 0.06); }
+.signal-mark span:nth-child(3) { --inset: 34%; background: rgba(117, 230, 26, 0.06); }
 
 .join-console {
   position: relative;
@@ -237,7 +236,7 @@ input:focus-visible {
   padding: 20px;
   background: var(--panel);
   border: 1px solid var(--line);
-  box-shadow: 0 28px 86px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 28px 86px rgba(0, 0, 0, 0.52);
   backdrop-filter: blur(22px);
 }
 
@@ -337,7 +336,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   height: 100svh;
   min-height: 100svh;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 34%, rgba(118, 185, 0, 0.16), transparent 24rem), #020302;
+  background: radial-gradient(circle at 50% 34%, rgba(117, 230, 26, 0.16), transparent 24rem), #020302;
 }
 
 .video-placeholder {
@@ -393,7 +392,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   z-index: 5;
   background: rgba(8, 11, 8, 0.72);
   border: 1px solid rgba(245, 247, 239, 0.16);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(18px);
 }
 
@@ -407,7 +406,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   max-width: min(120px, calc(100% - 160px));
   padding: 6px 9px;
   color: var(--ink);
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 .player-icon {
@@ -443,7 +442,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   right: 12px;
   min-height: 38px;
   color: var(--ink);
-  border-radius: 999px;
+  border-radius: 0;
   box-shadow: none;
   font-family: var(--mono);
   font-size: 12px;
@@ -457,7 +456,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   min-height: 42px;
   place-items: center;
   color: var(--ink);
-  border-radius: 999px;
+  border-radius: 0;
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 950;
@@ -465,8 +464,8 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
 }
 
 .diagnostics-toggle[aria-expanded="true"] {
-  color: #071007;
-  background: linear-gradient(135deg, var(--green-hot), var(--green));
+  color: #0b1405;
+  background: var(--green);
 }
 
 .diagnostics {
@@ -479,7 +478,6 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   min-width: 0;
   background: rgba(11, 14, 11, 0.76);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(18px);
 }
 
@@ -582,4 +580,118 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   *,
   *::before,
   *::after { transition-duration: 0.01ms !important; }
+}
+
+/* Controller requirement
+ *
+ * Guest input is gamepad-only: the wire packet carries pad state and nothing else, and the seat has
+ * no second keyboard to route a guest's keystrokes to. A guest who does not know that presses keys
+ * into a page that silently sends nothing, so both the requirement and the Gamepad API's
+ * press-a-button quirk are stated where they cannot be missed. */
+
+.requirement {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.requirement-mark {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  background: var(--green);
+}
+
+.controller-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  padding: 32px 24px;
+  place-items: center;
+  background: rgba(2, 3, 2, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.controller-gate-card {
+  display: grid;
+  gap: 10px;
+  width: min(30rem, 100%);
+  padding: 30px 28px 26px;
+  justify-items: center;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.controller-gate-icon {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 2px;
+  place-items: center;
+  background: rgba(117, 230, 26, 0.12);
+  border: 1px solid rgba(117, 230, 26, 0.34);
+}
+
+.controller-gate-icon svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: var(--green-hot);
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+/* Pulses only while the page is waiting for a button, so it reads as a prompt for action rather
+ * than as decoration. */
+.controller-gate:not(.is-detected) .controller-gate-icon {
+  animation: controller-gate-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes controller-gate-pulse {
+  0%, 100% { transform: scale(1); border-color: rgba(117, 230, 26, 0.34); }
+  50% { transform: scale(1.06); border-color: rgba(155, 240, 11, 0.7); }
+}
+
+.controller-gate-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: clamp(30px, 5.4vw, 44px);
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.controller-gate-card p {
+  margin: 0;
+  max-width: 26rem;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.controller-gate-note {
+  margin-top: 4px;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controller-gate:not(.is-detected) .controller-gate-icon { animation: none; }
 }

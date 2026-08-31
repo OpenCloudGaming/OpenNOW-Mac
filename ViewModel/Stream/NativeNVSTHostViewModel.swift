@@ -93,6 +93,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
     var remoteCoOpListenTask: Task<Void, Never>?
+    /// Set only while OpenNOW is hosting the signaling itself, and stopped with the invite.
+    var remoteCoOpEmbeddedServer: OPNRemoteCoOpEmbeddedServer?
+    @Published var remoteCoOpCertificateFingerprint: String?
+    @Published var remoteCoOpIsLocallyHosted = false
     @Published var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @Published var remoteCoOpMessage = ""
     var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(
