@@ -1,16 +1,20 @@
-<svg width="800" height="500" xmlns="http://www.w3.org/2000/svg">
+<svg width="1600" height="1000" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f8fafc"/>
-      <stop offset="100%" stop-color="#e2e8f0"/>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="560">
+      <stop offset="0" stop-color="#E9EEF2"/>
+      <stop offset="0.45" stop-color="#CDD6DC"/>
+      <stop offset="1" stop-color="#A8B3BB"/>
     </linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="400" cy="240" r="400">
+      <stop offset="0" stop-color="#75E61A" stop-opacity="0.07"/>
+      <stop offset="0.6" stop-color="#75E61A" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#75E61A" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="800" height="500" fill="url(#bg)"/>
-  <path d="M 240 250 L 560 250 L 545 235 M 560 250 L 545 265"
-        stroke="#475569" stroke-width="4" fill="none"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="400" y="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-        font-size="24" font-weight="500" text-anchor="middle" fill="#1e293b">
-    Drag OpenNOW to Applications
-  </text>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <rect width="1600" height="2" fill="#75E61A"/>
+  <rect y="2" width="1600" height="1" fill="#000000" opacity="0.10"/>
+  <path d="M 368 214 L 396 238 L 368 262" stroke="#5BA718" stroke-width="6" fill="none" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M 404 214 L 432 238 L 404 262" stroke="#5BA718" stroke-width="6" fill="none" stroke-linecap="square" stroke-linejoin="miter" opacity="0.55"/>
 </svg>
