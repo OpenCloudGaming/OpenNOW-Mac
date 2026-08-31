@@ -11,10 +11,8 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
     private static let lowLatencyDefaultMigrationVersion = 1
     private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
-    private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
-    private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
     private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
-    private static let hostingModeKey = "OpenNOW.RemoteCoOp.HostingMode"
+    private static let publicAddressKey = "OpenNOW.RemoteCoOp.PublicAddress"
 
     public static var isAlphaOptedIn: Bool {
         bool(storage.object(forKey: alphaOptInKey), defaultValue: false)
@@ -30,10 +28,8 @@ public enum OPNRemoteCoOpPreferencesStore {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
             latencyMode: latencyMode,
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
-            signalingServerURL: OPNRemoteCoOpPreferences.migratedSignalingServerURL(string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL)),
-            guestJoinBaseURL: OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL(string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)),
             hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false),
-            hostingMode: OPNRemoteCoOpHostingMode(rawValue: string(storage.object(forKey: hostingModeKey))) ?? .local
+            publicAddress: string(storage.object(forKey: publicAddressKey))
         )
     }
 
@@ -46,10 +42,8 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(preferences.latencyMode.rawValue, forKey: latencyModeKey)
         storage.set(lowLatencyDefaultMigrationVersion, forKey: lowLatencyDefaultMigrationVersionKey)
         storage.set(preferences.requireHostApproval, forKey: requireHostApprovalKey)
-        storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
-        storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
         storage.set(preferences.hideGuestInviteDetails, forKey: hideGuestInviteDetailsKey)
-        storage.set(preferences.hostingMode.rawValue, forKey: hostingModeKey)
+        storage.set(preferences.publicAddress, forKey: publicAddressKey)
         storage.synchronize()
     }
 
@@ -102,24 +96,13 @@ public enum OPNRemoteCoOpPreferencesStore {
         save(preferences)
     }
 
-    public static func setSignalingServerURL(_ url: String) {
-        guard isAlphaOptedIn else { return }
-        var preferences = load()
-        preferences.signalingServerURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultSignalingServerURL)
-        save(preferences)
-    }
 
-    public static func setGuestJoinBaseURL(_ url: String) {
-        guard isAlphaOptedIn else { return }
-        var preferences = load()
-        preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
-        save(preferences)
-    }
 
-    public static func setHostingMode(_ mode: OPNRemoteCoOpHostingMode) {
+
+    public static func setPublicAddress(_ address: String) {
         guard isAlphaOptedIn else { return }
         var preferences = load()
-        preferences.hostingMode = mode
+        preferences.publicAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
         save(preferences)
     }
 

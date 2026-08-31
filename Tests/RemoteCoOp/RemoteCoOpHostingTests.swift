@@ -21,7 +21,7 @@ struct RemoteCoOpHostingTests {
         let host = OPNRemoteCoOpHostSession(preferences: preferences)
 
         let invite = try await host.startInvite(lifetimeSeconds: 120)
-        let pending = try await host.registerGuest(displayName: "Mia", inviteToken: invite.code)
+        let pending = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token)
         let approved = try await host.approveParticipant(pending.id)
         let snapshot = await host.snapshot()
 
@@ -31,6 +31,22 @@ struct RemoteCoOpHostingTests {
         #expect(approved.inputEnabled)
         #expect(approved.playerIndex == 1)
         #expect(snapshot.participants == [approved])
+    }
+
+    /// The six-character code is a human-readable label, not a credential. `validate` used to accept
+    /// it in place of a signed token, which meant anything that saw the code on screen could join.
+    @Test("host rejects a bare invite code in place of a signed token")
+    func hostRejectsABareInviteCode() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)
+        let host = OPNRemoteCoOpHostSession(preferences: preferences)
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+
+        await #expect(throws: OPNRemoteCoOpHostSessionError.invalidInviteToken) {
+            _ = try await host.registerGuest(displayName: "Mia", inviteToken: invite.code)
+        }
+        // The signed token from the same invite still works.
+        _ = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token)
+        #expect(await host.snapshot().participants.count == 1)
     }
 
     @Test("host rejects guest with invalid invite token")
@@ -176,8 +192,12 @@ struct RemoteCoOpHostingTests {
         #expect(staleCommand == .inputRejected(participantID: participantID, result: .stalePacket))
     }
 
-    @Test("coordinator disconnect removes guest and emits neutral input")
-    func coordinatorDisconnectRemovesGuestAndEmitsNeutralInput() async throws {
+    /// A dropped socket holds the guest's slot instead of releasing it, so a Wi-Fi roam does not cost
+    /// them their approval and their player slot. Neutral pad state still goes out immediately, or
+    /// whatever they were holding stays pressed in the game for the whole grace period. The slot is
+    /// released by `expireDisconnectedParticipants`; see `RemoteCoOpReconnectTests`.
+    @Test("coordinator disconnect holds the slot and emits neutral input")
+    func coordinatorDisconnectHoldsTheSlotAndEmitsNeutralInput() async throws {
         let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: false)
         let signaling = OPNInProcessRemoteCoOpSignalingSession()
         let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: preferences), signaling: signaling)
@@ -196,8 +216,13 @@ struct RemoteCoOpHostingTests {
         }
         #expect(state.playerIndex == 1)
         #expect(state.buttons.isEmpty)
-        #expect(removedCommand == .participantRemoved(participantID))
-        #expect(snapshot.participants.isEmpty)
+        // No `participantRemoved`: that tells the guest page it was ejected and stops it
+        // reconnecting. The last command is still the join's own participant update.
+        #expect(removedCommand != .participantRemoved(participantID))
+        let held = try #require(snapshot.participants.first { $0.id == participantID })
+        #expect(held.connectionState == .disconnected)
+        #expect(held.playerIndex == 1)
+        #expect(!held.inputEnabled)
     }
 
     @Test("host peer controller emits offer after approval")
@@ -208,7 +233,7 @@ struct RemoteCoOpHostingTests {
         let participantID = UUID()
         let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
         let networkConfiguration = OPNRemoteCoOpNetworkConfiguration(
-            transportMode: .relayOnly,
+            transportMode: .directOnly,
             iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
         )
         let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: networkConfiguration, latencyMode: .lowLatency, peerFactory: factory, forwardInput: { _ in })
@@ -414,5 +439,97 @@ struct RemoteCoOpHostingTests {
         let text = try OPNRemoteCoOpWireCodec.encode(message)
 
         #expect(OPNRemoteCoOpHostPeerInputDecoder.decode(text, expectedParticipantID: expectedParticipantID) == nil)
+    }
+}
+
+/// Guest slots and local controller slots come from the same 4-pad space, and were assigned into it
+/// independently. One local pad on index 0 with a guest on 1 never collided; a *second* local
+/// controller also lands on 1 - the first free index `NativeWebRTCGamepadMonitor.update` hands out -
+/// and approving a guest at that point silently doubled up a real player's controller and the
+/// guest's, on both the NVST and WebRTC input paths, which each key a pad purely by index.
+@Suite struct RemoteCoOpLocalControllerSlotTests {
+    private func approvedHost(reservedGuestSlots: Int = 3) async throws -> OPNRemoteCoOpHostSession {
+        let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 6, count: 32))
+        return OPNRemoteCoOpHostSession(
+            preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: reservedGuestSlots),
+            inviteSigner: signer
+        )
+    }
+
+    private func addGuest(_ host: OPNRemoteCoOpHostSession, invite: OPNRemoteCoOpInvite) async throws -> OPNRemoteCoOpParticipant {
+        let participantID = UUID()
+        _ = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        return try await host.approveParticipant(participantID)
+    }
+
+    /// A second local controller must not be handed to a guest.
+    @Test func aGuestNeverTakesAnIndexALocalControllerHolds() async throws {
+        let host = try await approvedHost()
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        // Two controllers plugged into the host: indices 0 and 1.
+        await host.updateReservedLocalPlayerIndices([0, 1])
+
+        let guest = try await addGuest(host, invite: invite)
+        #expect(guest.playerIndex == 2)
+    }
+
+    /// Reserving an index already given to a connected guest does not evict them - only the *next*
+    /// assignment is affected, never one already handed out.
+    @Test func reservingAnIndexAlreadyGivenToAGuestDoesNotEvictThem() async throws {
+        let host = try await approvedHost()
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        let first = try await addGuest(host, invite: invite)
+        #expect(first.playerIndex == 1)
+
+        // A local controller reconnects on the index the guest already holds - possible if the
+        // guest was approved first and a controller was plugged in afterwards.
+        await host.updateReservedLocalPlayerIndices([0, 1])
+
+        let snapshot = await host.snapshot()
+        #expect(snapshot.participants.first?.playerIndex == 1)
+
+        // But the next guest must not collide with either the local pad or the first guest.
+        let second = try await addGuest(host, invite: invite)
+        #expect(second.playerIndex == 2)
+    }
+
+    /// Three local controllers leave nothing for a guest: reserved slots exist, but every index in
+    /// range is spoken for.
+    @Test func noSlotsRemainWhenLocalControllersFillTheRange() async throws {
+        let host = try await approvedHost()
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        await host.updateReservedLocalPlayerIndices([0, 1, 2, 3])
+
+        let participantID = UUID()
+        _ = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        await #expect(throws: OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots) {
+            _ = try await host.approveParticipant(participantID)
+        }
+    }
+
+    /// Unplugging frees the index back up for the next guest.
+    @Test func freeingALocalIndexMakesItAvailableAgain() async throws {
+        let host = try await approvedHost()
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        await host.updateReservedLocalPlayerIndices([0, 1])
+
+        let first = try await addGuest(host, invite: invite)
+        #expect(first.playerIndex == 2)
+
+        // The second local controller unplugs.
+        await host.updateReservedLocalPlayerIndices([0])
+        let second = try await addGuest(host, invite: invite)
+        #expect(second.playerIndex == 1)
+    }
+
+    /// A solo host - the common case - is unaffected: reserving only index 0 behaves exactly as
+    /// reserving nothing did before this existed.
+    @Test func aSoloHostAssignsFromOne() async throws {
+        let host = try await approvedHost()
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        await host.updateReservedLocalPlayerIndices([0])
+
+        let guest = try await addGuest(host, invite: invite)
+        #expect(guest.playerIndex == 1)
     }
 }

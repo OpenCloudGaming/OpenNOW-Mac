@@ -398,7 +398,7 @@ extension WebRTCMediaStreamSurface {
                     Text(remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
                         .font(.streamNvidia(size: 9, weight: .bold))
                         .tracking(0.7)
-                        .foregroundStyle(remoteCoOpSnapshot.preferences.transportMode == .relayOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(remoteCoOpSnapshot.preferences.transportMode == .directOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(Color.white.opacity(0.07))
@@ -452,11 +452,21 @@ extension WebRTCMediaStreamSurface {
                                     .font(.streamNvidia(size: 10, weight: .bold))
                                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                                 if participant.connectionState == .waitingForApproval {
-                                    participantIconButton(systemName: "checkmark", label: "Approve guest", color: WebRTCMediaStreamTheme.accent) {
+                                    StreamHUDParticipantIconButton(
+                                        systemName: "checkmark",
+                                        label: "Approve guest",
+                                        color: WebRTCMediaStreamTheme.accent,
+                                        isFocused: hudFocusID == "coop-approve-\(participant.id.uuidString)"
+                                    ) {
                                         approveRemoteCoOpParticipant(participant.id)
                                     }
                                 }
-                                participantIconButton(systemName: "xmark", label: "Remove guest", color: WebRTCMediaStreamTheme.danger) {
+                                StreamHUDParticipantIconButton(
+                                    systemName: "xmark",
+                                    label: "Remove guest",
+                                    color: WebRTCMediaStreamTheme.danger,
+                                    isFocused: hudFocusID == "coop-remove-\(participant.id.uuidString)"
+                                ) {
                                     removeRemoteCoOpParticipant(participant.id)
                                 }
                             }
@@ -469,10 +479,6 @@ extension WebRTCMediaStreamSurface {
 
     func hudSection<Content: View>(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) -> some View {
         StreamHUDSection(label: label, spacing: spacing, content: content)
-    }
-
-    func participantIconButton(systemName: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
-        StreamHUDParticipantIconButton(systemName: systemName, label: label, color: color, action: action)
     }
 
     var microphoneToggleOverlay: some View {

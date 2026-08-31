@@ -106,6 +106,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// The pads physically attached to this Mac. Guest slots are merged with these before the seat
     /// is told the topology, so a guest joining never un-announces the host's own controller.
     var localGamepadTopology = NativeWebRTCGamepadTopology(playerIndices: [])
+    /// What the seat was last told is connected. Diffed on every announce so a pad leaving the set
+    /// gets a neutral state before it stops being announced.
+    var lastAnnouncedGamepadIndices: Set<Int> = []
     var networkGovernor: NativeNVSTNetworkGovernor?
     var networkPathTask: Task<Void, Never>?
     @Published var networkPathAvailable = true
@@ -315,7 +318,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
         nativeView.setNativeNVSTVideoVisible(true)
         nativeView.restoreInputFocus()
         localGamepadTopology = nativeView.gamepadTopology
-        Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
+        // Through the same entry point as every other announce, so `lastAnnouncedGamepadIndices`
+        // reflects what the seat was actually told. Announcing directly here left it empty, and the
+        // first unplug then had nothing to diff against and skipped the pad's release.
+        Task { @MainActor in await syncRemoteCoOpGamepadTopology() }
         // Loads the launch-time Remote Co-Op preferences and sizes the guest relay. Nothing is
         // advertised or connected here - the invite is still an explicit action in the HUD.
         refreshRemoteCoOpState()

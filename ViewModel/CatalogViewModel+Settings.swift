@@ -227,32 +227,14 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    func setRemoteCoOpHostingModeIndex(_ index: Int) {
-        let modes = OPNRemoteCoOpHostingMode.allCases
-        guard modes.indices.contains(index) else { return }
-        OPNRemoteCoOpPreferencesStore.setHostingMode(modes[index])
+
+    func setRemoteCoOpPublicAddress(_ address: String) {
+        OPNRemoteCoOpPreferencesStore.setPublicAddress(address)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     }
 
-    func setRemoteCoOpSignalingServerURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setSignalingServerURL(url)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
 
-    func setRemoteCoOpGuestJoinBaseURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setGuestJoinBaseURL(url)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
-    }
 
-    /// The broker rejects every host registration and every guest join whose invite signature does
-    /// not verify, so an unset secret is not a degraded mode - it is a session nobody can join.
-    func setRemoteCoOpInviteSecret(_ secret: String) {
-        guard OPNRemoteCoOpPreferencesStore.isAlphaOptedIn else { return }
-        OPNRemoteCoOpInviteSecretStore.save(secret)
-        remoteCoOpInviteSecretConfigured = OPNRemoteCoOpInviteSecretStore.isConfigured()
-    }
 
     func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
         OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)

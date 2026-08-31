@@ -204,6 +204,13 @@ extension WebRTCMediaStreamSurface {
                     let routedEvents = await coordinator.handle(event)
                     for routedEvent in routedEvents { transport?.sendNow(routedEvent) }
                 }
+                // Guests whose grace period ran out lose their slot here. See the native host for
+                // why this is driven off signaling traffic rather than a timer.
+                let expired = await remoteCoOpHostSession.expireDisconnectedParticipants()
+                for participant in expired {
+                    await remoteCoOpSignalingSession?.send(.participantRemoved(participant.id))
+                    await remoteCoOpPeerController?.removePeer(participantID: participant.id)
+                }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 try? await syncRemoteCoOpPeers()
             }

@@ -21,6 +21,10 @@ const elements = {
   copyDiagnosticsButton: document.querySelector("#copy-diagnostics-button"),
   playerBadge: document.querySelector("#player-badge"),
   controllerGate: document.querySelector("#controller-gate"),
+  connectionNotice: document.querySelector("#connection-notice"),
+  connectionNoticeTitle: document.querySelector("#connection-notice-title"),
+  connectionNoticeBody: document.querySelector("#connection-notice-body"),
+  connectionNoticeHint: document.querySelector("#connection-notice-hint"),
   controllerGateTitle: document.querySelector("#controller-gate-title"),
   controllerGateBody: document.querySelector("#controller-gate-body"),
   playerNumber: document.querySelector("#player-number"),
@@ -51,6 +55,22 @@ let sessionState = "Connecting";
 /// Whether a pad has been seen this session. The Gamepad API reports nothing until a button is
 /// pressed, so "not detected" is the normal opening state rather than an error.
 let controllerDetected = false;
+/// Reconnect state. `participantID` is deliberately *not* regenerated across a reconnect: the host
+/// holds the slot and the approval for a returning guest that names the same ID.
+let reconnectAttempt = 0;
+let reconnectHandle = null;
+/// Set while the guest is deliberately leaving, so an intentional close is not retried.
+let leaving = false;
+/// Set once ICE has definitively failed or given up, so the page stops implying it is still trying.
+let connectionFailure = null;
+let iceDeadlineHandle = null;
+/// Previous inbound-video sample, so the stats line can report the *recent* jitter buffer depth.
+///
+/// `jitterBufferDelay` and `jitterBufferEmittedCount` are both cumulative since the session began,
+/// so dividing them gives a lifetime average: a bad first few seconds inflates it permanently, and
+/// two readings taken at different points in a session are not comparable. That made the number
+/// useless for telling whether a change helped. The delta between samples is the real current depth.
+let previousVideoStats = null;
 const playbackPromises = new WeakMap();
 
 renderInvite(inviteToken);
@@ -112,6 +132,15 @@ function renderInvite(token) {
 }
 
 function joinRoom() {
+  leaving = false;
+  reconnectAttempt = 0;
+  connectToRoom();
+}
+
+/// Opens the signaling socket. Called for the first join and for every reconnect, so it must not
+/// reset anything the host uses to recognise a returning guest.
+function connectToRoom() {
+  clearReconnectTimer();
   inviteToken = currentInviteToken();
   invite = parseInvite(inviteToken);
   if (!invite) {
@@ -121,12 +150,23 @@ function joinRoom() {
   }
   if (invite.expiresAtEpochSeconds * 1000 <= Date.now()) {
     elements.joinStatus.textContent = "Expired";
+    stopReconnecting();
     return;
   }
   const endpoint = signalingEndpoint();
   resetInputHistory();
+  // The peer connection does not survive a signaling drop: the host tears its side down and offers
+  // a fresh one on rejoin, so a stale one here would leave two half-open peers.
+  closePeerConnection();
+  connectionFailure = null;
+  previousVideoStats = null;
+  renderConnectionNotice();
+  const isRetry = reconnectAttempt > 0;
   diagnostics = initialDiagnostics();
-  updateDiagnostics({ websocket: `connecting ${endpoint}`, transportMode: invite.transportMode ?? "automatic" });
+  updateDiagnostics({
+    websocket: `${isRetry ? `reconnecting (attempt ${reconnectAttempt})` : "connecting"} ${endpoint}`,
+    transportMode: invite.transportMode ?? "automatic"
+  });
   socket = new WebSocket(endpoint);
   elements.joinButton.disabled = true;
   elements.joinStatus.textContent = "Connecting";
@@ -160,8 +200,14 @@ function joinRoom() {
   socket.addEventListener("close", () => {
     stopPolling();
     updateDiagnostics({ websocket: "closed" });
-    if (!hasTerminalState()) setState("Closed", "Offline", false);
     elements.joinButton.disabled = false;
+    // A terminal state means the host ejected the guest or ended the invite; retrying would just
+    // be refused. Leaving is the guest's own choice. Everything else is a blip worth retrying.
+    if (hasTerminalState() || leaving) {
+      setState(sessionState === "Connecting" ? "Closed" : sessionState, "Offline", false);
+      return;
+    }
+    scheduleReconnect();
   });
   socket.addEventListener("error", () => updateDiagnostics({ websocket: "error" }));
 }
@@ -187,6 +233,8 @@ async function handleMessage(message) {
   if (message.kind === "participantUpdated" && sameParticipantID(message.participant?.id, participantID)) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
     if (approved) {
+      // Back in the room with the slot intact, so the next drop starts its backoff from scratch.
+      stopReconnecting();
       const playerNumber = (message.participant.playerIndex ?? 1) + 1;
       setState("Approved", `P${playerNumber}`, true, playerNumber);
       updateDiagnostics({ approval: "approved", playerSlot: `player ${playerNumber}` });
@@ -320,9 +368,9 @@ function inputPacket(gamepad, sampledAtMilliseconds = performance.now()) {
     leftTrigger: analogButton(gamepad, 6),
     rightTrigger: analogButton(gamepad, 7),
     leftStickX: axis(gamepad, 0),
-    leftStickY: axis(gamepad, 1),
+    leftStickY: verticalAxis(gamepad, 1),
     rightStickX: axis(gamepad, 2),
-    rightStickY: axis(gamepad, 3),
+    rightStickY: verticalAxis(gamepad, 3),
     sentAtNanoseconds: Math.round(sampledAtMilliseconds * 1_000_000),
     sampledAtMilliseconds
   };
@@ -356,6 +404,22 @@ function analogButton(gamepad, index) {
 
 function axis(gamepad, index) {
   return clamp(gamepad.axes[index] ?? 0, -1, 1);
+}
+
+/// A vertical stick axis, converted to the convention the rest of the pipeline uses.
+///
+/// The Gamepad API reports vertical axes with **down positive** (W3C: -1 is up). Everything this
+/// feeds is **up positive**: the host's own pad comes from GameController's
+/// `thumbstick.yAxis.value`, and the wire format is XInput's, where +32767 is up. Both meet in
+/// `GamepadState.leftStickY`, so passing the browser's value through unchanged inverted vertical
+/// aim for every guest while the host's own stick behaved correctly.
+///
+/// Converted here rather than on the host, because the host cannot tell which convention a packet
+/// came from - `GamepadState` has one meaning and this is the edge that has to honour it.
+function verticalAxis(gamepad, index) {
+  // `0 - x` rather than `-x`, so a centred stick reports 0 instead of -0. Both serialise to 0 on
+  // the wire, but -0 shows up in change-detection keys and diffs as a value that looks wrong.
+  return clamp(0 - (gamepad.axes[index] ?? 0), -1, 1);
 }
 
 function clamp(value, minimum, maximum) {
@@ -437,6 +501,7 @@ function configurePeerConnection(configuration) {
       }
     });
   });
+  startICEDeadline();
   peerConnection.addEventListener("connectionstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("iceconnectionstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("icegatheringstatechange", () => updatePeerConnectionState());
@@ -621,13 +686,91 @@ function toggleDiagnostics() {
 
 function updatePeerConnectionState() {
   if (!peerConnection) return;
+  const iceState = peerConnection.iceConnectionState ?? "unknown";
   updateDiagnostics({
     rtcConnection: peerConnection.connectionState ?? "unknown",
     rtcSignaling: peerConnection.signalingState ?? "unknown",
-    iceConnection: peerConnection.iceConnectionState ?? "unknown",
+    iceConnection: iceState,
     iceGathering: peerConnection.iceGatheringState ?? "unknown"
   });
+  if (iceState === "connected" || iceState === "completed") {
+    clearConnectionFailure();
+  } else if (iceState === "failed" || peerConnection.connectionState === "failed") {
+    // Terminal. `disconnected` is deliberately not treated this way: ICE recovers from it on its
+    // own, and reporting a failure there would cry wolf on every brief network blip.
+    reportConnectionFailure("failed");
+  }
   setNetworkState(networkLabel(), connectionDetail());
+}
+
+/// How long to let ICE work before calling it. Generous: a LAN pair connects in well under a second
+/// and a STUN-assisted pair across the internet usually inside a few seconds, so anything still
+/// trying at this point is not going to succeed.
+const ICE_DEADLINE_MS = 25_000;
+
+function startICEDeadline() {
+  clearICEDeadline();
+  iceDeadlineHandle = window.setTimeout(() => {
+    iceDeadlineHandle = null;
+    const state = peerConnection?.iceConnectionState;
+    if (state === "connected" || state === "completed") return;
+    // Not a browser-reported failure: ICE will keep saying "checking" indefinitely when no candidate
+    // pair can be validated, which is exactly the case a host with no relay cannot fix.
+    reportConnectionFailure("timeout");
+  }, ICE_DEADLINE_MS);
+}
+
+function clearICEDeadline() {
+  if (!iceDeadlineHandle) return;
+  window.clearTimeout(iceDeadlineHandle);
+  iceDeadlineHandle = null;
+}
+
+function reportConnectionFailure(reason) {
+  if (connectionFailure) return;
+  connectionFailure = reason;
+  clearICEDeadline();
+  updateDiagnostics({ signaling: `no network route (${reason})` });
+  renderConnectionNotice();
+}
+
+function clearConnectionFailure() {
+  clearICEDeadline();
+  if (!connectionFailure) return;
+  connectionFailure = null;
+  previousVideoStats = null;
+  renderConnectionNotice();
+}
+
+/// Explains the outcome and names the one thing that would change it.
+///
+/// Worth being specific: with no TURN relay in the picture, "no route" is a property of the two
+/// networks rather than something the guest can retry their way out of. Telling them to reload would
+/// waste their time.
+function renderConnectionNotice() {
+  if (!elements.connectionNotice) return;
+  const show = Boolean(connectionFailure) && !hasTerminalState();
+  elements.connectionNotice.classList.toggle("hidden", !show);
+  if (!show) {
+    renderControllerGate();
+    return;
+  }
+  const localOnly = (networkConfiguration?.iceServers ?? []).length === 0;
+  if (elements.connectionNoticeTitle) {
+    elements.connectionNoticeTitle.textContent = connectionFailure === "timeout" ? "No route found" : "Connection failed";
+  }
+  if (elements.connectionNoticeBody) {
+    elements.connectionNoticeBody.textContent = localOnly
+      ? "This session only accepts guests on the host's own network."
+      : "Your device and the host could not find a network path to each other.";
+  }
+  if (elements.connectionNoticeHint) {
+    elements.connectionNoticeHint.textContent = localOnly
+      ? "Join from the same network as the host, or ask them to switch Transport to Auto."
+      : "Ask the host to run a tunnel, or try a different network. Some routers cannot connect directly to each other.";
+  }
+  // The controller prompt is irrelevant when there is nothing to send input over.
+  elements.controllerGate?.classList.add("hidden");
 }
 
 function recordInputSent(input, transport, sampledAtMilliseconds = performance.now()) {
@@ -752,14 +895,44 @@ function inboundStatsSummary(report) {
 
 function videoStatsSummary(stats) {
   const size = stats.frameWidth && stats.frameHeight ? `${stats.frameWidth}x${stats.frameHeight}` : "size pending";
+  // The Media line records the element's size at playback start and never updated, so it kept
+  // reporting the first ramp-up frame (480x270) while the stream had long since reached full size.
+  if (stats.frameWidth && stats.frameHeight) {
+    updateDiagnostics({ video: `playing ${stats.frameWidth}x${stats.frameHeight}` });
+  }
   const fps = typeof stats.framesPerSecond === "number" ? `${Math.round(stats.framesPerSecond)} fps` : "fps pending";
   const loss = stats.packetsLost > 0 ? `, ${stats.packetsLost} lost` : "";
-  const jitterFrames = stats.jitterBufferEmittedCount ?? 0;
-  const jitterDelay = jitterFrames > 0 && typeof stats.jitterBufferDelay === "number" ? `, jitter buffer ${Math.round((stats.jitterBufferDelay / jitterFrames) * 1_000)} ms` : "";
-  const decodedFrames = stats.framesDecoded ?? 0;
-  const decodeDelay = decodedFrames > 0 && typeof stats.totalDecodeTime === "number" ? `, decode ${Math.round((stats.totalDecodeTime / decodedFrames) * 1_000)} ms` : "";
+  const jitterDelay = windowedAverageMs(stats, previousVideoStats, "jitterBufferDelay", "jitterBufferEmittedCount");
+  const decodeDelay = windowedAverageMs(stats, previousVideoStats, "totalDecodeTime", "framesDecoded");
   const dropped = stats.framesDropped > 0 ? `, ${stats.framesDropped} dropped` : "";
-  return `video ${size} ${fps}, ${formatBytes(stats.bytesReceived ?? 0)} received${loss}${dropped}${jitterDelay}${decodeDelay}`;
+  previousVideoStats = {
+    jitterBufferDelay: stats.jitterBufferDelay,
+    jitterBufferEmittedCount: stats.jitterBufferEmittedCount,
+    totalDecodeTime: stats.totalDecodeTime,
+    framesDecoded: stats.framesDecoded
+  };
+  const jitter = jitterDelay === null ? "" : `, jitter buffer ${jitterDelay} ms`;
+  const decode = decodeDelay === null ? "" : `, decode ${decodeDelay} ms`;
+  return `video ${size} ${fps}, ${formatBytes(stats.bytesReceived ?? 0)} received${loss}${dropped}${jitter}${decode}`;
+}
+
+/// Average over the interval between two samples, in milliseconds.
+///
+/// WebRTC exposes these as cumulative totals, so the only way to see a *current* value is to divide
+/// the change in one by the change in the other. Falls back to the lifetime average for the very
+/// first sample, when there is no previous reading to difference against.
+function windowedAverageMs(stats, previous, totalKey, countKey) {
+  const total = stats[totalKey];
+  const count = stats[countKey];
+  if (typeof total !== "number" || typeof count !== "number") return null;
+  if (previous && typeof previous[totalKey] === "number" && typeof previous[countKey] === "number") {
+    const deltaCount = count - previous[countKey];
+    const deltaTotal = total - previous[totalKey];
+    // A zero delta means nothing was emitted this interval; the previous figure is the best answer.
+    if (deltaCount > 0) return Math.round((deltaTotal / deltaCount) * 1_000);
+  }
+  if (count > 0) return Math.round((total / count) * 1_000);
+  return null;
 }
 
 function audioStatsSummary(stats) {
@@ -775,12 +948,24 @@ function latencyMode() {
 function configureReceiverLatency(receiver) {
   if (!receiver || latencyMode() !== "lowLatency") return;
   try {
+    // Two APIs for the same intent, because neither is universal. `jitterBufferTarget` is the
+    // standards-track one and is what current Chrome actually honours; `playoutDelayHint` is the
+    // older non-standard property. Setting both is how a page asks every engine for the shallowest
+    // buffer it will accept, which is what a low-latency game stream wants - the buffer exists to
+    // smooth a lossy WAN, and this session is a LAN with single-digit RTT.
+    //
+    // Neither is a guarantee: the buffer still grows when frames arrive irregularly, so a value
+    // above the target means the *sender* is pacing unevenly rather than the request being ignored.
+    const applied = [];
+    if ("jitterBufferTarget" in receiver) {
+      receiver.jitterBufferTarget = 0;
+      applied.push("0 ms target");
+    }
     if ("playoutDelayHint" in receiver) {
       receiver.playoutDelayHint = 0;
-      updateDiagnostics({ playoutDelay: "0 ms hint" });
-    } else {
-      updateDiagnostics({ playoutDelay: "unsupported" });
+      applied.push("0 ms hint");
     }
+    updateDiagnostics({ playoutDelay: applied.length > 0 ? applied.join(" + ") : "unsupported" });
   } catch (error) {
     updateDiagnostics({ playoutDelay: `hint failed: ${error.message || "unavailable"}` });
   }
@@ -876,6 +1061,9 @@ function appendTrack(currentObject, track) {
 }
 
 function disconnect(notifyHost = true) {
+  leaving = true;
+  stopReconnecting();
+  clearICEDeadline();
   approved = false;
   stopPolling();
   resetInputHistory();
@@ -883,6 +1071,40 @@ function disconnect(notifyHost = true) {
   if (notifyHost && socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: inviteRoomID(), participantID });
   socket?.close();
   socket = null;
+}
+
+/// Backoff schedule in milliseconds, then give up.
+///
+/// Front-loaded because the common case is a Wi-Fi roam that resolves in under a second, and the
+/// host holds the slot for 45 seconds - so there is no value in still trying after that.
+const RECONNECT_DELAYS_MS = [400, 800, 1_500, 3_000, 5_000, 8_000, 12_000];
+
+function scheduleReconnect() {
+  if (reconnectHandle) return;
+  if (reconnectAttempt >= RECONNECT_DELAYS_MS.length) {
+    setState("Disconnected", "Reload to rejoin", false);
+    updateDiagnostics({ websocket: "gave up reconnecting" });
+    return;
+  }
+  const delay = RECONNECT_DELAYS_MS[reconnectAttempt];
+  reconnectAttempt += 1;
+  setState("Reconnecting", `Attempt ${reconnectAttempt}`, false);
+  updateDiagnostics({ websocket: `reconnecting in ${delay} ms` });
+  reconnectHandle = window.setTimeout(() => {
+    reconnectHandle = null;
+    connectToRoom();
+  }, delay);
+}
+
+function clearReconnectTimer() {
+  if (!reconnectHandle) return;
+  window.clearTimeout(reconnectHandle);
+  reconnectHandle = null;
+}
+
+function stopReconnecting() {
+  clearReconnectTimer();
+  reconnectAttempt = 0;
 }
 
 function setState(title, detail, connected, playerNumber = null) {
@@ -895,6 +1117,7 @@ function setState(title, detail, connected, playerNumber = null) {
     elements.networkDetail.textContent = detail;
   }
   updatePlayerBadge(title, playerNumber);
+  renderConnectionNotice();
   renderControllerGate();
 }
 
@@ -913,7 +1136,7 @@ function setControllerDetected(detected, name = "") {
 
 function renderControllerGate() {
   if (!elements.controllerGate) return;
-  const shouldShow = approved && !controllerDetected && !hasTerminalState();
+  const shouldShow = approved && !controllerDetected && !hasTerminalState() && !connectionFailure;
   elements.controllerGate.classList.toggle("hidden", !shouldShow);
   elements.controllerGate.classList.toggle("is-detected", controllerDetected);
   if (!shouldShow) return;

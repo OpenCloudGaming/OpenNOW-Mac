@@ -217,9 +217,6 @@ final class CatalogViewModel {
     }
     var streamProfile = OPNStreamPreferenceProfile()
     var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-    /// Stored rather than computed so `@Observable` re-renders the Settings row when the secret is
-    /// saved; the value itself lives in the keychain and is never held here.
-    var remoteCoOpInviteSecretConfigured = OPNRemoteCoOpInviteSecretStore.isConfigured()
     var streamCapabilities = OPNStreamDeviceCapabilities()
     var settingsRegionOptions: [OPNStreamRegionOption] = []
     var selectedSettingsRegionUrl = ""

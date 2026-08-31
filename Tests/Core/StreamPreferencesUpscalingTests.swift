@@ -26,9 +26,16 @@ import Testing
     }
 
     @Test func launchProfileKeepsSelectedResolutionWhenStaleGameProfileExists() {
-        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", gameProfilesKey]) {
+        // The quality-profile key has to be cleared as well, even though this test is about
+        // resolution: `launchProfile` applies a selected preset *after* reading the resolution, and a
+        // preset overwrites it. Leaving the key alone meant the test inherited whatever preset the
+        // machine running it had chosen in Settings, so it passed or failed depending on the
+        // developer's own preferences rather than on the code.
+        let qualityProfileKey = "OpenNOW.Stream.StreamingQualityProfileIndex"
+        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", qualityProfileKey, gameProfilesKey]) {
             removePreferenceValue("OpenNOW.Stream.AspectIndex")
             removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+            removePreferenceValue(qualityProfileKey)
             removePreferenceValue(gameProfilesKey)
             OPNStreamPreferences.saveAspectIndex(1)
             OPNStreamPreferences.saveResolutionIndex(5)

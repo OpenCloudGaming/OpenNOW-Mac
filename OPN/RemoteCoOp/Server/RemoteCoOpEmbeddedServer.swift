@@ -56,6 +56,9 @@ public actor OPNRemoteCoOpEmbeddedServer {
     private var eventContinuation: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private var inviteToken: String?
+    /// Origins beyond this machine's own that may open a signaling socket - a tunnel's public
+    /// hostname, when one is advertising this server.
+    private let additionalAllowedOrigins: [String]
     private(set) var endpoint: OPNRemoteCoOpEmbeddedServerEndpoint?
 
     private final class Connection {
@@ -68,12 +71,70 @@ public actor OPNRemoteCoOpEmbeddedServer {
         init(connection: NWConnection) { self.connection = connection }
     }
 
+    /// Caps for a listener that runs on the machine playing the game.
+    ///
+    /// The seat allows three guests, and each holds one socket plus a short-lived one for the page
+    /// fetch. This is far above that and still low enough that an unauthenticated peer cannot make
+    /// the host hold file descriptors indefinitely.
+    static let maximumConnections = 64
+    /// A connection that opens TCP and never finishes a request head is dropped. Well beyond any
+    /// real handshake, short enough that idle sockets do not accumulate.
+    static let handshakeTimeout: Duration = .seconds(15)
+
     public init(documentRoot: URL,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                additionalAllowedOrigins: [String] = [],
                 logger: (@Sendable (String) -> Void)? = nil) {
         self.documentRoot = documentRoot
         self.networkConfiguration = networkConfiguration
+        self.additionalAllowedOrigins = additionalAllowedOrigins.map { $0.lowercased() }
         self.logger = logger
+    }
+
+    /// Whether a browser at `origin` may open the signaling socket.
+    ///
+    /// A WebSocket is not subject to the same-origin policy the way `fetch` is: any page in any tab
+    /// can open one to this server, and the browser will send it. The invite token gates anything
+    /// meaningful, but this listener runs on the machine playing the game, so an unrelated page
+    /// should not get as far as speaking the protocol.
+    ///
+    /// A missing `Origin` is allowed: non-browser clients omit it entirely, and the guest page is
+    /// not the only legitimate client (the test harness and the smoke checks connect directly).
+    static func isOriginAllowed(_ origin: String?, port: UInt16, additional: [String]) -> Bool {
+        guard let origin, !origin.isEmpty else { return true }
+        let normalized = origin.lowercased()
+        if additional.contains(normalized) { return true }
+        // Every form a browser can produce for this machine's own listener.
+        for host in ["localhost", "127.0.0.1", "[::1]"] {
+            if normalized == "https://\(host):\(port)" || normalized == "https://\(host)" { return true }
+        }
+        // A LAN address cannot be enumerated ahead of time - the interface list can change while a
+        // session is live - so any private-range host on this listener's port is accepted.
+        guard let url = URL(string: normalized),
+              url.scheme == "https",
+              let host = url.host,
+              url.port == Int(port) || url.port == nil else { return false }
+        return isPrivateIPv4(host)
+    }
+
+    /// RFC 1918 plus link-local, which is every address a guest on the same network can reach this
+    /// Mac at. Deliberately not a general "is this a LAN address" helper: a public address here
+    /// means something is proxying, and that has to be named explicitly as a tunnel origin.
+    static func isPrivateIPv4(_ host: String) -> Bool {
+        // Every label has to parse, not just four of them. `compactMap` silently discarded the
+        // labels that were not numbers, so `10.0.0.1.evil.com` produced `[10, 0, 0, 1]` and was
+        // classified as a LAN address - a registerable domain matching a private-range prefix.
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count == 4 else { return false }
+        let parts = labels.compactMap { UInt8($0) }
+        guard parts.count == 4 else { return false }
+        switch (parts[0], parts[1]) {
+        case (10, _): return true
+        case (192, 168): return true
+        case (172, 16...31): return true
+        case (169, 254): return true
+        default: return false
+        }
     }
 
     /// The guest page shipped inside the app bundle. Serving the same files the Node broker serves
@@ -179,9 +240,18 @@ public actor OPNRemoteCoOpEmbeddedServer {
     }
 
     private func accept(_ nwConnection: NWConnection) {
+        // Refused before the connection is tracked, so a flood cannot grow this dictionary. An
+        // established guest is never displaced by a newcomer: dropping the new one degrades to
+        // "cannot join", while evicting an old one would drop someone mid-game.
+        guard connections.count < Self.maximumConnections else {
+            logger?("Remote Co-Op refused a connection: \(Self.maximumConnections) already open")
+            nwConnection.cancel()
+            return
+        }
         let connection = Connection(connection: nwConnection)
         let id = connection.id
         connections[id] = connection
+        scheduleHandshakeTimeout(for: id)
         // Only the id crosses into the handler. `Connection` owns the read buffer and is actor
         // state; capturing it would hand mutable state to Network.framework's callback queue.
         nwConnection.stateUpdateHandler = { [weak self] state in
@@ -194,6 +264,23 @@ public actor OPNRemoteCoOpEmbeddedServer {
         }
         nwConnection.start(queue: .global(qos: .userInitiated))
         receive(id)
+    }
+
+    /// Drops a connection that never completed a WebSocket handshake or a request.
+    ///
+    /// Static files answer and close well inside the window, so anything still here without having
+    /// upgraded is either a stalled client or a socket being held open deliberately.
+    private func scheduleHandshakeTimeout(for id: UUID) {
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.handshakeTimeout)
+            await self?.dropIfHandshakeIncomplete(id)
+        }
+    }
+
+    private func dropIfHandshakeIncomplete(_ id: UUID) {
+        guard let connection = connections[id], !connection.isWebSocket else { return }
+        logger?("Remote Co-Op dropped a connection that never completed a handshake")
+        close(id)
     }
 
     private func receive(_ id: UUID) {
@@ -226,6 +313,10 @@ public actor OPNRemoteCoOpEmbeddedServer {
             if request.isWebSocketUpgrade {
                 guard request.normalizedPath == "/remote-coop", let key = request.header("sec-websocket-key") else {
                     return respond(connection, OPNRemoteCoOpHTTPParser.response(status: 404, reason: "Not Found"), close: true)
+                }
+                guard Self.isOriginAllowed(request.header("origin"), port: endpoint?.port ?? 0, additional: additionalAllowedOrigins) else {
+                    logger?("Remote Co-Op rejected a signaling socket from origin \(request.header("origin") ?? "unknown")")
+                    return respond(connection, OPNRemoteCoOpHTTPParser.response(status: 403, reason: "Forbidden"), close: true)
                 }
                 connection.isWebSocket = true
                 send(connection, OPNRemoteCoOpHTTPParser.webSocketAcceptResponse(key: key))
@@ -277,9 +368,18 @@ public actor OPNRemoteCoOpEmbeddedServer {
             return
         }
         if message.kind == .guestJoinRequested, let participantID = message.participantID {
-            // Binds this socket to the participant before anything is routed to it, so a later
-            // message naming a different participant cannot be used to read someone else's
-            // signaling.
+            // A participant already held by another live socket is not up for grabs. The binding
+            // used to be an unconditional overwrite, so a second socket naming an existing
+            // participant took over its routing - every host `peerSignal` for that guest, and on
+            // reconnect its already-approved player slot. Only reachable by someone who knew the
+            // victim's participant UUID, but nothing in the routing logic required them not to.
+            if let existing = guestConnections[participantID], existing != connection.id, connections[existing] != nil {
+                logger?("Remote Co-Op refused a socket claiming a participant that is already connected")
+                connection.connection.cancel()
+                return
+            }
+            // Bound before anything is routed to it, so a later message naming a different
+            // participant cannot be used to read someone else's signaling.
             connection.participantID = participantID
             guestConnections[participantID] = connection.id
             sendWire(connection, OPNRemoteCoOpWireMessage(
@@ -289,10 +389,32 @@ public actor OPNRemoteCoOpEmbeddedServer {
                 networkConfiguration: networkConfiguration
             ))
         }
+        // Only the kinds a guest legitimately originates. This is the boundary between the two
+        // directions of the protocol, and it has to be explicit.
+        //
+        // `networkConfiguration` and `error` used to arrive on the *host's* outbound socket from the
+        // trusted Node broker. With the broker gone the only socket left is guest-facing, and
+        // `signalingEvent()` still decoded both - so an unauthenticated peer could send a
+        // `networkConfiguration` and replace the ICE servers and transport policy of every peer
+        // connection the host built afterwards, forcing guest media through a relay of their
+        // choosing. Neither kind has any producer in this architecture.
+        switch message.kind {
+        case .guestJoinRequested, .guestInput, .guestDisconnected, .peerSignal:
+            break
+        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved,
+             .guestRejected, .inputRejected, .heartbeat, .networkConfiguration, .error:
+            return
+        }
         guard let event = message.signalingEvent() else { return }
-        // Everything after the join must come from the socket that owns the participant. Without
-        // this a second guest could send input or peer signals as the first.
-        if let claimed = message.participantID, let owner = connection.participantID, claimed != owner { return }
+        // A socket that has not joined owns no participant, so it may not act as one. Previously an
+        // un-joined socket passed the ownership check by omitting the field, and the only thing
+        // standing in its way was not knowing a victim's participant UUID.
+        guard let owner = connection.participantID else { return }
+        // Everything after the join must come from the socket that owns the participant. Checked on
+        // the packet's own identity too, because that is the one the input router keys off.
+        if let claimed = message.participantID, claimed != owner { return }
+        if let claimed = message.input?.participantID, claimed != owner { return }
+        if message.inputs?.contains(where: { $0.participantID != owner }) == true { return }
         eventContinuation?.yield(event)
     }
 

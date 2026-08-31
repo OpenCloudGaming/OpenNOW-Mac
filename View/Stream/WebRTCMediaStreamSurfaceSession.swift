@@ -32,6 +32,16 @@ extension WebRTCMediaStreamSurface {
         nativeView.onInputEvent = { event in
             routeStreamInput(event, transport: transport)
         }
+        // Remote Co-Op guest slots are assigned from the same 4-pad space local controllers use.
+        // Without this the host session never learns a second local controller connected mid-session
+        // and could hand a guest an index that pad already occupies - both then drive the same
+        // in-game player. Seeded once now and kept current on every change; this transport does not
+        // re-announce topology to the seat the way NVST does, so nothing else updates it.
+        let hostSession = remoteCoOpHostSession
+        nativeView.onGamepadTopologyChanged = { topology in
+            Task { await hostSession.updateReservedLocalPlayerIndices(Set(topology.playerIndices)) }
+        }
+        Task { await remoteCoOpHostSession.updateReservedLocalPlayerIndices(Set(nativeView.gamepadTopology.playerIndices)) }
         self.transport = transport
         self.path = path
         startStatsPolling(transport: transport)

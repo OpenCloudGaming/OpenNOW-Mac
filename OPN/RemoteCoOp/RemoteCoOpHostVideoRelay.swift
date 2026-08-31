@@ -74,11 +74,27 @@ public final class OPNRemoteCoOpHostVideoRelay: @unchecked Sendable {
             cropX: 0,
             cropY: 0
         )
-        // Presentation time is the session clock, which restarts on recovery and can sit at zero
-        // for the first frames; libwebrtc wants a monotonic capture clock, so use the same one the
-        // peer paces on.
-        _ = presentationTime
-        let frame = RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: Int64(truncatingIfNeeded: DispatchTime.now().uptimeNanoseconds))
+        // The decoder's presentation time, not the wall clock.
+        //
+        // This is the seat's own RTP timestamp (`NvstVideoToolboxDecoder` builds it as
+        // `CMTime(value: unit.rtpTimestamp, timescale: clockRate)`), so it describes when the frame
+        // was captured rather than when it happened to reach this function. Stamping with
+        // `DispatchTime.now()` here instead folded every hop between decode and relay - VideoToolbox
+        // callback scheduling, actor hops, SRTP receive bursts, the seat's own network jitter - into
+        // the capture clock. libwebrtc's receiver infers network jitter by comparing capture
+        // timestamps against arrival times, so it read all of that as a jittery link and grew its
+        // jitter buffer to absorb it: measured at 287 ms on a 4 ms LAN route.
+        //
+        // It also skewed the rate limiter, which compares consecutive timestamps against the guest
+        // preset's frame interval. Jittery stamps put some frames under the threshold and dropped
+        // them, so a 60 fps source arrived as an uneven ~40 fps.
+        //
+        // A zero or backwards value is not special-cased here: the limiter falls back to the arrival
+        // clock when a timestamp fails to advance, which covers both the first frames of a session
+        // and an RTP timestamp wrap.
+        let nanoseconds = CMTimeConvertScale(presentationTime, timescale: 1_000_000_000, method: .default)
+        let timeStampNs = nanoseconds.isValid ? nanoseconds.value : Int64(truncatingIfNeeded: DispatchTime.now().uptimeNanoseconds)
+        let frame = RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: timeStampNs)
         for sink in state.0 { sink.renderVideoFrame(frame) }
     }
 

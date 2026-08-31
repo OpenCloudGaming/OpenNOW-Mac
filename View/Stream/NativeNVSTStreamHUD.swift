@@ -401,7 +401,7 @@ extension NativeNVSTMediaStreamSurface {
                     Text(model.remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
                         .font(.streamNvidia(size: 9, weight: .bold))
                         .tracking(0.7)
-                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .relayOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(Color.white.opacity(0.07))
@@ -464,11 +464,21 @@ extension NativeNVSTMediaStreamSurface {
                 .font(.streamNvidia(size: 10, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             if participant.connectionState == .waitingForApproval {
-                StreamHUDParticipantIconButton(systemName: "checkmark", label: "Approve guest", color: WebRTCMediaStreamTheme.accent) {
+                StreamHUDParticipantIconButton(
+                    systemName: "checkmark",
+                    label: "Approve guest",
+                    color: WebRTCMediaStreamTheme.accent,
+                    isFocused: model.hudFocusID == "coop-approve-\(participant.id.uuidString)"
+                ) {
                     model.approveRemoteCoOpParticipant(participant.id)
                 }
             }
-            StreamHUDParticipantIconButton(systemName: "xmark", label: "Remove guest", color: WebRTCMediaStreamTheme.danger) {
+            StreamHUDParticipantIconButton(
+                systemName: "xmark",
+                label: "Remove guest",
+                color: WebRTCMediaStreamTheme.danger,
+                isFocused: model.hudFocusID == "coop-remove-\(participant.id.uuidString)"
+            ) {
                 model.removeRemoteCoOpParticipant(participant.id)
             }
         }

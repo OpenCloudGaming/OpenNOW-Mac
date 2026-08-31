@@ -31,6 +31,9 @@ extension NativeNVSTHostViewModel {
                 if remoteCoOpSnapshot.invite == nil { startRemoteCoOpInvite() } else { stopRemoteCoOpInvite() }
             }),
             StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
+        ]
+        + remoteCoOpParticipantFocusEntries
+        + [
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { [weak self] in self?.showStreamControls() }),
             StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
@@ -39,6 +42,27 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "noise-reduction", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeNoiseReduction),
             StreamHUDFocusEntry(id: "pillarbox-fill", isDisabled: !isConnected, action: cycleNativePillarboxFill),
         ]
+    }
+
+    /// One focus entry per guest, so approving and removing are reachable from a controller.
+    ///
+    /// Approval happens mid-game, which is exactly when reaching for the trackpad is worst - and a
+    /// guest waiting for approval cannot play until someone acts. Ordered to match the rows the HUD
+    /// draws, so pad navigation follows what is on screen.
+    var remoteCoOpParticipantFocusEntries: [StreamHUDFocusEntry] {
+        guard sidebarCapabilities.supports(.remoteCoOp) else { return [] }
+        return remoteCoOpSnapshot.participants.flatMap { participant -> [StreamHUDFocusEntry] in
+            var entries: [StreamHUDFocusEntry] = []
+            if participant.connectionState == .waitingForApproval {
+                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+                    self?.approveRemoteCoOpParticipant(participant.id)
+                }))
+            }
+            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+                self?.removeRemoteCoOpParticipant(participant.id)
+            }))
+            return entries
+        }
     }
 
     /// Single source of truth for the segmented Picker's display order and label text, and for

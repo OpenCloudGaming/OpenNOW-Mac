@@ -161,14 +161,13 @@ public actor OPNRemoteCoOpHostCoordinator {
             await signaling.send(.inputRejected(participantID: packet.participantID, result: result))
             return []
         case .guestDisconnected(let participantID):
-            do {
-                let events = try await hostSession.removeParticipant(participantID)
-                await signaling.send(.participantRemoved(participantID))
-                return events
-            } catch {
-                await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))
-                return []
-            }
+            // The slot is held rather than released: a dropped socket is usually a blip, and the
+            // guest page reconnects with the same participant ID to reclaim it. Neutral pad state
+            // still goes out now so nothing stays held during the grace period.
+            //
+            // No `participantRemoved` either - that tells the guest page it was ejected and stops
+            // it reconnecting. `expireDisconnectedParticipants` is what eventually gives up.
+            return await hostSession.noteGuestDisconnected(participantID)
         case .peerSignal, .networkConfiguration, .brokerError:
             return []
         }

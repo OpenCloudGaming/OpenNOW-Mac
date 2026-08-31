@@ -610,7 +610,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   background: var(--green);
 }
 
-.controller-gate {
+.session-overlay {
   position: absolute;
   inset: 0;
   z-index: 6;
@@ -621,7 +621,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   backdrop-filter: blur(10px);
 }
 
-.controller-gate-card {
+.session-overlay-card {
   display: grid;
   gap: 10px;
   width: min(30rem, 100%);
@@ -632,7 +632,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   border: 1px solid var(--line);
 }
 
-.controller-gate-icon {
+.session-overlay-icon {
   display: grid;
   width: 62px;
   height: 62px;
@@ -642,7 +642,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   border: 1px solid rgba(117, 230, 26, 0.34);
 }
 
-.controller-gate-icon svg {
+.session-overlay-icon svg {
   width: 34px;
   height: 34px;
   fill: none;
@@ -653,7 +653,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
 
 /* Pulses only while the page is waiting for a button, so it reads as a prompt for action rather
  * than as decoration. */
-.controller-gate:not(.is-detected) .controller-gate-icon {
+.controller-gate:not(.is-detected) .session-overlay-icon {
   animation: controller-gate-pulse 1.8s ease-in-out infinite;
 }
 
@@ -662,7 +662,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   50% { transform: scale(1.06); border-color: rgba(155, 240, 11, 0.7); }
 }
 
-.controller-gate-card h2 {
+.session-overlay-card h2 {
   margin: 0;
   color: var(--ink);
   font-family: var(--display);
@@ -673,7 +673,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   text-transform: uppercase;
 }
 
-.controller-gate-card p {
+.session-overlay-card p {
   margin: 0;
   max-width: 26rem;
   color: var(--muted);
@@ -682,7 +682,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   line-height: 1.5;
 }
 
-.controller-gate-note {
+.session-overlay-note {
   margin-top: 4px;
   color: var(--quiet);
   font-family: var(--mono);
@@ -693,5 +693,28 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .controller-gate:not(.is-detected) .controller-gate-icon { animation: none; }
+  .controller-gate:not(.is-detected) .session-overlay-icon { animation: none; }
+}
+
+/* A failed connection is a real outcome, not a slow one.
+ *
+ * There is no relay to fall back to, so a router pair that refuses to hole-punch simply never
+ * connects. Left alone the page sits on "connecting" forever, which reads as a hang rather than an
+ * answer - so the alert palette separates it from the controller prompt, which is a normal step. */
+.session-overlay-icon.is-alert {
+  background: rgba(255, 96, 79, 0.12);
+  border-color: rgba(255, 96, 79, 0.42);
+}
+
+.session-overlay-icon.is-alert svg {
+  stroke: var(--red);
+}
+
+#connection-notice .session-overlay-note {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
 }

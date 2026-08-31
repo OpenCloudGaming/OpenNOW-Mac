@@ -1,48 +1,48 @@
 import Foundation
 import CryptoKit
 
+/// How hard the guest's connection is allowed to try to reach the host.
+///
+/// `relayOnly` used to be a third case, forcing every candidate through a TURN relay. It existed
+/// because the deployed broker also ran coturn; with the broker gone there is no relay to force, so
+/// the mode could only ever fail. Dropping it also drops the only way to keep a guest from learning
+/// the host's address - a real cost, accepted deliberately rather than overlooked.
 public enum OPNRemoteCoOpTransportMode: String, CaseIterable, Codable, Equatable, Sendable {
+    /// Discover this Mac's public address through STUN so a guest on another network can reach it.
     case automatic
+    /// Offer only addresses on this machine's own interfaces. Same network only, and nothing about
+    /// the host's public address is revealed.
     case directOnly
-    case relayOnly
 
     public var label: String {
         switch self {
         case .automatic: return "Auto"
-        case .directOnly: return "Direct Only"
-        case .relayOnly: return "Relay Only"
+        case .directOnly: return "Same Network"
         }
     }
 
     public var description: String {
         switch self {
-        case .automatic: return "Default. Try direct WebRTC first and fall back to relay through TURN when routers or firewalls block direct paths."
-        case .directOnly: return "Only connect when guests can reach the host directly. This may expose peer network information."
-        case .relayOnly: return "Force TURN relay connectivity to avoid exposing direct peer IP candidates."
+        case .automatic: return "Default. Uses STUN to find a route to guests on other networks, which reveals this Mac's public address to them."
+        case .directOnly: return "Only accept guests on your own network. Nothing about your public address is shared."
         }
     }
 
-    public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy {
-        switch self {
-        case .automatic, .directOnly: .all
-        case .relayOnly: .relay
-        }
-    }
+    /// Always `.all`: the `.relay` policy discards host and server-reflexive candidates, which is
+    /// only meaningful when a TURN relay is available to replace them.
+    public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy { .all }
 
-    public var allowsRelayFallback: Bool {
-        switch self {
-        case .automatic, .relayOnly: true
-        case .directOnly: false
-        }
-    }
-
-    public var hidesDirectPeerCandidates: Bool {
-        self == .relayOnly
+    /// Whether STUN should be offered. Without it a guest only ever sees this machine's private
+    /// interface addresses, which is exactly what limits `directOnly` to one network.
+    public var usesSTUN: Bool {
+        self == .automatic
     }
 }
 
 public enum OPNRemoteCoOpICETransportPolicy: String, Codable, Equatable, Sendable {
     case all
+    /// No longer produced. Kept so a guest page cached from an older release still decodes the
+    /// network configuration rather than failing to parse it.
     case relay
 }
 
@@ -65,32 +65,6 @@ public enum OPNRemoteCoOpLatencyMode: String, CaseIterable, Codable, Equatable, 
     }
 }
 
-/// Where the signaling rendezvous lives.
-public enum OPNRemoteCoOpHostingMode: String, CaseIterable, Codable, Equatable, Sendable {
-    /// OpenNOW serves the guest page and the signaling socket itself. Nothing to deploy, nothing to
-    /// configure, and no shared secret - the app both signs and verifies its own invites.
-    case local
-    /// A separately deployed broker, which both sides dial out to. The only option that works when
-    /// the guest cannot reach the host directly.
-    case externalBroker
-
-    public var label: String {
-        switch self {
-        case .local: return "This Mac"
-        case .externalBroker: return "External Broker"
-        }
-    }
-
-    public var description: String {
-        switch self {
-        case .local:
-            return "OpenNOW hosts the invite itself. No setup, and best for guests on your network. A guest elsewhere needs a forwarded port."
-        case .externalBroker:
-            return "Use a deployed broker both you and the guest connect out to. Works behind any router, and needs the broker's signing secret."
-        }
-    }
-}
-
 public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
     public var urls: [String]
     public var username: String?
@@ -104,6 +78,25 @@ public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
 }
 
 public struct OPNRemoteCoOpNetworkConfiguration: Codable, Equatable, Sendable {
+    /// Public STUN servers offered when the transport mode allows it.
+    ///
+    /// Without these a guest only ever receives this machine's private interface addresses, so media
+    /// cannot connect from another network however well signaling works - which is the state a
+    /// locally hosted session was previously in, and the reason a LAN session's selected route was
+    /// always `host/udp -> host/udp`. The deployed broker supplied the same default.
+    ///
+    /// Two providers rather than one so a single operator's outage does not take Remote Co-Op with
+    /// it. STUN reveals nothing but the address the server already sees.
+    public static let defaultSTUNServers = [
+        "stun:stun.l.google.com:19302",
+        "stun:stun.cloudflare.com:3478"
+    ]
+
+    public static func iceServers(for transportMode: OPNRemoteCoOpTransportMode) -> [OPNRemoteCoOpICEServer] {
+        guard transportMode.usesSTUN else { return [] }
+        return [OPNRemoteCoOpICEServer(urls: defaultSTUNServers)]
+    }
+
     public var transportMode: OPNRemoteCoOpTransportMode
     public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy
     public var latencyMode: OPNRemoteCoOpLatencyMode
@@ -112,16 +105,19 @@ public struct OPNRemoteCoOpNetworkConfiguration: Codable, Equatable, Sendable {
     public var websocketInputFallbackEnabled: Bool
     public var directPeerCandidateWarning: String
 
+    /// `iceServers` defaults to whatever the transport mode calls for. It used to default to empty,
+    /// and every construction site took that default - so a locally hosted guest was never given a
+    /// STUN server at all.
     public init(transportMode: OPNRemoteCoOpTransportMode,
                 latencyMode: OPNRemoteCoOpLatencyMode = .quality,
-                iceServers: [OPNRemoteCoOpICEServer] = [],
+                iceServers: [OPNRemoteCoOpICEServer]? = nil,
                 dataChannelInputEnabled: Bool = true,
                 websocketInputFallbackEnabled: Bool = true,
                 directPeerCandidateWarning: String = "") {
         self.transportMode = transportMode
         self.iceTransportPolicy = transportMode.iceTransportPolicy
         self.latencyMode = latencyMode
-        self.iceServers = iceServers
+        self.iceServers = iceServers ?? Self.iceServers(for: transportMode)
         self.dataChannelInputEnabled = dataChannelInputEnabled
         self.websocketInputFallbackEnabled = websocketInputFallbackEnabled
         self.directPeerCandidateWarning = directPeerCandidateWarning.isEmpty ? Self.warning(for: transportMode) : directPeerCandidateWarning
@@ -139,14 +135,13 @@ public struct OPNRemoteCoOpNetworkConfiguration: Codable, Equatable, Sendable {
         directPeerCandidateWarning = warning.isEmpty ? Self.warning(for: transportMode) : warning
     }
 
+    /// Shown to the guest, so it describes what *they* are about to reveal and to whom.
     public static func warning(for mode: OPNRemoteCoOpTransportMode) -> String {
         switch mode {
         case .automatic:
-            return "Automatic mode may use direct peer candidates before falling back to TURN relay. Use Relay Only to hide direct IP candidates."
+            return "This session connects you and the host directly, so each of you can see the other's network address."
         case .directOnly:
-            return "Direct Only mode can expose direct peer IP candidates and may fail behind strict routers or firewalls."
-        case .relayOnly:
-            return "Relay Only mode uses TURN relay candidates to avoid exposing direct peer IP candidates."
+            return "This session only accepts guests on the host's own network."
         }
     }
 }
@@ -232,13 +227,9 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataQualityPresetKey = "remoteCoOpQualityPreset"
     public static let launchMetadataLatencyModeKey = "remoteCoOpLatencyMode"
     public static let launchMetadataRequireHostApprovalKey = "remoteCoOpRequireHostApproval"
-    public static let launchMetadataSignalingServerURLKey = "remoteCoOpSignalingServerURL"
-    public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
     public static let launchMetadataHideGuestInviteDetailsKey = "remoteCoOpHideGuestInviteDetails"
-    public static let launchMetadataHostingModeKey = "remoteCoOpHostingMode"
+    public static let launchMetadataPublicAddressKey = "remoteCoOpPublicAddress"
 
-    public static let defaultSignalingServerURL = "wss://198.12.95.48:32188/remote-coop"
-    public static let defaultGuestJoinBaseURL = "https://198.12.95.48:32188/"
 
     public var isAlphaOptedIn: Bool
     public var isEnabled: Bool
@@ -247,10 +238,15 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public var qualityPreset: OPNRemoteCoOpQualityPreset
     public var latencyMode: OPNRemoteCoOpLatencyMode
     public var requireHostApproval: Bool
-    public var signalingServerURL: String
-    public var guestJoinBaseURL: String
     public var hideGuestInviteDetails: Bool
-    public var hostingMode: OPNRemoteCoOpHostingMode
+    /// Public base URL a tunnel exposes this Mac's local server on, e.g. an ngrok or Cloudflare
+    /// address. Empty means guests are given the LAN address.
+    ///
+    /// Not a separate hosting mode: a tunnel does not change who serves the session, only the
+    /// address guests are told to reach it at. The tunnel also terminates TLS on its own hostname
+    /// with a certificate browsers already trust, which is the one thing local hosting cannot do
+    /// for itself.
+    public var publicAddress: String
 
     public init(isAlphaOptedIn: Bool = true,
                 isEnabled: Bool = false,
@@ -259,10 +255,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
                 latencyMode: OPNRemoteCoOpLatencyMode = .lowLatency,
                 requireHostApproval: Bool = true,
-                signalingServerURL: String = Self.defaultSignalingServerURL,
-                guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,
                 hideGuestInviteDetails: Bool = false,
-                hostingMode: OPNRemoteCoOpHostingMode = .local) {
+                publicAddress: String = "") {
         self.isAlphaOptedIn = isAlphaOptedIn
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
@@ -270,10 +264,19 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         self.qualityPreset = qualityPreset
         self.latencyMode = latencyMode
         self.requireHostApproval = requireHostApproval
-        self.signalingServerURL = Self.normalizedURLString(signalingServerURL, fallback: Self.defaultSignalingServerURL)
-        self.guestJoinBaseURL = Self.normalizedURLString(guestJoinBaseURL, fallback: Self.defaultGuestJoinBaseURL)
         self.hideGuestInviteDetails = hideGuestInviteDetails
-        self.hostingMode = hostingMode
+        self.publicAddress = publicAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The tunnel address, only when it is usable.
+    ///
+    /// Must be `https`: the guest page needs a secure context for `RTCPeerConnection`, and a tunnel
+    /// serving plaintext would leave the guest unable to connect for exactly the reason the previous
+    /// deployment's bare-IP `http://` default did.
+    public var effectivePublicAddress: URL? {
+        guard !publicAddress.isEmpty else { return nil }
+        guard let url = URL(string: publicAddress), url.scheme?.lowercased() == "https", url.host != nil else { return nil }
+        return url
     }
 
     public var isAvailable: Bool {
@@ -305,10 +308,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             Self.launchMetadataQualityPresetKey: qualityPreset.rawValue,
             Self.launchMetadataLatencyModeKey: latencyMode.rawValue,
             Self.launchMetadataRequireHostApprovalKey: String(requireHostApproval),
-            Self.launchMetadataSignalingServerURLKey: signalingServerURL,
-            Self.launchMetadataGuestJoinBaseURLKey: guestJoinBaseURL,
             Self.launchMetadataHideGuestInviteDetailsKey: String(hideGuestInviteDetails),
-            Self.launchMetadataHostingModeKey: hostingMode.rawValue,
+            Self.launchMetadataPublicAddressKey: publicAddress,
         ]
     }
 
@@ -321,10 +322,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: metadata[launchMetadataQualityPresetKey] ?? "") ?? fallback.qualityPreset,
             latencyMode: OPNRemoteCoOpLatencyMode(rawValue: metadata[launchMetadataLatencyModeKey] ?? "") ?? fallback.latencyMode,
             requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
-            signalingServerURL: migratedSignalingServerURL(string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL)),
-            guestJoinBaseURL: migratedGuestJoinBaseURL(string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL)),
             hideGuestInviteDetails: bool(metadata[launchMetadataHideGuestInviteDetailsKey], defaultValue: fallback.hideGuestInviteDetails),
-            hostingMode: OPNRemoteCoOpHostingMode(rawValue: metadata[launchMetadataHostingModeKey] ?? "") ?? fallback.hostingMode
+            publicAddress: metadata[launchMetadataPublicAddressKey] ?? fallback.publicAddress
         )
     }
 
@@ -333,45 +332,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         return trimmed.isEmpty ? fallback : trimmed
     }
 
-    public static func migratedSignalingServerURL(_ value: String) -> String {
-        legacySignalingServerURLs.contains(normalizedURLKey(value)) ? defaultSignalingServerURL : normalizedURLString(value, fallback: defaultSignalingServerURL)
-    }
-
-    public static func migratedGuestJoinBaseURL(_ value: String) -> String {
-        legacyGuestJoinBaseURLs.contains(normalizedURLKey(value)) ? defaultGuestJoinBaseURL : normalizedURLString(value, fallback: defaultGuestJoinBaseURL)
-    }
-
-    /// Addresses of brokers that no longer exist. A stored value matching one of these is replaced
-    /// with the current default rather than left pointing at a dead host.
-    ///
-    /// The plaintext form of the *current* endpoint is deliberately absent from both lists. It was
-    /// there, which meant an operator who pointed the app at `ws://<current host>:32188` - the
-    /// scheme `RemoteCoOp/run-servers.mjs` actually serves in its documented production
-    /// configuration - had it silently rewritten back to `wss://` on the next load, with no way to
-    /// keep the working URL. Only genuinely retired hosts and ports belong here.
-    private static let legacySignalingServerURLs: Set<String> = [
-        "ws://127.0.0.1:8787/remote-coop",
-        "ws://localhost:8787/remote-coop",
-        "ws://jayian.dev:8788/remote-coop",
-        "ws://relay.jayian.dev:8788/remote-coop",
-        "wss://relay.jayian.dev:8788/remote-coop",
-        "ws://198.12.95.48:8788/remote-coop"
-    ]
-
-    private static let legacyGuestJoinBaseURLs: Set<String> = [
-        "http://127.0.0.1:8787",
-        "http://localhost:8787",
-        "http://jayian.dev:8788",
-        "http://relay.jayian.dev:8788",
-        "https://relay.jayian.dev:8788",
-        "http://198.12.95.48:8788"
-    ]
-
-    private static func normalizedURLKey(_ value: String) -> String {
-        var key = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while key.count > 1 && key.hasSuffix("/") { key.removeLast() }
-        return key
-    }
 
     static func int(_ value: String?, defaultValue: Int) -> Int {
         guard let value, let parsed = Int(value) else { return defaultValue }
@@ -474,12 +434,16 @@ public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
 
     /// The signer a host session uses by default.
     ///
-    /// Named for the environment variable it used to read, and it still prefers that variable so a
-    /// development host launched from the same shell as the broker keeps working. The configured
-    /// secret now comes from the keychain as well, because the broker verifies invite signatures
-    /// server-side and a GUI app has no environment to read - see `OPNRemoteCoOpInviteSecretStore`.
-    public static func fromEnvironment() -> OPNRemoteCoOpInviteTokenSigner {
-        OPNRemoteCoOpInviteSecretStore.signer()
+    /// A fresh random key per launch, because OpenNOW is now both the signer and the verifier: it
+    /// mints an invite and checks the token a guest presents back, all in one process. Nothing else
+    /// needs the key, so there is nothing to distribute and nothing to keep in sync.
+    ///
+    /// This used to read a shared secret from the environment and then the keychain, so a separately
+    /// deployed broker could verify signatures too. That sharing was the single largest source of
+    /// "every join is rejected": the two sides derived different keys from identical configuration,
+    /// and nothing surfaced the mismatch.
+    public static func perSession() -> OPNRemoteCoOpInviteTokenSigner {
+        OPNRemoteCoOpInviteTokenSigner()
     }
 
     public func token(for payload: OPNRemoteCoOpInviteTokenPayload) throws -> String {
@@ -600,7 +564,7 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
                 applicationID: String = "",
                 title: String = "",
                 hideGuestInviteDetails: Bool = false,
-                hostingMode: OPNRemoteCoOpHostingMode = .local) {
+                publicAddress: String = "") {
         self.id = id
         self.code = code
         self.createdAt = createdAt

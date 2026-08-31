@@ -511,6 +511,9 @@ struct StreamHUDParticipantIconButton: View {
     let systemName: String
     let label: String
     let color: Color
+    /// Drawn with the same ring the rest of the HUD uses, so a controller can find these rows.
+    /// Approving a guest happens mid-game, when reaching for the trackpad is worst.
+    var isFocused = false
     let action: () -> Void
 
     var body: some View {
@@ -519,8 +522,10 @@ struct StreamHUDParticipantIconButton: View {
                 .font(.streamNvidia(size: 10, weight: .bold))
                 .foregroundStyle(color)
                 .frame(width: 22, height: 22)
-                .background(Color.white.opacity(0.07))
-                .overlay { Rectangle().stroke(color.opacity(0.32), lineWidth: 1) }
+                .background(Color.white.opacity(isFocused ? 0.16 : 0.07))
+                .overlay {
+                    Rectangle().stroke(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

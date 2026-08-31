@@ -35,6 +35,19 @@ extension WebRTCMediaStreamSurface {
             if remoteCoOpSnapshot.invite != nil {
                 entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
             }
+            // One entry per guest, in the order the rows are drawn. Approving happens mid-game,
+            // which is exactly when reaching for the trackpad is worst, and a guest waiting for
+            // approval cannot play until someone acts.
+            for participant in remoteCoOpSnapshot.participants {
+                if participant.connectionState == .waitingForApproval {
+                    entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, action: {
+                        approveRemoteCoOpParticipant(participant.id)
+                    }))
+                }
+                entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, action: {
+                    removeRemoteCoOpParticipant(participant.id)
+                }))
+            }
         }
         return entries
     }

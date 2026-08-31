@@ -10,8 +10,7 @@
 //  once, on a top-level navigation, and have that exception cover the socket too. Split across two
 //  ports the browser would refuse the socket with no way to grant an exception for it.
 //
-//  So the listener is plain TLS over TCP and the HTTP and WebSocket layers are ours, which is also
-//  what `RemoteCoOp/server/broker.mjs` does for the same reason.
+//  So the listener is plain TLS over TCP, and the HTTP and WebSocket layers are ours.
 //
 
 import CryptoKit

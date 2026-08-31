@@ -18,10 +18,6 @@ import SwiftUI
 struct RemoteCoOpSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    /// Write-only: the stored secret is never read back into the field. It is a signing key, and a
-    /// keychain item that renders itself into a view every time Settings opens is one screenshot
-    /// away from being someone else's.
-    @State private var inviteSecretDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -90,86 +86,102 @@ struct RemoteCoOpSettingsPage: View {
             }
 
             SettingsCard(title: "Hosting", uiScale: uiScale) {
-                SettingsOptionRow(
-                    title: "Signaling Host",
-                    subtitle: viewModel.remoteCoOpPreferences.hostingMode.description,
-                    options: OPNRemoteCoOpHostingMode.allCases.map(\.label),
-                    selectedIndex: selectedHostingModeIndex,
-                    uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpHostingModeIndex
-                )
+                SettingsInfoRow(label: "Served By", value: "This Mac", uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
-                SettingsInfoRow(label: "Status", value: hostingSummary, uiScale: uiScale)
+                SettingsInfoRow(label: "Address", value: hostingSummary, uiScale: uiScale)
             }
 
-            if viewModel.remoteCoOpPreferences.hostingMode == .externalBroker {
-                brokerCard
-            }
+            tunnelCard
         }
     }
 
-    /// Only shown for a deployed broker. Hosting locally derives every one of these - the addresses
-    /// come from the bound listener, and the signing secret does not exist because the app both
-    /// signs and verifies its own invites.
-    private var brokerCard: some View {
-        SettingsCard(title: "Broker", uiScale: uiScale) {
+    /// Optional public address for a tunnel.
+    ///
+    /// A guest on another network cannot reach this Mac directly unless a port is forwarded, and
+    /// behind CGNAT or MAP-E there is no port to forward at all. A tunnel solves that the same way a
+    /// deployed broker does - by making the connection outbound - and additionally gets a
+    /// certificate browsers already trust, which is the one thing local hosting cannot do for
+    /// itself. Nothing is bundled: the user runs their own tunnel and pastes the address.
+    private var tunnelCard: some View {
+        SettingsCard(title: "Tunnel (Optional)", uiScale: uiScale) {
             Group {
-                SettingsTextFieldRow(
-                    title: "Signaling Server",
-                    subtitle: "WebSocket URL of the Remote Co-Op broker. Must match the address the broker printed at startup.",
-                    text: viewModel.remoteCoOpPreferences.signalingServerURL,
-                    placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL,
-                    uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpSignalingServerURL
-                )
+                SettingsInfoRow(label: "Status", value: tunnelSummary, uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
                 SettingsTextFieldRow(
-                    title: "Guest Join URL",
-                    subtitle: "Base address of the browser join page invites link to. Must be HTTPS: browsers only allow WebRTC from a secure origin.",
-                    text: viewModel.remoteCoOpPreferences.guestJoinBaseURL,
-                    placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL,
+                    title: "Public Address",
+                    subtitle: "HTTPS address a tunnel exposes this Mac on. Leave empty for same-network guests.",
+                    text: viewModel.remoteCoOpPreferences.publicAddress,
+                    placeholder: "https://your-tunnel.example",
                     uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpGuestJoinBaseURL
+                    action: viewModel.setRemoteCoOpPublicAddress
                 )
                 SettingsDivider(uiScale: uiScale)
-                SettingsSecureTextFieldRow(
-                    title: "Invite Signing Secret",
-                    subtitle: inviteSecretSubtitle,
-                    text: $inviteSecretDraft,
-                    placeholder: "OPENNOW_REMOTE_COOP_INVITE_SECRET",
-                    uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpInviteSecret
-                )
+                SettingsInfoRow(label: "Forward To", value: tunnelTargetURL, uiScale: uiScale)
+                SettingsDivider(uiScale: uiScale)
+                VStack(alignment: .leading, spacing: 6 * uiScale) {
+                    Text("Point a tunnel at the address above, then paste the public HTTPS URL it prints.")
+                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(Self.tunnelExampleCommands)
+                        .font(.system(size: 11 * uiScale, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .textSelection(.enabled)
+                        .padding(10 * uiScale)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.white.opacity(0.05))
+                        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                    Text("Both flags matter: the tunnel reaches this Mac over HTTPS with a self-signed certificate, so it has to be told not to verify it. Your guest only ever sees the tunnel's own certificate.")
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.44))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("Remote Co-Op setup guide", destination: Self.setupGuideURL)
+                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.accent)
+                }
+                .padding(.vertical, 4 * uiScale)
             }
         }
     }
 
-    /// The broker verifies every invite signature and rejects the host's own registration when it
-    /// does not match, so an unset or mismatched secret is not a degraded mode - it is a session
-    /// nobody can join. No local check can see a *mismatch*, only an absence.
-    private var inviteSecretSubtitle: String {
-        viewModel.remoteCoOpInviteSecretConfigured
-            ? "Stored in the keychain. Must match the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
-            : "Not set - guests cannot join. Paste the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
+    static let setupGuideURL = URL(string: "https://github.com/OpenCloudGaming/OpenNOW-Mac/blob/main/RemoteCoOp/README.md")!
+
+    /// Two options rather than one, because they differ in ways that matter to a guest: a Cloudflare
+    /// quick tunnel needs no account, while ngrok's free tier shows a click-through warning page
+    /// before the join page loads.
+    static let tunnelExampleCommands = """
+    # Cloudflare (no account needed)
+    cloudflared tunnel --url https://127.0.0.1:32188 --no-tls-verify
+
+    # ngrok (needs a free account)
+    ngrok http https://127.0.0.1:32188 --host-header=rewrite
+    """
+
+    private var tunnelTargetURL: String {
+        "https://127.0.0.1:\(OPNRemoteCoOpHostingEndpoint.defaultLocalPort)"
     }
 
-    /// What the host needs to know before creating an invite, in one line. Both failure modes here
-    /// are silent otherwise: a plaintext guest URL cannot build a peer connection at all, and a
-    /// missing signing secret means the broker rejects the host's own registration.
-    private var hostingSummary: String {
-        switch viewModel.remoteCoOpPreferences.hostingMode {
-        case .local:
-            return "OpenNOW serves the invite on \(OPNRemoteCoOpLocalAddress.advertisedHost()):\(OPNRemoteCoOpHostingEndpoint.defaultLocalPort). Guests accept a certificate warning once."
-        case .externalBroker:
-            guard let url = URL(string: viewModel.remoteCoOpPreferences.guestJoinBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let scheme = url.scheme?.lowercased() else { return "Guest join URL is not a valid address" }
-            guard scheme == "https" else { return "Guest join URL must be HTTPS for WebRTC to work" }
-            return viewModel.remoteCoOpInviteSecretConfigured ? "Configured" : "Signing secret missing - guests cannot join"
+    /// Says which of the two failure modes the field is in, because both are silent otherwise: a
+    /// plaintext address leaves the guest unable to build a peer connection, and a malformed one is
+    /// simply ignored.
+    private var tunnelSummary: String {
+        let raw = viewModel.remoteCoOpPreferences.publicAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return "Not set - guests must be on your network" }
+        guard viewModel.remoteCoOpPreferences.effectivePublicAddress != nil else {
+            return raw.lowercased().hasPrefix("http://")
+                ? "Must be HTTPS - browsers block WebRTC on plaintext"
+                : "Not a valid HTTPS address"
         }
+        return "Guests will be sent to this address"
     }
 
-    private var selectedHostingModeIndex: Int {
-        OPNRemoteCoOpHostingMode.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.hostingMode) ?? 0
+    /// Where guests are told to connect. Both states are worth naming: a tunnel address changes the
+    /// answer completely, and without one the session is reachable on this network only.
+    private var hostingSummary: String {
+        if let tunnel = viewModel.remoteCoOpPreferences.effectivePublicAddress {
+            return tunnel.host ?? tunnel.absoluteString
+        }
+        return "\(OPNRemoteCoOpLocalAddress.advertisedHost()):\(OPNRemoteCoOpHostingEndpoint.defaultLocalPort) (this network only)"
     }
 
     private var selectedTransportModeIndex: Int {

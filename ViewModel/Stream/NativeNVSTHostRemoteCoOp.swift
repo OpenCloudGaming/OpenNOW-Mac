@@ -265,9 +265,31 @@ extension NativeNVSTHostViewModel {
     /// The seat's `0x20d` descriptor carries one bitmap for all four slots, so it is never additive:
     /// announcing only the guest would disconnect the host's controller, and announcing only the
     /// host would disconnect the guest.
+    ///
+    /// Single entry point for every announce, because the ordering around a *departing* pad is
+    /// load-bearing. The transport drops state for a pad it no longer announces, so a neutral state
+    /// has to arrive first or whatever was held stays held in the game. The monitor does emit one on
+    /// unplug, but through `NativeNVSTInputDispatcher` - a queue - while the announce travels on its
+    /// own task, so the announce can win. Sending the release directly here removes the race
+    /// whatever the queue is doing.
     func syncRemoteCoOpGamepadTopology() async {
         guard let path, isConnected, !isEnding, !didEnd else { return }
+        // Kept current before merging, so the next guest slot assignment - which can race this
+        // announce - never hands out an index a local controller already holds.
+        await remoteCoOpHostSession.updateReservedLocalPlayerIndices(Set(localGamepadTopology.playerIndices))
         let topology = mergedGamepadTopology(localTopology: localGamepadTopology)
+        let announced = Set(topology.playerIndices)
+        let departing = lastAnnouncedGamepadIndices.subtracting(announced)
+        if !departing.isEmpty {
+            await sendRemoteCoOpNeutralInput(departing.sorted().map { playerIndex in
+                .gamepad(GamepadState(
+                    deviceID: InputDeviceID("released-pad-\(playerIndex)"),
+                    playerIndex: playerIndex,
+                    timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+                ))
+            })
+        }
+        lastAnnouncedGamepadIndices = announced
         do {
             try await path.updateGamepadTopology(topology)
         } catch {
@@ -335,6 +357,14 @@ extension NativeNVSTHostViewModel {
                     forwardRemoteCoOpInput(routedEvents)
                 }
                 let previousSlots = remoteCoOpConnectedGuestSlots
+                // Guests whose grace period ran out lose their slot here. Driven off signaling
+                // traffic rather than a timer: the only thing that cares is the announced topology,
+                // and it cannot change without some guest activity anyway.
+                let expired = await remoteCoOpHostSession.expireDisconnectedParticipants()
+                for participant in expired {
+                    await remoteCoOpSignalingSession?.send(.participantRemoved(participant.id))
+                    await remoteCoOpPeerController?.removePeer(participantID: participant.id)
+                }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 // Auto-approval (`requireHostApproval` off) seats a guest without anyone touching
                 // the HUD, so the topology has to follow the snapshot rather than the approve

@@ -409,3 +409,291 @@ import Testing
         #expect(disconnected == owner)
     }
 }
+
+/// The embedded server's pre-auth surface. It listens on the machine playing the game and holding
+/// the user's session tokens, so what an unauthenticated peer can reach matters.
+@Suite struct RemoteCoOpEmbeddedServerHardeningTests {
+    private func allowed(_ origin: String?, additional: [String] = []) -> Bool {
+        OPNRemoteCoOpEmbeddedServer.isOriginAllowed(origin, port: 32_188, additional: additional.map { $0.lowercased() })
+    }
+
+    /// A WebSocket is not subject to the same-origin policy the way `fetch` is - any page in any tab
+    /// can open one and the browser will send it - so an unrelated site must not get as far as
+    /// speaking the protocol.
+    @Test func anUnrelatedWebsiteCannotOpenTheSignalingSocket() {
+        #expect(!allowed("https://evil.example.com"))
+        #expect(!allowed("https://evil.example.com:32188"))
+        #expect(!allowed("http://localhost:32188"))
+        // A public address on the right port is still refused: something is proxying, and that has
+        // to be named as a tunnel origin rather than inferred.
+        #expect(!allowed("https://203.0.113.10:32188"))
+    }
+
+    /// Every form a browser produces for this machine's own listener.
+    @Test func thisMachinesOwnOriginsAreAllowed() {
+        #expect(allowed("https://localhost:32188"))
+        #expect(allowed("https://127.0.0.1:32188"))
+        #expect(allowed("https://192.168.1.25:32188"))
+        #expect(allowed("https://10.0.0.4:32188"))
+        #expect(allowed("https://172.16.9.9:32188"))
+        // Case is not significant in an origin.
+        #expect(allowed("HTTPS://LOCALHOST:32188"))
+    }
+
+    /// A tunnel's public hostname has to be accepted explicitly, because guests arrive with the
+    /// tunnel's origin rather than this machine's.
+    @Test func aConfiguredTunnelOriginIsAllowed() {
+        #expect(allowed("https://abc123.ngrok-free.app", additional: ["https://abc123.ngrok-free.app"]))
+        // Only the configured one.
+        #expect(!allowed("https://other.ngrok-free.app", additional: ["https://abc123.ngrok-free.app"]))
+    }
+
+    /// Non-browser clients omit `Origin` entirely, and the guest page is not the only legitimate
+    /// client - the smoke checks and test harness connect directly.
+    @Test func aMissingOriginIsAllowed() {
+        #expect(allowed(nil))
+        #expect(allowed(""))
+    }
+
+    @Test func privateAddressDetectionMatchesRFC1918() {
+        #expect(OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("10.1.2.3"))
+        #expect(OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("192.168.0.1"))
+        #expect(OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("172.31.255.255"))
+        #expect(OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("169.254.1.1"))
+        #expect(!OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("172.32.0.1"))
+        #expect(!OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("8.8.8.8"))
+        #expect(!OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("198.12.95.48"))
+        #expect(!OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("not-an-address"))
+    }
+
+    /// A hostname is not an address, however much of one it contains.
+    ///
+    /// The check used to sift numeric labels out of the name and ignore the rest, so a registerable
+    /// domain beginning with a private-range quad passed as a LAN address. That let an attacker page
+    /// on a domain they own present an allowed `Origin`.
+    @Test func aHostnameContainingAPrivateQuadIsNotAPrivateAddress() {
+        for host in ["10.0.0.1.evil.com", "192.168.1.1.attacker.io", "evil.10.0.0.1.com", "10.0.0.1.", "10.0.0", "10.0.0.1.2"] {
+            #expect(!OPNRemoteCoOpEmbeddedServer.isPrivateIPv4(host), "\(host) must not count as a private address")
+        }
+        for origin in ["https://10.0.0.1.evil.com", "https://192.168.1.1.attacker.io:32188"] {
+            #expect(!OPNRemoteCoOpEmbeddedServer.isOriginAllowed(origin, port: 32_188, additional: []), "\(origin) must not be allowed")
+        }
+        // The real thing still passes.
+        #expect(OPNRemoteCoOpEmbeddedServer.isPrivateIPv4("192.168.1.25"))
+        #expect(OPNRemoteCoOpEmbeddedServer.isOriginAllowed("https://192.168.1.25:32188", port: 32_188, additional: []))
+    }
+
+    /// The caps exist so an unauthenticated peer cannot make the host hold resources. The seat
+    /// allows three guests, so the connection cap has to be comfortably above that.
+    @Test func theConnectionCapLeavesRoomForEveryGuest() {
+        #expect(OPNRemoteCoOpEmbeddedServer.maximumConnections > 3 * 4)
+        #expect(OPNRemoteCoOpEmbeddedServer.handshakeTimeout > .seconds(1))
+    }
+}
+
+/// A tunnel changes only the address guests are told to use. These pin the derivation, because
+/// getting the scheme wrong is exactly what made the previous deployment unusable: `http://` is not
+/// a secure context, so the guest page cannot construct an `RTCPeerConnection` at all.
+@Suite struct RemoteCoOpTunnelAddressTests {
+    private func preferences(publicAddress: String) -> OPNRemoteCoOpPreferences {
+        OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, publicAddress: publicAddress)
+    }
+
+    @Test func anHTTPSTunnelAddressIsUsed() throws {
+        let url = try #require(preferences(publicAddress: "https://abc123.ngrok-free.app").effectivePublicAddress)
+        #expect(url.host == "abc123.ngrok-free.app")
+    }
+
+    /// Plaintext is refused rather than passed through. A guest reaching a tunnel over `http://`
+    /// would load the page and then fail to build a peer connection, with nothing to explain why.
+    @Test func aPlaintextTunnelAddressIsRefused() {
+        #expect(preferences(publicAddress: "http://abc123.ngrok-free.app").effectivePublicAddress == nil)
+        #expect(preferences(publicAddress: "abc123.ngrok-free.app").effectivePublicAddress == nil)
+        #expect(preferences(publicAddress: "").effectivePublicAddress == nil)
+        #expect(preferences(publicAddress: "   ").effectivePublicAddress == nil)
+    }
+
+    /// The signaling socket must share the tunnel's origin, which is what lets one accepted
+    /// certificate cover both the page and the socket.
+    @Test func theSignalingURLSharesTheTunnelOrigin() throws {
+        let tunnel = try #require(URL(string: "https://abc123.ngrok-free.app"))
+        #expect(OPNRemoteCoOpHostingEndpoint.signalingURL(forTunnel: tunnel) == "wss://abc123.ngrok-free.app/remote-coop")
+
+        let withPort = try #require(URL(string: "https://tunnel.example.com:8443"))
+        #expect(OPNRemoteCoOpHostingEndpoint.signalingURL(forTunnel: withPort) == "wss://tunnel.example.com:8443/remote-coop")
+
+        // A path or query on the configured address must not end up in the socket URL.
+        let messy = try #require(URL(string: "https://abc.ngrok-free.app/?x=1"))
+        #expect(OPNRemoteCoOpHostingEndpoint.signalingURL(forTunnel: messy) == "wss://abc.ngrok-free.app/remote-coop")
+    }
+
+    /// The origin string has to match what a browser actually sends, or the allowlist rejects every
+    /// guest arriving through the tunnel.
+    @Test func theTunnelOriginOmitsTheDefaultPort() throws {
+        #expect(OPNRemoteCoOpHostingEndpoint.originString(for: try #require(URL(string: "https://abc.ngrok-free.app"))) == "https://abc.ngrok-free.app")
+        #expect(OPNRemoteCoOpHostingEndpoint.originString(for: try #require(URL(string: "https://abc.ngrok-free.app:443"))) == "https://abc.ngrok-free.app")
+        #expect(OPNRemoteCoOpHostingEndpoint.originString(for: try #require(URL(string: "https://abc.example.com:8443"))) == "https://abc.example.com:8443")
+        #expect(OPNRemoteCoOpHostingEndpoint.originString(for: try #require(URL(string: "https://abc.ngrok-free.app/path"))) == "https://abc.ngrok-free.app")
+    }
+}
+
+/// The direction boundary of the signaling protocol.
+///
+/// `networkConfiguration` and `error` used to arrive on the host's *outbound* socket from the trusted
+/// Node broker. With the broker gone the only socket left is guest-facing, and both kinds still
+/// decoded inbound - so an unauthenticated peer could send a `networkConfiguration` and replace the
+/// ICE servers and transport policy of every peer connection the host built afterwards, forcing
+/// guest media through a relay of their choosing. No invite token was needed to reach it.
+@Suite struct RemoteCoOpGuestMessageDirectionTests {
+    private final class TrustingDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+            guard let trust = challenge.protectionSpace.serverTrust else { return (.performDefaultHandling, nil) }
+            return (.useCredential, URLCredential(trust: trust))
+        }
+    }
+
+    private func startServer() async throws -> (OPNRemoteCoOpEmbeddedServer, OPNRemoteCoOpEmbeddedServerEndpoint, URLSession, URL) {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-dir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("<html></html>".utf8).write(to: root.appendingPathComponent("index.html"))
+
+        let server = OPNRemoteCoOpEmbeddedServer(
+            documentRoot: root,
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency)
+        )
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let p12 = try OPNRemoteCoOpTLSIdentity.generateP12(host: "127.0.0.1", passphrase: "pass", directory: scratch)
+        let identity = try OPNRemoteCoOpTLSIdentity.importIdentity(p12: p12, passphrase: "pass")
+        let endpoint = try await server.start(port: UInt16.random(in: 49_200...49_900), advertisedHost: "127.0.0.1", identity: identity)
+        let session = URLSession(configuration: .ephemeral, delegate: TrustingDelegate(), delegateQueue: nil)
+        return (server, endpoint, session, root)
+    }
+
+    /// The attack: no invite token, no join, one message. It must produce no host-side event at all.
+    @Test func aGuestCannotInjectNetworkConfiguration() async throws {
+        let (server, endpoint, session, root) = try await startServer()
+        defer {
+            Task { await server.stop() }
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let events = await server.events()
+        let collected = Task { () -> OPNRemoteCoOpSignalingEvent? in
+            for await event in events { return event }
+            return nil
+        }
+
+        let socket = session.webSocketTask(with: try #require(URL(string: endpoint.signalingServerURL)))
+        socket.resume()
+        defer { socket.cancel(with: .normalClosure, reason: nil) }
+
+        let poisoned = OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .automatic,
+            latencyMode: .quality,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turn:attacker.example:3478"], username: "a", credential: "b")]
+        )
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(
+            OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: nil, networkConfiguration: poisoned))))
+        // An `error` message likewise: it reached the host's on-stream HUD as attacker-authored text.
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(
+            OPNRemoteCoOpWireMessage(kind: .error, roomID: nil, reason: "Session ended, re-share your invite at evil.example"))))
+
+        // Then a legitimate join, which must be the first and only event the host sees.
+        let participantID = UUID()
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestJoinRequested, roomID: UUID(), participantID: participantID, inviteToken: "a.b", displayName: "Guest"))))
+
+        let event = try #require(await collected.value)
+        guard case .guestJoinRequested(let seen, _, _) = event else {
+            Issue.record("the host must not receive a guest-sent \(event)")
+            return
+        }
+        #expect(seen == participantID)
+    }
+
+    /// A socket that never joined owns no participant, so it may not act as one. This used to pass by
+    /// omitting the top-level participant field, leaving an unguessable UUID as the only obstacle.
+    @Test func anUnjoinedSocketCannotSendInput() async throws {
+        let (server, endpoint, session, root) = try await startServer()
+        defer {
+            Task { await server.stop() }
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let events = await server.events()
+        let collected = Task { () -> OPNRemoteCoOpSignalingEvent? in
+            for await event in events { return event }
+            return nil
+        }
+
+        let socket = session.webSocketTask(with: try #require(URL(string: endpoint.signalingServerURL)))
+        socket.resume()
+        defer { socket.cancel(with: .normalClosure, reason: nil) }
+
+        // Input as some other participant, with no top-level participantID to check against.
+        let victim = UUID()
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestInput,
+            roomID: nil,
+            input: OPNRemoteCoOpInputPacket(participantID: victim, sequenceNumber: 1, buttons: [.south])))))
+
+        let owner = UUID()
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestJoinRequested, roomID: UUID(), participantID: owner, inviteToken: "a.b", displayName: "Guest"))))
+
+        let event = try #require(await collected.value)
+        guard case .guestJoinRequested(let seen, _, _) = event else {
+            Issue.record("input from an unjoined socket must be dropped, got \(event)")
+            return
+        }
+        #expect(seen == owner)
+    }
+
+    /// Once bound, a socket may only speak as its own participant - including in the input packet,
+    /// which is the identity the router actually keys off.
+    @Test func aJoinedSocketCannotSendInputAsAnotherParticipant() async throws {
+        let (server, endpoint, session, root) = try await startServer()
+        defer {
+            Task { await server.stop() }
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let events = await server.events()
+        let collected = Task { () -> [OPNRemoteCoOpSignalingEvent] in
+            var result: [OPNRemoteCoOpSignalingEvent] = []
+            for await event in events {
+                result.append(event)
+                if result.count == 2 { break }
+            }
+            return result
+        }
+
+        let socket = session.webSocketTask(with: try #require(URL(string: endpoint.signalingServerURL)))
+        socket.resume()
+        defer { socket.cancel(with: .normalClosure, reason: nil) }
+
+        let owner = UUID()
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestJoinRequested, roomID: UUID(), participantID: owner, inviteToken: "a.b", displayName: "Owner"))))
+        _ = try await socket.receive()
+
+        // Someone else's input, then its own. Only the second may arrive.
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestInput, roomID: nil,
+            input: OPNRemoteCoOpInputPacket(participantID: UUID(), sequenceNumber: 1, buttons: [.north])))))
+        try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+            kind: .guestInput, roomID: nil,
+            input: OPNRemoteCoOpInputPacket(participantID: owner, sequenceNumber: 2, buttons: [.south])))))
+
+        let received = await collected.value
+        #expect(received.count == 2)
+        guard case .guestInput(let packet) = received.last else {
+            Issue.record("expected the socket's own input, got \(String(describing: received.last))")
+            return
+        }
+        #expect(packet.participantID == owner)
+        #expect(packet.sequenceNumber == 2)
+    }
+}

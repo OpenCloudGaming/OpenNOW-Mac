@@ -41,7 +41,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
-| 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - signed invites, host-approved, native input path. |
+| 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app - catalog, details, settings - from the pad. Never reach for the mouse. |
@@ -186,7 +186,7 @@ swift test --scratch-path .build/shared
 - `ViewModel` - observable UI state for login, catalog, controller catalog, and recordings
 - `OPN` - authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
 - `GFN` - protocol-specific GeForce NOW clients and wire types (CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, UDS)
-- `RemoteCoOp` - browser Remote Co-Op reference stack (signaling broker, guest page, TURN launcher, control panel)
+- `RemoteCoOp` - Remote Co-Op operator notes; the guest page itself ships in `Resources/RemoteCoOp/browser`
 - `Tests` - root SwiftPM test target covering the package-exposed production logic
 
 **Packages**
