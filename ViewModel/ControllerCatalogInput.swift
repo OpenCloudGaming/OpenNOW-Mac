@@ -217,6 +217,10 @@ extension ControllerCatalogViewModel {
     }
 
     private func confirmFocusedItem() {
+        if focusArea == .header {
+            host.onExitControllerMode()
+            return
+        }
         if focusArea == .search {
             openSearchOverlay()
             return

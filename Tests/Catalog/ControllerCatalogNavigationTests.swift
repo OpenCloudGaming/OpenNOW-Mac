@@ -17,10 +17,26 @@ import Foundation
     #expect(model.selectedNavigationIndex == 3)
 
     #expect(model.moveFocus(.up, navigationItemCount: 4) == .none)
+    #expect(model.focusArea == .header)
+
+    _ = model.moveFocus(.down, navigationItemCount: 4)
     #expect(model.focusArea == .navigation)
 
     _ = model.moveFocus(.down, navigationItemCount: 4)
     #expect(model.focusArea == .search)
+}
+
+@Test @MainActor func headerFocusOnlyLeavesDownwards() {
+    let model = ControllerCatalogViewModel()
+    model.focusArea = .header
+
+    for direction: ControllerInputDirection in [.up, .left, .right] {
+        #expect(model.moveFocus(direction, navigationItemCount: 4) == .none)
+        #expect(model.focusArea == .header, "the header holds one control, so only down leaves it")
+    }
+
+    _ = model.moveFocus(.down, navigationItemCount: 4)
+    #expect(model.focusArea == .navigation)
 }
 
 @Test @MainActor func navigationSelectionStaysAtZeroWhenThereAreNoItems() {

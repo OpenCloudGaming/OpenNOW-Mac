@@ -7,6 +7,9 @@ import Combine
 import Foundation
 
 enum ControllerCatalogFocusArea {
+    /// The window header above the navigation bar. Holds one control — the button back to desktop
+    /// mode — so it has no selection index of its own.
+    case header
     case navigation
     /// The search bar at the top of the catalog. Its own area rather than a rail, because it sits
     /// above the hero and has no game selection of its own.
@@ -132,10 +135,16 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// the routing can be exercised without a live view.
     func moveFocus(_ direction: ControllerInputDirection, navigationItemCount: Int) -> ControllerFocusEffect {
         switch focusArea {
+        case .header: moveHeaderFocus(direction)
         case .navigation: moveNavigationFocus(direction, itemCount: navigationItemCount)
         case .search: moveSearchFocus(direction)
         case .content: moveContentFocus(direction)
         }
+    }
+
+    private func moveHeaderFocus(_ direction: ControllerInputDirection) -> ControllerFocusEffect {
+        if direction == .down { focusArea = .navigation }
+        return .none
     }
 
     private func moveNavigationFocus(_ direction: ControllerInputDirection, itemCount: Int) -> ControllerFocusEffect {
@@ -143,7 +152,7 @@ final class ControllerCatalogViewModel: ObservableObject {
         case .left: selectedNavigationIndex = max(selectedNavigationIndex - 1, 0)
         case .right: selectedNavigationIndex = min(selectedNavigationIndex + 1, max(itemCount - 1, 0))
         case .down: focusArea = .search
-        case .up: break
+        case .up: focusArea = .header
         }
         return .none
     }

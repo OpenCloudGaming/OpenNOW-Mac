@@ -79,9 +79,16 @@ struct ControllerCatalogView: View {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
                 VStack(spacing: 0) {
-                    ControllerHeader(viewModel: viewModel, glyphs: activeGlyphs, layout: layout, topInset: topInset)
+                    ControllerHeader(
+                        viewModel: viewModel,
+                        layout: layout,
+                        topInset: topInset,
+                        isFocused: controllerViewModel.focusArea == .header && !hasModalOverlay,
+                        exitControllerMode: { controllerModeEnabled = false }
+                    )
                     ControllerNavigationBar(
                         items: navigationItems,
+                        glyphs: activeGlyphs,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
                         isFocused: (controllerViewModel.focusArea == .navigation || viewModel.selectedMainPage != .games) && !hasModalOverlay,
                         activeItem: activeNavigationItem,
@@ -260,9 +267,10 @@ struct ControllerCatalogView: View {
 
 private struct ControllerHeader: View {
     let viewModel: CatalogViewModel
-    let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
     let topInset: CGFloat
+    let isFocused: Bool
+    let exitControllerMode: () -> Void
 
     @Environment(\.opnUIScale) private var uiScale
 
@@ -278,8 +286,10 @@ private struct ControllerHeader: View {
                     .foregroundStyle(.white.opacity(0.96))
             }
             Spacer(minLength: 0)
-            ControllerDeviceBadge(glyphs: glyphs)
-            CatalogAccountAvatar(account: viewModel.account, size: 34)
+            HStack(spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+                ControllerDesktopModeButton(isFocused: isFocused, exit: exitControllerMode)
+                CatalogAccountAvatar(account: viewModel.account, size: 34)
+            }
         }
         .frame(width: layout.contentWidth)
         .frame(height: 72 * uiScale)
@@ -299,24 +309,64 @@ private struct ControllerHeader: View {
     }
 }
 
-private struct ControllerDeviceBadge: View {
+/// What is driving the shell right now, named rather than left as a bare glyph: the icon alone
+/// said "keyboard" without saying why, and the answer people want is whether a pad was found.
+/// Drawn as a section eyebrow — 10pt bold, tracking 1.1, uppercase, Text Tertiary.
+private struct ControllerDeviceLabel: View {
     let glyphs: ControllerInputGlyphSet
 
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
-            .nvidiaFont(size: 13, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.accent)
-            .frame(width: 40 * uiScale, height: 34 * uiScale)
-            .background(Color.white.opacity(0.055))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-            .accessibilityLabel(glyphs.deviceName)
+        HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+            Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
+                .nvidiaFont(size: 9, weight: .bold)
+            Text(text)
+                .nvidiaFont(size: 10, weight: .bold)
+                .tracking(1.1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(glyphs.usesControllerGlyphs ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.Text.muted)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
+    }
+
+    /// Uppercased here rather than with `.textCase`: the accessibility label reads the same string,
+    /// and a screen reader should not spell the device name out letter by letter.
+    private var text: String {
+        glyphs.usesControllerGlyphs ? "\(glyphs.deviceName.uppercased()) CONNECTED" : "NO CONTROLLER FOUND"
+    }
+}
+
+/// The way out of controller mode without going through the actions menu. It replaced the input
+/// device badge that used to sit here: the badge only restated which glyph set the hint bar was
+/// already drawing, and this is the one control the header still had no room for.
+private struct ControllerDesktopModeButton: View {
+    let isFocused: Bool
+    let exit: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        Button(action: exit) {
+            Image(systemName: "macwindow")
+                .nvidiaFont(size: 13, weight: .bold)
+                .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.Text.primary)
+                .frame(width: 40 * uiScale, height: 34 * uiScale)
+                .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.08))
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .openNowFocusRing(isFocused)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Switch to desktop mode")
+        .help("Desktop mode")
     }
 }
 
 private struct ControllerNavigationBar: View {
     let items: [ControllerNavigationItem]
+    let glyphs: ControllerInputGlyphSet
     let selectedIndex: Int
     let isFocused: Bool
     let activeItem: ControllerNavigationItem
@@ -326,31 +376,38 @@ private struct ControllerNavigationBar: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12 * uiScale) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let selected = index == selectedIndex && isFocused
-                    let active = activeItem == item
-                    Button { select(item) } label: {
-                        HStack(spacing: 9 * uiScale) {
-                            Image(systemName: item.icon)
-                                .nvidiaFont(size: 14, weight: .bold)
-                            Text(item.title.uppercased())
-                                .nvidiaFont(size: 12, weight: .bold)
-                                .tracking(0.8)
+        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+            // Above the tabs rather than in the header: it is a status line about how you are
+            // driving this bar, so it reads with the bar and leaves the header to the controls.
+            ControllerDeviceLabel(glyphs: glyphs)
+                .frame(width: layout.contentWidth, alignment: .leading)
+                .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12 * uiScale) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let selected = index == selectedIndex && isFocused
+                        let active = activeItem == item
+                        Button { select(item) } label: {
+                            HStack(spacing: 9 * uiScale) {
+                                Image(systemName: item.icon)
+                                    .nvidiaFont(size: 14, weight: .bold)
+                                Text(item.title.uppercased())
+                                    .nvidiaFont(size: 12, weight: .bold)
+                                    .tracking(0.8)
+                            }
+                            .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.78))
+                            .padding(.horizontal, 14 * uiScale)
+                            .frame(height: 40 * uiScale)
+                            .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                            .openNowFocusRing(selected)
                         }
-                        .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.78))
-                        .padding(.horizontal, 14 * uiScale)
-                        .frame(height: 40 * uiScale)
-                        .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.055))
-                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-                        .openNowFocusRing(selected)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .frame(width: layout.contentWidth, alignment: .leading)
+                .padding(.bottom, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
             }
-            .frame(width: layout.contentWidth, alignment: .leading)
-            .padding(.vertical, 10 * uiScale)
         }
         .frame(width: layout.contentWidth)
         .background(Color.black.opacity(0.18))
