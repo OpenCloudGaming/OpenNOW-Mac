@@ -101,6 +101,16 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
         shell: bash
 
+      - name: Install dmgbuild
+        run: |
+          set -euo pipefail
+          VENV="${RUNNER_TEMP}/dmgbuild-venv"
+          python3 -m venv "${VENV}"
+          "${VENV}/bin/python" -m pip install --upgrade pip
+          "${VENV}/bin/python" -m pip install dmgbuild
+          echo "${VENV}/bin" >> "${GITHUB_PATH}"
+        shell: bash
+
       - name: Create DMG
         run: |
           set -euo pipefail
@@ -108,12 +118,13 @@ jobs:
           DMG_PATH="OpenNOW.dmg"
 
           echo "Stripping get-task-allow entitlement..."
-          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${APP_PATH}/Contents/Resources/${PRODUCT_BUNDLE_IDENTIFIER}.entitlements" 2>/dev/null || true
+          ENTITLEMENTS="${RUNNER_TEMP}/release.entitlements"
+          cp OpenNOW.entitlements "${ENTITLEMENTS}"
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${ENTITLEMENTS}" 2>/dev/null || true
 
           echo "Re-signing with stripped entitlements..."
           codesign --force --deep --options runtime \
-            --entitlements "${APP_PATH}/Contents/Resources/OpenNOW.entitlements" \
+            --entitlements "${ENTITLEMENTS}" \
             --sign "${CODE_SIGN_IDENTITY}" \
             --timestamp \
             --keychain "${RUNNER_TEMP}/build.keychain-db" \
@@ -125,7 +136,6 @@ jobs:
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:
           CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
-          PRODUCT_BUNDLE_IDENTIFIER: io.github.opencloudgaming.opennow
         shell: bash
 
       - name: Notarize DMG
