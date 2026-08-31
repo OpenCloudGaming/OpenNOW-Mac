@@ -22,7 +22,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.head_commit.message, 'chore(main): release') ||
       contains(github.event.head_commit.message, 'release-please--branches--')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
 
     steps:

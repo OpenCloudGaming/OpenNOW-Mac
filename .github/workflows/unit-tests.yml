@@ -17,7 +17,7 @@ permissions:
 jobs:
   packages:
     name: Build and Test Packages
-    runs-on: macos-26
+    runs-on: blacksmith-6vcpu-macos-26
     timeout-minutes: 45
 
     steps:
@@ -75,7 +75,7 @@ jobs:
 
   lint:
     name: Lint Layering
-    runs-on: macos-26
+    runs-on: blacksmith-6vcpu-macos-26
     timeout-minutes: 15
 
     steps:
@@ -105,7 +105,7 @@ jobs:
 
   app-build:
     name: Build macOS App
-    runs-on: macos-26
+    runs-on: blacksmith-6vcpu-macos-26
     timeout-minutes: 45
 
     steps:
