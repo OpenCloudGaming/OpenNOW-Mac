@@ -502,3 +502,28 @@ struct StreamHUDSliderRow: View {
         .opacity(isDisabled ? 0.46 : 1)
     }
 }
+
+/// The approve / remove control on a Remote Co-Op participant row.
+///
+/// Shared because both stream HUDs host Remote Co-Op and the row has to look identical in each:
+/// it was a private helper on the WebRTC HUD until the native NVST transport grew the same panel.
+struct StreamHUDParticipantIconButton: View {
+    let systemName: String
+    let label: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 22, height: 22)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(color.opacity(0.32), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .help(label)
+    }
+}

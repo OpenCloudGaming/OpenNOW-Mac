@@ -258,6 +258,10 @@ struct SteamControllerSettingsPage: View {
 struct GameplaySettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
+    /// Write-only: the stored secret is never read back into the field. It is a signing key, and a
+    /// keychain item that renders itself into a view every time Settings opens is one screenshot
+    /// away from being someone else's.
+    @State private var remoteCoOpInviteSecretDraft = ""
 
     var body: some View {
         let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
@@ -336,6 +340,12 @@ struct GameplaySettingsPage: View {
                     SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, uiScale: uiScale, action: viewModel.setRemoteCoOpRequireHostApproval)
                     SettingsDivider(uiScale: uiScale)
                     SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, uiScale: uiScale, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket URL of the Remote Co-Op broker. Must match the address the broker printed at startup.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, uiScale: uiScale, action: viewModel.setRemoteCoOpSignalingServerURL)
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Base address of the browser join page invites link to.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, uiScale: uiScale, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsSecureTextFieldRow(title: "Invite Signing Secret", subtitle: remoteCoOpInviteSecretSubtitle, text: $remoteCoOpInviteSecretDraft, placeholder: "OPENNOW_REMOTE_COOP_INVITE_SECRET", uiScale: uiScale, action: viewModel.setRemoteCoOpInviteSecret)
                 }
             }
 
@@ -387,6 +397,16 @@ struct GameplaySettingsPage: View {
 
     private var selectedMicrophoneDeviceIndex: Int {
         viewModel.microphoneDeviceOptions.firstIndex { $0.uniqueId == viewModel.streamProfile.microphoneDeviceId } ?? 0
+    }
+
+    /// The broker signs nothing itself: it verifies what the host signed, using the same secret.
+    /// Without a matching value it answers every join with "Invalid or expired invite token", so
+    /// this row says which of the two states the app is in rather than leaving it to be discovered
+    /// mid-session.
+    private var remoteCoOpInviteSecretSubtitle: String {
+        viewModel.remoteCoOpInviteSecretConfigured
+            ? "Stored in the keychain. Must match the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
+            : "Not set - guests cannot join. Paste the broker's OPENNOW_REMOTE_COOP_INVITE_SECRET."
     }
 
     private var selectedRemoteCoOpTransportModeIndex: Int {

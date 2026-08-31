@@ -60,6 +60,47 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
         for sink in currentSinks { sink.renderAudioFrame(frame) }
     }
 
+    /// Interleaved float samples, which is what the native NVST audio socket produces.
+    ///
+    /// That path decodes Opus itself and hands PCM straight to `NvstAudioPlayer`; it never reaches
+    /// libwebrtc's audio device, so the `AudioBufferList` entry point above never fires and a guest
+    /// would hear silence. Called on the receive queue, so it returns before converting anything
+    /// when nobody is listening.
+    public func renderAudioSamples(_ samples: [Float], sampleRate: Double, channels: UInt32) {
+        let currentSinks = lock.withLock { Array(sinks.values) }
+        guard !currentSinks.isEmpty, !samples.isEmpty else { return }
+        guard let frame = Self.audioFrame(fromInterleavedFloat: samples, sampleRate: sampleRate, channels: channels) else { return }
+        for sink in currentSinks { sink.renderAudioFrame(frame) }
+    }
+
+    static func audioFrame(fromInterleavedFloat samples: [Float], sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
+        let sourceChannels = max(1, Int(channels))
+        let sourceFrames = samples.count / sourceChannels
+        guard sourceFrames > 0 else { return nil }
+        let outputChannels = Int(OPNRemoteCoOpHostAudioFrame.channels)
+        var stereo = [Int16](repeating: 0, count: sourceFrames * outputChannels)
+        for frame in 0..<sourceFrames {
+            let sourceIndex = frame * sourceChannels
+            let left = samples[sourceIndex]
+            let right = sourceChannels > 1 ? samples[sourceIndex + 1] : left
+            stereo[frame * 2] = int16Sample(left)
+            stereo[frame * 2 + 1] = int16Sample(right)
+        }
+        let resampled = resampledStereoPCM(stereo, sourceSampleRate: sampleRate, targetSampleRate: OPNRemoteCoOpHostAudioFrame.sampleRate)
+        let data = resampled.withUnsafeBufferPointer { buffer -> Data in
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int16>.size)
+        }
+        guard !data.isEmpty else { return nil }
+        return OPNRemoteCoOpHostAudioFrame(samples: data, frameCount: UInt32(resampled.count / outputChannels))
+    }
+
+    /// Clamped before scaling: Opus can decode slightly past full scale and the wrap that
+    /// `Int16(...)` would produce there is an audible click, not a quiet distortion.
+    private static func int16Sample(_ value: Float) -> Int16 {
+        Int16(max(-32768, min(32767, (max(-1, min(1, value)) * 32767).rounded())))
+    }
+
     private static func audioFrame(from audioBufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32, sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
         guard let stereoSamples = stereoPCM(from: audioBufferList, frameCount: frameCount, channels: channels) else { return nil }
         let resampledSamples = resampledStereoPCM(stereoSamples, sourceSampleRate: sampleRate, targetSampleRate: OPNRemoteCoOpHostAudioFrame.sampleRate)

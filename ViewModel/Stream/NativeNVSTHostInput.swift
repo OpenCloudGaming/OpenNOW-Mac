@@ -89,7 +89,13 @@ extension NativeNVSTHostViewModel {
         }
         view.onGamepadTopologyChanged = { [weak self] topology in
             guard let self, let path = self.path, self.isConnected, !self.isEnding, !self.didEnd else { return }
-            Task { try? await path.updateGamepadTopology(topology) }
+            // The view only knows about pads plugged into this Mac. Remote Co-Op guests hold slots
+            // the seat must keep believing in, so the announced topology is the merge of the two -
+            // sending the local one raw would disconnect every guest the moment a controller is
+            // plugged in or unplugged.
+            self.localGamepadTopology = topology
+            let merged = self.mergedGamepadTopology(localTopology: topology)
+            Task { try? await path.updateGamepadTopology(merged) }
         }
         view.onScreenKeyboardCapture = { [weak self] deviceID, snapshot in
             guard let self, self.onScreenKeyboardVisible else { return false }

@@ -141,6 +141,17 @@ private actor ControlledNativeInputRecorder {
     dispatcher.enqueue(gamepadNeutral)
     #expect(dispatcher.pendingInputCount <= 3)
     let finishTask = Task { await dispatcher.finish() }
+    // `finish` drops the stale lossy input synchronously, before it waits on the drain task, but
+    // the task above may not have started running yet. Unblocking the recorder first lets the
+    // drain loop deliver a stale gamepad state that the discard was about to remove, which made
+    // this fail roughly one run in three once the suite had enough other work to reschedule
+    // against. The buffer holds exactly three entries here - one stale, plus the release and the
+    // neutral state - so waiting for it to reach two is precisely "the discard has happened".
+    var yields = 0
+    while dispatcher.pendingInputCount > 2 && yields < 10_000 {
+        await Task.yield()
+        yields += 1
+    }
     await recorder.unblock()
     await finishTask.value
 

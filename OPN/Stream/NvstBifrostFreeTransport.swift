@@ -53,6 +53,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
     /// may `await`; the recorder does its own locking and queueing.
     nonisolated let recorder = WebRTCStreamRecorder()
+    /// Remote Co-Op's outbound feeds, off the actor for the same reason as the recorder: both are
+    /// written from the VideoToolbox decode callback and the audio thread. Both relays are always
+    /// allocated and cost one uncontended lock per frame while no guest is connected.
+    nonisolated let remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay
+    nonisolated let remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay
     let logger: (@Sendable (String) -> Void)?
     private let controlTimeout: Duration
     var reserver: NvstLocalBundleReserver?
@@ -123,10 +128,23 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     }
     var textCharactersTyped = 0
     var textBytesDropped = 0
-    var gamepadSequence: UInt16 = 0
-    var didRegisterGamepad = false
+    /// One counter per pad. The wrapper's sequence is per-gamepad on the wire, so a single shared
+    /// counter would make two pads look like one stream of interleaved, permanently out-of-order
+    /// updates the moment a Remote Co-Op guest joins.
+    var gamepadSequences: [UInt16: UInt16] = [:]
+    /// Every pad the seat has been told about, as the u16 it was told. `nil` until the first
+    /// registration descriptor goes out.
+    var registeredGamepadBitmap: UInt16?
+    /// The pads the client currently wants connected: 0 for the host, plus one per approved
+    /// Remote Co-Op guest. Empty means "host only", which is what a solo session announces.
+    var connectedGamepadIndices: Set<Int> = []
+    var didRegisterGamepad: Bool { registeredGamepadBitmap != nil }
     var gamepadPacketsSent = 0
     var gamepadSendFailures = 0
+    /// State for a pad the seat was never told about, dropped rather than announced. Normally zero;
+    /// a persistent count means a topology update was missed, and a burst right after a Remote
+    /// Co-Op guest leaves is the expected tail of their coalesced input.
+    var gamepadPacketsDroppedForUnannouncedPad = 0
     var didActivateInput = false
     var qosReportsSent = 0
     var qosReportFailures = 0
@@ -175,7 +193,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterDenoise: Int? = nil,
                 configuredPrefilterModel: Int? = nil,
                 logger: (@Sendable (String) -> Void)? = nil,
-                controlTimeout: Duration = .seconds(20)) {
+                controlTimeout: Duration = .seconds(20),
+                remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
+                remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay = OPNRemoteCoOpHostAudioRelay()) {
+        self.remoteCoOpVideoRelay = remoteCoOpVideoRelay
+        self.remoteCoOpAudioRelay = remoteCoOpAudioRelay
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps
@@ -326,7 +348,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         logger?("NVST audio tracks=\(bundle?.remoteAudioTrackCount ?? 0) pktIn=\(audio?.packets ?? 0) bytesIn=\(audio?.bytes ?? 0)"
                 + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0)")
         let video = videoPipeline?.snapshot ?? NvstVideoPipeline.Counters()
-        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
+        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
         // Which pipeline stage a latency spike lives in. `peak*` are per-stage session maxima, so a
         // single 500 ms stall is still visible after the average has recovered.
         logger?(String(format: "NVST frame stages slow=%d frames=%llu resyncs=%d skipped=%d abandoned=%d lastLatency=%.1fms inputSendTotal=%.0fms inputSendPeak=%.1fms",
@@ -395,6 +417,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // Teardown before the writer is closed would strand a half-written file with no metadata,
         // so every exit closes the recording first.
         recorder.stop()
+        // Guests outlive nothing: dropping the sinks here stops frames being encoded for peers
+        // whose connection is about to be torn down anyway.
+        remoteCoOpVideoRelay.removeAll()
+        remoteCoOpAudioRelay.removeAll()
         await teardown(reason: "disconnect")
     }
 

@@ -26,6 +26,11 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, action: toggleNativePointerLock),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
+            StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), action: { [weak self] in
+                guard let self else { return }
+                if remoteCoOpSnapshot.invite == nil { startRemoteCoOpInvite() } else { stopRemoteCoOpInvite() }
+            }),
+            StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { [weak self] in self?.showStreamControls() }),
             StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),

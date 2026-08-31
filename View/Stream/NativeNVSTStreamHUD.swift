@@ -282,7 +282,7 @@ extension NativeNVSTMediaStreamSurface {
                 }
             }
             if model.remoteCoOpPreferences.isAlphaOptedIn {
-                StreamHUDMetricCard(title: "Co-Op", value: "Unavailable", positive: false)
+                StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
             }
             ForEach(model.controllerBatteries.sorted { $0.label < $1.label }) { battery in
                 StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
@@ -389,35 +389,87 @@ extension NativeNVSTMediaStreamSurface {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Remote Co-Op")
+                        Text(model.remoteCoOpTitle)
                             .font(.streamNvidia(size: 14, weight: .bold))
                             .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        Text("Video and audio relay require WebRTC transport.")
+                        Text(model.remoteCoOpSubtitle)
                             .font(.streamNvidia(size: 11, weight: .medium))
                             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Text("NVST")
+                    Text(model.remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
                         .font(.streamNvidia(size: 9, weight: .bold))
                         .tracking(0.7)
-                        .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .relayOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(Color.white.opacity(0.07))
                         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
                 }
-                StreamHUDActionRow(
-                    title: "Create Invite",
-                    subtitle: "Unavailable with native NVST",
-                    systemName: "person.badge.plus",
-                    isActive: false,
-                    isDisabled: !model.sidebarCapabilities.supports(.remoteCoOp),
-                    action: {}
-                )
-                nativeHUDDetailRow(label: "Slots", value: "\(model.remoteCoOpPreferences.effectiveReservedGuestSlots)")
-                nativeHUDDetailRow(label: "Quality", value: model.remoteCoOpPreferences.qualityPreset.label)
-                nativeHUDDetailRow(label: "Latency", value: model.remoteCoOpPreferences.latencyMode.label)
+                HStack(spacing: 8) {
+                    StreamHUDActionRow(
+                        title: model.remoteCoOpSnapshot.invite == nil ? "Create Invite" : "End Invite",
+                        subtitle: model.remoteCoOpInviteActionSubtitle,
+                        systemName: model.remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
+                        isActive: model.remoteCoOpSnapshot.invite != nil,
+                        isDisabled: !model.sidebarCapabilities.supports(.remoteCoOp) || (model.remoteCoOpSnapshot.invite == nil && !model.canStartRemoteCoOpInvite),
+                        isFocused: model.hudFocusID == "coop-invite",
+                        action: { model.remoteCoOpSnapshot.invite == nil ? model.startRemoteCoOpInvite() : model.stopRemoteCoOpInvite() }
+                    )
+                    if model.remoteCoOpSnapshot.invite != nil {
+                        StreamHUDActionRow(
+                            title: "Copy Invite",
+                            subtitle: model.remoteCoOpSnapshot.invite?.code ?? "No active invite",
+                            systemName: "doc.on.doc",
+                            isActive: false,
+                            isDisabled: false,
+                            isFocused: model.hudFocusID == "coop-copy",
+                            action: { model.copyRemoteCoOpInvite() }
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+                nativeHUDDetailRow(label: "Slots", value: "\(model.remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
+                nativeHUDDetailRow(label: "Quality", value: model.remoteCoOpSnapshot.preferences.qualityPreset.label)
+                nativeHUDDetailRow(label: "Latency", value: model.remoteCoOpSnapshot.preferences.latencyMode.label)
+                nativeHUDDetailRow(label: "Details", value: model.remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
+                if !model.remoteCoOpMessage.isEmpty {
+                    Text(model.remoteCoOpMessage)
+                        .font(.streamNvidia(size: 11, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                if !model.remoteCoOpSnapshot.participants.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(model.remoteCoOpSnapshot.participants) { participant in
+                            nativeHUDRemoteCoOpParticipantRow(participant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func nativeHUDRemoteCoOpParticipantRow(_ participant: OPNRemoteCoOpParticipant) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(participant.connectionState == .connected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning)
+                .frame(width: 7, height: 7)
+            Text(participant.displayName)
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+            Spacer(minLength: 8)
+            Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.rawValue)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            if participant.connectionState == .waitingForApproval {
+                StreamHUDParticipantIconButton(systemName: "checkmark", label: "Approve guest", color: WebRTCMediaStreamTheme.accent) {
+                    model.approveRemoteCoOpParticipant(participant.id)
+                }
+            }
+            StreamHUDParticipantIconButton(systemName: "xmark", label: "Remove guest", color: WebRTCMediaStreamTheme.danger) {
+                model.removeRemoteCoOpParticipant(participant.id)
             }
         }
     }

@@ -47,7 +47,9 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     /// `this+0x16` (raw byte 2), and `handleGamepadStateEvent` rejects ids >= 4 outright
     /// ("Gamepad ID %u is invalid").
     static let gamepadIdOffset = 6
-    static let gamepadDeviceIndex: UInt16 = 0
+    /// The pad a single-player session uses. Remote Co-Op guests occupy 1...3 and pass their own
+    /// index per packet; `handleGamepadStateEvent` rejects anything >= 4.
+    public static let gamepadDeviceIndex: UInt16 = 0
 
     /// The connected bitmap, u16 at event[8] — `updateGamepadsBitmap(unsigned short)` writes a u16
     /// at `this+0x18` (raw byte 4). Bit i marks gamepad i connected; bit (i+8) marks that same pad
@@ -55,8 +57,23 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     /// path — `1 << index | 1 << (index + 8)` — in the build where the pad worked. 3 (0b11)
     /// announces gamepads 0 AND 1, which was the "two controllers in Steam" symptom.
     /// 0x0101 = pad 0 connected, XInput-style.
+    ///
+    /// With Remote Co-Op the map is no longer constant: every connected pad must be announced in
+    /// the same u16, host included, and the descriptor and the state packets must agree exactly or
+    /// the seat registers the device and then drops its updates. `NativeWebRTCGamepadTopology`
+    /// builds that value; this constant is only the one-pad default.
     static let connectedBitmapOffset = 8
     public static let connectedBitmap: UInt16 = 0x0101
+
+    /// The connected bitmap announcing exactly `indices`, in the seat's `1 << i | 1 << (i + 8)`
+    /// form. Kept here so the descriptor, the state packet and the topology all derive it the
+    /// same way.
+    public static func connectedBitmap(for indices: some Sequence<Int>) -> UInt16 {
+        let bitmap = indices.filter { (0..<4).contains($0) }.reduce(into: UInt16(0)) { bitmap, index in
+            bitmap |= UInt16(1 << index) | UInt16(1 << (index + 8))
+        }
+        return bitmap == 0 ? connectedBitmap : bitmap
+    }
     static let buttonsOffset = 12
     static let triggersOffset = 14
     static let leftStickXOffset = 16
@@ -75,6 +92,11 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     public let leftStickY: Int16
     public let rightStickX: Int16
     public let rightStickY: Int16
+    /// Which of the seat's four pads this state belongs to. Player 1 is 0; Remote Co-Op guests
+    /// take 1...3, matching `GamepadState.playerIndex`.
+    public let gamepadIndex: UInt16
+    /// Every pad the seat should believe is connected right now, not just this one.
+    public let connectedBitmap: UInt16
 
     public init(sequence: UInt16,
                 timestampMicroseconds: UInt64,
@@ -84,7 +106,11 @@ public struct NvstGamepadPacket: Equatable, Sendable {
                 leftStickX: Int16 = 0,
                 leftStickY: Int16 = 0,
                 rightStickX: Int16 = 0,
-                rightStickY: Int16 = 0) {
+                rightStickY: Int16 = 0,
+                gamepadIndex: UInt16 = Self.gamepadDeviceIndex,
+                connectedBitmap: UInt16 = Self.connectedBitmap) {
+        self.gamepadIndex = gamepadIndex & 0x03
+        self.connectedBitmap = connectedBitmap
         self.sequence = sequence
         self.timestampMicroseconds = timestampMicroseconds
         self.buttons = buttons
@@ -138,10 +164,11 @@ public struct NvstGamepadPacket: Equatable, Sendable {
             body[offset] = UInt8(truncatingIfNeeded: value)
             body[offset + 1] = UInt8(truncatingIfNeeded: value >> 8)
         }
-        // Written from the constant rather than left to the captured literal, so the state packet
-        // and the `0x20d` descriptor that registers the pad always name the same device.
-        put16(Self.gamepadDeviceIndex & 0x03, at: Self.gamepadIdOffset)
-        put16(Self.connectedBitmap, at: Self.connectedBitmapOffset)
+        // Written from the packet rather than left to the captured literal, so the state packet
+        // and the `0x20d` descriptor that registers the pad always name the same device and the
+        // same set of connected pads.
+        put16(gamepadIndex & 0x03, at: Self.gamepadIdOffset)
+        put16(connectedBitmap, at: Self.connectedBitmapOffset)
         put16(buttons, at: Self.buttonsOffset)
         // One u16: left trigger low, right trigger high.
         put16(UInt16(leftTrigger) | (UInt16(rightTrigger) << 8), at: Self.triggersOffset)
@@ -166,7 +193,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
         writer.u8(GeronimoInputEnvelope.headerByte)
         writer.u64BE(timestampMicroseconds)
         writer.u8(GeronimoInputEnvelope.partiallyReliablePayloadTag)
-        writer.u8(UInt8(truncatingIfNeeded: Self.gamepadDeviceIndex & 0x03))
+        writer.u8(UInt8(truncatingIfNeeded: gamepadIndex & 0x03))
         writer.u16BE(sequence)
         writer.u8(GeronimoInputEnvelope.lengthPrefixedPayloadTag)
         writer.u16BE(UInt16(Self.eventLength))

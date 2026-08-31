@@ -233,6 +233,14 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    /// The broker rejects every host registration and every guest join whose invite signature does
+    /// not verify, so an unset secret is not a degraded mode - it is a session nobody can join.
+    func setRemoteCoOpInviteSecret(_ secret: String) {
+        guard OPNRemoteCoOpPreferencesStore.isAlphaOptedIn else { return }
+        OPNRemoteCoOpInviteSecretStore.save(secret)
+        remoteCoOpInviteSecretConfigured = OPNRemoteCoOpInviteSecretStore.isConfigured()
+    }
+
     func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
         OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()

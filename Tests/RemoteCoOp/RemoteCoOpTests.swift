@@ -130,6 +130,35 @@ struct RemoteCoOpTests {
         #expect(preferences.guestJoinBaseURL == "https://198.12.95.48:32188/")
     }
 
+    /// The plaintext form of the *current* broker endpoint is a valid operator choice - it is what
+    /// `run-servers.mjs` serves in its documented production configuration - and used to be
+    /// rewritten back to `wss://` on every load, so the working URL could not be kept.
+    @Test("an explicit plaintext URL for the current broker survives a reload")
+    func plaintextCurrentBrokerURLIsNotMigratedAway() {
+        let metadata = [
+            OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey: "ws://198.12.95.48:32188/remote-coop",
+            OPNRemoteCoOpPreferences.launchMetadataGuestJoinBaseURLKey: "http://198.12.95.48:32188"
+        ]
+        let preferences = OPNRemoteCoOpPreferences.launchPreferences(from: metadata, fallback: OPNRemoteCoOpPreferences())
+
+        #expect(preferences.signalingServerURL == "ws://198.12.95.48:32188/remote-coop")
+        #expect(preferences.guestJoinBaseURL == "http://198.12.95.48:32188")
+    }
+
+    /// Retired hosts still migrate: the point of the change above was to stop rewriting a live
+    /// endpoint, not to stop rewriting dead ones.
+    @Test("retired broker hosts still migrate to the current default")
+    func retiredBrokerHostsStillMigrate() {
+        let metadata = [
+            OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey: "ws://198.12.95.48:8788/remote-coop",
+            OPNRemoteCoOpPreferences.launchMetadataGuestJoinBaseURLKey: "http://relay.jayian.dev:8788"
+        ]
+        let preferences = OPNRemoteCoOpPreferences.launchPreferences(from: metadata, fallback: OPNRemoteCoOpPreferences())
+
+        #expect(preferences.signalingServerURL == OPNRemoteCoOpPreferences.defaultSignalingServerURL)
+        #expect(preferences.guestJoinBaseURL == OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+    }
+
     @Test("preferences migrate legacy invite URL defaults")
     func preferencesMigrateLegacyInviteURLDefaults() {
         let metadata = [

@@ -309,14 +309,21 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         legacyGuestJoinBaseURLs.contains(normalizedURLKey(value)) ? defaultGuestJoinBaseURL : normalizedURLString(value, fallback: defaultGuestJoinBaseURL)
     }
 
+    /// Addresses of brokers that no longer exist. A stored value matching one of these is replaced
+    /// with the current default rather than left pointing at a dead host.
+    ///
+    /// The plaintext form of the *current* endpoint is deliberately absent from both lists. It was
+    /// there, which meant an operator who pointed the app at `ws://<current host>:32188` - the
+    /// scheme `RemoteCoOp/run-servers.mjs` actually serves in its documented production
+    /// configuration - had it silently rewritten back to `wss://` on the next load, with no way to
+    /// keep the working URL. Only genuinely retired hosts and ports belong here.
     private static let legacySignalingServerURLs: Set<String> = [
         "ws://127.0.0.1:8787/remote-coop",
         "ws://localhost:8787/remote-coop",
         "ws://jayian.dev:8788/remote-coop",
         "ws://relay.jayian.dev:8788/remote-coop",
         "wss://relay.jayian.dev:8788/remote-coop",
-        "ws://198.12.95.48:8788/remote-coop",
-        "ws://198.12.95.48:32188/remote-coop"
+        "ws://198.12.95.48:8788/remote-coop"
     ]
 
     private static let legacyGuestJoinBaseURLs: Set<String> = [
@@ -325,8 +332,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         "http://jayian.dev:8788",
         "http://relay.jayian.dev:8788",
         "https://relay.jayian.dev:8788",
-        "http://198.12.95.48:8788",
-        "http://198.12.95.48:32188"
+        "http://198.12.95.48:8788"
     ]
 
     private static func normalizedURLKey(_ value: String) -> String {
@@ -434,14 +440,14 @@ public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
         self.secret = secret.isEmpty ? Self.randomSecret() : secret
     }
 
+    /// The signer a host session uses by default.
+    ///
+    /// Named for the environment variable it used to read, and it still prefers that variable so a
+    /// development host launched from the same shell as the broker keeps working. The configured
+    /// secret now comes from the keychain as well, because the broker verifies invite signatures
+    /// server-side and a GUI app has no environment to read - see `OPNRemoteCoOpInviteSecretStore`.
     public static func fromEnvironment() -> OPNRemoteCoOpInviteTokenSigner {
-        guard let raw = ProcessInfo.processInfo.environment["OPENNOW_REMOTE_COOP_INVITE_SECRET"],
-              !raw.isEmpty,
-              let data = Self.base64URLDecoded(raw),
-              !data.isEmpty else {
-            return OPNRemoteCoOpInviteTokenSigner()
-        }
-        return OPNRemoteCoOpInviteTokenSigner(secret: data)
+        OPNRemoteCoOpInviteSecretStore.signer()
     }
 
     public func token(for payload: OPNRemoteCoOpInviteTokenPayload) throws -> String {

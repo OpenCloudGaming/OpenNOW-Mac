@@ -29,8 +29,12 @@ extension NvstBifrostFreeTransport {
         // when the surface is hidden, and so nothing on the decode thread has to reach the main
         // actor. It costs one uncontended lock per frame while idle.
         let recorder = self.recorder
+        // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
+        // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
+        let coOpVideoRelay = self.remoteCoOpVideoRelay
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             recorder.appendNativePixelBuffer(pixelBuffer)
+            coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
@@ -208,8 +212,10 @@ extension NvstBifrostFreeTransport {
         // Straight to the recorder, no actor hop: this runs on the CoreAudio render thread, where
         // waiting on anything is a priority inversion. The recorder copies and returns.
         let recorder = self.recorder
+        let coOpAudioRelay = self.remoteCoOpAudioRelay
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            coOpAudioRelay.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task { await self?.startQosFeedback() }
@@ -290,10 +296,14 @@ extension NvstBifrostFreeTransport {
             // In this mode audio never reaches libwebrtc's audio device, so the bundle's playout
             // tee sees nothing; without this the recording would get a silent audio track.
             let recorder = self.recorder
+            let coOpAudioRelay = self.remoteCoOpAudioRelay
             receiver.onDecodedPCM = { samples in
                 recorder.appendGameAudioSamples(samples,
                                                 sampleRate: NvstAudioPlayer.sampleRate,
                                                 channels: UInt32(NvstAudioPlayer.channels))
+                coOpAudioRelay.renderAudioSamples(samples,
+                                                  sampleRate: NvstAudioPlayer.sampleRate,
+                                                  channels: UInt32(NvstAudioPlayer.channels))
             }
             // The audio stream's own SETUP names the port the seat sends audio from; punching the
             // video port instead reached nothing at all.
@@ -613,11 +623,20 @@ extension NvstBifrostFreeTransport {
         // seat registered TWO devices: the game showed two XInput pads and listened to the first
         // while our input drove the second, which reads as "the controller does nothing". Announcing
         // the gamepad's own index here collapses them back to a single pad.
-        sent.append("descriptor=\(bundle.sendControl(NvstInputActivation.deviceDescriptor(timestampMicroseconds: sessionElapsedMicroseconds(), connectedBitmap: NvstGamepadPacket.connectedBitmap)))")
+        // Activation announces whatever is connected now, which at connect time is the host alone.
+        // Remote Co-Op guests join mid-session and re-announce the widened bitmap through
+        // `updateGamepadTopology`; that later `0x20d` carries the same descriptor field as this
+        // one, so it widens the existing device set rather than registering a second one.
+        // Pad 0 is what the captured client announces here and what `connectedBitmap(for:)` falls
+        // back to; seeding the set with it keeps the announced bitmap and the set that gates state
+        // packets in agreement from the first frame.
+        if connectedGamepadIndices.isEmpty { connectedGamepadIndices = [0] }
+        let activationBitmap = NvstGamepadPacket.connectedBitmap(for: connectedGamepadIndices)
+        sent.append("descriptor=\(bundle.sendControl(NvstInputActivation.deviceDescriptor(timestampMicroseconds: sessionElapsedMicroseconds(), connectedBitmap: activationBitmap)))")
         // The pad is registered now, so the lazy pre-first-input descriptor must not fire as well:
-        // the official client sends exactly one 0x20d per session, and a second one is what created
-        // the phantom pad.
-        didRegisterGamepad = true
+        // the official client sends exactly one 0x20d per session, and a second one at a *different*
+        // index is what created the phantom pad.
+        registeredGamepadBitmap = activationBitmap
         // Cursor capture ON for startup so the seat composites a pointer immediately, plus remote
         // cursor tracking so it publishes shape/mode notifications. Once a notification arrives the
         // capture is turned back off (see `handleRemoteCursorNotification`) and the pointer becomes

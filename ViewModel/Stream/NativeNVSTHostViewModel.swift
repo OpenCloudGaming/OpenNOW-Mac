@@ -80,6 +80,28 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var streamingPerformanceActivity: (any NSObjectProtocol)?
     @Published var sessionLimit: StreamSessionSidebarLimit?
     @Published var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
+
+    // MARK: - Remote Co-Op
+    //
+    // The host half of a Remote Co-Op session. The relays are created here rather than inside the
+    // transport so they survive `makeTransport` and can be handed to the peer controller: they are
+    // the seam between the NVST decode/audio threads and each guest's WebRTC peer.
+    let remoteCoOpHostSession = OPNRemoteCoOpHostSession()
+    let remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
+    let remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
+    var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
+    var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
+    var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
+    var remoteCoOpListenTask: Task<Void, Never>?
+    @Published var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
+    @Published var remoteCoOpMessage = ""
+    var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(
+        transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode,
+        latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode
+    )
+    /// The pads physically attached to this Mac. Guest slots are merged with these before the seat
+    /// is told the topology, so a guest joining never un-announces the host's own controller.
+    var localGamepadTopology = NativeWebRTCGamepadTopology(playerIndices: [])
     var networkGovernor: NativeNVSTNetworkGovernor?
     var networkPathTask: Task<Void, Never>?
     @Published var networkPathAvailable = true
@@ -221,7 +243,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)
-            }
+            },
+            remoteCoOpVideoRelay: remoteCoOpVideoRelay,
+            remoteCoOpAudioRelay: remoteCoOpAudioRelay
         )
         // Match the local pointer to the game's: the seat stops compositing its own cursor as soon
         // as it starts publishing cursor state, so from then on the only pointer is ours and it has
@@ -286,7 +310,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
         nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
         nativeView.setNativeNVSTVideoVisible(true)
         nativeView.restoreInputFocus()
+        localGamepadTopology = nativeView.gamepadTopology
         Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
+        // Loads the launch-time Remote Co-Op preferences and sizes the guest relay. Nothing is
+        // advertised or connected here - the invite is still an explicit action in the HUD.
+        refreshRemoteCoOpState()
         loadingStepIndex = StreamLaunchStep.connected.rawValue
         startNativeStatsPolling(path: path)
         refreshAntiAFKMouseMovementTask()

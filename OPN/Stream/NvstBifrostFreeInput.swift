@@ -21,17 +21,30 @@ extension NvstBifrostFreeTransport {
         // Gamepad state is its own command on the input channel, not an envelope on the control
         // channel, so it never reaches the remote-input packet builder.
         if case .gamepad(let state) = event {
-            // The seat drops gamepad state for a device it was never told about. The vendored path
-            // registers the pad with a 0x20d device descriptor (index 3) before its first input —
-            // exactly what `handleGamepadChangedEvent` does — so send that once here.
-            if !didRegisterGamepad {
-                didRegisterGamepad = true
-                let registered = bundle.sendControl(NvstInputActivation.deviceDescriptor(
-                    timestampMicroseconds: sessionElapsedMicroseconds(),
-                    connectedBitmap: NvstGamepadPacket.connectedBitmap))
-                logger?("NVST gamepad registration descriptor sent=\(registered) inputReady=\(bundle.isInputReady) inputChannelOpen=\(bundle.isInputChannelOpen)")
+            // The seat rejects any id >= 4 outright, so a caller that hands us a fifth player is a
+            // bug upstream, not something to silently fold onto the host's pad.
+            let padIndex = state.playerIndex
+            guard (0..<4).contains(padIndex) else {
+                throw NativeNVSTError.transportFailed("NVST has no gamepad slot \(padIndex); the seat allows 0...3.")
             }
-            gamepadSequence &+= 1
+            // Only pads the seat has actually been told about may send state. Announcing one here
+            // instead would resurrect a Remote Co-Op guest who has just been removed: their input
+            // is coalesced on a queue, so packets can still drain after the topology dropped them,
+            // and each one would re-add the slot the host just took away.
+            //
+            // `updateGamepadTopology` owns this set, and `presentStream` publishes a topology as
+            // soon as the session connects, so a pad that is genuinely present is only unannounced
+            // for the moment between being plugged in and the view reporting it.
+            guard connectedGamepadIndices.contains(padIndex) else {
+                gamepadPacketsDroppedForUnannouncedPad += 1
+                return
+            }
+            let bitmap = NvstGamepadPacket.connectedBitmap(for: connectedGamepadIndices)
+            if registeredGamepadBitmap != bitmap {
+                sendGamepadRegistration(bitmap: bitmap, bundle: bundle, reason: "pad \(padIndex) input")
+            }
+            let sequence = (gamepadSequences[UInt16(padIndex)] ?? 0) &+ 1
+            gamepadSequences[UInt16(padIndex)] = sequence
             // Resting analog sticks are not exactly centred (~2% drift, seen jittering every poll).
             // A real XInput pad drifts too and the game applies XINPUT_*_THUMB_DEADZONE; this title
             // does not, so the drift reads as a held direction and the jitter floods on-change
@@ -39,7 +52,7 @@ extension NvstBifrostFreeTransport {
             let (lx, ly) = Self.deadzoned(state.leftStickX, state.leftStickY, Self.leftStickDeadzone)
             let (rx, ry) = Self.deadzoned(state.rightStickX, state.rightStickY, Self.rightStickDeadzone)
             let packet = NvstGamepadPacket(
-                sequence: gamepadSequence,
+                sequence: sequence,
                 timestampMicroseconds: sessionElapsedMicroseconds(),
                 buttons: Self.wireButtons(state.buttons),
                 leftTrigger: NvstGamepadPacket.trigger(state.leftTrigger),
@@ -47,7 +60,9 @@ extension NvstBifrostFreeTransport {
                 leftStickX: NvstGamepadPacket.axis(lx),
                 leftStickY: NvstGamepadPacket.axis(ly),
                 rightStickX: NvstGamepadPacket.axis(rx),
-                rightStickY: NvstGamepadPacket.axis(ry)
+                rightStickY: NvstGamepadPacket.axis(ry),
+                gamepadIndex: UInt16(padIndex),
+                connectedBitmap: bitmap
             )
             // Gamepad state goes on the input channel (SCTP stream 10), matching the vendored
             // client's captured traffic. Both channels were tried while the packet itself was
@@ -234,8 +249,41 @@ extension NvstBifrostFreeTransport {
         throw NativeNVSTError.transportFailed("L4S toggling is not implemented on the Bifrost-free path.")
     }
 
+    /// Announces exactly the pads in `topology`. This is how a Remote Co-Op guest becomes player 2
+    /// and how they stop being one: the descriptor's bitmap is the whole truth, so re-sending it
+    /// with a pad missing is the disconnect.
+    ///
+    /// Callers are expected to have already sent a neutral state for any pad they are dropping —
+    /// once it is out of the bitmap the seat will not accept one, and the game keeps whatever was
+    /// held down at the moment it vanished.
     public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
-        throw NativeNVSTError.transportFailed("Gamepad topology updates are not implemented on the Bifrost-free path.")
+        guard let bundle, bundle.isInputReady else {
+            throw NativeNVSTError.transportFailed("NVST input is not negotiated yet.")
+        }
+        // An empty topology still leaves the seat believing in pad 0: the activation descriptor
+        // announced it, and `connectedBitmap(for:)` falls back to it rather than announcing no
+        // devices at all. Normalising here keeps this set equal to what was actually announced, so
+        // the membership check above cannot disagree with the bitmap on the wire.
+        let indices = Set(topology.playerIndices).isEmpty ? Set([0]) : Set(topology.playerIndices)
+        connectedGamepadIndices = indices
+        // A pad that leaves must not keep its counter: the seat tracks the sequence per gamepad,
+        // so a slot reused by the next guest would resume mid-stream and its first packets would
+        // look stale.
+        gamepadSequences = gamepadSequences.filter { indices.contains(Int($0.key)) }
+        let bitmap = NvstGamepadPacket.connectedBitmap(for: indices)
+        guard registeredGamepadBitmap != bitmap else { return }
+        sendGamepadRegistration(bitmap: bitmap, bundle: bundle, reason: "topology \(indices.sorted())")
+    }
+
+    /// Sends the `0x20d` device descriptor and records what the seat was told. Recorded even when
+    /// the write fails, so a failed announce is visible in `padReg` rather than retried on every
+    /// single state packet at 250 Hz.
+    func sendGamepadRegistration(bitmap: UInt16, bundle: NvstWebRtcBundle, reason: String) {
+        let registered = bundle.sendControl(NvstInputActivation.deviceDescriptor(
+            timestampMicroseconds: sessionElapsedMicroseconds(),
+            connectedBitmap: bitmap))
+        registeredGamepadBitmap = bitmap
+        logger?("NVST gamepad registration bitmap=0x\(String(bitmap, radix: 16)) reason=\(reason) sent=\(registered) inputReady=\(bundle.isInputReady) inputChannelOpen=\(bundle.isInputChannelOpen)")
     }
 
     /// Accepts the configuration and does nothing with it, which is what the protocol's own default

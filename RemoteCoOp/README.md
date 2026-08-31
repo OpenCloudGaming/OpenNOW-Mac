@@ -10,6 +10,31 @@ This folder contains the browser Remote Co-Op reference stack:
 
 The broker is signaling-only. It relays JSON messages between the macOS host and browser guests. It does not relay media and does not validate gameplay authority. The host app validates signed invite tokens, approves guests, assigns player slots, rejects stale input, and routes accepted input through the native GFN input path.
 
+## Invite Signing Secret
+
+The broker verifies every invite signature server-side. It rejects the host's own registration and
+each guest join when the signature does not check out, so a mismatched secret is not a degraded
+mode: nobody can join, and the only symptom is `Invalid or expired invite token`.
+
+Both sides key the HMAC with the **raw bytes of the secret string**, matching Node's
+`createHmac("sha256", secret)`. The value is opaque; it does not have to be base64.
+
+Set the same value on both sides:
+
+```sh
+OPENNOW_REMOTE_COOP_INVITE_SECRET='replace-with-long-random-secret' \
+node RemoteCoOp/run-servers.mjs
+```
+
+In OpenNOW, paste it into Settings > Gameplay > Remote Co-Op > Invite Signing Secret. It is stored
+in the keychain and is never displayed again. `OPENNOW_REMOTE_COOP_INVITE_SECRET` still takes
+precedence when the app is launched from a shell, which is the convenient path for local
+development alongside `run-servers.mjs`.
+
+`run-servers.mjs` and the service installers generate a secret when none is provided. That
+generated value is what has to be copied into the app - read it from the panel's environment file,
+or set it explicitly so both sides are configured from the same place.
+
 ## Background Service And Web Panel
 
 Production deployments should run the web control panel as the supervised service. The panel stays alive in the background, authenticates against system accounts, and starts/stops/restarts `run-servers.mjs` as its managed child process.
@@ -247,20 +272,30 @@ node RemoteCoOp/turn/turn-server.mjs --dry-run
 
 ## Manual End-To-End Validation
 
+Remote Co-Op hosts from both stream transports. Run the local pass once on each: Settings >
+Gameplay > Streaming selects between native NVST and WebRTC, and they reach the guest through
+different code. On native NVST the guest's video comes from the VideoToolbox decode callback, the
+audio from the NVST audio socket, and the guest's player slot is announced to the seat with a
+`0x20d` gamepad descriptor that the WebRTC path never has to send.
+
 Local validation:
 
 1. Start the TURN server in development mode.
 2. Start the broker with matching TURN URLs and shared secret.
 3. Launch OpenNOW.
-4. Enable Remote Co-Op and reserve at least one guest controller.
-5. Start a real GFN stream.
-6. Create a Remote Co-Op invite.
-7. Open the browser join page and join as a guest.
-8. Approve the guest on the host.
-9. Verify guest video renders.
-10. Verify guest audio plays game audio.
-11. Verify guest input controls the native GFN session.
-12. Check the browser diagnostics panel for WebRTC `connected`, a selected ICE route, inbound audio/video stats, and input packets using the data channel.
+4. Confirm the Invite Signing Secret matches the broker's.
+5. Enable Remote Co-Op and reserve at least one guest controller.
+6. Start a real GFN stream.
+7. Create a Remote Co-Op invite.
+8. Open the browser join page and join as a guest.
+9. Approve the guest on the host.
+10. Verify guest video renders.
+11. Verify guest audio plays game audio.
+12. Verify guest input controls the game as player 2, and that the host's own controller still
+    controls player 1. Both pads moving together, or the host's pad going dead when the guest is
+    approved, means the connected bitmap announced one and not the other.
+13. Remove the guest and verify nothing stays held down in the game.
+14. Check the browser diagnostics panel for WebRTC `connected`, a selected ICE route, inbound audio/video stats, and input packets using the data channel.
 
 WAN validation:
 
