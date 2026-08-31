@@ -21,6 +21,17 @@
 //  through. Rate limiting stays only to avoid paying for an I420 conversion on a frame libwebrtc's
 //  own adapter would discard anyway.
 //
+//  The decimation rule went through one more revision after that. The first version gated on time
+//  since the last *forwarded* frame - a hard floor - which measured ~40 fps delivered against a
+//  60 fps target and 60 fps of source arriving, confirmed independent of the guest's resolution
+//  preset (720p and 1080p produced the identical ceiling, which rules out the encoder). The seat's
+//  decode does not arrive in perfectly even 16.7 ms steps; when two frames land close together, the
+//  second fails the floor and is dropped, and the timing credit from the gap before them is simply
+//  discarded rather than banked - so a source whose *average* rate matches the target still gets
+//  under-admitted by however bursty its arrival is. A leaky-bucket accumulator fixes this: credit
+//  builds continuously from real elapsed source time and is spent, not reset, on every forward, so
+//  a burst is admitted using credit banked during the preceding gap instead of being penalised for it.
+//
 
 import Foundation
 
@@ -31,38 +42,60 @@ public struct OPNRemoteCoOpVideoRateLimiter: Equatable, Sendable {
         case drop
     }
 
-    /// Headroom on the minimum gap, so ordinary source jitter does not cause a drop.
-    ///
-    /// Without it a source running at exactly the preset rate loses every marginally-early frame,
-    /// which halves the delivered rate: the gap between two frames of a 60 fps source is sometimes
-    /// 16.5 ms and sometimes 16.8 ms, and a hard 16.67 ms floor rejects the first of each pair.
-    static let intervalTolerance = 0.85
-
     public let targetFps: Int
-    public private(set) var lastForwardedTimestampNs: Int64 = 0
+    public private(set) var lastSourceTimestampNs: Int64 = 0
     public private(set) var forwardedCount: UInt64 = 0
     public private(set) var droppedCount: UInt64 = 0
+    /// Time in hand toward the next forwarded frame, in nanoseconds. Never goes negative and never
+    /// exceeds one interval: a source that outruns the target cannot bank enough during a pause to
+    /// let two frames straight through later, which would show up as a stutter rather than a
+    /// smooth rate reduction.
+    private var bankedNs: Int64 = 0
 
     public init(targetFps: Int) {
         self.targetFps = max(1, targetFps)
     }
 
-    public var minimumFrameIntervalNs: Int64 {
-        Int64(Double(1_000_000_000 / targetFps) * Self.intervalTolerance)
+    public var targetFrameIntervalNs: Int64 {
+        Int64(1_000_000_000 / targetFps)
     }
 
     /// `arrivalNs` is only a fallback clock: it is used when the source hands over a timestamp that
     /// is not strictly increasing, which libwebrtc rejects outright.
     public mutating func decide(sourceTimestampNs: Int64, arrivalNs: Int64) -> Decision {
         var timestampNs = sourceTimestampNs
-        if timestampNs <= lastForwardedTimestampNs {
-            timestampNs = max(arrivalNs, lastForwardedTimestampNs + 1)
+        let isFirstFrame = lastSourceTimestampNs == 0
+        if !isFirstFrame, timestampNs <= lastSourceTimestampNs {
+            timestampNs = max(arrivalNs, lastSourceTimestampNs + 1)
         }
-        if lastForwardedTimestampNs != 0, timestampNs - lastForwardedTimestampNs < minimumFrameIntervalNs {
+        let interval = targetFrameIntervalNs
+        // The gap since the frame this function last *saw*, forwarded or not - crediting every
+        // frame's arrival is what lets a burst spend timing credit a dropped predecessor banked.
+        // The first frame has no predecessor to gap from; it starts fully banked so the stream
+        // begins with a frame rather than waiting out a whole interval first.
+        //
+        // Each gap is capped at one interval's worth of credit before it is banked - not the
+        // running total afterward. Capping the total instead (tried first) has a degenerate fixed
+        // point: after any gap of two intervals or more forwards a frame and leaves exactly one
+        // interval banked, and a source that then resumes at *precisely* the target rate keeps
+        // adding one interval and paying back exactly one interval forever, so the leftover never
+        // drains below the forwarding threshold and every subsequent frame forwards for free. That
+        // reproduces the very symptom this exists to fix, just relocated to any decode gap rather
+        // than only a genuine pause. Capping what a single gap can contribute keeps a real pause
+        // from releasing a burst on resumption while still letting genuine burstiness - two frames
+        // close together compensated by the gap between pairs - spend the credit their own gap
+        // earned.
+        if isFirstFrame {
+            bankedNs = interval
+        } else {
+            bankedNs += min(interval, timestampNs - lastSourceTimestampNs)
+        }
+        lastSourceTimestampNs = timestampNs
+        guard bankedNs >= interval else {
             droppedCount &+= 1
             return .drop
         }
-        lastForwardedTimestampNs = timestampNs
+        bankedNs -= interval
         forwardedCount &+= 1
         return .forward(timeStampNs: timestampNs)
     }

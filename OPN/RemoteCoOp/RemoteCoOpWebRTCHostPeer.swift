@@ -330,27 +330,21 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
 
     /// Carries the source's own capture timestamp through rather than re-stamping. See
     /// `forwardVideoFrame` for why that matters to the receiver's jitter buffer.
-    /// Re-stamps the frame and passes its buffer through untouched.
     ///
-    /// This used to force `frame.newI420()` for any buffer that was not already I420, which on the
-    /// native NVST path meant a full NV12-to-I420 conversion of every frame - scaled to the guest
-    /// preset - performed synchronously on this peer's serial video queue, once per guest. Two
-    /// things were wrong with that:
-    ///
-    /// - It was wasted work. `RTCCVPixelBuffer` is exactly what libwebrtc's macOS H264 encoder wants
-    ///   natively; converting to I420 first only forced the encoder to convert back to feed the
-    ///   hardware. A software codec that genuinely needs I420 calls `toI420()` itself, on its own
-    ///   thread, where the cost belongs.
-    /// - It made delivery bursty. Frames arrive on the decode thread at the source's cadence but
-    ///   left through one serial queue doing per-frame conversion, so the queue fell behind and
-    ///   caught up in bursts. A receiver reads irregular arrival as jitter and deepens its buffer to
-    ///   absorb it - which is what kept the guest's jitter buffer around 390 ms even with
-    ///   `jitterBufferTarget` and `playoutDelayHint` both asking for zero on a 5 ms LAN route.
-    ///
-    /// The buffer already carries the adapted size (see `OPNRemoteCoOpHostVideoRelay`), so scaling
-    /// still happens - just inside the encoder's own pass rather than an extra one of ours.
+    /// The buffer goes through `.toI420()` for anything not already I420. Skipping that - passing
+    /// NVST's `RTCCVPixelBuffer` straight to the encoder, on the theory that it is what the encoder
+    /// wants natively and I420 was a wasted extra pass - was tried and measured as a real,
+    /// reproducible bug: the guest's picture filled only the right half of the frame, a hard
+    /// vertical seam at the exact midpoint, not the symmetric bars a scaling or CSS issue would
+    /// produce. NVST's decoded buffers most likely carry a `bytesPerRow` padded wider than the true
+    /// picture width - normal for VideoToolbox output, aligned for hardware access - and something
+    /// in how the raw buffer reached the encoder read that padded stride as picture width instead of
+    /// the buffer's own crop rectangle. `.toI420()` repacks into a tightly-packed buffer with no
+    /// padding left to misread, which is what made this work before and is why it is back. The
+    /// conversion cost this re-introduces is real; a genuine zero-copy fix needs to identify exactly
+    /// which stage mishandles the stride, not just avoid the conversion that happened to hide it.
     private func makeRelayVideoFrame(from frame: RTCVideoFrame, timeStampNs: Int64) -> RTCVideoFrame? {
-        let buffer = frame.buffer
+        let buffer = frame.buffer is RTCI420Buffer ? frame.buffer : frame.newI420().buffer
         guard buffer.width > 0, buffer.height > 0 else { return nil }
         return RTCVideoFrame(buffer: buffer, rotation: frame.rotation, timeStampNs: timeStampNs)
     }
