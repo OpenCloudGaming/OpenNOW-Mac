@@ -49,10 +49,19 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     /// The equivalent of a socket's `participantID`, and the reason the shared gate can be used
     /// unchanged: it asks who owns this connection, and here a connection is a sender.
     private var participantsBySender: [String: UUID] = [:]
+    /// The ICE configuration handed to a guest once its invite has verified. Carried here because
+    /// nothing else on this transport has it, and without it a hosted guest is never given a relay.
+    private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    /// Sent once per verified participant, like the embedded server. Re-sending on every later update
+    /// would put the relay credentials back on the wire for no reason.
+    private var participantsGivenNetworkConfiguration: Set<UUID> = []
     private var isClosed = false
 
-    public init(channel: any OPNRemoteCoOpSignalingChannel, logger: (@Sendable (String) -> Void)? = nil) {
+    public init(channel: any OPNRemoteCoOpSignalingChannel,
+                networkConfiguration: OPNRemoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic),
+                logger: (@Sendable (String) -> Void)? = nil) {
         self.channel = channel
+        self.networkConfiguration = networkConfiguration
         self.logger = logger
         channel.subscribe(name: OPNRemoteCoOpHostedSignalingName.guest) { [weak self] text, senderID in
             self?.ingest(text: text, senderID: senderID)
@@ -80,14 +89,46 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         }
     }
 
+    /// Replaces the ICE configuration handed to guests that verify after this point.
+    public func updateNetworkConfiguration(_ configuration: OPNRemoteCoOpNetworkConfiguration) {
+        lock.withLock { networkConfiguration = configuration }
+    }
+
     public func send(_ command: OPNRemoteCoOpSignalingCommand) async {
         guard !lock.withLock({ isClosed }) else { return }
-        // One channel carries every guest of an invite, so a targeted command still reaches all of
-        // them. The addressee is inside the message, exactly as it is on the socket transports, and
-        // each guest ignores what is not theirs. Nothing secret is targeted this way: the relay
-        // credentials ride `networkConfiguration`, which is only sent after verification.
+        // The host channel carries every guest of an invite, so a targeted command still reaches all
+        // of them; the addressee is inside the message and each guest ignores what is not theirs.
+        // Guests cannot publish here - their token grants `subscribe` only on this channel - so a
+        // message arriving on it is the host's.
+        //
+        // The relay credentials are the one thing worth being careful with, and they are only sent
+        // after `registerGuest` has verified the signed invite, which is what `participantUpdated`
+        // means. They are still readable by the invite's other holders, which is inherent to a shared
+        // invite and recorded on `mintGuestToken`.
+        if case .participantUpdated(let participant) = command {
+            sendNetworkConfigurationIfNeeded(to: participant.id)
+        }
         guard let message = OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: nil),
               let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
+        channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
+    }
+
+    /// The hosted transport used to send this not at all - `message(for:)` has no case that produces
+    /// it - so a hosted guest never received ICE servers and could not connect from any network that
+    /// blocks a direct route, which is the exact case this transport exists to serve.
+    private func sendNetworkConfigurationIfNeeded(to participantID: UUID) {
+        let configuration = lock.withLock { () -> OPNRemoteCoOpNetworkConfiguration? in
+            guard !participantsGivenNetworkConfiguration.contains(participantID) else { return nil }
+            participantsGivenNetworkConfiguration.insert(participantID)
+            return networkConfiguration
+        }
+        guard let configuration,
+              let text = try? OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
+                  kind: .networkConfiguration,
+                  roomID: nil,
+                  participantID: participantID,
+                  networkConfiguration: configuration
+              )) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }
 
@@ -155,6 +196,9 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     private func handleLeave(senderID: String) {
         let participantID = lock.withLock { () -> UUID? in
             guard let participantID = participantsBySender.removeValue(forKey: senderID) else { return nil }
+            // Cleared with the sender, so a reconnect has to re-verify before it is handed the relay
+            // credentials again - the same rule the embedded server applies on socket close.
+            participantsGivenNetworkConfiguration.remove(participantID)
             return participantID
         }
         guard let participantID else { return }

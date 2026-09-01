@@ -60,7 +60,7 @@ import Testing
     // MARK: - JWT structure
 
     @Test func theHeaderNamesTheKeyAndTheAlgorithm() throws {
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(3_600)))
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(3_600)))
         let parsed = try segments(jwt)
         #expect(parsed.header["alg"] as? String == "HS256")
         #expect(parsed.header["typ"] as? String == "JWT")
@@ -70,14 +70,40 @@ import Testing
 
     /// The capability is a JSON *string*, not an object. Ably parses the claim's contents itself, so
     /// an object here is silently the wrong shape.
-    @Test func theCapabilityIsAJSONStringScopedToOneChannel() throws {
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "room-a", issuedAt: issued, expiresAt: issued.addingTimeInterval(3_600)))
+    ///
+    /// This is also the security boundary of the whole hosted transport, so it is asserted exactly:
+    /// a guest must NOT hold `publish` on the host channel. It used to be one channel with
+    /// channel-wide publish, which let any invite holder publish as the host - spoofing an offer to
+    /// hijack another guest's WebRTC session, or replacing their ICE servers to route that guest's
+    /// media through an attacker. Ably enforces this server-side; a client-side check cannot.
+    @Test func aGuestTokenMayReadTheHostChannelButNeverPublishToIt() throws {
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "room-a", issuedAt: issued, expiresAt: issued.addingTimeInterval(3_600)))
         let claims = try segments(jwt).claims
         let capability = try #require(claims["x-ably-capability"] as? String, "capability must be a string, not an object")
 
         let decoded = try #require(try JSONSerialization.jsonObject(with: Data(capability.utf8)) as? [String: [String]])
-        #expect(decoded.keys.sorted() == ["room-a"], "the token reaches a channel other than its own")
-        #expect(decoded["room-a"]?.sorted() == ["presence", "publish", "subscribe"])
+        #expect(decoded.keys.sorted() == ["room-a:guest", "room-a:host"], "the token reaches a channel other than its own")
+        #expect(decoded["room-a:host"] == ["subscribe"], "a guest that can publish on the host channel can impersonate the host")
+        #expect(decoded["room-a:guest"]?.sorted() == ["presence", "publish"])
+    }
+
+    /// The host's capability is the mirror image, and it is what makes the guest's restriction
+    /// meaningful: the host must be the only party that can publish where guests listen.
+    @Test func aHostTokenPublishesOnlyOnTheHostChannel() throws {
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintHostToken(key: key, channel: "room-a", issuedAt: issued, expiresAt: issued.addingTimeInterval(3_600)))
+        let capability = try #require(try segments(jwt).claims["x-ably-capability"] as? String)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: Data(capability.utf8)) as? [String: [String]])
+        #expect(decoded["room-a:host"] == ["publish"])
+        #expect(decoded["room-a:guest"]?.sorted() == ["presence", "subscribe"])
+    }
+
+    /// Both sides derive the two channel names, and the browser guest hardcodes the same suffixes.
+    /// A drift here does not fail loudly - signaling just goes nowhere - so the shape is pinned.
+    @Test func theTwoChannelNamesAreDerivedFromTheInviteChannel() throws {
+        let base = OPNRemoteCoOpAblyJWT.channelName(inviteID: UUID(uuidString: "4A9A239E-241C-470E-BC62-0507FABC50A1")!)
+        #expect(base == "opennow-remote-coop:4a9a239e-241c-470e-bc62-0507fabc50a1")
+        #expect(OPNRemoteCoOpAblyJWT.hostChannelName(base: base) == "\(base):host")
+        #expect(OPNRemoteCoOpAblyJWT.guestChannelName(base: base) == "\(base):guest")
     }
 
     /// Without this claim the token is anonymous, and Ably raises a clientId-mismatch error the
@@ -85,14 +111,14 @@ import Testing
     /// Caught only by reading Ably's own docs, not by anything that runs; pinned here so it cannot
     /// regress silently a second time.
     @Test func grantsAWildcardClientIDSoAGuestMayDeclareItsParticipantID() throws {
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
         let claims = try segments(jwt).claims
         #expect(claims["x-ably-clientId"] as? String == "*")
     }
 
     @Test func theTokenExpiresWithTheInvite() throws {
         let expiry = issued.addingTimeInterval(3_600)
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "room", issuedAt: issued, expiresAt: expiry))
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "room", issuedAt: issued, expiresAt: expiry))
         let claims = try segments(jwt).claims
         #expect(claims["iat"] as? Int == Int(issued.timeIntervalSince1970))
         #expect(claims["exp"] as? Int == Int(expiry.timeIntervalSince1970))
@@ -101,7 +127,7 @@ import Testing
     /// Signed over `header.claims` with the key secret. Verified here rather than trusted, because a
     /// wrong signing input produces a well-formed JWT that only Ably will reject.
     @Test func theSignatureIsHMACSHA256OverTheSigningInput() throws {
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "room", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
         let parsed = try segments(jwt)
         let expected = HMAC<SHA256>.authenticationCode(
             for: Data(parsed.signingInput.utf8),
@@ -119,7 +145,7 @@ import Testing
     @Test func everySegmentIsUnpaddedBase64URL() throws {
         // Bytes chosen to force `+` and `/` under standard base64.
         let awkward = OPNRemoteCoOpAblyKey(name: "app.key", secret: "\u{00FF}\u{00FE}?>~")
-        let jwt = try #require(OPNRemoteCoOpAblyJWT.mint(key: awkward, channel: "room?>", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
+        let jwt = try #require(OPNRemoteCoOpAblyJWT.mintGuestToken(key: awkward, channel: "room?>", issuedAt: issued, expiresAt: issued.addingTimeInterval(60)))
         #expect(!jwt.contains("="))
         #expect(!jwt.contains("+"))
         #expect(!jwt.contains("/"))
@@ -127,11 +153,11 @@ import Testing
 
     @Test func refusesToMintWithoutSomethingToSignOrSomewhereToPoint() throws {
         let valid = issued.addingTimeInterval(60)
-        #expect(OPNRemoteCoOpAblyJWT.mint(key: OPNRemoteCoOpAblyKey(name: "", secret: "s"), channel: "c", issuedAt: issued, expiresAt: valid) == nil)
-        #expect(OPNRemoteCoOpAblyJWT.mint(key: OPNRemoteCoOpAblyKey(name: "a.b", secret: ""), channel: "c", issuedAt: issued, expiresAt: valid) == nil)
-        #expect(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "", issuedAt: issued, expiresAt: valid) == nil)
+        #expect(OPNRemoteCoOpAblyJWT.mintGuestToken(key: OPNRemoteCoOpAblyKey(name: "", secret: "s"), channel: "c", issuedAt: issued, expiresAt: valid) == nil)
+        #expect(OPNRemoteCoOpAblyJWT.mintGuestToken(key: OPNRemoteCoOpAblyKey(name: "a.b", secret: ""), channel: "c", issuedAt: issued, expiresAt: valid) == nil)
+        #expect(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "", issuedAt: issued, expiresAt: valid) == nil)
         // Already expired: a credential that cannot be used is a failure to report, not to hand out.
-        #expect(OPNRemoteCoOpAblyJWT.mint(key: key, channel: "c", issuedAt: issued, expiresAt: issued) == nil)
+        #expect(OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: "c", issuedAt: issued, expiresAt: issued) == nil)
     }
 
     /// A new invite is a new channel, so a credential that outlived its invite has nothing left to
@@ -228,7 +254,7 @@ import Testing
         let key = self.key
         let invite = try await session.startInvite(lifetimeSeconds: 600) { inviteID, expiresAt in
             let channel = OPNRemoteCoOpAblyJWT.channelName(inviteID: inviteID)
-            guard let token = OPNRemoteCoOpAblyJWT.mint(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
+            guard let token = OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
             return OPNRemoteCoOpInviteSignaling(channel: channel, token: token)
         }
 
@@ -293,7 +319,7 @@ import Testing
             lifetimeSeconds: 600
         ) { inviteID, expiresAt in
             let channel = OPNRemoteCoOpAblyJWT.channelName(inviteID: inviteID)
-            guard let token = OPNRemoteCoOpAblyJWT.mint(key: self.key, channel: channel, expiresAt: expiresAt) else { return nil }
+            guard let token = OPNRemoteCoOpAblyJWT.mintGuestToken(key: self.key, channel: channel, expiresAt: expiresAt) else { return nil }
             return OPNRemoteCoOpInviteSignaling(channel: channel, token: token)
         }
         let joinURL = try #require(invite.joinURL)

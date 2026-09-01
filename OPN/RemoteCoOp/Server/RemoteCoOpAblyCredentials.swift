@@ -57,14 +57,58 @@ public enum OPNRemoteCoOpAblyJWT {
     /// Multi-use by design: one invite admits up to three guests, and every one of them presents this
     /// same credential. Ably caps a token's capability at the issuing key's, so an over-broad user key
     /// still yields a correctly narrow JWT.
-    public static func mint(key: OPNRemoteCoOpAblyKey,
-                            channel: String,
-                            issuedAt: Date = Date(),
-                            expiresAt: Date) -> String? {
-        guard key.isUsable, !channel.isEmpty, expiresAt > issuedAt else { return nil }
+    /// The credential handed to guests inside the invite.
+    ///
+    /// Guests may publish **only** on the guest channel, and may only *read* the host channel. That
+    /// asymmetry is the whole security boundary of this transport, and it has to be a capability
+    /// rather than a client-side check: with one channel and channel-wide `publish`, any invite
+    /// holder could publish under the message name `"host"` and every other guest would believe them
+    /// - spoofing offers to hijack a guest's WebRTC session, or replacing their ICE servers to route
+    /// that guest's media through an attacker. Ably enforces this server-side, so a malicious guest
+    /// cannot opt out of it.
+    ///
+    /// Multi-use by design: one invite admits up to three guests and every one of them presents this
+    /// same credential. Ably caps a token's capability at the issuing key's, so an over-broad user key
+    /// still yields a correctly narrow JWT.
+    ///
+    /// Known residual: all guests share the guest channel's readership of the host channel, so a
+    /// targeted host message is still *visible* to the other invite holders. Fixing that needs a
+    /// channel per guest, which needs a token per guest - not available when the invite is minted,
+    /// before anyone has joined. Nothing secret is targeted this way.
+    public static func mintGuestToken(key: OPNRemoteCoOpAblyKey,
+                                      channel: String,
+                                      issuedAt: Date = Date(),
+                                      expiresAt: Date) -> String? {
+        capabilityToken(
+            key: key,
+            capability: #"{"\#(hostChannelName(base: channel))":["subscribe"],"\#(guestChannelName(base: channel))":["publish","presence"]}"#,
+            channel: channel,
+            issuedAt: issuedAt,
+            expiresAt: expiresAt
+        )
+    }
 
-        // Ably reads `x-ably-capability` as a JSON *string*, not an object.
-        let capability = #"{"\#(channel)":["subscribe","publish","presence"]}"#
+    /// The host's own credential. Never leaves this machine, and is the mirror of the guest's: publish
+    /// on the host channel, read and watch presence on the guest channel.
+    public static func mintHostToken(key: OPNRemoteCoOpAblyKey,
+                                     channel: String,
+                                     issuedAt: Date = Date(),
+                                     expiresAt: Date) -> String? {
+        capabilityToken(
+            key: key,
+            capability: #"{"\#(hostChannelName(base: channel))":["publish"],"\#(guestChannelName(base: channel))":["subscribe","presence"]}"#,
+            channel: channel,
+            issuedAt: issuedAt,
+            expiresAt: expiresAt
+        )
+    }
+
+    private static func capabilityToken(key: OPNRemoteCoOpAblyKey,
+                                        capability: String,
+                                        channel: String,
+                                        issuedAt: Date,
+                                        expiresAt: Date) -> String? {
+        guard key.isUsable, !channel.isEmpty, expiresAt > issuedAt else { return nil }
         let header: [String: Any] = ["alg": "HS256", "typ": "JWT", "kid": key.name]
         let claims: [String: Any] = [
             "iat": Int(issuedAt.timeIntervalSince1970),
@@ -72,9 +116,13 @@ public enum OPNRemoteCoOpAblyJWT {
             "x-ably-capability": capability,
             // Without this claim the token is anonymous, and Ably raises a clientId-mismatch error
             // the moment a client that declares one - which the browser guest does, setting its own
-            // participant ID - tries to connect with it. The wildcard is what makes that legal: any
-            // holder of this channel-scoped token may claim any clientId, which is the trade-off
-            // already recorded where the guest transport sets it.
+            // participant ID - tries to connect with it.
+            //
+            // The wildcard means `clientId` is an *assertion*, not an identity: one invite holder can
+            // claim another's. So nothing downstream may treat it as authentication. The host binds a
+            // participant only after `registerGuest` verifies the signed invite, and presence-leave is
+            // corroborated rather than trusted on its own. A per-guest bound clientId is not available
+            // here - the invite is minted before anyone has joined.
             "x-ably-clientId": "*",
         ]
 
@@ -86,7 +134,7 @@ public enum OPNRemoteCoOpAblyJWT {
         return "\(signingInput).\(base64URL(Data(signature)))"
     }
 
-    /// The channel one invite talks on.
+    /// The base name one invite talks under. Both directions derive from it.
     ///
     /// Namespaced so a capability can never be written that reaches beyond Remote Co-Op, and keyed on
     /// the invite rather than the host: a new invite is a new channel, so an expired invite's
@@ -94,6 +142,14 @@ public enum OPNRemoteCoOpAblyJWT {
     public static func channelName(inviteID: UUID) -> String {
         "opennow-remote-coop:\(inviteID.uuidString.lowercased())"
     }
+
+    /// Host publishes here, guests may only subscribe. Kept as separate functions rather than string
+    /// interpolation at the call sites so the browser guest and this side cannot drift on the suffix -
+    /// if they do, signaling silently goes nowhere.
+    public static func hostChannelName(base: String) -> String { "\(base):host" }
+
+    /// Guests publish and enter presence here; the host subscribes.
+    public static func guestChannelName(base: String) -> String { "\(base):guest" }
 
     /// JWT base64url: no padding, URL-safe alphabet.
     private static func base64URL(_ data: Data) -> String {

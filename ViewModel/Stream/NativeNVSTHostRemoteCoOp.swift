@@ -432,20 +432,21 @@ extension NativeNVSTHostViewModel {
         let key = OPNRemoteCoOpAblyKeyStore.load()
         guard key.isUsable else { return nil }
         let channel = OPNRemoteCoOpAblyJWT.channelName(inviteID: inviteID)
-        guard let token = OPNRemoteCoOpAblyJWT.mint(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
+        guard let token = OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
         return OPNRemoteCoOpInviteSignaling(channel: channel, token: token)
     }
 
     /// The host's own connection to that channel.
     ///
-    /// Made with a JWT of its own rather than the API key, so the key stays in the keychain and the
-    /// host holds exactly the capability it hands guests - nothing here can widen it. Scoped to the
-    /// *current* invite, so it is rebuilt when the invite is.
+    /// Made with a JWT of its own rather than the API key, so the key stays in the keychain. The
+    /// host's capability is the *mirror* of the guests' - publish on the host channel, read and watch
+    /// presence on the guest channel - which is what makes a guest unable to speak as the host. Scoped
+    /// to the *current* invite, so it is rebuilt when the invite is.
     private func makeRemoteCoOpHostedChannel(inviteID: UUID, expiresAt: Date) -> (any OPNRemoteCoOpSignalingChannel)? {
         let key = OPNRemoteCoOpAblyKeyStore.load()
         guard key.isUsable else { return nil }
         let channel = OPNRemoteCoOpAblyJWT.channelName(inviteID: inviteID)
-        guard let token = OPNRemoteCoOpAblyJWT.mint(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
+        guard let token = OPNRemoteCoOpAblyJWT.mintHostToken(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
         return OPNRemoteCoOpAblyChannel(
             token: token,
             channelName: channel,
@@ -492,6 +493,10 @@ extension NativeNVSTHostViewModel {
         if let hostedChannel = makeRemoteCoOpHostedChannel(inviteID: pendingInviteID, expiresAt: pendingInviteExpiry) {
             let hosted = OPNRemoteCoOpHostedSignalingSession(
                 channel: hostedChannel,
+                // The augmented configuration, same as the socket transports get - without it a
+                // hosted guest is handed no ICE servers at all and cannot connect from a network
+                // that blocks a direct route.
+                networkConfiguration: remoteCoOpNetworkConfiguration,
                 logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.hosted_signaling", level: .info, message: message) }
             )
             sessions.append(hosted)

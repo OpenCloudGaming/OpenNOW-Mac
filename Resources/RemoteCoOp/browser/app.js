@@ -254,14 +254,23 @@ function openWebSocketTransport(url, { onOpen, onMessage, onClose, onError }) {
 /// session.
 function openAblyTransport(channelName, token, { onOpen, onMessage, onClose, onError }) {
   const realtime = new Ably.Realtime({ token, clientId: participantID, echoMessages: false });
-  const channel = realtime.channels.get(channelName);
+  // Two channels with asymmetric rights, and the suffixes must match
+  // OPNRemoteCoOpAblyJWT.hostChannelName / guestChannelName exactly - if they drift, signaling
+  // silently goes nowhere. The invite's token grants this guest `subscribe` on the host channel and
+  // `publish` + `presence` on the guest channel, and nothing else. That asymmetry is the security
+  // boundary: with a single shared channel every invite holder held channel-wide publish, so any of
+  // them could publish as the host and be believed here - spoofing an offer to hijack another
+  // guest's session, or replacing their ICE servers to route that guest's media through an attacker.
+  // Ably enforces the capability server-side, so a malicious guest cannot opt out of it.
+  const hostChannel = realtime.channels.get(`${channelName}:host`);
+  const guestChannel = realtime.channels.get(`${channelName}:guest`);
   let opened = false;
 
-  channel.subscribe("host", message => {
+  hostChannel.subscribe("host", message => {
     if (typeof message.data === "string") onMessage(message.data);
   });
   // Queued by the SDK until the channel attaches, so this does not have to wait for "connected".
-  channel.presence.enter().catch(error => updateDiagnostics({ websocket: `presence: ${error.message}` }));
+  guestChannel.presence.enter().catch(error => updateDiagnostics({ websocket: `presence: ${error.message}` }));
 
   realtime.connection.on("connected", () => {
     if (opened) return;
@@ -276,9 +285,9 @@ function openAblyTransport(channelName, token, { onOpen, onMessage, onClose, onE
 
   return {
     isOpen: () => realtime.connection.state === "connected",
-    send: text => channel.publish("guest", text),
+    send: text => guestChannel.publish("guest", text),
     close: () => {
-      channel.presence.leave().catch(() => {});
+      guestChannel.presence.leave().catch(() => {});
       realtime.close();
     }
   };
@@ -291,6 +300,11 @@ async function handleMessage(message) {
     return;
   }
   if (message.kind === "networkConfiguration") {
+    // Targeted like every other per-guest command. This used to be applied with no participant check
+    // at all, straight into `new RTCPeerConnection` - so one invite holder could hand another guest
+    // their own TURN server with `iceTransportPolicy: "relay"` and carry all of that guest's media
+    // and input, or republish in a loop to keep tearing the connection down.
+    if (!isForThisParticipant(message)) return;
     if (message.roomID && invite) invite.inviteID = message.roomID;
     updateDiagnostics({ signaling: "network configuration received" });
     configurePeerConnection(message.networkConfiguration);
@@ -344,9 +358,16 @@ async function handleMessage(message) {
   }
 }
 
+/// Whether a host message names this guest.
+///
+/// An untargeted message used to be accepted (`!target || ...`), which meant a `peerSignal` with the
+/// field simply omitted was applied by every guest that received it. Combined with a shared channel
+/// that was a session hijack; the channel split closes the hole, and requiring the target closes the
+/// bypass itself. Every host command that concerns one guest carries `participantID` - see
+/// OPNRemoteCoOpWireMessage.message(for:) - so demanding it costs nothing.
 function isForThisParticipant(message) {
   const target = message.participantID ?? message.participant?.id;
-  return !target || sameParticipantID(target, participantID);
+  return sameParticipantID(target, participantID);
 }
 
 function sameParticipantID(left, right) {
