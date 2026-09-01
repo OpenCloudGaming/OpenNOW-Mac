@@ -36,6 +36,9 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         let handle: NWConnection
         var codec = OPNRemoteCoOpNativeFrameCodec()
         var participantID: UUID?
+        /// Last time anything arrived on this socket, for the idle sweep. Guarded by the server's
+        /// `lock`, like `participantID`.
+        var lastActivityAt = Date()
 
         init(handle: NWConnection) {
             self.id = UUID()
@@ -56,6 +59,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     /// configuration. Cleared with the socket, so a reconnect has to re-verify before it is handed
     /// the relay credentials again.
     private var participantsGivenNetworkConfiguration: Set<UUID> = []
+    private var idleSweepTask: Task<Void, Never>?
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
     private var isClosed = false
     private var didRetryOnEphemeralPort = false
@@ -93,8 +97,53 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         return port == Self.defaultPort ? host : "\(host):\(port)"
     }
 
+    /// Matches the browser-facing server, and for the same reason: a guest whose Mac sleeps leaves a
+    /// TCP connection that never closes, holding its slot, its announced pad and its share of
+    /// `maximumConnections` until the host tears the session down by hand. TCP alone does not notice -
+    /// there is no keepalive here - so the host asks, and drops what stops answering. Both guest
+    /// clients reply to `heartbeat`.
+    static let heartbeatInterval: Duration = .seconds(15)
+    static let socketIdleTimeout: TimeInterval = 60
+
     public func start() {
         listen(on: Self.defaultPort)
+        startIdleSweep()
+    }
+
+    private func startIdleSweep() {
+        let task = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.heartbeatInterval)
+                guard let self, !Task.isCancelled else { return }
+                sweepIdleConnections()
+            }
+        }
+        lock.withLock { idleSweepTask = task }
+    }
+
+    /// Asks every socket to answer, and drops the ones that stopped.
+    private func sweepIdleConnections() {
+        let now = Date()
+        let heartbeat = OPNRemoteCoOpWireMessage(kind: .heartbeat)
+        let (idle, live) = lock.withLock { () -> ([Connection], [Connection]) in
+            guard !isClosed else { return ([], []) }
+            var idle: [Connection] = []
+            var live: [Connection] = []
+            for connection in connections.values {
+                if now.timeIntervalSince(connection.lastActivityAt) >= Self.socketIdleTimeout {
+                    idle.append(connection)
+                } else {
+                    live.append(connection)
+                }
+            }
+            return (idle, live)
+        }
+        for connection in idle {
+            logger("Native Remote Co-Op dropped a socket that stopped answering")
+            drop(connection)
+        }
+        // Outside the lock: `send` reaches Network.framework.
+        for connection in live { send(heartbeat, to: connection) }
     }
 
     private func listen(on port: UInt16) {
@@ -142,6 +191,9 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         let shouldRetry = lock.withLock { () -> Bool in
             guard !isClosed, attemptedPort != 0, !didRetryOnEphemeralPort else { return false }
             didRetryOnEphemeralPort = true
+            // Cancelled, not just dropped: a failed NWListener is terminal but still holds its
+            // resources until it is told to let go of them.
+            listener?.cancel()
             listener = nil
             return true
         }
@@ -193,6 +245,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             guard let self else { return }
             if let data, !data.isEmpty {
                 do {
+                    lock.withLock { connection.lastActivityAt = Date() }
                     let messages = try connection.codec.append(data)
                     for message in messages { route(message, from: connection) }
                 } catch {
@@ -322,6 +375,8 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             self.listener = nil
             self.connections.removeAll()
             self.eventContinuations.removeAll()
+            idleSweepTask?.cancel()
+            idleSweepTask = nil
             return (listener, connections, continuations)
         }
         state.0?.cancel()

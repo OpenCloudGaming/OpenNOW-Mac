@@ -197,6 +197,12 @@ struct RemoteCoOpRelayWizard: View {
             }
             SettingsDialogButton(title: step == .finish ? "DONE" : "CANCEL", tone: .secondary, uiScale: uiScale, action: dismiss)
             SettingsDialogButton(title: primaryTitle, tone: .primary, uiScale: uiScale, action: primaryAction)
+                // Disabled while provisioning, because the consequence of a double tap is external to
+                // this app: `provision` creates a TURN key whenever one is not yet usable, so racing
+                // taps leave orphaned billable keys on the host's Cloudflare account - and Cloudflare
+                // returns a key's token once, so listing cannot recover them to clean up. The settings
+                // card already guarded this; the wizard did not.
+                .disabled(step == .finish && viewModel.remoteCoOpTURNSetupInFlight)
         }
     }
 
@@ -212,6 +218,7 @@ struct RemoteCoOpRelayWizard: View {
             stepIndex += 1
             return
         }
+        guard !viewModel.remoteCoOpTURNSetupInFlight else { return }
         // Whatever the host filled in, in the order that needs the fewest round trips: a pasted key is
         // usable immediately, where a token still has to be exchanged with Cloudflare.
         if !keyIDDraft.isEmpty { viewModel.setRemoteCoOpTURNKeyID(keyIDDraft) }
