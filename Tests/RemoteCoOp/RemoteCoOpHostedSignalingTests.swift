@@ -87,6 +87,38 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         return box.events()
     }
 
+    // MARK: - Claim release
+
+    /// A refused join must not leave the sender owning that participant.
+    ///
+    /// The gate binds on a non-empty token; only `registerGuest` checks the signature. Without
+    /// releasing on rejection, a sender that presented a garbage token stayed the owner - so it kept
+    /// receiving that participant's `participantUpdated` and `peerSignal` (their SDP), was handed the
+    /// relay credentials on the first update, and the real guest could not take the participant back.
+    @Test func aRefusedJoinReleasesItsClaim() async throws {
+        let (session, channel) = makeSession()
+
+        // Squatter claims the participant, then the host refuses it.
+        _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "squatter") }
+        await session.send(.guestRejected(participantID: participantID, reason: "bad token"))
+
+        // Input from the squatter is now ignored: it owns nothing.
+        let afterRejection = try await collect(session) {
+            try channel.deliverFromGuest(
+                OPNRemoteCoOpWireMessage(kind: .guestQualityRequested, participantID: self.participantID, qualityPreset: .p720f60),
+                senderID: "squatter"
+            )
+        }
+        #expect(afterRejection.isEmpty, "a rejected sender still owns the participant it claimed")
+
+        // And the real guest can claim it.
+        let realJoin = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "real-guest") }
+        #expect(realJoin.contains { event in
+            if case .guestJoinRequested(let id, _, _) = event { return id == self.participantID }
+            return false
+        }, "the real guest was refused a participant nobody holds")
+    }
+
     // MARK: - Directions
 
     /// One channel carries both directions, separated by name. The host must never consume its own
