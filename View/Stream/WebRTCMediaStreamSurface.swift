@@ -41,6 +41,11 @@ public struct WebRTCMediaStreamSurface: View {
     @State var nativeView: NativeWebRTCStreamView?
     @State var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State var runtimeSettings = StreamRuntimeSettings()
+    /// Read once when the surface appears, not per HUD frame. Remote Co-Op cannot be hosted on this
+    /// transport at all, so this only decides whether the HUD explains that - and it is a
+    /// launch-time value, which is why reading it inside `body` was a synchronous store hit on every
+    /// tick.
+    @State var remoteCoOpEnabled = false
     @State var microphoneEnabled = false
     @State var recordingStatus = WebRTCStreamRecordingStatus.idle
     @State var recordingNotificationTask: Task<Void, Never>?
@@ -113,6 +118,7 @@ public struct WebRTCMediaStreamSurface: View {
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
         .onAppear {
             registerStreamLifecycle()
+            remoteCoOpEnabled = OPNRemoteCoOpPreferencesStore.load().isEnabled
         }
         // A `Timer.publish` stored on the view would be rebuilt on every
         // re-render, resetting the interval before it ever fires.

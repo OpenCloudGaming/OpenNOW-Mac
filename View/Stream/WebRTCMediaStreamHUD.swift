@@ -78,11 +78,10 @@ extension WebRTCMediaStreamSurface {
                         hudInputPanel
                         hudNetworkPanel
                         hudStatsPanel
-                        // Always shown: this panel exists to explain that hosting needs the
-                        // Native/NVST transport, which is exactly what a host on this surface needs
-                        // to be told. It used to be behind the alpha opt-in, read from the store on
-                        // every HUD frame.
-                        hudRemoteCoOpPanel
+                        // Behind the feature toggle, like every other Remote Co-Op surface. The
+                        // value is read once on appear rather than from the store on every HUD
+                        // frame, which is what the alpha check used to do.
+                        if remoteCoOpEnabled { hudRemoteCoOpPanel }
                         hudVideoPanel
                     }
                     .padding(.horizontal, 18)
@@ -210,7 +209,9 @@ extension WebRTCMediaStreamSurface {
                     hudMetricCard(title: "Session", value: sessionLimitHUDText(at: context.date), positive: sessionLimitIsHealthy(at: context.date))
                 }
             }
-            hudMetricCard(title: "Co-Op", value: "NVST Only", positive: false)
+            if remoteCoOpEnabled {
+                hudMetricCard(title: "Co-Op", value: "NVST Only", positive: false)
+            }
             ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
                 StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
             }
