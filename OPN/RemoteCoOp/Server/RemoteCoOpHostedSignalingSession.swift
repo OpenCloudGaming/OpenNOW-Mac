@@ -108,6 +108,17 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         if case .participantUpdated(let participant) = command {
             sendNetworkConfigurationIfNeeded(to: participant.id)
         }
+        // A refused join releases its claim, for the same reason the socket transports do: the gate
+        // binds on a non-empty token and only `registerGuest` checks the signature, so a sender that
+        // presented a garbage one would otherwise keep owning that participant.
+        if case .guestRejected(let participantID, _) = command {
+            lock.withLock {
+                participantsGivenNetworkConfiguration.remove(participantID)
+                for (sender, claimed) in participantsBySender where claimed == participantID {
+                    participantsBySender[sender] = nil
+                }
+            }
+        }
         guard let message = OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: nil),
               let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)

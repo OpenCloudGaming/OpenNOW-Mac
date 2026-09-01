@@ -60,6 +60,18 @@ public enum OPNRemoteCoOpGuestMessageGate {
            let participantID = message.participantID,
            let token = message.inviteToken,
            !token.isEmpty {
+            // A connection bound to one participant may not become another.
+            //
+            // Re-claiming the *same* participant is legitimate (a retried join), but moving to a
+            // different one is not: the claim only proves the token is non-empty - its signature is
+            // checked later, by `registerGuest` - and `registerGuest` restores a recently disconnected
+            // participant with their approval and player slot intact. So a second invite holder could
+            // claim an approved guest's identity and inherit input rights the host never granted them,
+            // which is the exact bypass host approval exists to prevent. It also left the transports
+            // routing that participant's signaling, including their SDP, to the wrong connection.
+            if let owner, participantID != owner {
+                return .dropConnection(reason: "claimed a second participant on one connection")
+            }
             if participantID != owner, isHeldByAnotherConnection(participantID) {
                 return .dropConnection(reason: "claimed a participant that is already connected")
             }

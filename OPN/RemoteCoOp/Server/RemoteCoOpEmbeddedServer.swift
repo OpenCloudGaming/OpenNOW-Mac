@@ -396,9 +396,28 @@ public actor OPNRemoteCoOpEmbeddedServer {
             sendToGuest(participant.id, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
         case .participantRemoved(let participantID):
             sendToGuest(participantID, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
-        case .guestRejected(let participantID, _), .inputRejected(let participantID, _), .peerSignal(let participantID, _):
+        case .guestRejected(let participantID, _):
+            sendToGuest(participantID, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
+            // The claim is released here, not left standing.
+            //
+            // The gate binds a participant on a non-empty token; the *signature* is verified later by
+            // `registerGuest`, and a rejection used to leave the binding in place - so a socket that
+            // presented a garbage token kept ownership of that participant's routing, received their
+            // `participantUpdated`, their SDP and (on the first update) the relay credentials, and
+            // locked the real guest out of reconnecting for as long as it stayed connected.
+            releaseClaim(on: participantID)
+        case .inputRejected(let participantID, _), .peerSignal(let participantID, _):
             sendToGuest(participantID, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
         }
+    }
+
+    /// Drops a participant binding after the host refused the join, so the connection that made the
+    /// unverified claim stops owning that participant's routing.
+    private func releaseClaim(on participantID: UUID) {
+        guard let connectionID = guestConnections.removeValue(forKey: participantID) else { return }
+        participantsGivenNetworkConfiguration.remove(participantID)
+        guard let connection = connections[connectionID], connection.participantID == participantID else { return }
+        connection.participantID = nil
     }
 
     /// Sent once per verified participant. Re-sending on every later update would put the relay
@@ -599,6 +618,13 @@ public actor OPNRemoteCoOpEmbeddedServer {
             connection.connection.cancel()
             return
         case .claimThenDeliver(let participantID):
+            // The previous binding goes with it. Without this, a connection that had claimed another
+            // participant left `guestConnections` still pointing here for the old ID, so that
+            // participant's host commands - including their SDP - kept arriving on this socket.
+            if let previous = connection.participantID, previous != participantID {
+                guestConnections[previous] = nil
+                participantsGivenNetworkConfiguration.remove(previous)
+            }
             connection.participantID = participantID
             guestConnections[participantID] = connection.id
             // The ICE configuration is deliberately NOT sent here. The gate only checked that the

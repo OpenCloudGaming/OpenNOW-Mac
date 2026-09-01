@@ -83,6 +83,20 @@ import Testing
         #expect(decide(join, owner: owner, held: [owner]) == .claimThenDeliver(participantID: owner))
     }
 
+    /// Re-claiming its own participant is fine; moving to a *different* one is not.
+    ///
+    /// The claim only proves the token is non-empty - the signature is checked later by
+    /// `registerGuest`, which restores a recently disconnected participant with their approval and
+    /// player slot intact. So without this a second invite holder could claim an approved guest's
+    /// identity and inherit input rights the host never granted, and the transports would route that
+    /// participant's signaling, including their SDP, to the wrong connection.
+    @Test func aConnectionMayNotClaimASecondParticipant() throws {
+        let join = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: stranger, inviteToken: "t.s")
+        #expect(decide(join, owner: owner) == .dropConnection(reason: "claimed a second participant on one connection"))
+        // Refused even when nobody else holds it - being free is not the point; already owning one is.
+        #expect(decide(join, owner: owner, held: []) == .dropConnection(reason: "claimed a second participant on one connection"))
+    }
+
     // MARK: - Ownership
 
     @Test func anUnjoinedSocketMayNotActAsAnyone() throws {

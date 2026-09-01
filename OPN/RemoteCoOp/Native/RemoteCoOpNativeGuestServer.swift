@@ -297,6 +297,19 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             }
         }
         for connection in targets { send(message, to: connection) }
+        // Release the binding a refused join left behind. The gate binds on a non-empty token and the
+        // signature is only checked later by `registerGuest`, so without this a connection that
+        // presented a garbage token kept owning that participant: it stayed the target of their
+        // `participantUpdated`, their SDP and the relay credentials, and the real guest could not
+        // reconnect while it lived.
+        if case .guestRejected(let participantID, _) = command {
+            lock.withLock {
+                participantsGivenNetworkConfiguration.remove(participantID)
+                for connection in connections.values where connection.participantID == participantID {
+                    connection.participantID = nil
+                }
+            }
+        }
     }
 
     public func close() async {
