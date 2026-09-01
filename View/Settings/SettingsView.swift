@@ -190,7 +190,7 @@ struct SettingsView: View {
     /// agree on what exists. Iterating `allCases` in one place and a filtered list in the other
     /// would let the pad land on a tab that is not drawn.
     private var visibleGroups: [CatalogSettingsGroup] {
-        CatalogSettingsGroup.visibleCases(remoteCoOpOptedIn: viewModel.remoteCoOpPreferences.isAlphaOptedIn)
+        CatalogSettingsGroup.visibleCases()
     }
 
     private func moveGroup(delta: Int) {
@@ -228,7 +228,8 @@ struct SettingsTabBar: View {
                             title: group.title,
                             icon: group.icon,
                             isSelected: selection == group,
-                            uiScale: uiScale
+                            uiScale: uiScale,
+                            showsBetaTag: group == .remoteCoOp
                         ) {
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 selection = group
@@ -255,6 +256,7 @@ struct SettingsTabItem: View {
     let icon: String
     let isSelected: Bool
     let uiScale: CGFloat
+    var showsBetaTag = false
     let action: () -> Void
 
     var body: some View {
@@ -269,6 +271,7 @@ struct SettingsTabItem: View {
                     .font(.settingsNvidia(size: 12 * uiScale, weight: isSelected ? .bold : .medium))
                     .foregroundStyle(isSelected ? .white : .white.opacity(0.58))
                     .lineLimit(1)
+                if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale) }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12 * uiScale)

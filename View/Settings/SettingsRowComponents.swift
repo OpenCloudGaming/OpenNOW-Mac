@@ -641,3 +641,26 @@ struct SettingsFlowLayout: Layout {
         }
     }
 }
+
+/// A small "BETA" tag, for surfaces that are shipped but still settling.
+///
+/// One component rather than three inline `Text`s: it appears on the Settings tab, in the stream
+/// HUD and on the Home entry point, and three copies would drift in colour and casing the way the
+/// relay rows already did.
+struct OpenNOWBetaTag: View {
+    let uiScale: CGFloat
+    /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
+    /// Settings wants the quieter treatment.
+    var prominent = false
+
+    var body: some View {
+        Text("BETA")
+            .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+            .tracking(0.7)
+            .foregroundStyle(prominent ? .black : OpenNOWDesign.accent)
+            .padding(.horizontal, 5 * uiScale)
+            .padding(.vertical, 2 * uiScale)
+            .background(prominent ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.16))
+            .accessibilityLabel("Beta")
+    }
+}

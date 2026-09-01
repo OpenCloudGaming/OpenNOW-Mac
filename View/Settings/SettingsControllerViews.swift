@@ -14,16 +14,6 @@ struct ExperimentalFeaturesSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Alpha Access", uiScale: uiScale) {
-                SettingsToggleRow(
-                    title: "Remote Co-Op Alpha",
-                    subtitle: viewModel.remoteCoOpPreferences.isAlphaOptedIn ? "Remote Co-Op settings are available from Gameplay settings." : "Opt in before Remote Co-Op settings, preferences, and stream HUD controls appear.",
-                    isOn: viewModel.remoteCoOpPreferences.isAlphaOptedIn,
-                    uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpAlphaOptedIn
-                )
-            }
-
             SettingsCard(title: "Recording", uiScale: uiScale) {
                 SettingsToggleRow(
                     title: "Recording Editor Early Beta",

@@ -86,15 +86,21 @@ struct CatalogTopBar: View {
                         .help("Controller mode")
                         // Joining someone else's session is a thing you do *instead* of browsing your
                         // own library, so it belongs where you already are rather than only in a menu.
-                        // Hidden unless Remote Co-Op is on, since it is alpha-gated.
-                        if viewModel.remoteCoOpPreferences.isAvailable {
-                            Button { openWindow(id: "remote-coop-guest") } label: {
-                                CatalogTopBarIconLabel(systemName: "person.2")
-                            }
-                            .buttonStyle(.opnPressable(scale: 0.90))
-                            .accessibilityLabel("Join a Remote Co-Op session")
-                            .help("Join Remote Co-Op")
+                        //
+                        // Unconditional. It used to be hidden behind `isAvailable`, which is about
+                        // *hosting* - so someone who only wanted to join a friend had to first enable
+                        // hosting on their own Mac to find the button. Nothing about joining needs
+                        // this Mac configured, and the menu item was never gated either.
+                        Button { openWindow(id: "remote-coop-guest") } label: {
+                            CatalogTopBarIconLabel(systemName: "person.2")
+                                .overlay(alignment: .topTrailing) {
+                                    OpenNOWBetaTag(uiScale: 0.8, prominent: true)
+                                        .offset(x: 8, y: -6)
+                                }
                         }
+                        .buttonStyle(.opnPressable(scale: 0.90))
+                        .accessibilityLabel("Join a Remote Co-Op session (beta)")
+                        .help("Join Remote Co-Op")
                     }
                     Button {
                         showsAccountMenu.toggle()

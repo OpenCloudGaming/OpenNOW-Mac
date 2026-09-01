@@ -9,8 +9,8 @@
 //  decide whether a guest can connect at all. Buried under the streaming options they read as
 //  trivia; on their own page they read as setup.
 //
-//  The tab only appears once the alpha is opted into in Experimental - see
-//  `CatalogSettingsGroup.visibleCases(remoteCoOpOptedIn:)`.
+//  Shipped behind an alpha opt-in in Experimental at first; that gate is gone and the tab is always
+//  present, carrying a BETA tag instead.
 //
 
 import SwiftUI

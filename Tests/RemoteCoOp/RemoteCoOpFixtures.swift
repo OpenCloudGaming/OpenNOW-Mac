@@ -15,7 +15,6 @@ import CoreVideo
 
 enum RemoteCoOpFixtures {
     static let preferenceDomain = "io.github.opencloudgaming.opennow"
-    static let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
     static let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
     static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
     static let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
@@ -25,7 +24,7 @@ enum RemoteCoOpFixtures {
     static func withPreservedRemoteCoOpPreferences(_ body: () -> Void) {
         preferenceDomainTestLock.lock()
         defer { preferenceDomainTestLock.unlock() }
-        let keys = [alphaOptInKey, enabledKey, reservedGuestSlotsKey, latencyModeKey, lowLatencyDefaultMigrationVersionKey, hostedGuestPageURLKey]
+        let keys = [enabledKey, reservedGuestSlotsKey, latencyModeKey, lowLatencyDefaultMigrationVersionKey, hostedGuestPageURLKey]
         let defaults = UserDefaults.standard
         let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
         defer {

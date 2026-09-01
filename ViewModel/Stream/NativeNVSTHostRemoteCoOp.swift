@@ -148,7 +148,6 @@ extension NativeNVSTHostViewModel {
 
     func startRemoteCoOpInvite() {
         let preferences = remoteCoOpLaunchPreferences
-        guard preferences.isAlphaOptedIn else { return }
         guard canStartRemoteCoOpInvite else {
             remoteCoOpMessage = isConnected ? "Remote Co-Op is unavailable for this session." : "Wait for the stream to connect."
             return

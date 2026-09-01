@@ -14,88 +14,35 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 7).reservedGuestSlots == 3)
         #expect(OPNRemoteCoOpPreferences(isEnabled: false, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 2)
-        #expect(!OPNRemoteCoOpPreferences(isAlphaOptedIn: false, isEnabled: true, reservedGuestSlots: 2).isAvailable)
-        #expect(OPNRemoteCoOpPreferences(isAlphaOptedIn: false, isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences().transportMode == .automatic)
         #expect(OPNRemoteCoOpPreferences().latencyMode == .lowLatency)
         #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
     }
 
-    @Test("preferences store defaults remote co-op alpha gate off")
-    func preferencesStoreDefaultsRemoteCoOpAlphaGateOff() {
+    /// Remote Co-Op shipped behind an alpha opt-in that defaulted off. That gate is gone, so hosting
+    /// is decided by `isEnabled` alone - and must still default off, because enabling it starts a
+    /// listener and reserves a controller slot on the next launch.
+    @Test("hosting is off by default now that the alpha gate is gone")
+    func hostingIsOffByDefault() {
         RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
-            RemoteCoOpFixtures.removePreferenceValue(RemoteCoOpFixtures.alphaOptInKey)
-            RemoteCoOpFixtures.setPreferenceValue(true, forKey: RemoteCoOpFixtures.enabledKey)
-            RemoteCoOpFixtures.setPreferenceValue(2, forKey: RemoteCoOpFixtures.reservedGuestSlotsKey)
+            RemoteCoOpFixtures.removePreferenceValue(RemoteCoOpFixtures.enabledKey)
 
             let preferences = OPNRemoteCoOpPreferencesStore.load()
 
-            #expect(!preferences.isAlphaOptedIn)
-            #expect(!preferences.isAvailable)
-            #expect(preferences.effectiveReservedGuestSlots == 0)
-            #expect(OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch() == 0)
-            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataEnabledKey] == "false")
-            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataReservedGuestSlotsKey] == "0")
-            // An opted-out session publishes only the three keys that say it is off, so nothing
-            // downstream can read a stale address or slot count out of the metadata.
-            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataPublicAddressKey] == nil)
-            #expect(preferences.launchMetadata.count == 3)
-        }
-    }
-
-    @Test("preferences store ignores remote co-op setting writes before alpha opt in")
-    func preferencesStoreIgnoresRemoteCoOpSettingWritesBeforeAlphaOptIn() {
-        RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
-            RemoteCoOpFixtures.removePreferenceValue(RemoteCoOpFixtures.alphaOptInKey)
-            RemoteCoOpFixtures.setPreferenceValue(false, forKey: RemoteCoOpFixtures.enabledKey)
-            RemoteCoOpFixtures.setPreferenceValue(0, forKey: RemoteCoOpFixtures.reservedGuestSlotsKey)
-
-            OPNRemoteCoOpPreferencesStore.setEnabled(true)
-            OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(2)
-
-            let preferences = OPNRemoteCoOpPreferencesStore.load()
-
-            #expect(!preferences.isAlphaOptedIn)
-            #expect(!preferences.isEnabled)
-            #expect(preferences.reservedGuestSlots == 0)
-            #expect(preferences.effectiveReservedGuestSlots == 0)
-        }
-    }
-
-    @Test("preferences store remote co-op alpha opt in reveals saved settings")
-    func preferencesStoreRemoteCoOpAlphaOptInRevealsSavedSettings() {
-        RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
-            RemoteCoOpFixtures.removePreferenceValue(RemoteCoOpFixtures.alphaOptInKey)
-            RemoteCoOpFixtures.setPreferenceValue(true, forKey: RemoteCoOpFixtures.enabledKey)
-            RemoteCoOpFixtures.setPreferenceValue(2, forKey: RemoteCoOpFixtures.reservedGuestSlotsKey)
-
-            OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(true)
-
-            let preferences = OPNRemoteCoOpPreferencesStore.load()
-
-            #expect(preferences.isAlphaOptedIn)
-            #expect(preferences.isAvailable)
-            #expect(preferences.effectiveReservedGuestSlots == 2)
-            #expect(OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch() == 2)
-        }
-    }
-
-    @Test("preferences store remote co-op alpha opt out disables remote co-op")
-    func preferencesStoreRemoteCoOpAlphaOptOutDisablesRemoteCoOp() {
-        RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
-            RemoteCoOpFixtures.setPreferenceValue(true, forKey: RemoteCoOpFixtures.alphaOptInKey)
-            RemoteCoOpFixtures.setPreferenceValue(true, forKey: RemoteCoOpFixtures.enabledKey)
-            RemoteCoOpFixtures.setPreferenceValue(2, forKey: RemoteCoOpFixtures.reservedGuestSlotsKey)
-
-            OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(false)
-
-            let preferences = OPNRemoteCoOpPreferencesStore.load()
-
-            #expect(!preferences.isAlphaOptedIn)
             #expect(!preferences.isEnabled)
             #expect(!preferences.isAvailable)
             #expect(preferences.effectiveReservedGuestSlots == 0)
+            // Only the two keys that say it is off, so nothing downstream reads a stale slot count.
+            #expect(preferences.launchMetadata.count == 2)
         }
+    }
+
+    /// Every tab is drawn now. The filtered list existed only for the alpha gate, and the tab bar and
+    /// pad navigation both read this - a mismatch is what let the pad land on a tab nobody drew.
+    @Test("every settings tab is visible")
+    func everySettingsTabIsVisible() {
+        #expect(CatalogSettingsGroup.visibleCases() == CatalogSettingsGroup.allCases)
+        #expect(CatalogSettingsGroup.visibleCases().contains(.remoteCoOp))
     }
 
     @Test("preferences store points a fresh install at this repo's Pages guest page")
@@ -186,7 +133,6 @@ struct RemoteCoOpTests {
     func everyStoredPreferenceSurvivesTheLaunchMetadataRoundTrip() {
         // Every field set away from the memberwise default, so none can round-trip by luck.
         let preferences = OPNRemoteCoOpPreferences(
-            isAlphaOptedIn: true,
             isEnabled: true,
             reservedGuestSlots: 3,
             transportMode: .directOnly,

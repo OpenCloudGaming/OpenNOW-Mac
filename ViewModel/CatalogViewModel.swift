@@ -94,8 +94,12 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     /// Remote Co-Op is alpha-gated, so its tab only exists once the alpha has been opted into in
     /// Experimental. This mirrors how its settings card used to be hidden inside Gameplay - the
     /// feature became a tab, not more discoverable.
-    static func visibleCases(remoteCoOpOptedIn: Bool) -> [CatalogSettingsGroup] {
-        allCases.filter { $0 != .remoteCoOp || remoteCoOpOptedIn }
+    /// Every tab. Remote Co-Op used to be filtered out until its alpha was opted into; it ships to
+    /// everyone now, so nothing is conditional. Kept as a function so the tab bar and pad navigation
+    /// still read the same list - iterating `allCases` in one place and a filtered list in the other
+    /// is what let the pad land on a tab that was not drawn.
+    static func visibleCases() -> [CatalogSettingsGroup] {
+        allCases
     }
 
     var title: String {

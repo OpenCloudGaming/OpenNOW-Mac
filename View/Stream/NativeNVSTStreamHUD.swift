@@ -102,7 +102,7 @@ extension NativeNVSTMediaStreamSurface {
                 nativeHUDStatusPanel
                 nativeHUDControlsPanel
                 nativeHUDNetworkPanel
-                if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isAlphaOptedIn {
+                if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp) {
                     nativeHUDRemoteCoOpPanel
                 }
                 nativeHUDVideoPanel
@@ -120,9 +120,7 @@ extension NativeNVSTMediaStreamSurface {
                     StreamHUDMetricCard(title: "Session", value: nativeSessionLimitText(at: context.date), positive: nativeSessionLimitIsHealthy(at: context.date))
                 }
             }
-            if model.remoteCoOpPreferences.isAlphaOptedIn {
-                StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
-            }
+            StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
             ForEach(model.controllerBatteries.sorted { $0.label < $1.label }) { battery in
                 StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
             }
@@ -233,7 +231,7 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDRemoteCoOpPanel: some View {
-        StreamHUDSection(label: "CO-OP", spacing: 8) {
+        StreamHUDSection(label: "CO-OP", spacing: 8, showsBetaTag: true) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {

@@ -177,19 +177,6 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    func setRemoteCoOpAlphaOptedIn(_ optedIn: Bool) {
-        OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(optedIn)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        // Opting out hides the Remote Co-Op tab. Leaving it selected would strand Settings on a
-        // page the tab bar no longer draws, with no tab highlighted and no way back except the
-        // keyboard.
-        if !optedIn, selectedSettingsGroup == .remoteCoOp {
-            selectedSettingsGroup = .experimental
-        }
-        actionMessage = optedIn ? "Remote Co-Op alpha access enabled. Configure Remote Co-Op from Gameplay settings." : "Remote Co-Op alpha access disabled. Remote Co-Op settings are hidden."
-        loadSettingsPreferences()
-    }
-
     func setRemoteCoOpReservedGuestSlots(_ index: Int) {
         OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(index)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()

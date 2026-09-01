@@ -220,7 +220,6 @@ public enum OPNRemoteCoOpQualityPreset: String, CaseIterable, Codable, Equatable
 }
 
 public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
-    public static let launchMetadataAlphaOptedInKey = "remoteCoOpAlphaOptedIn"
     public static let launchMetadataEnabledKey = "remoteCoOpEnabled"
     public static let launchMetadataReservedGuestSlotsKey = "remoteCoOpReservedGuestSlots"
     public static let launchMetadataTransportModeKey = "remoteCoOpTransportMode"
@@ -231,7 +230,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataPublicAddressKey = "remoteCoOpPublicAddress"
     public static let launchMetadataHostedGuestPageURLKey = "remoteCoOpHostedGuestPageURL"
 
-    public var isAlphaOptedIn: Bool
     public var isEnabled: Bool
     public var reservedGuestSlots: Int
     public var transportMode: OPNRemoteCoOpTransportMode
@@ -253,8 +251,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     /// all, so pointing them at a page elsewhere would only get them a page that cannot connect.
     public var hostedGuestPageURL: String
 
-    public init(isAlphaOptedIn: Bool = true,
-                isEnabled: Bool = false,
+    public init(isEnabled: Bool = false,
                 reservedGuestSlots: Int = 1,
                 transportMode: OPNRemoteCoOpTransportMode = .automatic,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
@@ -263,7 +260,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 hideGuestInviteDetails: Bool = false,
                 publicAddress: String = "",
                 hostedGuestPageURL: String = "") {
-        self.isAlphaOptedIn = isAlphaOptedIn
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
         self.transportMode = transportMode
@@ -294,8 +290,12 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         return url
     }
 
+    /// Whether this Mac will host. Remote Co-Op shipped behind an alpha opt-in; that gate is gone,
+    /// so hosting is simply on or off.
+    ///
+    /// Note this is about *hosting*: joining someone else's session needs nothing enabled here.
     public var isAvailable: Bool {
-        isAlphaOptedIn && isEnabled
+        isEnabled
     }
 
     public var effectiveReservedGuestSlots: Int {
@@ -307,16 +307,16 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     }
 
     public var launchMetadata: [String: String] {
-        guard isAlphaOptedIn else {
+        guard isEnabled else {
+            // An off session publishes only the two keys that say so, so nothing downstream can read
+            // a stale address or slot count out of the metadata.
             return [
-                Self.launchMetadataAlphaOptedInKey: String(false),
                 Self.launchMetadataEnabledKey: String(false),
                 Self.launchMetadataReservedGuestSlotsKey: String(0),
             ]
         }
 
         return [
-            Self.launchMetadataAlphaOptedInKey: String(isAlphaOptedIn),
             Self.launchMetadataEnabledKey: String(isEnabled),
             Self.launchMetadataReservedGuestSlotsKey: String(Self.clampedGuestSlots(reservedGuestSlots)),
             Self.launchMetadataTransportModeKey: transportMode.rawValue,
@@ -331,7 +331,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
 
     public static func launchPreferences(from metadata: [String: String], fallback: OPNRemoteCoOpPreferences) -> OPNRemoteCoOpPreferences {
         OPNRemoteCoOpPreferences(
-            isAlphaOptedIn: bool(metadata[launchMetadataAlphaOptedInKey], defaultValue: fallback.isAlphaOptedIn),
             isEnabled: bool(metadata[launchMetadataEnabledKey], defaultValue: fallback.isEnabled),
             reservedGuestSlots: int(metadata[launchMetadataReservedGuestSlotsKey], defaultValue: fallback.reservedGuestSlots),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: metadata[launchMetadataTransportModeKey] ?? "") ?? fallback.transportMode,
