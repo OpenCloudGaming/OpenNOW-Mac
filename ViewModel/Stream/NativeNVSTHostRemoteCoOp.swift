@@ -183,59 +183,7 @@ extension NativeNVSTHostViewModel {
                 // the line above: browser guests kept them because the embedded server was handed the
                 // augmented copy, while the host's own peers and every native guest got a STUN-only
                 // configuration. Visible in the logs as `host_peer.connection: iceServers=1`.
-                remoteCoOpNetworkConfiguration = await OPNRemoteCoOpHostingEndpoint.relayAugmented(
-                    OPNRemoteCoOpNetworkConfiguration(
-                        transportMode: preferences.transportMode,
-                        latencyMode: preferences.latencyMode,
-                        sessionQualityPreset: preferences.qualityPreset
-                    ),
-                    credentials: OPNRemoteCoOpTURNKeyStore.load(),
-                    logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
-                )
-                let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
-                    preferences: preferences,
-                    networkConfiguration: remoteCoOpNetworkConfiguration,
-                    logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
-                )
-                // Generated here rather than inside `startInvite`, because the hosted channel is named
-                // after it and the host must be subscribed before the invite naming it is handed out.
-                let pendingInviteID = UUID()
-                let inviteLifetimeSeconds: TimeInterval = 3_600
-                let pendingInviteExpiry = Date().addingTimeInterval(inviteLifetimeSeconds)
-                // Minted once and handed to both sides: the host subscribes with it below, and the
-                // same channel and expiry go into the invite. Deriving them twice would let the two
-                // drift.
-                //
-                // Fallback, not primary: a working tunnel already gets a guest both a public address
-                // and a real route for media, so routing signaling through Ably on top of it would add
-                // a dependency and a per-message cost for nothing. Only minted when there is no tunnel
-                // to prefer - a host with both configured gets the tunnel, deterministically, instead
-                // of whichever finished loading first deciding it silently.
-                let hostedSignaling = preferences.effectivePublicAddress == nil
-                    ? remoteCoOpHostedSignaling(inviteID: pendingInviteID, expiresAt: pendingInviteExpiry)
-                    : nil
-                let coordinator = makeRemoteCoOpCoordinator(
-                    preferences: preferences,
-                    hosting: hosting,
-                    pendingInviteID: pendingInviteID,
-                    pendingInviteExpiry: pendingInviteExpiry
-                )
-                // A static guest page only makes sense once this invite is already hosted: an
-                // embedded invite still needs a guest to reach this Mac's own server to negotiate at
-                // all, so pointing them at a page hosted elsewhere would hand them a page that can
-                // never connect. `signalingServerURL` is left at the default when the page is static,
-                // since there is no `wss://` URL for it to carry - the guest signals over the channel
-                // named in the invite payload instead.
-                let usesStaticGuestPage = hostedSignaling != nil && preferences.effectiveHostedGuestPageURL != nil
-                let invite = try await coordinator.startInvite(
-                    inviteID: pendingInviteID,
-                    applicationID: configuration.applicationID,
-                    title: configuration.title,
-                    joinBaseURL: usesStaticGuestPage ? preferences.effectiveHostedGuestPageURL : hosting.joinBaseURL,
-                    signalingServerURL: usesStaticGuestPage ? "" : hosting.signalingServerURL,
-                    lifetimeSeconds: inviteLifetimeSeconds,
-                    hostedSignaling: { _, _ in hostedSignaling }
-                )
+                let (hosting, invite) = try await buildRemoteCoOpHosting(preferences: preferences)
                 remoteCoOpCertificateFingerprint = hosting.certificateFingerprint
                 remoteCoOpIsLocallyHosted = hosting.isLocallyHosted
                 remoteCoOpNativeGuestAddress = remoteCoOpNativeServer?.guestAddressHint
@@ -520,7 +468,17 @@ extension NativeNVSTHostViewModel {
         remoteCoOpHostCoordinator = coordinator
         remoteCoOpPeerController = makeRemoteCoOpPeerController(signaling: signaling, coordinator: coordinator)
         remoteCoOpListenTask?.cancel()
-        remoteCoOpListenTask = Task { @MainActor in
+        remoteCoOpListenTask = startRemoteCoOpSignalingLoop(signaling: signaling, coordinator: coordinator)
+        return coordinator
+    }
+
+    /// Consumes signaling events for the life of the invite.
+    ///
+    /// Its own function rather than a closure inside `makeRemoteCoOpCoordinator`, which was otherwise
+    /// building four objects and running a 45-line event loop in one body.
+    private func startRemoteCoOpSignalingLoop(signaling: any OPNRemoteCoOpSignalingSession,
+                                              coordinator: OPNRemoteCoOpHostCoordinator) -> Task<Void, Never> {
+        Task { @MainActor in
             for await event in signaling.events() {
                 switch event {
                 case .peerSignal(let participantID, let signal):
@@ -532,13 +490,12 @@ extension NativeNVSTHostViewModel {
                 case .networkConfiguration(let configuration):
                     remoteCoOpNetworkConfiguration = configuration
                     await remoteCoOpPeerController?.updateNetworkConfiguration(configuration)
-                case .brokerError(let reason):
-                    // Almost always a rejected host registration, which is silent on the wire
-                    // otherwise: the invite looks created and guests queue up against a room the
-                    // host was never admitted to.
+                case .signalingError(let reason):
+                    // Silent on the wire otherwise: the invite looks created and guests queue up
+                    // against signaling that is not carrying anything.
                     remoteCoOpMessage = reason
                     showNativeTransientStreamMessage("Remote Co-Op: \(reason)")
-                    WebRTCMediaTelemetry.capture("nvst.remote_coop.broker.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
+                    WebRTCMediaTelemetry.capture("nvst.remote_coop.signaling.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
                 case .guestInput:
                     // Input stops here, and that is the whole point.
                     //
@@ -578,7 +535,68 @@ extension NativeNVSTHostViewModel {
                 try? await syncRemoteCoOpPeers()
             }
         }
-        return coordinator
+    }
+
+    /// Everything between "the host pressed Create" and "there is an invite": relay credentials, the
+    /// local listener, the hosted channel, and the signed invite itself.
+    ///
+    /// Extracted from `startRemoteCoOpInvite`, which was doing this plus teardown, clipboard and HUD
+    /// state in one body. The ordering here is load-bearing and the comments explain each step.
+    private func buildRemoteCoOpHosting(preferences: OPNRemoteCoOpPreferences) async throws -> (hosting: OPNRemoteCoOpHostingSession, invite: OPNRemoteCoOpInvite) {
+                remoteCoOpNetworkConfiguration = await OPNRemoteCoOpHostingEndpoint.relayAugmented(
+            OPNRemoteCoOpNetworkConfiguration(
+                transportMode: preferences.transportMode,
+                latencyMode: preferences.latencyMode,
+                sessionQualityPreset: preferences.qualityPreset
+            ),
+            credentials: OPNRemoteCoOpTURNKeyStore.load(),
+            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
+        )
+        let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
+            preferences: preferences,
+            networkConfiguration: remoteCoOpNetworkConfiguration,
+            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
+        )
+        // Generated here rather than inside `startInvite`, because the hosted channel is named
+        // after it and the host must be subscribed before the invite naming it is handed out.
+        let pendingInviteID = UUID()
+        let inviteLifetimeSeconds: TimeInterval = 3_600
+        let pendingInviteExpiry = Date().addingTimeInterval(inviteLifetimeSeconds)
+        // Minted once and handed to both sides: the host subscribes with it below, and the
+        // same channel and expiry go into the invite. Deriving them twice would let the two
+        // drift.
+        //
+        // Fallback, not primary: a working tunnel already gets a guest both a public address
+        // and a real route for media, so routing signaling through Ably on top of it would add
+        // a dependency and a per-message cost for nothing. Only minted when there is no tunnel
+        // to prefer - a host with both configured gets the tunnel, deterministically, instead
+        // of whichever finished loading first deciding it silently.
+        let hostedSignaling = preferences.effectivePublicAddress == nil
+            ? remoteCoOpHostedSignaling(inviteID: pendingInviteID, expiresAt: pendingInviteExpiry)
+            : nil
+        let coordinator = makeRemoteCoOpCoordinator(
+            preferences: preferences,
+            hosting: hosting,
+            pendingInviteID: pendingInviteID,
+            pendingInviteExpiry: pendingInviteExpiry
+        )
+        // A static guest page only makes sense once this invite is already hosted: an
+        // embedded invite still needs a guest to reach this Mac's own server to negotiate at
+        // all, so pointing them at a page hosted elsewhere would hand them a page that can
+        // never connect. `signalingServerURL` is left at the default when the page is static,
+        // since there is no `wss://` URL for it to carry - the guest signals over the channel
+        // named in the invite payload instead.
+        let usesStaticGuestPage = hostedSignaling != nil && preferences.effectiveHostedGuestPageURL != nil
+        let invite = try await coordinator.startInvite(
+            inviteID: pendingInviteID,
+            applicationID: configuration.applicationID,
+            title: configuration.title,
+            joinBaseURL: usesStaticGuestPage ? preferences.effectiveHostedGuestPageURL : hosting.joinBaseURL,
+            signalingServerURL: usesStaticGuestPage ? "" : hosting.signalingServerURL,
+            lifetimeSeconds: inviteLifetimeSeconds,
+            hostedSignaling: { _, _ in hostedSignaling }
+        )
+        return (hosting, invite)
     }
 
     var remoteCoOpWaitingParticipantIDs: Set<UUID> {

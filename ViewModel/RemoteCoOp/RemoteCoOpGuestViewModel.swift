@@ -233,12 +233,7 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     private func handle(_ message: OPNRemoteCoOpWireMessage) {
         switch message.kind {
         case .heartbeat:
-            // The embedded server drops a socket that stops answering, and gameplay input rides the
-            // data channel, so this reply is the only traffic proving the guest is still here.
-            let reply = OPNRemoteCoOpWireMessage(kind: .heartbeat, roomID: message.roomID, participantID: participantID)
-            Task { [weak self] in
-                try? await self?.connection?.send(reply)
-            }
+            answerHeartbeat(message)
         case .hostHello:
             invite = message.invite
             if let invite, phase == .connecting {
@@ -250,67 +245,97 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
             guard let configuration = message.networkConfiguration else { return }
             startPeerIfNeeded(networkConfiguration: configuration)
         case .participantUpdated:
-            guard let participant = message.participant, participant.id == participantID else { return }
-            if let sessionQualityPreset = message.sessionQualityPreset {
-                self.sessionQualityPreset = sessionQualityPreset
-            }
-            self.participant = participant
-            switch participant.connectionState {
-            case .waitingForApproval:
-                phase = .waitingForApproval
-                if waitingSince == nil { waitingSince = Date() }
-                // Names what the host has actually been told, so a slow host is distinguishable from a
-                // request that never arrived.
-                statusText = "The host has been asked to let you in…"
-            case .connected, .connecting:
-                waitingSince = nil
-                phase = .connected
-                // Only the pre-video panels show this now, so it describes the wait rather than the
-                // stream: once frames arrive the window shows the game itself.
-                statusText = "Connected"
-                startInputForwarding()
-            case .disconnected:
-                statusText = "Reconnecting…"
-            case .failed:
-                phase = .failed("The connection to the host failed.")
-            }
+            applyParticipantUpdate(message)
         case .guestRejected:
             guard message.participantID == participantID else { return }
             phase = .failed(message.reason ?? "The host rejected the join request.")
         case .peerSignal:
-            guard message.participantID == participantID, let signal = message.peerSignal else { return }
-            guard let peer else { return }
-            // Chained, not a free-standing Task per signal.
-            //
-            // The pump delivers signals in order, but an independent Task only runs to its first
-            // suspension before yielding: the offer suspends inside `setRemoteDescription` and the ICE
-            // candidate behind it then ran `addIceCandidate` against a peer connection with no remote
-            // description, which libwebrtc rejects outright. The host sends candidates immediately
-            // after `setLocalDescription`, so they are always in flight alongside the offer, and with
-            // `gatherOnce` on both sides there is no re-gather to recover the dropped ones - it
-            // presented as "guest connects, no video", intermittently and more often on fast links.
-            //
-            // Awaiting the previous link is safe because this is the MainActor: assignment order here
-            // is arrival order. The host side never had this bug - `receiveSignal` is serialized by
-            // the peer-controller actor.
-            let previous = peerSignalChain
-            peerSignalChain = Task { [weak self] in
-                _ = await previous?.result
-                do {
-                    try await peer.handle(signal)
-                } catch {
-                    self?.handleConnectionFailure(error)
-                }
-            }
-        case .inviteEnded:
-            leave()
-            statusText = "The host ended the session."
-        case .participantRemoved:
+            applyPeerSignal(message)
+        case .inviteEnded, .participantRemoved:
+            endSession(message)
+        default:
+            break
+        }
+    }
+
+    /// The two ways a host ends a guest's session. `participantRemoved` is addressed; `inviteEnded`
+    /// is not, because it ends the session for everyone.
+    private func endSession(_ message: OPNRemoteCoOpWireMessage) {
+        if message.kind == .participantRemoved {
             guard message.participantID == participantID else { return }
             leave()
             statusText = "The host removed you from the session."
-        default:
-            break
+            return
+        }
+        leave()
+        statusText = "The host ended the session."
+    }
+
+    /// The embedded server drops a socket that stops answering, and gameplay input rides the data
+    /// channel, so this reply is the only traffic proving the guest is still here.
+    private func answerHeartbeat(_ message: OPNRemoteCoOpWireMessage) {
+        let reply = OPNRemoteCoOpWireMessage(kind: .heartbeat, roomID: message.roomID, participantID: participantID)
+        Task { [weak self] in
+            try? await self?.connection?.send(reply)
+        }
+    }
+
+    /// Chained, not a free-standing Task per signal.
+    ///
+    /// The pump delivers signals in order, but an independent Task only runs to its first suspension
+    /// before yielding: the offer suspends inside `setRemoteDescription` and the ICE candidate behind
+    /// it then ran `addIceCandidate` against a peer connection with no remote description, which
+    /// libwebrtc rejects outright. The host sends candidates immediately after `setLocalDescription`,
+    /// so they are always in flight alongside the offer, and with `gatherOnce` on both sides there is
+    /// no re-gather to recover the dropped ones - it presented as "guest connects, no video",
+    /// intermittently and more often on fast links.
+    ///
+    /// Awaiting the previous link is safe because this is the MainActor: assignment order here is
+    /// arrival order. The host side never had this bug - `receiveSignal` is serialized by the
+    /// peer-controller actor.
+    private func applyPeerSignal(_ message: OPNRemoteCoOpWireMessage) {
+        guard message.participantID == participantID, let signal = message.peerSignal else { return }
+        guard let peer else { return }
+        let previous = peerSignalChain
+        peerSignalChain = Task { [weak self] in
+            _ = await previous?.result
+            do {
+                try await peer.handle(signal)
+            } catch {
+                self?.handleConnectionFailure(error)
+            }
+        }
+    }
+
+    /// This guest's own record as the host last described it, and the phase that follows from it.
+    ///
+    /// Split out of `handle` because it carries a nested state machine of its own: the outer switch
+    /// was the most complex function in the feature, and the `participant.id == participantID` filter
+    /// that keeps another guest's record from being applied here is easy to lose in that size.
+    private func applyParticipantUpdate(_ message: OPNRemoteCoOpWireMessage) {
+        guard let participant = message.participant, participant.id == participantID else { return }
+        if let sessionQualityPreset = message.sessionQualityPreset {
+            self.sessionQualityPreset = sessionQualityPreset
+        }
+        self.participant = participant
+        switch participant.connectionState {
+        case .waitingForApproval:
+            phase = .waitingForApproval
+            if waitingSince == nil { waitingSince = Date() }
+            // Names what the host has actually been told, so a slow host is distinguishable from a
+            // request that never arrived.
+            statusText = "The host has been asked to let you in…"
+        case .connected, .connecting:
+            waitingSince = nil
+            phase = .connected
+            // Only the pre-video panels show this now, so it describes the wait rather than the
+            // stream: once frames arrive the window shows the game itself.
+            statusText = "Connected"
+            startInputForwarding()
+        case .disconnected:
+            statusText = "Reconnecting…"
+        case .failed:
+            phase = .failed("The connection to the host failed.")
         }
     }
 

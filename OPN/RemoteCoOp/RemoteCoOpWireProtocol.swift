@@ -145,11 +145,19 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     }
 
     public func signalingEvent() -> OPNRemoteCoOpSignalingEvent? {
+        guestSignalingEvent() ?? sessionSignalingEvent()
+    }
+
+    /// The four kinds a guest may originate. Split from the rest only to keep each switch small
+    /// enough to read; the authorisation decision lives in `OPNRemoteCoOpGuestMessageGate`, not here.
+    private func guestSignalingEvent() -> OPNRemoteCoOpSignalingEvent? {
         switch kind {
         case .guestJoinRequested:
             guard let participantID, let inviteToken else { return nil }
             return .guestJoinRequested(participantID: participantID, inviteToken: inviteToken, displayName: displayName ?? "Guest")
         case .guestInput:
+            // `input ?? inputs?.last`: the browser populates the array form, so a message omitting the
+            // singular field is still routed - which is why the gate checks ownership of both.
             guard let input = input ?? inputs?.last else { return nil }
             return .guestInput(input)
         case .guestQualityRequested:
@@ -158,6 +166,15 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .guestDisconnected:
             guard let participantID else { return nil }
             return .guestDisconnected(participantID)
+        default:
+            return nil
+        }
+    }
+
+    /// Everything else that becomes an event. The host-to-guest kinds deliberately produce none: they
+    /// are commands, and a guest sending one back is refused by the gate.
+    private func sessionSignalingEvent() -> OPNRemoteCoOpSignalingEvent? {
+        switch kind {
         case .peerSignal:
             guard let participantID, let peerSignal else { return nil }
             return .peerSignal(participantID: participantID, signal: peerSignal)
@@ -165,8 +182,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
             guard let networkConfiguration else { return nil }
             return .networkConfiguration(networkConfiguration)
         case .error:
-            return .brokerError(reason ?? "The Remote Co-Op broker rejected this session.")
-        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat:
+            return .signalingError(reason ?? "The Remote Co-Op signaling channel rejected this session.")
+        default:
             return nil
         }
     }

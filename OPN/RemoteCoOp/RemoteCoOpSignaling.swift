@@ -9,11 +9,13 @@ public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
     case guestDisconnected(UUID)
     case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
     case networkConfiguration(OPNRemoteCoOpNetworkConfiguration)
-    /// The broker refused something, most often the host's own registration. Previously dropped on
-    /// the floor, which made a rejected host indistinguishable from a healthy one: the HUD showed
-    /// "Invite Ready" while the broker had never put the host in a room, and every guest sat
-    /// waiting for a host that was never going to arrive.
-    case brokerError(String)
+    /// The signaling channel refused something. Previously dropped on the floor, which made a
+    /// refusal indistinguishable from a healthy session: the HUD showed "Invite Ready" while nothing
+    /// was listening, and every guest sat waiting for a host that was never going to arrive.
+    ///
+    /// Named for the broker when a Node process owned signaling. That is gone - this process hosts it
+    /// - and the name reached the HUD as user-facing text, so it says what it means now.
+    case signalingError(String)
 }
 
 public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
@@ -217,7 +219,7 @@ public actor OPNRemoteCoOpHostCoordinator {
             // No `participantRemoved` either - that tells the guest page it was ejected and stops
             // it reconnecting. `expireDisconnectedParticipants` is what eventually gives up.
             return await hostSession.noteGuestDisconnected(participantID)
-        case .peerSignal, .networkConfiguration, .brokerError:
+        case .peerSignal, .networkConfiguration, .signalingError:
             return []
         }
     }

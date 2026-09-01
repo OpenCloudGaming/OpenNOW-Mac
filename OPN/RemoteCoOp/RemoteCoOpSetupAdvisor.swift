@@ -82,23 +82,34 @@ public enum OPNRemoteCoOpSetupAdvisor {
                               tailscaleDetected: Bool) -> OPNRemoteCoOpSetupAdvice {
         switch location {
         case .sameNetwork:
-            return OPNRemoteCoOpSetupAdvice(
-                transportMode: .directOnly,
-                needsTunnel: false,
-                needsRelay: false,
-                tailscaleAlternative: false,
-                headline: "Nothing to set up",
-                reasons: [
-                    "A guest on your own network reaches this Mac directly. No tunnel, no relay.",
-                    "Direct transport keeps it that way and shares nothing about your public address.",
-                ]
-            )
-
+            return sameNetworkAdvice()
         case .anotherNetwork:
-            // A native guest can be handed a tailnet address, which is a real route and needs neither
-            // a tunnel nor a relay. A browser cannot be handed one usefully: it would meet a
-            // self-signed certificate, and the warning is where a guest gives up.
-            if tailscaleDetected && client == .nativeApp {
+            return anotherNetworkAdvice(client: client, tailscaleDetected: tailscaleDetected)
+        case .restrictedNetwork, .unsure:
+            return restrictedNetworkAdvice(hedging: location == .unsure, tailscaleDetected: tailscaleDetected)
+        }
+    }
+
+    private static func sameNetworkAdvice() -> OPNRemoteCoOpSetupAdvice {
+        OPNRemoteCoOpSetupAdvice(
+            transportMode: .directOnly,
+            needsTunnel: false,
+            needsRelay: false,
+            tailscaleAlternative: false,
+            headline: "Nothing to set up",
+            reasons: [
+                "A guest on your own network reaches this Mac directly. No tunnel, no relay.",
+                "Direct transport keeps it that way and shares nothing about your public address.",
+            ]
+        )
+    }
+
+    /// A native guest can be handed a tailnet address, which is a real route and needs neither a
+    /// tunnel nor a relay. A browser cannot be handed one usefully: it would meet a self-signed
+    /// certificate, and the warning is where a guest gives up.
+    private static func anotherNetworkAdvice(client: OPNRemoteCoOpGuestClient,
+                                             tailscaleDetected: Bool) -> OPNRemoteCoOpSetupAdvice {
+        if tailscaleDetected && client == .nativeApp {
                 return OPNRemoteCoOpSetupAdvice(
                     transportMode: .directOnly,
                     needsTunnel: false,
@@ -123,13 +134,14 @@ public enum OPNRemoteCoOpSetupAdvisor {
                     tailscaleDetected
                         ? "Alternatively, a guest who installs Tailscale can skip the tunnel entirely, since this Mac is already on one."
                         : "Alternatively, Tailscale on both machines replaces the tunnel for free, if your guest is willing to install it.",
-                    "Or skip running a tunnel at all: Hosted Signaling (below, in Settings) gets an invite to resolve without one, if this Mac cannot run one or you would rather not.",
-                ]
-            )
+                "Or skip running a tunnel at all: Hosted Signaling (below, in Settings) gets an invite to resolve without one, if this Mac cannot run one or you would rather not.",
+            ]
+        )
+    }
 
-        case .restrictedNetwork, .unsure:
-            let hedging = location == .unsure
-            return OPNRemoteCoOpSetupAdvice(
+    private static func restrictedNetworkAdvice(hedging: Bool,
+                                                tailscaleDetected: Bool) -> OPNRemoteCoOpSetupAdvice {
+        OPNRemoteCoOpSetupAdvice(
                 transportMode: .automatic,
                 needsTunnel: true,
                 needsRelay: true,
@@ -145,9 +157,8 @@ public enum OPNRemoteCoOpSetupAdvisor {
                         ? "Alternatively, a guest who installs Tailscale gets through the same block for free, since this Mac is already on a tailnet."
                         : "Alternatively, Tailscale on both machines gets through the same block for free, if your guest is willing to install it.",
                     "The relay is still needed either way, but Hosted Signaling (below, in Settings) can stand in for the tunnel half if this Mac cannot run one or you would rather not.",
-                ]
-            )
-        }
+            ]
+        )
     }
 
     /// What is still outstanding, given what is already configured. Ordered as a host would do them.

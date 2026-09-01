@@ -103,6 +103,24 @@ public enum OPNRemoteCoOpEmbeddedServerError: LocalizedError {
 ///
 /// Owns the listener and every guest socket. It speaks the same JSON wire protocol as the Node
 /// broker, so `Resources/RemoteCoOp/browser` runs unchanged against either.
+/// One accepted socket. At file scope rather than nested in the actor: it carries no actor state,
+/// and nesting it only counted its lines against the actor's size budget.
+private final class Connection {
+    let id = UUID()
+    let connection: NWConnection
+    var buffer = Data()
+    var isWebSocket = false
+    var participantID: UUID?
+    /// A message split across frames. `isFinal` was decoded and ignored, so the first fragment was
+    /// handled as a whole message - truncated JSON the decoder rejects - and the rest were dropped.
+    /// SDP offers are the largest guest-originated payload and the plausible trigger.
+    var fragmentOpcode: OPNRemoteCoOpWebSocketOpcode?
+    var fragmentPayload = Data()
+    var lastActivityAt = Date()
+
+    init(connection: NWConnection) { self.connection = connection }
+}
+
 public actor OPNRemoteCoOpEmbeddedServer {
     private let documentRoot: URL
     private let logger: (@Sendable (String) -> Void)?
@@ -125,22 +143,6 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// hostname, when one is advertising this server.
     private let additionalAllowedOrigins: [String]
     private(set) var endpoint: OPNRemoteCoOpEmbeddedServerEndpoint?
-
-    private final class Connection {
-        let id = UUID()
-        let connection: NWConnection
-        var buffer = Data()
-        var isWebSocket = false
-        var participantID: UUID?
-        /// A message split across frames. `isFinal` was decoded and ignored, so the first fragment was
-        /// handled as a whole message - truncated JSON the decoder rejects - and the rest were dropped.
-        /// SDP offers are the largest guest-originated payload and the plausible trigger.
-        var fragmentOpcode: OPNRemoteCoOpWebSocketOpcode?
-        var fragmentPayload = Data()
-        var lastActivityAt = Date()
-
-        init(connection: NWConnection) { self.connection = connection }
-    }
 
     /// Caps for a listener that runs on the machine playing the game.
     ///

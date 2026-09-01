@@ -30,7 +30,7 @@ struct RemoteCoOpSetupWizard: View {
         case summary
     }
 
-    private enum ReachabilityChoice {
+    enum ReachabilityChoice {
         case tunnel
         case hostedSignaling
         /// Declared by the host, not detected: a VPN this app cannot see (anything but Tailscale) is
@@ -41,19 +41,19 @@ struct RemoteCoOpSetupWizard: View {
     }
 
     @State private var location: OPNRemoteCoOpGuestLocation?
-    @State private var client: OPNRemoteCoOpGuestClient?
+    @State var client: OPNRemoteCoOpGuestClient?
     @State private var stepIndex = 0
     @State private var applied = false
-    @State private var reachabilityChoice: ReachabilityChoice = .tunnel
-    @State private var ablyKeyDraft = ""
-    @State private var staticRelayPasswordDraft = ""
-    @State private var sharedSecretDraft = ""
+    @State var reachabilityChoice: ReachabilityChoice = .tunnel
+    @State var ablyKeyDraft = ""
+    @State var staticRelayPasswordDraft = ""
+    @State var sharedSecretDraft = ""
 
     private var tailscaleDetected: Bool { OPNRemoteCoOpLocalAddress.tailscaleIPv4() != nil }
-    private var hasTunnel: Bool { viewModel.remoteCoOpPreferences.effectivePublicAddress != nil }
-    private var hasHostedSignaling: Bool { viewModel.remoteCoOpAblyKey.isUsable }
-    private var hasRelay: Bool { relayCredentials.canRelay }
-    private var relayCredentials: OPNRemoteCoOpRelayCredentials { viewModel.remoteCoOpRelayCredentials }
+    var hasTunnel: Bool { viewModel.remoteCoOpPreferences.effectivePublicAddress != nil }
+    var hasHostedSignaling: Bool { viewModel.remoteCoOpAblyKey.isUsable }
+    var hasRelay: Bool { relayCredentials.canRelay }
+    var relayCredentials: OPNRemoteCoOpRelayCredentials { viewModel.remoteCoOpRelayCredentials }
 
     private var advice: OPNRemoteCoOpSetupAdvice? {
         guard let location else { return nil }
@@ -179,195 +179,13 @@ struct RemoteCoOpSetupWizard: View {
 
     // MARK: - Step 2: client
 
-    private var clientStep: some View {
+    var clientStep: some View {
         question(
             number: 2,
             title: "What will they play in?",
             options: OPNRemoteCoOpGuestClient.allCases.map { ($0.label, $0.detail, $0 == client) },
             select: { client = OPNRemoteCoOpGuestClient.allCases[$0]; applied = false }
         )
-    }
-
-    // MARK: - Step 3 (conditional): reachability
-
-    /// A host who needs a tunnel has two ways to get one: run a tunnel program, or configure Hosted
-    /// Signaling instead. Only one is used per invite - see `startRemoteCoOpInvite` - so the choice is
-    /// made here rather than leaving both cards to compete silently later.
-    private var reachabilityStep: some View {
-        VStack(alignment: .leading, spacing: 14 * uiScale) {
-            stepHeading("Getting guests in the door")
-            VStack(alignment: .leading, spacing: 8 * uiScale) {
-                if client == .nativeApp {
-                    choiceCard(
-                        title: "I Already Have a VPN or Tailscale Running",
-                        detail: "Your guest reaches this Mac by tailnet or VPN address. Nothing to configure here.",
-                        isSelected: reachabilityChoice == .vpnAlreadyRunning
-                    ) { reachabilityChoice = .vpnAlreadyRunning }
-                }
-                choiceCard(
-                    title: "Run a Tunnel",
-                    detail: "cloudflared, ngrok, or Tailscale Funnel. You run it, paste the address it prints.",
-                    isSelected: reachabilityChoice == .tunnel
-                ) { reachabilityChoice = .tunnel }
-                choiceCard(
-                    title: "Hosted Signaling",
-                    detail: "Nothing to run. Paste an Ably API key instead - free tier covers a normal session many times over.",
-                    isSelected: reachabilityChoice == .hostedSignaling
-                ) { reachabilityChoice = .hostedSignaling }
-            }
-
-            switch reachabilityChoice {
-            case .tunnel: tunnelFields
-            case .hostedSignaling: hostedSignalingFields
-            case .vpnAlreadyRunning:
-                Text("Transport will be set to Direct - a VPN or tailnet route already reaches this Mac, so STUN would only reveal your public address for nothing.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.54))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var tunnelFields: some View {
-        VStack(alignment: .leading, spacing: 10 * uiScale) {
-            SettingsTextFieldRow(
-                title: "Public Address",
-                subtitle: "HTTPS address a tunnel exposes this Mac on.",
-                text: viewModel.remoteCoOpPreferences.publicAddress,
-                placeholder: "https://your-tunnel.example",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpPublicAddress
-            )
-            Text(RemoteCoOpSettingsPage.tunnelExampleCommands)
-                .font(.system(size: 11 * uiScale, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.72))
-                .textSelection(.enabled)
-                .padding(10 * uiScale)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.05))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-        }
-        .padding(.top, 2 * uiScale)
-    }
-
-    private var hostedSignalingFields: some View {
-        VStack(alignment: .leading, spacing: 10 * uiScale) {
-            SettingsSecureTextFieldRow(
-                title: "Ably API Key",
-                subtitle: viewModel.remoteCoOpAblyKey.isUsable ? "Stored in your keychain. Type a new key to replace it." : "Stored in your keychain, never in an invite.",
-                text: $ablyKeyDraft,
-                placeholder: viewModel.remoteCoOpAblyKey.isUsable ? "Stored" : "APP_ID.KEY_ID:SECRET",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpAblyKey
-            )
-            if !viewModel.remoteCoOpAblyKeyMessage.isEmpty {
-                Text(viewModel.remoteCoOpAblyKeyMessage)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)
-            }
-            if viewModel.remoteCoOpAblyKey.isUsable {
-                SettingsTextFieldRow(
-                    title: "Static Guest Page (Optional)",
-                    subtitle: "A copy of the guest page hosted somewhere reachable without this Mac being reachable at all.",
-                    text: viewModel.remoteCoOpPreferences.hostedGuestPageURL,
-                    placeholder: "https://your-account.github.io/opennow-remote-coop/",
-                    uiScale: uiScale,
-                    action: viewModel.setRemoteCoOpHostedGuestPageURL
-                )
-            }
-        }
-        .padding(.top, 2 * uiScale)
-    }
-
-    // MARK: - Step 4 (conditional): relay
-
-    private var relayStep: some View {
-        VStack(alignment: .leading, spacing: 14 * uiScale) {
-            stepHeading("Getting video through a filtering network")
-            VStack(alignment: .leading, spacing: 8 * uiScale) {
-                ForEach(Array(OPNRemoteCoOpRelayProvider.allCases.enumerated()), id: \.offset) { index, provider in
-                    choiceCard(
-                        title: provider.label,
-                        detail: provider.summary,
-                        isSelected: provider == relayCredentials.provider
-                    ) { viewModel.setRemoteCoOpRelayProviderIndex(index) }
-                }
-            }
-            switch relayCredentials.provider {
-            case .none:
-                Text("Pick a provider above to continue - the relay is what carries video when a guest's network refuses a direct connection.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.54))
-                    .fixedSize(horizontal: false, vertical: true)
-            case .cloudflare:
-                VStack(alignment: .leading, spacing: 8 * uiScale) {
-                    Text(relayCredentials.canRelay ? "Cloudflare relay configured." : "Free tier: 1,000 GB a month. The guided setup handles the Cloudflare side in three steps.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .fixedSize(horizontal: false, vertical: true)
-                    SettingsActionButton(title: relayCredentials.canRelay ? "RUN SETUP AGAIN" : "GUIDED SETUP", uiScale: uiScale) {
-                        openRelaySetup()
-                    }
-                }
-            case .staticCredentials:
-                staticRelayFields
-            case .sharedSecret:
-                sharedSecretRelayFields
-            }
-        }
-    }
-
-    private var staticRelayFields: some View {
-        VStack(alignment: .leading, spacing: 10 * uiScale) {
-            SettingsTextFieldRow(
-                title: "TURN URLs",
-                subtitle: "One per line, or comma separated. Prefer a turns: URL on 443.",
-                text: relayCredentials.staticRelay.urlText,
-                placeholder: "turns:relay.example.com:443?transport=tcp",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpStaticRelayURLs
-            )
-            SettingsTextFieldRow(
-                title: "Username",
-                subtitle: "From your provider's dashboard.",
-                text: relayCredentials.staticRelay.rawUsername,
-                placeholder: "Relay username",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpStaticRelayUsername
-            )
-            SettingsSecureTextFieldRow(
-                title: "Password",
-                subtitle: relayCredentials.staticRelay.password.isEmpty ? "Stored in your keychain." : "Stored in your keychain. Type a new password to replace it.",
-                text: $staticRelayPasswordDraft,
-                placeholder: relayCredentials.staticRelay.password.isEmpty ? "Relay password" : "Stored",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpStaticRelayPassword
-            )
-            Text("ExpressTURN gives 1,000 GB a month with no card.")
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.44))
-        }
-    }
-
-    private var sharedSecretRelayFields: some View {
-        VStack(alignment: .leading, spacing: 10 * uiScale) {
-            SettingsTextFieldRow(
-                title: "TURN URLs",
-                subtitle: "One per line, or comma separated.",
-                text: relayCredentials.sharedSecretRelay.urlText,
-                placeholder: "turns:turn.example.com:443?transport=tcp",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpSharedSecretRelayURLs
-            )
-            SettingsSecureTextFieldRow(
-                title: "Shared Secret",
-                subtitle: relayCredentials.sharedSecretRelay.secret.isEmpty ? "coturn's static-auth-secret. Stored in your keychain." : "Stored in your keychain. Type a new secret to replace it.",
-                text: $sharedSecretDraft,
-                placeholder: relayCredentials.sharedSecretRelay.secret.isEmpty ? "static-auth-secret" : "Stored",
-                uiScale: uiScale,
-                action: viewModel.setRemoteCoOpSharedSecretRelaySecret
-            )
-        }
     }
 
     // MARK: - Final step: summary
@@ -466,13 +284,13 @@ struct RemoteCoOpSetupWizard: View {
 
     // MARK: - Shared step chrome
 
-    private func stepHeading(_ title: String) -> some View {
+    func stepHeading(_ title: String) -> some View {
         Text(title)
             .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
             .foregroundStyle(.white)
     }
 
-    private func choiceCard(title: String, detail: String, isSelected: Bool, select: @escaping () -> Void) -> some View {
+    func choiceCard(title: String, detail: String, isSelected: Bool, select: @escaping () -> Void) -> some View {
         Button(action: select) {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
