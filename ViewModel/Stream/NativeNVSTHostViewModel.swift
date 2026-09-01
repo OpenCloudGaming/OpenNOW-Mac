@@ -82,6 +82,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// the audio relay taps decoded PCM independently of the player this mutes. Exists for testing a
     /// session host and guest side on the same Mac, where both otherwise play the same audio at once.
     @Published var nativeLocalAudioMuted = false
+    /// True while `startRemoteCoOpInvite` is building a session. Published so the HUD button follows
+    /// it; see `canStartRemoteCoOpInvite`.
+    @Published var isStartingRemoteCoOpInvite = false
     var antiAFKMouseMovementTask: Task<Void, Never>?
     var lastAcceptedStreamInputAt = Date()
     @Published var transientStreamMessage = ""

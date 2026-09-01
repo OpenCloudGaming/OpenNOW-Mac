@@ -75,7 +75,11 @@ extension NativeNVSTHostViewModel {
     var canStartRemoteCoOpInvite: Bool {
         remoteCoOpSnapshot.preferences.isAvailable &&
             remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 &&
-            isConnected && !isEnding && !didEnd
+            isConnected && !isEnding && !didEnd &&
+            // In-flight counts as "cannot start again": the invite is only published at the end of a
+            // multi-second bring-up, so this is the only thing standing between a double press and
+            // two half-built sessions.
+            !isStartingRemoteCoOpInvite
     }
 
     /// The preferences the *session* launched with, not whatever Settings says now. Reserved
@@ -149,8 +153,17 @@ extension NativeNVSTHostViewModel {
             return
         }
         remoteCoOpMessage = "Creating..."
+        // Creating an invite takes seconds - TURN probing, binding a TLS listener, minting the hosted
+        // channel - and the HUD button's disabled state is driven by `remoteCoOpSnapshot.invite`,
+        // which is not set until the very end. So the button stayed live throughout, and a second
+        // press ran `stopRemoteCoOpSession()` against the first attempt's half-built session: it
+        // cancelled that listen task and closed its signaling, then the first attempt resumed and
+        // published *its* invite and copied *its* link, while the only live channel belonged to the
+        // second. Every guest opening the copied link was dropped.
+        isStartingRemoteCoOpInvite = true
         applyRemoteCoOpVideoScale(preferences: preferences)
         Task { @MainActor in
+            defer { isStartingRemoteCoOpInvite = false }
             let neutralEvents = await stopRemoteCoOpSession()
             await sendRemoteCoOpNeutralInput(neutralEvents)
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
@@ -526,6 +539,19 @@ extension NativeNVSTHostViewModel {
                     remoteCoOpMessage = reason
                     showNativeTransientStreamMessage("Remote Co-Op: \(reason)")
                     WebRTCMediaTelemetry.capture("nvst.remote_coop.broker.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
+                case .guestInput:
+                    // Input stops here, and that is the whole point.
+                    //
+                    // This loop runs on the MainActor - the one driving the Metal stream surface - and
+                    // everything below used to run for *every* signaling message, input included: two
+                    // actor round trips plus a `@Published` snapshot write, so a SwiftUI invalidation
+                    // per packet. A browser guest on the WebSocket fallback (the default outside
+                    // low-latency mode, and not gated on approval) polls its pad on
+                    // `requestAnimationFrame`, so that was 60-120 full peer syncs a second against
+                    // the host's live game. Input cannot change participants, so none of it applies.
+                    let routedEvents = await coordinator.handle(event)
+                    forwardRemoteCoOpInput(routedEvents)
+                    continue
                 default:
                     let routedEvents = await coordinator.handle(event)
                     forwardRemoteCoOpInput(routedEvents)

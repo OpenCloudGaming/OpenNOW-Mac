@@ -108,6 +108,10 @@ public final class OPNInProcessRemoteCoOpSignalingSession: OPNRemoteCoOpSignalin
 public actor OPNRemoteCoOpHostCoordinator {
     private let hostSession: OPNRemoteCoOpHostSession
     let signaling: any OPNRemoteCoOpSignalingSession
+    /// The last rejection each guest was told about, so a steady stream of identically-rejected
+    /// packets is answered once rather than per packet. Cleared when a packet routes, so the next
+    /// rejection after a working spell is reported again.
+    private var lastReportedInputRejection: [UUID: OPNRemoteCoOpInputRoutingResult] = [:]
 
     public init(hostSession: OPNRemoteCoOpHostSession, signaling: any OPNRemoteCoOpSignalingSession) {
         self.hostSession = hostSession
@@ -173,7 +177,19 @@ public actor OPNRemoteCoOpHostCoordinator {
             return []
         case .guestInput(let packet):
             let result = await hostSession.route(packet)
-            if case .routed(let event) = result { return [event] }
+            if case .routed(let event) = result {
+                lastReportedInputRejection[packet.participantID] = nil
+                return [event]
+            }
+            // On transition only.
+            //
+            // A guest the host has benched stays `.connected`, so its sender keeps forwarding at up
+            // to 200 Hz and every packet was refused *and answered*. The reply fans out to every
+            // transport in the composite - on the hosted path that is 200 billed Ably publishes a
+            // second, enough to hit the per-channel rate limit - and tells the guest nothing it was
+            // not told by the first one.
+            guard lastReportedInputRejection[packet.participantID] != result else { return [] }
+            lastReportedInputRejection[packet.participantID] = result
             await signaling.send(.inputRejected(participantID: packet.participantID, result: result))
             return []
         case .guestQualityRequested(let participantID, let preset):
@@ -193,6 +209,7 @@ public actor OPNRemoteCoOpHostCoordinator {
             }
             return []
         case .guestDisconnected(let participantID):
+            lastReportedInputRejection[participantID] = nil
             // The slot is held rather than released: a dropped socket is usually a blip, and the
             // guest page reconnects with the same participant ID to reclaim it. Neutral pad state
             // still goes out now so nothing stays held during the grace period.
