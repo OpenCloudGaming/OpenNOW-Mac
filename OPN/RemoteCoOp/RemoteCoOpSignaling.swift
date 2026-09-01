@@ -224,15 +224,6 @@ public actor OPNRemoteCoOpHostCoordinator {
         }
     }
 
-    public func listen(forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) -> Task<Void, Never> {
-        Task {
-            for await event in signaling.events() {
-                let routedEvents = await handle(event)
-                for routedEvent in routedEvents { await forwardInput(routedEvent) }
-            }
-        }
-    }
-
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription

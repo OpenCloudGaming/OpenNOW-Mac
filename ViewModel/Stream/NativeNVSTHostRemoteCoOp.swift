@@ -5,10 +5,11 @@
 //  Hosting a Remote Co-Op session from the native NVST stream: the invite, the participants, and
 //  the peer plumbing behind them.
 //
-//  This mirrors `WebRTCMediaStreamRemoteCoOp.swift`, which does the same job for the WebRTC
-//  transport. Everything above the transport - the signed invite, the broker, the approval flow,
-//  the per-guest `RTCPeerConnection` - is shared; only the three seams differ, and all three are
-//  native-transport-specific:
+//  Remote Co-Op requires this transport. The WebRTC path used to host too, via a sibling file that
+//  is gone: it decodes inside libwebrtc and exposes no frame tap, so sharing frames meant a second
+//  decode and encode per frame. Everything above the transport - the signed invite, signaling, the
+//  approval flow, the per-guest `RTCPeerConnection` - is shared with the guest side; three seams are
+//  specific to this transport:
 //
 //  - Video and audio reach the relays from `NvstBifrostFreeTransport`'s decode and audio taps
 //    rather than from libwebrtc's frame callbacks. The relays are owned by the view model and

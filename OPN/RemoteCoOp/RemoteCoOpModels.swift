@@ -231,7 +231,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataPublicAddressKey = "remoteCoOpPublicAddress"
     public static let launchMetadataHostedGuestPageURLKey = "remoteCoOpHostedGuestPageURL"
 
-
     public var isAlphaOptedIn: Bool
     public var isEnabled: Bool
     public var reservedGuestSlots: Int
@@ -349,7 +348,6 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
     }
-
 
     static func int(_ value: String?, defaultValue: Int) -> Int {
         guard let value, let parsed = Int(value) else { return defaultValue }

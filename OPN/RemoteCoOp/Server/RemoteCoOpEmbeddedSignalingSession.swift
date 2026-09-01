@@ -3,8 +3,8 @@
 //  OpenNOW
 //
 //  Adapts the locally hosted server to `OPNRemoteCoOpSignalingSession`, so the host session,
-//  coordinator and peer controller are the same code whether the broker is a Node process on a
-//  public address or this process.
+//  coordinator and peer controller are the same code on every transport - this server, the native
+//  listener, or a hosted channel.
 //
 //  The host half of signaling stops being a network hop entirely: there is no host WebSocket, no
 //  host registration, and no host-side invite verification against a foreign secret. The events a

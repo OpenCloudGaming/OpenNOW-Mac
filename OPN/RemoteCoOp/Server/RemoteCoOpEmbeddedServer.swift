@@ -2,16 +2,17 @@
 //  RemoteCoOpEmbeddedServer.swift
 //  OpenNOW
 //
-//  Remote Co-Op hosted by OpenNOW itself: no Node broker, no deployed host, no shared secret.
+//  Remote Co-Op hosted by OpenNOW itself: no deployed server, no shared secret.
 //
-//  The Node broker in `RemoteCoOp/` exists because a rendezvous both sides dial *out* to works from
-//  behind any NAT. This server trades that for having no infrastructure at all: the guest connects
-//  *in* to the host, which is unconditional on a LAN and needs a forwarded port across the
-//  internet. Both remain supported; this is the one that needs no setup.
+//  A Node broker in `RemoteCoOp/` used to be the alternative, because a rendezvous both sides dial
+//  *out* to works from behind any NAT. It is gone. This server trades that reach for having no
+//  infrastructure at all: the guest connects *in* to the host, which is unconditional on a LAN and
+//  needs a tunnel across the internet. `RemoteCoOpHostedSignalingSession` is what covers the case a
+//  tunnel cannot.
 //
-//  Hosting locally also removes a whole class of failure. When the app is the broker it both signs
-//  and verifies invites, so there is no secret to distribute and none to mismatch - the failure
-//  that made every join to a foreign broker fail with "Invalid or expired invite token".
+//  Hosting locally also removes a whole class of failure: the app both signs and verifies invites,
+//  so there is no secret to distribute and none to mismatch - the failure that made every join to a
+//  foreign broker fail with "Invalid or expired invite token".
 //
 //  One port serves both the page and the socket, deliberately: same origin is what lets a guest
 //  accept the self-signed certificate once on a top-level navigation and have it cover the
@@ -138,7 +139,6 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// consumer then waited forever.
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
-    private var inviteToken: String?
     /// Origins beyond this machine's own that may open a signaling socket - a tunnel's public
     /// hostname, when one is advertising this server.
     private let additionalAllowedOrigins: [String]
@@ -251,10 +251,6 @@ public actor OPNRemoteCoOpEmbeddedServer {
 
     public func updateNetworkConfiguration(_ configuration: OPNRemoteCoOpNetworkConfiguration) {
         networkConfiguration = configuration
-    }
-
-    public func setInviteToken(_ token: String?) {
-        inviteToken = token
     }
 
     /// Binds the listener and returns the address a guest should be sent to.
@@ -379,15 +375,19 @@ public actor OPNRemoteCoOpEmbeddedServer {
         }
     }
 
-    /// Sends a host-side command to the guest it names. Mirrors the broker's relay, minus the room
-    /// bookkeeping: there is exactly one room, and this process owns it.
+    /// Sends a host-side command to the guest it names.
+    ///
+    /// No room bookkeeping: there is exactly one invite and this process owns it, so a command is
+    /// addressed to a participant rather than routed through a room the way the deployed broker's
+    /// relay had to.
     public func send(_ command: OPNRemoteCoOpSignalingCommand) {
         switch command {
-        case .inviteCreated(let invite):
-            inviteToken = invite.token
+        // Nothing to do: guests read the token from their own URL or the native greeting, and this
+        // server verifies nothing itself - `registerGuest` does.
+        case .inviteCreated:
+            break
         case .inviteEnded:
             broadcast(OPNRemoteCoOpWireMessage(kind: .inviteEnded, roomID: nil, reason: "Host ended the invite."))
-            inviteToken = nil
             for connection in connections.values where connection.isWebSocket { connection.connection.cancel() }
         case .participantUpdated(let participant):
             // First update for a participant means the host session accepted their invite token, so

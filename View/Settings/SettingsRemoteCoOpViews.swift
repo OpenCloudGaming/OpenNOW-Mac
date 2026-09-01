@@ -5,9 +5,9 @@
 //  The Remote Co-Op settings tab.
 //
 //  This was a single card at the bottom of Gameplay. It outgrew that: alongside the session
-//  options it now carries the broker address, the guest join address and the invite signing
-//  secret, and those three decide whether a guest can connect at all. Buried under the streaming
-//  options they read as trivia; on their own page they read as setup.
+//  options it now carries how guests reach the host - tunnel, hosted signaling, relay - and those
+//  decide whether a guest can connect at all. Buried under the streaming options they read as
+//  trivia; on their own page they read as setup.
 //
 //  The tab only appears once the alpha is opted into in Experimental - see
 //  `CatalogSettingsGroup.visibleCases(remoteCoOpOptedIn:)`.

@@ -443,9 +443,6 @@ extension CatalogViewModel {
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     }
 
-
-
-
     func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
         OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()

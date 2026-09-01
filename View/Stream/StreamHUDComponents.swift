@@ -505,7 +505,7 @@ struct StreamHUDSliderRow: View {
 
 /// The approve / remove control on a Remote Co-Op participant row.
 ///
-/// Shared because both stream HUDs host Remote Co-Op and the row has to look identical in each:
+/// Shared when both stream HUDs hosted Remote Co-Op; only the native HUD does now and the row has to look identical in each:
 /// it was a private helper on the WebRTC HUD until the native NVST transport grew the same panel.
 struct StreamHUDParticipantIconButton: View {
     let systemName: String
