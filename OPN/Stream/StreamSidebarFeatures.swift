@@ -22,6 +22,7 @@ struct StreamSidebarCapabilities: Equatable, Sendable {
         .floatingStats,
         .networkHealth,
         .sessionLimit,
+        .remoteCoOp,
         .videoEnhancement,
     ])
 

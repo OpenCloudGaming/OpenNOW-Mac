@@ -169,30 +169,32 @@ final class OPNSentry {
         SentrySDK.logger.debug(sanitized)
     }
 
+    /// Unlike Sentry reporting, the local diagnostics buffer is not a telemetry channel - nothing
+    /// leaves this Mac until a host presses "Generate Diagnostics" themselves. Gating it behind the
+    /// same flag that disables *background* reporting meant that button was silently empty for any
+    /// host who had turned telemetry off, which defeats the one thing it was for: sharing a log with
+    /// a developer on request. Only the Sentry send below stays behind that flag.
     public static func logInfoMessage(_ message: String) {
-        guard shouldLogInfo() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
-        guard initialized, SentrySDK.isEnabled else { return }
+        guard shouldLogInfo(), initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.info(sanitized)
     }
 
     public static func logWarningMessage(_ message: String) {
-        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
-        guard initialized, SentrySDK.isEnabled else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.warn(sanitized)
     }
 
     public static func logErrorMessage(_ message: String) {
-        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
-        guard initialized, SentrySDK.isEnabled else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.error(sanitized)
         SentrySDK.capture(message: sanitized)
     }

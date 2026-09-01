@@ -1,3 +1,0 @@
-# Linux PAM example. The install script writes this to /etc/pam.d/opennow-remote-coop when absent.
-auth required pam_unix.so
-account required pam_unix.so

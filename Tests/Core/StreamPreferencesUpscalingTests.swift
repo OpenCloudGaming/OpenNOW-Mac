@@ -26,9 +26,16 @@ import Testing
     }
 
     @Test func launchProfileKeepsSelectedResolutionWhenStaleGameProfileExists() {
-        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", gameProfilesKey]) {
+        // The quality-profile key has to be cleared as well, even though this test is about
+        // resolution: `launchProfile` applies a selected preset *after* reading the resolution, and a
+        // preset overwrites it. Leaving the key alone meant the test inherited whatever preset the
+        // machine running it had chosen in Settings, so it passed or failed depending on the
+        // developer's own preferences rather than on the code.
+        let qualityProfileKey = "OpenNOW.Stream.StreamingQualityProfileIndex"
+        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", qualityProfileKey, gameProfilesKey]) {
             removePreferenceValue("OpenNOW.Stream.AspectIndex")
             removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+            removePreferenceValue(qualityProfileKey)
             removePreferenceValue(gameProfilesKey)
             OPNStreamPreferences.saveAspectIndex(1)
             OPNStreamPreferences.saveResolutionIndex(5)
@@ -83,22 +90,27 @@ import Testing
         }
     }
 
-    @Test func streamTransportSelectionSurvivesQualityProfileChanges() {
-        withPreservedPreferences(streamingProfileKeys) {
-            OPNStreamPreferences.restoreStreamingProfileDefaults()
+    /// Shares the transport-mode preference key with the native NVST coordinator tests, so the two
+    /// have to take turns: `withPreservedPreferences` restores this test's changes afterwards, but
+    /// "afterwards" can be in the middle of the other test's read-back.
+    @Test func streamTransportSelectionSurvivesQualityProfileChanges() async {
+        await streamPreferencesTestIsolationLock.withLock {
+            withPreservedPreferences(streamingProfileKeys) {
+                OPNStreamPreferences.restoreStreamingProfileDefaults()
 
-            OPNStreamPreferences.saveTransportModeIndex(1)
-            OPNStreamPreferences.saveStreamingQualityProfileIndex(3)
+                OPNStreamPreferences.saveTransportModeIndex(1)
+                OPNStreamPreferences.saveStreamingQualityProfileIndex(3)
 
-            var profile = OPNStreamPreferences.loadProfile()
-            #expect(profile.streamingQualityProfileIndex == 3)
-            #expect(profile.transportMode.value == "nvst")
-            #expect(profile.transportMode.label == "Native/NVST")
+                var profile = OPNStreamPreferences.loadProfile()
+                #expect(profile.streamingQualityProfileIndex == 3)
+                #expect(profile.transportMode.value == "nvst")
+                #expect(profile.transportMode.label == "Native/NVST")
 
-            OPNStreamPreferences.saveStreamingQualityProfileIndex(4)
-            profile = OPNStreamPreferences.loadProfile()
-            #expect(profile.streamingQualityProfileIndex == 4)
-            #expect(profile.transportMode.value == "nvst")
+                OPNStreamPreferences.saveStreamingQualityProfileIndex(4)
+                profile = OPNStreamPreferences.loadProfile()
+                #expect(profile.streamingQualityProfileIndex == 4)
+                #expect(profile.transportMode.value == "nvst")
+            }
         }
     }
 
@@ -278,6 +290,8 @@ import Testing
     }
 
     private func withPreservedPreferences(_ keys: [String], _ body: () -> Void) {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
         let previousDomain = defaults.persistentDomain(forName: preferenceDomain)

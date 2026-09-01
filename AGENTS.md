@@ -29,7 +29,7 @@ Identity anchors (verify these survive any bulk rename or merge):
 - `OpenNOW.xcodeproj/project.pbxproj`: Release `PRODUCT_BUNDLE_IDENTIFIER = "io.github.opencloudgaming.opennow"`, Debug `= "io.github.opencloudgaming.opennow.dev"`, tests `= "io.github.opencloudgaming.opennow.tests"`, Debug `PRODUCT_NAME = "OpenNOW Dev"`.
 - URL scheme `opennow`; UserDefaults domain `io.github.opencloudgaming.opennow`; keychain services `OpenNOW.GFN` / `OpenNOW.Twitch`; telemetry key prefix `opennow.*`.
 - `App/OpenNOWAppDelegate.swift`: updater is `OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")`.
-- RemoteCoOp: LaunchDaemon `com.opennow.remote-coop.panel`, systemd unit `opennow-remote-coop-panel.service`, environment variables `OPENNOW_REMOTE_COOP_*`, PAM service `opennow-remote-coop`.
+- RemoteCoOp: hosted in-app by `OPNRemoteCoOpEmbeddedServer` on port 32188. No daemon, no service unit, no environment variables. The guest page ships in `Resources/RemoteCoOp/browser`.
 
 `App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed. `OpenNOWApp.swift` contains only the `@main` App struct; update preferences live in `OPN/Services/OpenNOWUpdatePreferences.swift` and the `NSApplicationDelegate` in `App/OpenNOWAppDelegate.swift`.
 

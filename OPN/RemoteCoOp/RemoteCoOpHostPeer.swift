@@ -14,14 +14,87 @@ public enum OPNRemoteCoOpHostPeerError: LocalizedError, Equatable, Sendable {
     }
 }
 
+/// What a guest is actually being sent, as opposed to what was asked for.
+///
+/// A preset is a ceiling, not a promise. Three separate things hold a guest below it: the seat not
+/// sending that much (the relay never upscales), aspect ratio (the preset is a bounding box, so a
+/// 5120x2160 seat on the 4K preset gives 3840x1620), and libwebrtc downscaling because Low Latency
+/// mode trades resolution to hold frame rate. The first two are geometry and the third is
+/// `qualityLimitationReason`, so both the source size and the reason are carried here.
+public struct OPNRemoteCoOpGuestDeliveryStats: Equatable, Sendable {
+    public var frameWidth: Int
+    public var frameHeight: Int
+    public var encodedFramesPerSecond: Double
+    /// `cpu`, `bandwidth`, `none`, or `unknown` before the encoder has reported.
+    public var qualityLimitationReason: String
+    /// What the relay hands the encoder. A delivered frame matching this means the preset is simply
+    /// above the source.
+    public var sourceWidth: Int
+    public var sourceHeight: Int
+    public var targetPreset: OPNRemoteCoOpQualityPreset
+
+    public init(frameWidth: Int = 0,
+                frameHeight: Int = 0,
+                encodedFramesPerSecond: Double = 0,
+                qualityLimitationReason: String = "unknown",
+                sourceWidth: Int = 0,
+                sourceHeight: Int = 0,
+                targetPreset: OPNRemoteCoOpQualityPreset = .p720f60) {
+        self.frameWidth = frameWidth
+        self.frameHeight = frameHeight
+        self.encodedFramesPerSecond = encodedFramesPerSecond
+        self.qualityLimitationReason = qualityLimitationReason
+        self.sourceWidth = sourceWidth
+        self.sourceHeight = sourceHeight
+        self.targetPreset = targetPreset
+    }
+
+    public var isAtSource: Bool {
+        frameWidth > 0 && frameWidth == sourceWidth && frameHeight == sourceHeight
+    }
+
+    /// Below the preset is not a fault when the source is the limit - the common case, and the one
+    /// that reads as a bug.
+    ///
+    /// Either dimension reaching the box is enough, because the preset *is* a bounding box: a
+    /// 5120x2160 seat pre-scaled for a 4K guest hands a 720p guest 3840x1620, whose encoder emits
+    /// 1280x540 - exactly the preset's width, and short of its height only because the aspect ratio
+    /// says so. Requiring both reported "network limited" for the whole session on every multi-guest
+    /// room, which is where this branch's per-guest presets put everyone.
+    public var isAtBest: Bool {
+        guard frameWidth > 0 else { return false }
+        return isAtSource || frameWidth >= targetPreset.width || frameHeight >= targetPreset.height
+    }
+
+    public var summary: String {
+        guard frameWidth > 0, frameHeight > 0 else { return "measuring…" }
+        let size = "\(frameWidth)x\(frameHeight)"
+        let rate = encodedFramesPerSecond > 0 ? String(format: " @%.0f", encodedFramesPerSecond) : ""
+        if isAtBest {
+            return isAtSource && (frameWidth < targetPreset.width || frameHeight < targetPreset.height)
+                ? "\(size)\(rate) · source limit"
+                : "\(size)\(rate)"
+        }
+        switch qualityLimitationReason {
+        case "bandwidth": return "\(size)\(rate) · network limited"
+        case "cpu": return "\(size)\(rate) · encoder limited"
+        case "none": return "\(size)\(rate) · ramping up"
+        default: return "\(size)\(rate)"
+        }
+    }
+}
+
 public struct OPNRemoteCoOpHostPeerCallbacks: Sendable {
     public var sendSignal: @Sendable (OPNRemoteCoOpWirePeerSignal) async -> Void
     public var receiveInput: @Sendable (OPNRemoteCoOpInputPacket) async -> Void
+    public var reportDelivery: @Sendable (OPNRemoteCoOpGuestDeliveryStats) async -> Void
 
     public init(sendSignal: @escaping @Sendable (OPNRemoteCoOpWirePeerSignal) async -> Void,
-                receiveInput: @escaping @Sendable (OPNRemoteCoOpInputPacket) async -> Void) {
+                receiveInput: @escaping @Sendable (OPNRemoteCoOpInputPacket) async -> Void,
+                reportDelivery: @escaping @Sendable (OPNRemoteCoOpGuestDeliveryStats) async -> Void = { _ in }) {
         self.sendSignal = sendSignal
         self.receiveInput = receiveInput
+        self.reportDelivery = reportDelivery
     }
 }
 
@@ -29,7 +102,19 @@ public protocol OPNRemoteCoOpHostPeer: Sendable {
     var participantID: UUID { get }
     func start() async throws
     func apply(_ signal: OPNRemoteCoOpWirePeerSignal) async throws
+    /// Retargets this guest's stream without renegotiating: resolution, frame rate and bitrate are
+    /// sender-side in WebRTC, so rebuilding the peer would black the guest out for nothing.
+    /// Returns false when it could not be applied - typically because the video track is not attached
+    /// yet - so the caller knows to try again rather than recording a change that never happened.
+    @discardableResult
+    func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) async -> Bool
     func close() async
+}
+
+public extension OPNRemoteCoOpHostPeer {
+    /// A peer that does not carry video has nothing to retarget, and nothing to retry either.
+    @discardableResult
+    func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) async -> Bool { true }
 }
 
 public protocol OPNRemoteCoOpHostPeerFactory: Sendable {
@@ -54,6 +139,12 @@ public enum OPNRemoteCoOpHostPeerInputDecoder {
     }
 
     public static func decodePackets(_ data: Data, expectedParticipantID: UUID? = nil) -> [OPNRemoteCoOpInputPacket] {
+        // Native guests send the fixed-layout binary frame; browser guests send JSON. Checked first
+        // because it is the high-rate case and the check is one byte.
+        if let packet = OPNRemoteCoOpInputBinaryCodec.decode(data) {
+            guard expectedParticipantID == nil || packet.participantID == expectedParticipantID else { return [] }
+            return [packet]
+        }
         guard let message = try? OPNRemoteCoOpWireCodec.decode(data), message.kind == .guestInput else { return [] }
         let packets = Self.packets(from: message)
         return packets.filter { packet in
@@ -83,6 +174,10 @@ public actor OPNRemoteCoOpHostPeerController {
     private var qualityPreset: OPNRemoteCoOpQualityPreset
     private var latencyMode: OPNRemoteCoOpLatencyMode
     private var peers: [UUID: any OPNRemoteCoOpHostPeer] = [:]
+    /// What each live peer was last told to stream at, so `sync` can tell a real change from a
+    /// participant record that merely got rewritten.
+    private var appliedQualityPresets: [UUID: OPNRemoteCoOpQualityPreset] = [:]
+    private var deliveryStatsByParticipant: [UUID: OPNRemoteCoOpGuestDeliveryStats] = [:]
 
     public init(signaling: any OPNRemoteCoOpSignalingSession,
                 coordinator: OPNRemoteCoOpHostCoordinator,
@@ -117,23 +212,78 @@ public actor OPNRemoteCoOpHostPeerController {
         await inputScheduler.updateLatencyMode(mode)
     }
 
+    /// Driven from `sync` because every path that changes a participant already ends here, so a preset
+    /// change has one place to be missed rather than several.
     public func sync(participants: [OPNRemoteCoOpParticipant]) async throws {
-        let eligibleParticipants = participants.filter { $0.connectionState == .connected && $0.inputEnabled }
+        // Eligibility is about the media session, so it turns on `connectionState` alone. Including
+        // `inputEnabled` meant benching a guest with `setInputEnabled(false)` - whose whole purpose is
+        // to keep them in the session without a pad - fell through the teardown loop below and closed
+        // their peer, so they went black and silent and re-enabling had to renegotiate from scratch.
+        // A guest who reconnects while benched was never given a peer at all. Input itself is gated
+        // where it is routed, by `OPNRemoteCoOpInputRouter`.
+        let eligibleParticipants = participants.filter { $0.connectionState == .connected }
         let eligibleIDs = Set(eligibleParticipants.map(\.id))
         for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
             peers[participantID] = nil
-            await inputScheduler.remove(participantID: participantID)
+            appliedQualityPresets[participantID] = nil
+            deliveryStatsByParticipant[participantID] = nil
+            // Detached before the first suspension. `sync` runs on every signaling message, so a
+            // guest rejoining inside the grace period drives a second `sync` that reaches
+            // `startPeer` and upserts the new sinks - which this loop, resuming afterwards, then
+            // removed by participant ID. The new peer stayed in `peers`, so nothing ever rebuilt
+            // it: a negotiated guest receiving no video and no audio for the rest of the session.
             videoRelay?.remove(participantID: participantID)
             audioRelay?.remove(participantID: participantID)
+            await inputScheduler.remove(participantID: participantID)
             await peer.close()
         }
-        for participant in eligibleParticipants where peers[participant.id] == nil {
-            try await startPeer(for: participant)
+        // One guest's failure must not cost the others theirs. `startPeer` used to throw straight out
+        // of this loop, so a guest whose peer could not be built skipped every guest after them -
+        // and because the order is stable, the same guest failed first on every later sync and the
+        // rest never got an offer for the whole session.
+        var firstFailure: Error?
+        for participant in eligibleParticipants {
+            let preset = participant.effectiveQualityPreset(sessionDefault: qualityPreset)
+            guard let peer = peers[participant.id] else {
+                do {
+                    try await startPeer(for: participant)
+                } catch {
+                    firstFailure = firstFailure ?? error
+                }
+                continue
+            }
+            guard appliedQualityPresets[participant.id] != preset else { continue }
+            // Recorded only on success. `startPeer` inserts into `peers` before awaiting `start()`, so
+            // a reentrant `sync` - and this runs on every signaling message - can reach a peer whose
+            // video track is not attached yet. Recording first left the guest on the old preset with
+            // nothing ever retrying.
+            if await peer.updateQualityPreset(preset) {
+                appliedQualityPresets[participant.id] = preset
+            }
         }
+        // The relay's pre-scale belongs here, not at each call site. `sync` is the one function every
+        // path that changes a participant already funnels through, and the hand-written copies missed
+        // both the guest's own quality request and the approval that seats them - so a peer was
+        // retargeted to a larger preset while the relay kept feeding it frames scaled for the old
+        // ceiling, capping that guest with no way to recover.
+        let ceiling = largestActiveQualityPreset(participants: participants)
+        videoRelay?.setPreferredOutputSize(width: ceiling.width, height: ceiling.height)
+        if let firstFailure { throw firstFailure }
+    }
+
+    /// One buffer feeds every guest's encoder, so the pre-scale must satisfy the most demanding guest.
+    /// Anyone below it downscales again in their own encoder for free; scaling to the smallest would
+    /// cap everyone at the worst connection in the room.
+    public func largestActiveQualityPreset(participants: [OPNRemoteCoOpParticipant]) -> OPNRemoteCoOpQualityPreset {
+        let active = participants
+            .filter { $0.connectionState == .connected }
+            .map { $0.effectiveQualityPreset(sessionDefault: qualityPreset) }
+        guard !active.isEmpty else { return qualityPreset }
+        return active.max { ($0.width * $0.height) < ($1.width * $1.height) } ?? qualityPreset
     }
 
     public func startPeer(for participant: OPNRemoteCoOpParticipant) async throws {
-        guard participant.connectionState == .connected, participant.inputEnabled else { return }
+        guard participant.connectionState == .connected else { return }
         guard peers[participant.id] == nil else { return }
         let participantID = participant.id
         WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start", level: .info, message: "Starting Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
@@ -144,10 +294,15 @@ public actor OPNRemoteCoOpHostPeerController {
             },
             receiveInput: { [inputScheduler] packet in
                 await inputScheduler.receive(packet, expectedParticipantID: participantID)
+            },
+            reportDelivery: { [weak self] stats in
+                await self?.recordDelivery(stats, for: participantID)
             }
         )
-        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, latencyMode: latencyMode, callbacks: callbacks)
+        let preset = participant.effectiveQualityPreset(sessionDefault: qualityPreset)
+        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: preset, latencyMode: latencyMode, callbacks: callbacks)
         peers[participantID] = peer
+        appliedQualityPresets[participantID] = preset
         do {
             try await peer.start()
             WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.started", level: .info, message: "Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
@@ -156,11 +311,21 @@ public actor OPNRemoteCoOpHostPeerController {
         } catch {
             WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start.failed", level: .warning, message: error.localizedDescription, attributes: ["participantID": participantID.uuidString])
             peers[participantID] = nil
+            appliedQualityPresets[participantID] = nil
             videoRelay?.remove(participantID: participantID)
             audioRelay?.remove(participantID: participantID)
             await peer.close()
             throw error
         }
+    }
+
+    private func recordDelivery(_ stats: OPNRemoteCoOpGuestDeliveryStats, for participantID: UUID) {
+        guard peers[participantID] != nil else { return }
+        deliveryStatsByParticipant[participantID] = stats
+    }
+
+    public func deliveryStats() -> [UUID: OPNRemoteCoOpGuestDeliveryStats] {
+        deliveryStatsByParticipant
     }
 
     public func receiveSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal) async throws {
@@ -169,16 +334,20 @@ public actor OPNRemoteCoOpHostPeerController {
     }
 
     public func removePeer(participantID: UUID) async {
+        appliedQualityPresets[participantID] = nil
+        deliveryStatsByParticipant[participantID] = nil
         guard let peer = peers.removeValue(forKey: participantID) else { return }
-        await inputScheduler.remove(participantID: participantID)
         videoRelay?.remove(participantID: participantID)
         audioRelay?.remove(participantID: participantID)
+        await inputScheduler.remove(participantID: participantID)
         await peer.close()
     }
 
     public func removeAll() async {
         let currentPeers = Array(peers.values)
         peers.removeAll()
+        appliedQualityPresets.removeAll()
+        deliveryStatsByParticipant.removeAll()
         await inputScheduler.removeAll()
         videoRelay?.removeAll()
         audioRelay?.removeAll()
@@ -186,21 +355,22 @@ public actor OPNRemoteCoOpHostPeerController {
     }
 }
 
+/// Orders guest gamepad packets and hands each one straight on. Nothing is ever held.
+///
+/// This buffered analog-only packets on a 4 ms timer until it was measured: the delay fell on stick
+/// movement (buttons were already exempt), and `Task.sleep` overshoot made it ~6.5 ms - the whole
+/// end-to-end budget, spent before the packet reached the seat. `NativeNVSTInputDispatcher` already
+/// coalesces bursts a layer down without delaying packets that arrive on an idle queue.
+///
+/// The ordering is not optional: the channel is unordered with no retransmits, so a stale packet must
+/// not overwrite a newer state.
 private actor OPNRemoteCoOpHostInputScheduler {
-    private struct PendingInput: Sendable {
-        var packet: OPNRemoteCoOpInputPacket
-        var receivedAtNanoseconds: UInt64
-    }
-
-    private static let lowLatencyDrainDelayNanoseconds: UInt64 = 4_000_000
-    private static let telemetryInterval: UInt64 = 240
+    private static let telemetryInterval: UInt64 = 600
 
     private let coordinator: OPNRemoteCoOpHostCoordinator
     private let forwardInput: @Sendable (UserInputEvent) async -> Void
     private var latencyMode: OPNRemoteCoOpLatencyMode
-    private var pendingInputs: [UUID: [PendingInput]] = [:]
     private var latestRoutedInputs: [UUID: OPNRemoteCoOpInputPacket] = [:]
-    private var drainTask: Task<Void, Never>?
     private var routedInputCount: UInt64 = 0
     private var supersededInputCount: UInt64 = 0
 
@@ -212,79 +382,49 @@ private actor OPNRemoteCoOpHostInputScheduler {
         self.forwardInput = forwardInput
     }
 
-    func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) async {
+    func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) {
         latencyMode = mode
-        guard mode == .quality else { return }
-        await drainPendingInputs(shouldCancelScheduledDrain: true)
     }
 
     func receive(_ packet: OPNRemoteCoOpInputPacket, expectedParticipantID: UUID) async {
         guard packet.participantID == expectedParticipantID else { return }
-        let receivedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
-        guard latencyMode == .lowLatency else {
-            await route(packet, receivedAtNanoseconds: receivedAtNanoseconds)
-            return
-        }
-
-        let participantID = packet.participantID
-        if let newest = newestKnownInput(participantID: participantID), newest.sequenceNumber >= packet.sequenceNumber {
+        if let routed = latestRoutedInputs[packet.participantID], routed.sequenceNumber >= packet.sequenceNumber {
             supersededInputCount &+= 1
             return
         }
-        let previous = newestKnownInput(participantID: participantID)
-        pendingInputs[participantID, default: []].append(PendingInput(packet: packet, receivedAtNanoseconds: receivedAtNanoseconds))
-        if previous == nil || previous?.buttons != packet.buttons {
-            await drainPendingInputs(shouldCancelScheduledDrain: true)
-        } else {
-            scheduleDrainIfNeeded()
-        }
+        // Claimed before the first suspension. Every data-channel message arrives on its own
+        // unstructured task, so two packets could both pass the check above and then resume from
+        // `coordinator.handle` in either order - which is exactly the stale-overwrites-newer this
+        // scheduler exists to prevent.
+        latestRoutedInputs[packet.participantID] = packet
+        await route(packet, receivedAtNanoseconds: DispatchTime.now().uptimeNanoseconds)
     }
 
     func remove(participantID: UUID) {
-        pendingInputs[participantID] = nil
         latestRoutedInputs[participantID] = nil
-        if pendingInputs.isEmpty { cancelScheduledDrain() }
     }
 
     func removeAll() {
-        pendingInputs.removeAll()
         latestRoutedInputs.removeAll()
-        cancelScheduledDrain()
-    }
-
-    private func scheduleDrainIfNeeded() {
-        guard drainTask == nil else { return }
-        drainTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: Self.lowLatencyDrainDelayNanoseconds)
-                guard !Task.isCancelled else { return }
-                await self?.drainPendingInputs(shouldCancelScheduledDrain: false)
-            } catch {}
-        }
-    }
-
-    private func drainPendingInputs(shouldCancelScheduledDrain: Bool) async {
-        if shouldCancelScheduledDrain { cancelScheduledDrain() }
-        drainTask = nil
-        let inputs = pendingInputs
-            .flatMap { participantID, inputs in condensedInputs(for: participantID, inputs: inputs) }
-            .sorted { $0.receivedAtNanoseconds < $1.receivedAtNanoseconds }
-        pendingInputs.removeAll()
-        for input in inputs {
-            await route(input.packet, receivedAtNanoseconds: input.receivedAtNanoseconds)
-        }
-        if !pendingInputs.isEmpty { scheduleDrainIfNeeded() }
     }
 
     private func route(_ packet: OPNRemoteCoOpInputPacket, receivedAtNanoseconds: UInt64) async {
-        let routedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
         let routedEvents = await coordinator.handle(.guestInput(packet))
+        // A newer packet won the race while this one was in the coordinator, so forwarding it now
+        // would put the older state on the wire last.
+        let claimedSequenceNumber = latestRoutedInputs[packet.participantID]?.sequenceNumber ?? packet.sequenceNumber
+        guard claimedSequenceNumber <= packet.sequenceNumber else {
+            supersededInputCount &+= 1
+            return
+        }
         for routedEvent in routedEvents { await forwardInput(routedEvent) }
-        if !routedEvents.isEmpty { latestRoutedInputs[packet.participantID] = packet }
         routedInputCount &+= 1
-        guard latencyMode == .lowLatency, routedInputCount.isMultiple(of: Self.telemetryInterval) else { return }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.input.coalesced", level: .debug, message: "Remote Co-Op low latency input coalescing active.", attributes: [
-            "coalescingDelayMilliseconds": String(Self.millisecondsBetween(receivedAtNanoseconds, routedAtNanoseconds)),
+        guard routedInputCount.isMultiple(of: Self.telemetryInterval) else { return }
+        let routedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.input.routed", level: .debug, message: "Remote Co-Op guest input routed.", attributes: [
+            // Host-local only: the guest's send clock is another machine's uptime.
+            "hostRouteMicroseconds": String(Self.microsecondsBetween(receivedAtNanoseconds, routedAtNanoseconds)),
+            "latencyMode": latencyMode.rawValue,
             "participantID": packet.participantID.uuidString,
             "routedInputs": String(routedInputCount),
             "sequenceNumber": String(packet.sequenceNumber),
@@ -292,42 +432,8 @@ private actor OPNRemoteCoOpHostInputScheduler {
         ])
     }
 
-    private func newestKnownInput(participantID: UUID) -> OPNRemoteCoOpInputPacket? {
-        let pendingNewest = pendingInputs[participantID]?.max { $0.packet.sequenceNumber < $1.packet.sequenceNumber }?.packet
-        guard let routed = latestRoutedInputs[participantID] else { return pendingNewest }
-        guard let pendingNewest else { return routed }
-        return pendingNewest.sequenceNumber > routed.sequenceNumber ? pendingNewest : routed
-    }
-
-    private func condensedInputs(for participantID: UUID, inputs: [PendingInput]) -> [PendingInput] {
-        let sortedInputs = inputs.sorted { $0.packet.sequenceNumber < $1.packet.sequenceNumber }
-        var reference = latestRoutedInputs[participantID]
-        var latestAnalogInput: PendingInput?
-        var condensed: [PendingInput] = []
-
-        for input in sortedInputs {
-            if let reference, reference.buttons == input.packet.buttons {
-                latestAnalogInput = input
-                continue
-            }
-            if let analogInput = latestAnalogInput {
-                condensed.append(analogInput)
-                latestAnalogInput = nil
-            }
-            condensed.append(input)
-            reference = input.packet
-        }
-        if let analogInput = latestAnalogInput { condensed.append(analogInput) }
-        return condensed
-    }
-
-    private func cancelScheduledDrain() {
-        drainTask?.cancel()
-        drainTask = nil
-    }
-
-    private static func millisecondsBetween(_ startNanoseconds: UInt64, _ endNanoseconds: UInt64) -> Int {
+    private static func microsecondsBetween(_ startNanoseconds: UInt64, _ endNanoseconds: UInt64) -> Int {
         guard endNanoseconds >= startNanoseconds else { return 0 }
-        return Int((endNanoseconds - startNanoseconds) / 1_000_000)
+        return Int((endNanoseconds - startNanoseconds) / 1_000)
     }
 }

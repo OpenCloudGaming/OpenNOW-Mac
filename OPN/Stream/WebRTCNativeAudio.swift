@@ -46,6 +46,15 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private weak var delegate: RTCAudioDeviceDelegate?
     private var lastMicrophoneLevelReportNanoseconds: UInt64 = 0
 
+    /// Silences this Mac's speakers only, applied in `renderPlayout` *after* the frame has been teed
+    /// to the relay and the recorder.
+    ///
+    /// This is the only correct place for it. Muting further upstream - `RTCAudioTrack.isEnabled` or
+    /// `RTCAudioSource.volume` - stops libwebrtc producing the samples at all, which silences a
+    /// Remote Co-Op guest and a recording along with the speakers. Read on the CoreAudio render
+    /// thread, so it is plain and atomic rather than lock-guarded.
+    var isPlayoutMuted = false
+
     private(set) var deviceInputSampleRate = 48_000.0
     private(set) var inputIOBufferDuration: TimeInterval = 0.01
     private(set) var inputNumberOfChannels = 1
@@ -169,6 +178,9 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         if status != noErr { clearAudioBufferList(outputData) }
         if status == noErr {
             owner?.handleGameAudioFrame(UnsafeRawPointer(outputData), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+            // After the tee, never before: a Remote Co-Op guest and a recording are fed from the
+            // line above and must keep hearing the game while these speakers are silent.
+            if isPlayoutMuted { clearAudioBufferList(outputData) }
         }
         return status
     }

@@ -22,10 +22,19 @@ extension NativeNVSTHostViewModel {
     var hudFocusEntries: [StreamHUDFocusEntry] {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, action: toggleNativeMicrophone),
+            StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, action: toggleNativeRecording),
             StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, action: toggleNativePointerLock),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
+            StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), action: { [weak self] in
+                guard let self else { return }
+                if remoteCoOpSnapshot.invite == nil { startRemoteCoOpInvite() } else { stopRemoteCoOpInvite() }
+            }),
+            StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
+        ]
+        + remoteCoOpParticipantFocusEntries
+        + [
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { [weak self] in self?.showStreamControls() }),
             StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
@@ -34,6 +43,27 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "noise-reduction", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeNoiseReduction),
             StreamHUDFocusEntry(id: "pillarbox-fill", isDisabled: !isConnected, action: cycleNativePillarboxFill),
         ]
+    }
+
+    /// One focus entry per guest, so approving and removing are reachable from a controller.
+    ///
+    /// Approval happens mid-game, which is exactly when reaching for the trackpad is worst - and a
+    /// guest waiting for approval cannot play until someone acts. Ordered to match the rows the HUD
+    /// draws, so pad navigation follows what is on screen.
+    var remoteCoOpParticipantFocusEntries: [StreamHUDFocusEntry] {
+        guard sidebarCapabilities.supports(.remoteCoOp) else { return [] }
+        return remoteCoOpSnapshot.participants.flatMap { participant -> [StreamHUDFocusEntry] in
+            var entries: [StreamHUDFocusEntry] = []
+            if participant.connectionState == .waitingForApproval {
+                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+                    self?.approveRemoteCoOpParticipant(participant.id)
+                }))
+            }
+            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+                self?.removeRemoteCoOpParticipant(participant.id)
+            }))
+            return entries
+        }
     }
 
     /// Single source of truth for the segmented Picker's display order and label text, and for
@@ -207,6 +237,24 @@ extension NativeNVSTHostViewModel {
                     showNativeTransientStreamMessage(message)
                     WebRTCMediaTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID, "source": source])
                 }
+            }
+        }
+    }
+
+    /// Purely local and in-process - no seat round trip the way the microphone toggle needs, so this
+    /// updates immediately rather than queuing through a pending-states list.
+    func toggleNativeLocalAudioMute() {
+        guard isConnected, !isEnding, !didEnd, let path else { return }
+        let target = !nativeLocalAudioMuted
+        nativeLocalAudioMuted = target
+        Task { @MainActor in
+            do {
+                try await path.setLocalAudioPlaybackMuted(target)
+                showNativeTransientStreamMessage(target ? "Local Audio Muted" : "Local Audio On")
+            } catch {
+                guard !Task.isCancelled, !didEnd else { return }
+                nativeLocalAudioMuted = !target
+                showNativeTransientStreamMessage(Self.message(for: error))
             }
         }
     }

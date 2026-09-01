@@ -10,10 +10,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
     private weak var nativeView: NativeWebRTCStreamView?
-    private let remoteCoOpVideoRelayLock = NSLock()
-    private var remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay?
-    private let remoteCoOpAudioRelayLock = NSLock()
-    private var remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay?
     private let continuationLock = NSLock()
     private let localIceLock = NSLock()
     private let sessionLimitLock = NSLock()
@@ -69,7 +65,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 guard let framePointer else { return }
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
                 self?.recorder.appendVideoFrame(frame)
-                self?.currentRemoteCoOpVideoRelay()?.renderVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
                 guard let pixelBufferPointer else { return }
@@ -78,7 +73,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             }
             self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
-                self?.currentRemoteCoOpAudioRelay()?.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             var sessionInfo = offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata
@@ -141,14 +135,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         sendNow(event)
     }
 
-    public func setRemoteCoOpVideoRelay(_ relay: OPNRemoteCoOpHostVideoRelay?) {
-        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay = relay }
-    }
-
-    public func setRemoteCoOpAudioRelay(_ relay: OPNRemoteCoOpHostAudioRelay?) {
-        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay = relay }
-    }
-
     public func sendNow(_ event: UserInputEvent) {
         switch event {
         case .keyboard(let keyboard):
@@ -191,8 +177,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         let pendingContinuation = takeContinuation()
         recorder.stop()
         session.setEnhancedVideoFrameCaptureEnabled(false)
-        setRemoteCoOpVideoRelay(nil)
-        setRemoteCoOpAudioRelay(nil)
         localIceLock.withLock {
             localIceContinuation?.finish()
             localIceContinuation = nil
@@ -315,14 +299,6 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
     }
 
-    private func currentRemoteCoOpVideoRelay() -> OPNRemoteCoOpHostVideoRelay? {
-        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay }
-    }
-
-    private func currentRemoteCoOpAudioRelay() -> OPNRemoteCoOpHostAudioRelay? {
-        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay }
-    }
-
     private func handleEnded(message: String) {
         if hasPendingContinuation {
             resumeError(NativeWebRTCTransportError.connectionFailed(message))
@@ -409,7 +385,10 @@ extension NativeWebRTCTransport {
     }
 
     static func gfnControllerBitmap(playerIndex: Int) -> UInt16 {
-        let configuredCount = NativeWebRTCGamepadMonitor.connectedGamepadCount() + OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch()
+        // Local pads only. Reserved Remote Co-Op slots are deliberately not added: this transport
+        // cannot host a guest, so announcing pads nobody will ever drive gives the game phantom
+        // players and costs the host a real controller slot.
+        let configuredCount = NativeWebRTCGamepadMonitor.connectedGamepadCount()
         let connectedCount = max(1, min(4, max(configuredCount, playerIndex + 1)))
         return (0..<connectedCount).reduce(UInt16(0)) { partial, index in
             partial | UInt16(1 << index) | UInt16(1 << (index + 8))

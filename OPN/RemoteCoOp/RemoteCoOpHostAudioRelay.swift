@@ -1,3 +1,4 @@
+import AudioToolbox
 import AudioUnit
 import Darwin
 import Foundation
@@ -28,6 +29,13 @@ public protocol OPNRemoteCoOpHostAudioSink: AnyObject, Sendable {
 public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
     let lock = NSLock()
     private var sinks: [UUID: any OPNRemoteCoOpHostAudioSink] = [:]
+    /// Where a built frame is handed to the guests' encoders.
+    ///
+    /// The callers are the CoreAudio render thread and the NVST audio receive queue, and delivering
+    /// inline runs libwebrtc's APM and Opus encode there once per guest - the priority inversion the
+    /// recorder's "copies and returns" comment exists to avoid. Serial, because the audio device
+    /// numbers its own sample clock and a reordered frame would rewind it.
+    private let deliveryQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.audio-relay", qos: .userInteractive)
 
     public init() {}
 
@@ -52,12 +60,63 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
         guard !currentSinks.isEmpty,
               let audioBufferList,
               let frame = Self.audioFrame(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, sampleRate: sampleRate, channels: channels) else { return }
-        for sink in currentSinks { sink.renderAudioFrame(frame) }
+        deliver(frame, to: currentSinks)
     }
 
     public func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
+        deliver(frame, to: lock.withLock { Array(sinks.values) })
+    }
+
+    /// Off the caller's thread: every caller is a real-time audio callback.
+    private func deliver(_ frame: OPNRemoteCoOpHostAudioFrame, to sinks: [any OPNRemoteCoOpHostAudioSink]) {
+        guard !sinks.isEmpty else { return }
+        deliveryQueue.async {
+            for sink in sinks { sink.renderAudioFrame(frame) }
+        }
+    }
+
+    /// Interleaved float samples, for an audio source that decodes PCM itself rather than going
+    /// through libwebrtc's audio device - where the `AudioBufferList` entry point above never fires
+    /// and a guest would otherwise hear silence.
+    ///
+    /// No production caller today: the socket-owned NVST audio path this was written for never
+    /// worked and was removed, and bundle audio arrives through the entry point above instead. Kept
+    /// because owning the audio path is still the standing plan for fixing NVST audio quality, and
+    /// this is the seam a second attempt would feed. Called on a receive queue, so it returns before
+    /// converting anything when nobody is listening.
+    public func renderAudioSamples(_ samples: [Float], sampleRate: Double, channels: UInt32) {
         let currentSinks = lock.withLock { Array(sinks.values) }
-        for sink in currentSinks { sink.renderAudioFrame(frame) }
+        guard !currentSinks.isEmpty, !samples.isEmpty else { return }
+        guard let frame = Self.audioFrame(fromInterleavedFloat: samples, sampleRate: sampleRate, channels: channels) else { return }
+        deliver(frame, to: currentSinks)
+    }
+
+    static func audioFrame(fromInterleavedFloat samples: [Float], sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
+        let sourceChannels = max(1, Int(channels))
+        let sourceFrames = samples.count / sourceChannels
+        guard sourceFrames > 0 else { return nil }
+        let outputChannels = Int(OPNRemoteCoOpHostAudioFrame.channels)
+        var stereo = [Int16](repeating: 0, count: sourceFrames * outputChannels)
+        for frame in 0..<sourceFrames {
+            let sourceIndex = frame * sourceChannels
+            let left = samples[sourceIndex]
+            let right = sourceChannels > 1 ? samples[sourceIndex + 1] : left
+            stereo[frame * 2] = int16Sample(left)
+            stereo[frame * 2 + 1] = int16Sample(right)
+        }
+        let resampled = resampledStereoPCM(stereo, sourceSampleRate: sampleRate, targetSampleRate: OPNRemoteCoOpHostAudioFrame.sampleRate)
+        let data = resampled.withUnsafeBufferPointer { buffer -> Data in
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int16>.size)
+        }
+        guard !data.isEmpty else { return nil }
+        return OPNRemoteCoOpHostAudioFrame(samples: data, frameCount: UInt32(resampled.count / outputChannels))
+    }
+
+    /// Clamped before scaling: Opus can decode slightly past full scale and the wrap that
+    /// `Int16(...)` would produce there is an audible click, not a quiet distortion.
+    private static func int16Sample(_ value: Float) -> Int16 {
+        Int16(max(-32768, min(32767, (max(-1, min(1, value)) * 32767).rounded())))
     }
 
     private static func audioFrame(from audioBufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32, sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
@@ -76,32 +135,35 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
         guard outputFrames > 0 else { return nil }
         let sourceChannels = max(1, Int(channels))
         var samples = [Int16](repeating: 0, count: outputFrames * Int(OPNRemoteCoOpHostAudioFrame.channels))
-        let bufferCount = Int(audioBufferList.pointee.mNumberBuffers)
-        withUnsafePointer(to: audioBufferList.pointee.mBuffers) { firstBuffer in
-            let buffers = UnsafeBufferPointer(start: firstBuffer, count: bufferCount)
-            if bufferCount == 1, let buffer = buffers.first, let data = buffer.mData {
-                let sourceSampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
-                guard sourceSampleCount >= outputFrames * sourceChannels else { return }
-                let source = data.bindMemory(to: Int16.self, capacity: sourceSampleCount)
-                for frame in 0..<outputFrames {
-                    let sourceIndex = frame * sourceChannels
-                    let left = source[sourceIndex]
-                    let right = sourceChannels > 1 ? source[sourceIndex + 1] : left
-                    samples[frame * 2] = left
-                    samples[frame * 2 + 1] = right
-                }
-            } else {
-                let leftSampleCount = buffers.indices.contains(0) ? Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size : 0
-                let rightSampleCount = buffers.indices.contains(1) ? Int(buffers[1].mDataByteSize) / MemoryLayout<Int16>.size : 0
-                for frame in 0..<outputFrames {
-                    let leftBuffer = buffers.indices.contains(0) ? buffers[0].mData : nil
-                    let rightBuffer = buffers.indices.contains(1) ? buffers[1].mData : nil
-                    let left = frame < leftSampleCount ? leftBuffer?.bindMemory(to: Int16.self, capacity: leftSampleCount)[frame] ?? 0 : 0
-                    let right = frame < rightSampleCount ? rightBuffer?.bindMemory(to: Int16.self, capacity: rightSampleCount)[frame] ?? left : left
-                    samples[frame * 2] = left
-                    samples[frame * 2 + 1] = right
-                }
+        // `UnsafeMutableAudioBufferListPointer` walks the real variable-length buffer array.
+        // `withUnsafePointer(to: list.pointee.mBuffers)` addressed a *copy* of the struct's single
+        // inline `AudioBuffer`, so every buffer past the first was read off the end of a stack
+        // temporary - which is what a deinterleaved source hands over.
+        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
+        if buffers.count == 1, let data = buffers[0].mData {
+            let sourceSampleCount = Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size
+            guard sourceSampleCount >= outputFrames * sourceChannels else { return samples }
+            let source = data.bindMemory(to: Int16.self, capacity: sourceSampleCount)
+            for frame in 0..<outputFrames {
+                let sourceIndex = frame * sourceChannels
+                let left = source[sourceIndex]
+                let right = sourceChannels > 1 ? source[sourceIndex + 1] : left
+                samples[frame * 2] = left
+                samples[frame * 2 + 1] = right
             }
+            return samples
+        }
+        let leftSampleCount = buffers.count > 0 ? Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size : 0
+        let rightSampleCount = buffers.count > 1 ? Int(buffers[1].mDataByteSize) / MemoryLayout<Int16>.size : 0
+        // Bound once rather than per sample: the old loop called `bindMemory` on the same region on
+        // every frame.
+        let leftBuffer = buffers.count > 0 ? buffers[0].mData?.bindMemory(to: Int16.self, capacity: leftSampleCount) : nil
+        let rightBuffer = buffers.count > 1 ? buffers[1].mData?.bindMemory(to: Int16.self, capacity: rightSampleCount) : nil
+        for frame in 0..<outputFrames {
+            let left = frame < leftSampleCount ? (leftBuffer?[frame] ?? 0) : 0
+            let right = frame < rightSampleCount ? (rightBuffer?[frame] ?? left) : left
+            samples[frame * 2] = left
+            samples[frame * 2 + 1] = right
         }
         return samples
     }
@@ -214,17 +276,36 @@ final class OPNRemoteCoOpHostAudioDevice: NSObject, RTCAudioDevice, @unchecked S
             return (delegate, currentSampleIndex)
         }
         guard let state else { return }
+        // The `renderBlock` form, not the pre-filled `inputData` form, and this is not a style
+        // choice: the framework's `inputData` branch passes `num_frames` as the *element* count of
+        // the span it hands `FineAudioBuffer`, where it owes `num_frames * channels`. With stereo
+        // that reads half of every buffer and feeds the Opus encoder at half rate - chopped audio
+        // plus permanent receiver starvation, which is exactly how "junky" sounded. The `renderBlock`
+        // branch sizes its own buffer as `num_frames * channels_count` and is correct. Verified in
+        // this repo's vendored WebRTC.framework
+        // (Headers/sdk/objc/native/src/objc_audio_device.mm, `io_data` vs `render_block` branches)
+        // and present in every upstream branch checked, so a framework bump will not fix it.
         frame.samples.withUnsafeBytes { bytes in
             guard let baseAddress = bytes.baseAddress else { return }
             var actionFlags = AudioUnitRenderActionFlags()
             var timestamp = AudioTimeStamp()
             timestamp.mSampleTime = Double(state.1)
             timestamp.mHostTime = mach_absolute_time()
-            var audioBufferList = AudioBufferList(
-                mNumberBuffers: 1,
-                mBuffers: AudioBuffer(mNumberChannels: OPNRemoteCoOpHostAudioFrame.channels, mDataByteSize: UInt32(bytes.count), mData: UnsafeMutableRawPointer(mutating: baseAddress))
-            )
-            _ = state.0.deliverRecordedData(&actionFlags, &timestamp, 0, frame.frameCount, &audioBufferList, nil, nil)
+            let sourceByteCount = bytes.count
+            _ = state.0.deliverRecordedData(&actionFlags, &timestamp, 0, frame.frameCount, nil, nil) { _, _, _, _, inputData, _ in
+                // WebRTC hands over a buffer it has already sized for `frameCount * channels`
+                // samples; fill it and never write past what it declares.
+                let buffers = UnsafeMutableAudioBufferListPointer(inputData)
+                guard let destination = buffers.first?.mData else { return noErr }
+                let capacity = Int(buffers[0].mDataByteSize)
+                let copied = min(capacity, sourceByteCount)
+                destination.copyMemory(from: baseAddress, byteCount: copied)
+                if copied < capacity {
+                    // Short source: silence the tail rather than leaving whatever was there.
+                    destination.advanced(by: copied).initializeMemory(as: UInt8.self, repeating: 0, count: capacity - copied)
+                }
+                return noErr
+            }
         }
     }
 }

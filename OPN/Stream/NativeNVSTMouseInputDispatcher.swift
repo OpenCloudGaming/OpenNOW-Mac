@@ -6,6 +6,41 @@ enum NativeNVSTInput: Equatable, Sendable {
     case absoluteMove(NativeNVSTAbsoluteMouseEvent)
 }
 
+/// A thread-safe handle on the view model's current input dispatcher.
+///
+/// The dispatcher itself is `Sendable` and its `enqueue` is lock-based, so anything can push into
+/// one - but the *reference* lives on a `@MainActor` view model, which is what forces callers onto
+/// the main actor just to read it. That is fine for UI-driven input, where the event started on the
+/// main thread anyway. It is not fine for Remote Co-Op guest input: those packets arrive on
+/// libwebrtc's network thread, and hopping to a main actor that is also driving a 120 fps Metal
+/// surface put the guest's stick movement behind whatever the renderer was doing.
+///
+/// The view model exposes `inputDispatcher` as a passthrough over one of these, so every existing
+/// assignment keeps the holder current and off-actor senders can reach the dispatcher directly.
+final class NativeNVSTInputDispatcherHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: NativeNVSTInputDispatcher?
+
+    var dispatcher: NativeNVSTInputDispatcher? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+        set {
+            lock.lock()
+            storage = newValue
+            lock.unlock()
+        }
+    }
+
+    /// Enqueues without touching the main actor. A nil dispatcher means the stream is torn down or
+    /// not started, and the event is dropped - which is what every main-actor call site does too.
+    func enqueue(_ event: UserInputEvent) {
+        dispatcher?.enqueue(event)
+    }
+}
+
 final class NativeNVSTInputDispatcher: Sendable {
     static let defaultCapacity = 256
 

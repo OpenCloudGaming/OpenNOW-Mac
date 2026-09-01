@@ -84,11 +84,19 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case network
     case connections
     case controller
+    case remoteCoOp
     case general
     case experimental
     case about
 
     var id: String { rawValue }
+
+    /// Remote Co-Op is alpha-gated, so its tab only exists once the alpha has been opted into in
+    /// Experimental. This mirrors how its settings card used to be hidden inside Gameplay - the
+    /// feature became a tab, not more discoverable.
+    static func visibleCases(remoteCoOpOptedIn: Bool) -> [CatalogSettingsGroup] {
+        allCases.filter { $0 != .remoteCoOp || remoteCoOpOptedIn }
+    }
 
     var title: String {
         switch self {
@@ -97,6 +105,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "Network"
         case .connections: return "Connections"
         case .controller: return "Controller"
+        case .remoteCoOp: return "Remote Co-Op"
         case .general: return "General"
         case .experimental: return "Experimental"
         case .about: return "About"
@@ -110,6 +119,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "Route GeForce NOW requests through a proxy. Stream traffic always connects directly."
         case .connections: return "Manage store accounts and Twitch broadcast settings."
         case .controller: return "Steam Controller support, permissions, input testing, and mapping."
+        case .remoteCoOp: return "Invite a friend into your session from a browser. Alpha."
         case .general: return "Interface mode and display scale."
         case .experimental: return "Unfinished and in-development features. Expect rough edges."
         case .about: return "OpenNOW Mac runtime, system capability, and service identifiers."
@@ -123,6 +133,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "network"
         case .connections: return "link"
         case .controller: return "gamecontroller.fill"
+        case .remoteCoOp: return "person.2.fill"
         case .general: return "gearshape.2.fill"
         case .experimental: return "flask.fill"
         case .about: return "info.circle.fill"
@@ -206,6 +217,18 @@ final class CatalogViewModel {
     }
     var streamProfile = OPNStreamPreferenceProfile()
     var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
+    /// Whether a Cloudflare relay key is stored. The token itself is never published - only whether
+    /// one exists, so the UI can say so without holding it.
+    var remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+    var remoteCoOpAblyKey = OPNRemoteCoOpAblyKeyStore.load()
+    var remoteCoOpAblyKeyMessage = ""
+    var remoteCoOpTURNSetupInFlight = false
+    var remoteCoOpRelayTestInFlight = false
+    var remoteCoOpRelayTestMessage = ""
+    var remoteCoOpRelayTestPassed = false
+    var remoteCoOpTURNSetupMessage = ""
+    var remoteCoOpTURNUsage: OPNRemoteCoOpTURNUsage?
+    var remoteCoOpTURNUsageMessage = ""
     var streamCapabilities = OPNStreamDeviceCapabilities()
     var settingsRegionOptions: [OPNStreamRegionOption] = []
     var selectedSettingsRegionUrl = ""

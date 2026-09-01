@@ -20,9 +20,12 @@ enum RemoteCoOpFixtures {
     static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
     static let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
     static let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
+    static let hostedGuestPageURLKey = "OpenNOW.RemoteCoOp.HostedGuestPageURL"
 
     static func withPreservedRemoteCoOpPreferences(_ body: () -> Void) {
-        let keys = [alphaOptInKey, enabledKey, reservedGuestSlotsKey, latencyModeKey, lowLatencyDefaultMigrationVersionKey]
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
+        let keys = [alphaOptInKey, enabledKey, reservedGuestSlotsKey, latencyModeKey, lowLatencyDefaultMigrationVersionKey, hostedGuestPageURLKey]
         let defaults = UserDefaults.standard
         let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
         defer {
@@ -42,6 +45,8 @@ enum RemoteCoOpFixtures {
     }
 
     static func setPreferenceValue(_ value: Any, forKey key: String) {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         defaults.set(value, forKey: key)
         var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
@@ -51,6 +56,8 @@ enum RemoteCoOpFixtures {
     }
 
     static func removePreferenceValue(_ key: String) {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: key)
         var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]

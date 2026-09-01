@@ -18,6 +18,7 @@ struct CatalogTopBar: View {
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
 
     /// The collapsed button and the expanded field are one element to SwiftUI, so the trip between
@@ -83,6 +84,17 @@ struct CatalogTopBar: View {
                         .buttonStyle(.opnPressable(scale: 0.90))
                         .accessibilityLabel("Switch to controller mode")
                         .help("Controller mode")
+                        // Joining someone else's session is a thing you do *instead* of browsing your
+                        // own library, so it belongs where you already are rather than only in a menu.
+                        // Hidden unless Remote Co-Op is on, since it is alpha-gated.
+                        if viewModel.remoteCoOpPreferences.isAvailable {
+                            Button { openWindow(id: "remote-coop-guest") } label: {
+                                CatalogTopBarIconLabel(systemName: "person.2")
+                            }
+                            .buttonStyle(.opnPressable(scale: 0.90))
+                            .accessibilityLabel("Join a Remote Co-Op session")
+                            .help("Join Remote Co-Op")
+                        }
                     }
                     Button {
                         showsAccountMenu.toggle()

@@ -36,7 +36,10 @@ struct RemoteCoOpTests {
             #expect(OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch() == 0)
             #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataEnabledKey] == "false")
             #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataReservedGuestSlotsKey] == "0")
-            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey] == nil)
+            // An opted-out session publishes only the three keys that say it is off, so nothing
+            // downstream can read a stale address or slot count out of the metadata.
+            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataPublicAddressKey] == nil)
+            #expect(preferences.launchMetadata.count == 3)
         }
     }
 
@@ -95,6 +98,29 @@ struct RemoteCoOpTests {
         }
     }
 
+    @Test("preferences store points a fresh install at this repo's Pages guest page")
+    func preferencesStoreDefaultsHostedGuestPageURLOnFreshInstall() {
+        RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
+            RemoteCoOpFixtures.removePreferenceValue(RemoteCoOpFixtures.hostedGuestPageURLKey)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(preferences.hostedGuestPageURL == OPNRemoteCoOpPreferencesStore.defaultHostedGuestPageURL)
+            #expect(preferences.effectiveHostedGuestPageURL != nil)
+        }
+    }
+
+    @Test("an explicitly cleared hosted guest page URL stays cleared, not reset to the default")
+    func preferencesStoreRespectsAnExplicitlyClearedHostedGuestPageURL() {
+        RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
+            RemoteCoOpFixtures.setPreferenceValue("", forKey: RemoteCoOpFixtures.hostedGuestPageURLKey)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(preferences.hostedGuestPageURL.isEmpty)
+        }
+    }
+
     @Test("preferences store migrates old quality latency default to low latency")
     func preferencesStoreMigratesOldQualityLatencyDefaultToLowLatency() {
         RemoteCoOpFixtures.withPreservedRemoteCoOpPreferences {
@@ -122,26 +148,16 @@ struct RemoteCoOpTests {
         }
     }
 
-    @Test("preferences default to production broker URLs")
-    func preferencesDefaultToProductionBrokerURLs() {
+    /// Nothing about a server is configured to play. OpenNOW hosts the session itself and derives
+    /// every address from the listener it binds, so there is no broker URL, no guest-join URL and no
+    /// shared signing secret - the three things that previously had to agree for a join to work.
+    @Test("preferences need no server configuration")
+    func preferencesNeedNoServerConfiguration() {
         let preferences = OPNRemoteCoOpPreferences()
 
-        #expect(preferences.signalingServerURL == "wss://198.12.95.48:32188/remote-coop")
-        #expect(preferences.guestJoinBaseURL == "https://198.12.95.48:32188/")
-    }
-
-    @Test("preferences migrate legacy invite URL defaults")
-    func preferencesMigrateLegacyInviteURLDefaults() {
-        let metadata = [
-            OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey: "ws://127.0.0.1:8787/remote-coop",
-            OPNRemoteCoOpPreferences.launchMetadataGuestJoinBaseURLKey: "http://127.0.0.1:8787/"
-        ]
-        let preferences = OPNRemoteCoOpPreferences.launchPreferences(from: metadata, fallback: OPNRemoteCoOpPreferences())
-
-        #expect(preferences.signalingServerURL == OPNRemoteCoOpPreferences.defaultSignalingServerURL)
-        #expect(preferences.guestJoinBaseURL == OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
-        #expect(OPNRemoteCoOpPreferences.migratedSignalingServerURL("wss://relay.jayian.dev:8788/remote-coop") == OPNRemoteCoOpPreferences.defaultSignalingServerURL)
-        #expect(OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL("https://relay.jayian.dev:8788/") == OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        #expect(preferences.publicAddress.isEmpty)
+        #expect(preferences.effectivePublicAddress == nil)
+        #expect(preferences.transportMode == .automatic)
     }
 
     @Test("preferences round-trip through stream launch metadata")
@@ -149,26 +165,83 @@ struct RemoteCoOpTests {
         let preferences = OPNRemoteCoOpPreferences(
             isEnabled: true,
             reservedGuestSlots: 2,
-            transportMode: .relayOnly,
+            transportMode: .directOnly,
             qualityPreset: .p1080f60,
             latencyMode: .lowLatency,
             requireHostApproval: false,
-            signalingServerURL: "wss://coop.example.test/remote-coop",
-            guestJoinBaseURL: "https://coop.example.test/",
-            hideGuestInviteDetails: true
+            hideGuestInviteDetails: true,
+            publicAddress: "https://coop.example.test"
         )
 
         #expect(OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences()) == preferences)
     }
 
-    @Test("transport modes map to ICE policies for router traversal")
-    func transportModesMapToICEPoliciesForRouterTraversal() {
+    /// The stream-launch round trip is what `startRemoteCoOpInvite` actually reads its preferences
+    /// from - not a fresh `OPNRemoteCoOpPreferencesStore.load()` - so a field missing from
+    /// `launchMetadata`/`launchPreferences` silently resets to the memberwise init's own default on
+    /// every invite, no matter what is saved. That is exactly how the shipped Pages default above
+    /// stopped reaching real invites: this field was never round-tripped at all.
+    @Test("the hosted guest page URL survives the stream launch metadata round trip")
+    func hostedGuestPageURLSurvivesStreamLaunchMetadataRoundTrip() {
+        let preferences = OPNRemoteCoOpPreferences(
+            isEnabled: true,
+            reservedGuestSlots: 1,
+            hostedGuestPageURL: "https://opencloudgaming.github.io/OpenNOW-Mac/"
+        )
+
+        let roundTripped = OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences())
+
+        #expect(roundTripped.hostedGuestPageURL == "https://opencloudgaming.github.io/OpenNOW-Mac/")
+        #expect(roundTripped == preferences)
+    }
+
+    /// STUN is what separates the two modes, and it is not cosmetic: without server-reflexive
+    /// candidates a guest only ever receives this machine's own interface addresses, so media cannot
+    /// connect from a network with no route to one of them however well signaling works. A locally
+    /// hosted session was previously in exactly that state, which is why a LAN guest's selected route
+    /// was always `host/udp -> host/udp`. A VPN interface counts as a route, so `directOnly` is not
+    /// limited to the local network.
+    @Test("only automatic mode offers STUN, and neither mode forces a relay")
+    func transportModesDifferOnlyByStun() {
+        #expect(OPNRemoteCoOpTransportMode.automatic.usesSTUN)
+        #expect(!OPNRemoteCoOpTransportMode.directOnly.usesSTUN)
+        // `.relay` discards host and reflexive candidates, which is only meaningful with a TURN
+        // relay to replace them. There is none, so neither mode may ask for it.
         #expect(OPNRemoteCoOpTransportMode.automatic.iceTransportPolicy == .all)
-        #expect(OPNRemoteCoOpTransportMode.automatic.allowsRelayFallback)
         #expect(OPNRemoteCoOpTransportMode.directOnly.iceTransportPolicy == .all)
-        #expect(!OPNRemoteCoOpTransportMode.directOnly.allowsRelayFallback)
-        #expect(OPNRemoteCoOpTransportMode.relayOnly.iceTransportPolicy == .relay)
-        #expect(OPNRemoteCoOpTransportMode.relayOnly.hidesDirectPeerCandidates)
+        #expect(OPNRemoteCoOpTransportMode.allCases.count == 2)
+    }
+
+    /// The raw values are persisted in `UserDefaults` and travel in a stream's launch metadata, so
+    /// they are not free to rename even though the labels shown next to them are. Renaming a case
+    /// would silently reset every host's transport choice back to the default on upgrade.
+    @Test("transport mode raw values are stable, whatever the labels say")
+    func transportModeRawValuesAreStable() {
+        #expect(OPNRemoteCoOpTransportMode.automatic.rawValue == "automatic")
+        #expect(OPNRemoteCoOpTransportMode.directOnly.rawValue == "directOnly")
+        #expect(OPNRemoteCoOpTransportMode(rawValue: "directOnly") == .directOnly)
+        // Labels are presentation and may change; they must simply exist and differ.
+        #expect(OPNRemoteCoOpTransportMode.automatic.label != OPNRemoteCoOpTransportMode.directOnly.label)
+        #expect(OPNRemoteCoOpTransportMode.allCases.allSatisfy { !$0.label.isEmpty && !$0.description.isEmpty })
+    }
+
+    /// The configuration the guest actually receives. This defaulted to an empty server list at every
+    /// construction site, which is the bug the mode mapping above exists to prevent recurring.
+    @Test("a network configuration carries STUN unless the mode opts out")
+    func networkConfigurationCarriesSTUN() {
+        let automatic = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
+        #expect(automatic.iceServers.count == 1)
+        #expect(automatic.iceServers.first?.urls == OPNRemoteCoOpNetworkConfiguration.defaultSTUNServers)
+        // More than one provider, so a single operator's outage does not take Remote Co-Op with it.
+        #expect(OPNRemoteCoOpNetworkConfiguration.defaultSTUNServers.count >= 2)
+        #expect(OPNRemoteCoOpNetworkConfiguration.defaultSTUNServers.allSatisfy { $0.hasPrefix("stun:") })
+
+        let sameNetwork = OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
+        #expect(sameNetwork.iceServers.isEmpty)
+
+        // An explicit list still wins, so a caller can override.
+        let explicit = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, iceServers: [])
+        #expect(explicit.iceServers.isEmpty)
     }
 
     @Test("wire codec maps browser messages into signaling events")
@@ -231,10 +304,13 @@ struct RemoteCoOpTests {
         #expect(rejectionMessage.inputRejection == .stalePacket)
     }
 
+    /// The guest page reads the ICE servers straight out of this message, so the encoding has to
+    /// survive a round trip with credentials intact - a relay a user points at needs its username
+    /// and credential to arrive.
     @Test("wire codec carries ICE network configuration")
     func wireCodecCarriesICENetworkConfiguration() throws {
         let configuration = OPNRemoteCoOpNetworkConfiguration(
-            transportMode: .relayOnly,
+            transportMode: .automatic,
             latencyMode: .lowLatency,
             iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
         )
@@ -243,14 +319,16 @@ struct RemoteCoOpTests {
         let decoded = try OPNRemoteCoOpWireCodec.decode(OPNRemoteCoOpWireCodec.encode(message))
 
         #expect(decoded.networkConfiguration == configuration)
-        #expect(decoded.networkConfiguration?.iceTransportPolicy == .relay)
+        #expect(decoded.networkConfiguration?.iceTransportPolicy == .all)
         #expect(decoded.networkConfiguration?.latencyMode == .lowLatency)
+        #expect(decoded.networkConfiguration?.iceServers.first?.username == "room")
+        #expect(decoded.networkConfiguration?.iceServers.first?.credential == "secret")
     }
 
     @Test("wire codec maps broker network config into signaling event")
     func wireCodecMapsBrokerNetworkConfigIntoSignalingEvent() throws {
         let configuration = OPNRemoteCoOpNetworkConfiguration(
-            transportMode: .relayOnly,
+            transportMode: .directOnly,
             iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
         )
         let message = OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: UUID(), networkConfiguration: configuration)
@@ -263,7 +341,7 @@ struct RemoteCoOpTests {
     @Test("invite token signs and verifies launch metadata")
     func inviteTokenSignsAndVerifiesLaunchMetadata() async throws {
         let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
-        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .relayOnly, qualityPreset: .p1080f60, latencyMode: .lowLatency, requireHostApproval: false)
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .directOnly, qualityPreset: .p1080f60, latencyMode: .lowLatency, requireHostApproval: false)
         let host = OPNRemoteCoOpHostSession(preferences: preferences, inviteSigner: signer)
 
         let invite = try await host.startInvite(applicationID: "123", title: "Portal", lifetimeSeconds: 120)
@@ -275,7 +353,7 @@ struct RemoteCoOpTests {
         #expect(payload.applicationID == "123")
         #expect(payload.title == "Portal")
         #expect(payload.reservedGuestSlots == 2)
-        #expect(payload.transportMode == .relayOnly)
+        #expect(payload.transportMode == .directOnly)
         #expect(payload.qualityPreset == .p1080f60)
         #expect(payload.latencyMode == .lowLatency)
         #expect(!payload.requireHostApproval)
@@ -300,22 +378,55 @@ struct RemoteCoOpTests {
         #expect(invite.title == "Secret Game")
         #expect(invite.hideGuestInviteDetails)
         #expect(invite.code.count == 6)
-        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
-        #expect(components.queryItems?.first { $0.name == "invite" }?.value?.count == 6)
-        #expect(components.queryItems?.first { $0.name == "invite" }?.value != invite.token)
         #expect(components.queryItems?.contains(URLQueryItem(name: "server", value: "wss://signal.example.test/remote-coop")) == true)
+
+        // The link carries the signed token, because a bare code cannot pass the broker's signature
+        // gate. Privacy is preserved by what the payload *contains* rather than by withholding it:
+        // a private invite blanks the title and app ID at signing time, so handing the guest the
+        // whole token still tells them nothing about the game.
+        let linkedInvite = try #require(components.queryItems?.first { $0.name == "invite" }?.value)
+        #expect(linkedInvite == invite.token)
+        let linkedPayload = try signer.verify(linkedInvite)
+        #expect(linkedPayload.applicationID.isEmpty)
+        #expect(linkedPayload.title.isEmpty)
+        #expect(linkedPayload.hideGuestInviteDetails)
     }
 
+    /// The `server` parameter is only worth carrying when the signaling socket lives somewhere the
+    /// page cannot infer from its own origin. Uses a concrete pair rather than the shipped defaults,
+    /// which are deliberately empty now that OpenNOW hosts sessions itself.
     @Test("invite URLs omit same origin signaling server")
     func inviteURLsOmitSameOriginSignalingServer() async throws {
         let host = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1))
+        let joinBase = try #require(URL(string: "https://join.example.test:32188/"))
 
-        let invite = try await host.startInvite(joinBaseURL: URL(string: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)!, signalingServerURL: OPNRemoteCoOpPreferences.defaultSignalingServerURL, lifetimeSeconds: 120)
+        let invite = try await host.startInvite(joinBaseURL: joinBase, signalingServerURL: "wss://join.example.test:32188/remote-coop", lifetimeSeconds: 120)
         let joinURL = try #require(invite.joinURL)
         let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
 
-        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
+        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.token)) == true)
         #expect(components.queryItems?.contains { $0.name == "server" } == false)
+    }
+
+    /// The guest link has to carry something the broker will accept. `verifyInviteToken` requires
+    /// two dot-separated segments and rejects everything else before it ever looks up a room, so a
+    /// link carrying the six-character code was refused by every broker — the guest connected, sat
+    /// in "Waiting", and the host was never told anyone had arrived.
+    @Test("invite URLs carry the signed token, not the short code")
+    func inviteURLsCarryTheSignedToken() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
+        let host = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1), inviteSigner: signer)
+
+        let invite = try await host.startInvite(joinBaseURL: URL(string: "https://join.example.test/")!, lifetimeSeconds: 120)
+        let joinURL = try #require(invite.joinURL)
+        let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
+        let linked = try #require(components.queryItems?.first { $0.name == "invite" }?.value)
+
+        #expect(linked == invite.token)
+        #expect(linked.split(separator: ".").count == 2)
+        #expect(linked != invite.code)
+        // Round-trips: what the link hands the broker is exactly what the host will verify back.
+        #expect(try signer.verify(linked).code == invite.code)
     }
 
     @Test("stream settings advertise reserved controller bitmap")
@@ -385,6 +496,7 @@ final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHos
     private var renderedFrames = 0
     private var renderedAudioFrames = 0
     private var signals: [OPNRemoteCoOpWirePeerSignal] = []
+    private var retargetedPresets: [OPNRemoteCoOpQualityPreset] = []
 
     init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, qualityPreset: OPNRemoteCoOpQualityPreset, latencyMode: OPNRemoteCoOpLatencyMode, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
         self.participantID = participantID
@@ -401,6 +513,18 @@ final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHos
 
     func apply(_ signal: OPNRemoteCoOpWirePeerSignal) async throws {
         lock.withLock { signals.append(signal) }
+    }
+
+    @discardableResult
+    func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) async -> Bool {
+        lock.withLock { retargetedPresets.append(preset) }
+        return true
+    }
+
+    /// Every preset this peer was retargeted to after it started, in order. A rebuild would show up as
+    /// a second `start()` on a new peer instead, which is what the retarget path exists to avoid.
+    func retargetHistory() -> [OPNRemoteCoOpQualityPreset] {
+        lock.withLock { retargetedPresets }
     }
 
     func close() async {

@@ -26,16 +26,6 @@ extension WebRTCMediaStreamSurface {
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
         ]
-        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-            entries.append(StreamHUDFocusEntry(
-                id: "coop-invite",
-                isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
-                action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
-            ))
-            if remoteCoOpSnapshot.invite != nil {
-                entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
-            }
-        }
         return entries
     }
 

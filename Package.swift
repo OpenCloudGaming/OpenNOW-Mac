@@ -23,13 +23,18 @@ let package = Package(
         //
         //   swift package plugin --allow-writing-to-package-directory swiftlint lint \
         //     --strict App GFN Model OPN View ViewModel Tests
-        .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1")
+        .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1"),
+        // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly, like Sentry:
+        // this carries the signaling for a live session, and an unattended minor bump is not
+        // something to discover mid-stream.
+        .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.3.0")
     ],
     targets: [
         .target(
             name: "OpenNOW",
             dependencies: [
-                .product(name: "Sentry", package: "sentry-cocoa")
+                .product(name: "Sentry", package: "sentry-cocoa"),
+                .product(name: "Ably", package: "ably-cocoa")
             ],
             path: ".",
             exclude: [

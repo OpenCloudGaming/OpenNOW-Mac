@@ -11,9 +11,37 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
     private static let lowLatencyDefaultMigrationVersion = 1
     private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
-    private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
-    private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
     private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
+    private static let publicAddressKey = "OpenNOW.RemoteCoOp.PublicAddress"
+    private static let hostedGuestPageURLKey = "OpenNOW.RemoteCoOp.HostedGuestPageURL"
+    /// Where a fresh install points a host who never sets their own: this repo's own Pages deploy of
+    /// `Resources/RemoteCoOp/browser`, kept in lockstep with it by the same CI that publishes it.
+    /// A host who clears the field explicitly gets an empty string back, not this - see `load()`.
+    public static let defaultHostedGuestPageURL = "https://opencloudgaming.github.io/OpenNOW-Mac/"
+
+    /// `relayOnly` is gone with the broker that ran the relay, but it is still sitting in the
+    /// defaults of anyone who chose it. Falling through to `.automatic` silently turned STUN back on
+    /// for the one setting whose whole point was not disclosing this Mac's public address, so it
+    /// lands on the mode that still offers only local candidates.
+    static func migratedTransportMode(_ rawValue: String) -> OPNRemoteCoOpTransportMode {
+        if let mode = OPNRemoteCoOpTransportMode(rawValue: rawValue) { return mode }
+        return rawValue == "relayOnly" ? .directOnly : .automatic
+    }
+
+    /// Remote Co-Op requires the Native NVST transport.
+    ///
+    /// The WebRTC path decodes inside libwebrtc and exposes no frame tap comparable to the native
+    /// decoder's, so hosting there meant re-rendering the guest's picture: a second decode and encode
+    /// per frame on the host, for a stream guests found sluggish. NVST hands over the decoder's own
+    /// `CVPixelBuffer`, which is what makes the relay cheap enough to be worth having at all.
+    ///
+    /// Read from the same preference the stream itself uses, so this can never disagree with the
+    /// transport that actually launches.
+    public static var requiresNativeTransport: Bool { true }
+
+    public static var isNativeTransportSelected: Bool {
+        OPNStreamPreferences.loadProfile().transportMode.value == "nvst"
+    }
 
     public static var isAlphaOptedIn: Bool {
         bool(storage.object(forKey: alphaOptInKey), defaultValue: false)
@@ -25,13 +53,17 @@ public enum OPNRemoteCoOpPreferencesStore {
             isAlphaOptedIn: isAlphaOptedIn,
             isEnabled: bool(storage.object(forKey: enabledKey), defaultValue: false),
             reservedGuestSlots: int(storage.object(forKey: reservedGuestSlotsKey), defaultValue: 1),
-            transportMode: OPNRemoteCoOpTransportMode(rawValue: string(storage.object(forKey: transportModeKey))) ?? .automatic,
+            transportMode: migratedTransportMode(string(storage.object(forKey: transportModeKey))),
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
             latencyMode: latencyMode,
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
-            signalingServerURL: OPNRemoteCoOpPreferences.migratedSignalingServerURL(string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL)),
-            guestJoinBaseURL: OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL(string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)),
-            hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false)
+            hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false),
+            publicAddress: string(storage.object(forKey: publicAddressKey)),
+            // Distinguished from an explicit clear: a saved empty string means the host chose local
+            // serving, and only "never saved anything" gets the shipped default.
+            hostedGuestPageURL: storage.object(forKey: hostedGuestPageURLKey) == nil
+                ? defaultHostedGuestPageURL
+                : string(storage.object(forKey: hostedGuestPageURLKey))
         )
     }
 
@@ -44,9 +76,9 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(preferences.latencyMode.rawValue, forKey: latencyModeKey)
         storage.set(lowLatencyDefaultMigrationVersion, forKey: lowLatencyDefaultMigrationVersionKey)
         storage.set(preferences.requireHostApproval, forKey: requireHostApprovalKey)
-        storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
-        storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
         storage.set(preferences.hideGuestInviteDetails, forKey: hideGuestInviteDetailsKey)
+        storage.set(preferences.publicAddress, forKey: publicAddressKey)
+        storage.set(preferences.hostedGuestPageURL, forKey: hostedGuestPageURLKey)
         storage.synchronize()
     }
 
@@ -99,17 +131,20 @@ public enum OPNRemoteCoOpPreferencesStore {
         save(preferences)
     }
 
-    public static func setSignalingServerURL(_ url: String) {
+
+
+
+    public static func setPublicAddress(_ address: String) {
         guard isAlphaOptedIn else { return }
         var preferences = load()
-        preferences.signalingServerURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultSignalingServerURL)
+        preferences.publicAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
         save(preferences)
     }
 
-    public static func setGuestJoinBaseURL(_ url: String) {
+    public static func setHostedGuestPageURL(_ url: String) {
         guard isAlphaOptedIn else { return }
         var preferences = load()
-        preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        preferences.hostedGuestPageURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         save(preferences)
     }
 

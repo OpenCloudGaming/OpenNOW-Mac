@@ -88,8 +88,17 @@ extension NativeNVSTHostViewModel {
             self.inputDispatcher?.enqueueAbsoluteMove(event)
         }
         view.onGamepadTopologyChanged = { [weak self] topology in
-            guard let self, let path = self.path, self.isConnected, !self.isEnding, !self.didEnd else { return }
-            Task { try? await path.updateGamepadTopology(topology) }
+            guard let self, self.isConnected, !self.isEnding, !self.didEnd else { return }
+            // The view only knows about pads plugged into this Mac. Remote Co-Op guests hold slots
+            // the seat must keep believing in, so the announced topology is the merge of the two -
+            // sending the local one raw would disconnect every guest the moment a controller is
+            // plugged in or unplugged.
+            //
+            // Routed through `syncRemoteCoOpGamepadTopology` rather than announcing directly,
+            // because that is where a departing pad's neutral state is ordered ahead of the
+            // announce. Announcing here would let an unplugged pad's release be dropped.
+            self.localGamepadTopology = topology
+            Task { @MainActor in await self.syncRemoteCoOpGamepadTopology() }
         }
         view.onScreenKeyboardCapture = { [weak self] deviceID, snapshot in
             guard let self, self.onScreenKeyboardVisible else { return false }

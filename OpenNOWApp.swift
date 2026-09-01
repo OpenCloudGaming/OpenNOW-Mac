@@ -12,6 +12,7 @@ import SwiftData
 @main
 struct OpenNOWApp: App {
     @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
 
     let sharedModelContainer: ModelContainer
 
@@ -147,6 +148,9 @@ struct OpenNOWApp: App {
                 }
             }
             CommandMenu("Stream") {
+                Button("Join Remote Co-Op as Guest…") {
+                    openWindow(id: "remote-coop-guest")
+                }
                 Button("Toggle Microphone") {
                     _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
                 }
@@ -161,5 +165,10 @@ struct OpenNOWApp: App {
                 .keyboardShortcut("k", modifiers: .command)
             }
         }
+
+        Window("Join Remote Co-Op", id: "remote-coop-guest") {
+            RemoteCoOpGuestView()
+        }
+        .defaultSize(width: 1280, height: 800)
     }
 }

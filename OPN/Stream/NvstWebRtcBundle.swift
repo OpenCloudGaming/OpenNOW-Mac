@@ -153,6 +153,19 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         defer { lock.unlock() }
         return trackedRemoteAudioCount
     }
+    /// Silences the seat's audio on this Mac's speakers only.
+    ///
+    /// Goes to the audio device, not to `remoteAudioTracks`: disabling the track (or zeroing the
+    /// source volume) stops libwebrtc producing samples at all, which silenced Remote Co-Op guests
+    /// and recordings too - observed on hardware. The device mutes after teeing the frame to the
+    /// relay, so only playout is affected.
+    public func setRemoteAudioMuted(_ muted: Bool) {
+        lock.lock()
+        let device = audioDevice
+        lock.unlock()
+        device?.isPlayoutMuted = muted
+    }
+
     var negotiatedInputProtocolVersion: UInt16?
     var openCustomChannels: [String: RTCDataChannel] = [:]
     var inputMessagesSent = 0
