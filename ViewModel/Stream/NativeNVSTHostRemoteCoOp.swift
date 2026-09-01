@@ -441,7 +441,9 @@ extension NativeNVSTHostViewModel {
         // listener and are composed with the browser transport, so one session serves both. The
         // composite is what `stopRemoteCoOpSession` closes, which stops the listener too.
         let nativeServer = OPNRemoteCoOpNativeGuestServer(
-            inviteProvider: { [remoteCoOpHostSession] in await remoteCoOpHostSession.snapshot().invite },
+            // The greeting invite, not the real one: this is handed to any socket that connects,
+            // before it has presented anything, so it must not carry the hosted-signaling credential.
+            inviteProvider: { [remoteCoOpHostSession] in await remoteCoOpHostSession.greetingInvite() },
             networkConfiguration: remoteCoOpNetworkConfiguration,
             logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.native_server", level: .info, message: message) }
         )

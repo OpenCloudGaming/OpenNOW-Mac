@@ -265,6 +265,42 @@ import Testing
         #expect(payload.signalingChannel == OPNRemoteCoOpAblyJWT.channelName(inviteID: invite.id))
     }
 
+    /// The native listener greets any socket that connects, before it has presented anything, so the
+    /// invite it hands over must not carry the hosted-signaling credential.
+    ///
+    /// That credential grants publish on this invite's guest channel and subscribe on its host
+    /// channel - reach well beyond the LAN or tailnet the listener is exposed on, and a native guest
+    /// is already connected directly and needs none of it. The greeting still has to *verify*, since
+    /// the guest echoes it straight back as its join.
+    @Test func theNativeGreetingCarriesNoHostedCredential() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner()
+        let session = OPNRemoteCoOpHostSession(
+            preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1),
+            inviteSigner: signer
+        )
+        let key = self.key
+        let invite = try await session.startInvite(joinBaseURL: URL(string: "https://pages.example/guest/"), lifetimeSeconds: 600) { inviteID, expiresAt in
+            let channel = OPNRemoteCoOpAblyJWT.channelName(inviteID: inviteID)
+            guard let token = OPNRemoteCoOpAblyJWT.mintGuestToken(key: key, channel: channel, expiresAt: expiresAt) else { return nil }
+            return OPNRemoteCoOpInviteSignaling(channel: channel, token: token)
+        }
+        // Positive control: the real invite does carry it, so this test is comparing two things that
+        // differ rather than asserting a credential that was never minted.
+        #expect(try signer.verify(invite.token, now: Date()).signalingToken != nil)
+
+        let greeting = try #require(await session.greetingInvite())
+        let payload = try signer.verify(greeting.token, now: Date())
+        #expect(payload.signalingToken == nil, "the greeting hands the Ably credential to anyone who opens a socket")
+        #expect(payload.signalingChannel == nil)
+        #expect(payload.signalingKind == .embedded)
+        // The join URL embeds the token in its query, so it goes too.
+        #expect(greeting.joinURL == nil)
+        // Still the same invite, and still verifiable - the guest echoes this straight back.
+        #expect(payload.inviteID == invite.id)
+        #expect(payload.code == invite.code)
+        #expect(greeting.token != invite.token)
+    }
+
     /// No key configured is the common case and must stay embedded — the transport that needs no
     /// account and no third party.
     @Test func noKeyLeavesTheInviteEmbedded() async throws {

@@ -46,6 +46,9 @@ public struct OPNRemoteCoOpHostSnapshot: Equatable, Sendable {
 public actor OPNRemoteCoOpHostSession {
     private var preferences: OPNRemoteCoOpPreferences
     private var invite: OPNRemoteCoOpInvite?
+    /// The invite the native listener hands to a socket before it has presented anything, with the
+    /// hosted-signaling credential stripped. See `nativeGreetingInvite(from:payload:signaling:signer:)`.
+    private var nativeGreetingInvite: OPNRemoteCoOpInvite?
     private var participants: [OPNRemoteCoOpParticipant] = []
     /// Player indices occupied by controllers plugged into the host, kept current by the caller
     /// (`syncRemoteCoOpGamepadTopology` / the WebRTC surface) whenever the local topology changes.
@@ -126,12 +129,70 @@ public actor OPNRemoteCoOpHostSession {
             hideGuestInviteDetails: preferences.hideGuestInviteDetails
         )
         self.invite = invite
+        self.nativeGreetingInvite = try Self.nativeGreetingInvite(
+            from: invite,
+            payload: payload,
+            preferences: preferences,
+            signaling: signaling,
+            signer: inviteSigner
+        )
         return invite
+    }
+
+    /// The invite handed to a socket that has presented nothing yet.
+    ///
+    /// The native listener greets every new connection with the invite so a guest discovered over
+    /// Bonjour learns what to echo back - that is the design, and reaching the listener is the trust
+    /// boundary on that path. What must not ride along is the *hosted signaling* credential: the
+    /// token encodes an Ably JWT granting publish on the invite's guest channel and subscribe on its
+    /// host channel, which reaches well beyond the LAN the listener is exposed to. A native guest is
+    /// already connected directly and needs none of it.
+    ///
+    /// So the greeting carries a second token over the same invite, signed by the same signer, with
+    /// the signaling fields stripped. `validate` checks the signature, the invite ID and the code, so
+    /// this one verifies exactly as the full token does. The join URL goes too: it embeds the token
+    /// in its query.
+    private static func nativeGreetingInvite(from invite: OPNRemoteCoOpInvite,
+                                             payload: OPNRemoteCoOpInviteTokenPayload,
+                                             preferences: OPNRemoteCoOpPreferences,
+                                             signaling: OPNRemoteCoOpInviteSignaling?,
+                                             signer: OPNRemoteCoOpInviteTokenSigner) throws -> OPNRemoteCoOpInvite {
+        // Nothing to strip when signaling is not hosted: the tokens would be identical.
+        guard signaling != nil else { return invite }
+        let redacted = OPNRemoteCoOpInviteTokenPayload(
+            inviteID: payload.inviteID,
+            code: payload.code,
+            applicationID: payload.applicationID,
+            title: payload.title,
+            createdAt: invite.createdAt,
+            expiresAt: invite.expiresAt,
+            preferences: preferences,
+            signalingKind: .embedded,
+            signalingChannel: nil,
+            signalingToken: nil
+        )
+        return OPNRemoteCoOpInvite(
+            id: invite.id,
+            code: invite.code,
+            createdAt: invite.createdAt,
+            expiresAt: invite.expiresAt,
+            token: try signer.token(for: redacted),
+            joinURL: nil,
+            applicationID: invite.applicationID,
+            title: invite.title,
+            hideGuestInviteDetails: invite.hideGuestInviteDetails
+        )
+    }
+
+    /// What the native listener greets an unauthenticated socket with. See `nativeGreetingInvite`.
+    public func greetingInvite() -> OPNRemoteCoOpInvite? {
+        nativeGreetingInvite
     }
 
     public func stopInvite() async -> [UserInputEvent] {
         let neutralEvents = await inputRouter.neutralInputEventsForDisconnectedParticipants()
         invite = nil
+        nativeGreetingInvite = nil
         participants.removeAll()
         inputEnabledBeforeDisconnect.removeAll()
         await inputRouter.replaceParticipants([])
