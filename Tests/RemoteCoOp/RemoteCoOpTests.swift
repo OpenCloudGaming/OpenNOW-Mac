@@ -176,6 +176,43 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences()) == preferences)
     }
 
+    /// Catches a dropped field automatically, which the literal-based test above cannot.
+    ///
+    /// `hostedGuestPageURL` was missing from this round trip and nothing failed: the test above only
+    /// notices a lost field if its own literal happens to set that field away from its default, and
+    /// the consequence was that Settings' guest page URL had no effect on any invite. Reflection
+    /// makes the *next* omission fail here instead of in a session.
+    @Test("every stored preference survives the launch metadata round trip")
+    func everyStoredPreferenceSurvivesTheLaunchMetadataRoundTrip() {
+        // Every field set away from the memberwise default, so none can round-trip by luck.
+        let preferences = OPNRemoteCoOpPreferences(
+            isAlphaOptedIn: true,
+            isEnabled: true,
+            reservedGuestSlots: 3,
+            transportMode: .directOnly,
+            qualityPreset: .p1080f60,
+            latencyMode: .lowLatency,
+            requireHostApproval: false,
+            hideGuestInviteDetails: true,
+            publicAddress: "https://tunnel.example.test",
+            hostedGuestPageURL: "https://pages.example.test/guest/"
+        )
+        let roundTripped = OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences())
+
+        // Field by field, so a failure names the field rather than just reporting inequality.
+        let original = Mirror(reflecting: preferences).children
+        let restored = Dictionary(uniqueKeysWithValues: Mirror(reflecting: roundTripped).children.map { ($0.label ?? "", $0.value) })
+        for child in original {
+            guard let label = child.label, let restoredValue = restored[label] else { continue }
+            #expect(String(describing: restoredValue) == String(describing: child.value),
+                    "\(label) did not survive the launch metadata round trip")
+        }
+        // A field added to the struct but not to `launchMetadata` still has to fail: the loop above
+        // compares what came back, so the count is what notices an omission on the way out.
+        #expect(preferences.launchMetadata.count == original.count,
+                "launchMetadata carries \(preferences.launchMetadata.count) of \(original.count) stored preferences")
+    }
+
     /// The stream-launch round trip is what `startRemoteCoOpInvite` actually reads its preferences
     /// from - not a fresh `OPNRemoteCoOpPreferencesStore.load()` - so a field missing from
     /// `launchMetadata`/`launchPreferences` silently resets to the memberwise init's own default on
