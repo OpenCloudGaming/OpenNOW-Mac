@@ -110,7 +110,7 @@ struct RemoteCoOpNativeGuestTests {
         // regression test. Collecting everything that arrives in a window makes a second message
         // visible, and `hostHello` doubles as the positive control: seeing it proves this stream
         // would have surfaced a configuration had one been sent.
-        let greeting = try await collectMessages(from: messages, for: .milliseconds(700))
+        let greeting = await collectMessages(from: messages, for: .milliseconds(700))
         #expect(greeting.contains { $0.kind == .hostHello && $0.invite?.token == invite.token })
         #expect(!greeting.contains { $0.kind == .networkConfiguration },
                 "relay credentials sent in the greeting, before the guest presented anything")
