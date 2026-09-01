@@ -73,6 +73,9 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     private var peer: OPNRemoteCoOpNativeGuestPeer?
     private var inputSender: OPNRemoteCoOpNativeGuestInputSender?
     private var messageTask: Task<Void, Never>?
+    /// Serializes `peerSignal` application so an ICE candidate cannot overtake the offer it belongs
+    /// to. Cancelled with the session; see the comment at the `.peerSignal` case.
+    private var peerSignalChain: Task<Void, Never>?
     private var connectionAttempt = 0
     private var peerStarted = false
 
@@ -195,6 +198,8 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     func leave() {
         messageTask?.cancel()
         messageTask = nil
+        peerSignalChain?.cancel()
+        peerSignalChain = nil
         inputSender?.stop()
         inputSender = nil
         peer?.close()
@@ -275,11 +280,26 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         case .peerSignal:
             guard message.participantID == participantID, let signal = message.peerSignal else { return }
             guard let peer else { return }
-            Task {
+            // Chained, not a free-standing Task per signal.
+            //
+            // The pump delivers signals in order, but an independent Task only runs to its first
+            // suspension before yielding: the offer suspends inside `setRemoteDescription` and the ICE
+            // candidate behind it then ran `addIceCandidate` against a peer connection with no remote
+            // description, which libwebrtc rejects outright. The host sends candidates immediately
+            // after `setLocalDescription`, so they are always in flight alongside the offer, and with
+            // `gatherOnce` on both sides there is no re-gather to recover the dropped ones - it
+            // presented as "guest connects, no video", intermittently and more often on fast links.
+            //
+            // Awaiting the previous link is safe because this is the MainActor: assignment order here
+            // is arrival order. The host side never had this bug - `receiveSignal` is serialized by
+            // the peer-controller actor.
+            let previous = peerSignalChain
+            peerSignalChain = Task { [weak self] in
+                _ = await previous?.result
                 do {
                     try await peer.handle(signal)
                 } catch {
-                    self.handleConnectionFailure(error)
+                    self?.handleConnectionFailure(error)
                 }
             }
         case .inviteEnded:
@@ -384,6 +404,15 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     private func handleConnectionFailure(_ error: Error) {
         guard phase != .browsing else { return }
+        // The pump has to be torn down here too, or the specific reason set below is immediately
+        // overwritten. Reached mid-session, `connection?.close()` finishes the message stream, the
+        // pump falls out, and `handleConnectionEnded` passes its `messageTask != nil` guard and calls
+        // back in with `.closed` - replacing "the host rejected the join request" with "closed".
+        // Same class of bug the connect path's comment records as fixed.
+        messageTask?.cancel()
+        messageTask = nil
+        peerSignalChain?.cancel()
+        peerSignalChain = nil
         inputSender?.stop()
         inputSender = nil
         peer?.close()

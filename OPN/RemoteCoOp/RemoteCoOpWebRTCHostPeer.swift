@@ -95,17 +95,41 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         }
     }
 
+    /// What `close()` carries out of the lock so libwebrtc is never called while it is held.
+    private struct ClosingState {
+        var peerConnection: RTCPeerConnection?
+        var inputChannels: [RTCDataChannel] = []
+        var videoTrack: RTCVideoTrack?
+        var videoSender: RTCRtpSender?
+        var audioTrack: RTCAudioTrack?
+        var audioSender: RTCRtpSender?
+        var audioDevice: OPNRemoteCoOpHostAudioDevice?
+    }
+
     public func close() async {
-        let state = stateLock.withLock { () -> (RTCPeerConnection?, [RTCDataChannel]) in
-            guard !isClosed else { return (nil, []) }
+        // Everything libwebrtc runs OUTSIDE the lock, deliberately.
+        //
+        // `removeTrack` is a proxy method that blocks onto libwebrtc's signaling thread, and that same
+        // thread delivers `didGenerate` / `didOpen dataChannel` / `didReceiveMessageWith`
+        // synchronously - all of which take `stateLock` (via `closed` and `bindInputChannel`). Calling
+        // it while holding the lock is a two-party deadlock that wedges this peer and, because
+        // `close()` is awaited from `OPNRemoteCoOpHostPeerController`, the whole peer-controller actor
+        // behind it. ICE gathering and SCTP open overlap teardown routinely - a guest's Wi-Fi blip is
+        // enough - so this is reachable, not theoretical. The sibling
+        // `OPNRemoteCoOpNativeGuestPeer.close()` and `NvstWebRtcBundle.close()` already snapshot then
+        // release; this was the one place that did not.
+        let state = stateLock.withLock { () -> ClosingState in
+            guard !isClosed else { return ClosingState() }
             isClosed = true
-            let peerConnection = peerConnection
-            let inputChannels = inputChannels
-            let videoTrack = videoTrack
-            let videoSender = videoSender
-            let audioDevice = audioDevice
-            let audioTrack = audioTrack
-            let audioSender = audioSender
+            let state = ClosingState(
+                peerConnection: peerConnection,
+                inputChannels: inputChannels,
+                videoTrack: videoTrack,
+                videoSender: videoSender,
+                audioTrack: audioTrack,
+                audioSender: audioSender,
+                audioDevice: audioDevice
+            )
             self.peerConnection = nil
             self.inputChannels = []
             self.videoSource = nil
@@ -117,13 +141,13 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             self.audioTrack = nil
             self.audioSender = nil
             factory = nil
-            if let videoSender { _ = peerConnection?.removeTrack(videoSender) }
-            if let audioSender { _ = peerConnection?.removeTrack(audioSender) }
-            videoTrack?.isEnabled = false
-            audioTrack?.isEnabled = false
-            audioDevice?.shutdown()
-            return (peerConnection, inputChannels)
+            return state
         }
+        if let videoSender = state.videoSender { _ = state.peerConnection?.removeTrack(videoSender) }
+        if let audioSender = state.audioSender { _ = state.peerConnection?.removeTrack(audioSender) }
+        state.videoTrack?.isEnabled = false
+        state.audioTrack?.isEnabled = false
+        state.audioDevice?.shutdown()
         // Under the lock like every other member: `start()` writes this from whatever task called it
         // while `close()` reads it from another, and a torn `Task?` is a reference-count race rather
         // than merely a stale read.
@@ -135,12 +159,12 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         statsTask?.cancel()
         // Nothing is buffered on the video queue any more - frames are forwarded or dropped on
         // arrival - so close only has to stop accepting them, which `isClosed` above already did.
-        for inputChannel in state.1 {
+        for inputChannel in state.inputChannels {
             inputChannel.delegate = nil
             inputChannel.close()
         }
-        state.0?.delegate = nil
-        state.0?.close()
+        state.peerConnection?.delegate = nil
+        state.peerConnection?.close()
     }
 
     public func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}

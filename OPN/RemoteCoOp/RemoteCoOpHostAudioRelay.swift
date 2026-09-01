@@ -29,6 +29,10 @@ public protocol OPNRemoteCoOpHostAudioSink: AnyObject, Sendable {
 public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
     let lock = NSLock()
     private var sinks: [UUID: any OPNRemoteCoOpHostAudioSink] = [:]
+    /// Mirrors `!sinks.isEmpty`, maintained under `lock` but read without it from the render thread.
+    /// A plain `Bool` read is atomic on every architecture this ships to, and being one frame stale
+    /// either way is harmless - what matters is that a solo session takes no lock at all.
+    private var hasSinks = false
     /// Where a built frame is handed to the guests' encoders.
     ///
     /// The callers are the CoreAudio render thread and the NVST audio receive queue, and delivering
@@ -40,27 +44,132 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
     public init() {}
 
     public func upsert(_ sink: any OPNRemoteCoOpHostAudioSink) {
-        lock.withLock { sinks[sink.participantID] = sink }
+        lock.withLock {
+            sinks[sink.participantID] = sink
+            hasSinks = !sinks.isEmpty
+        }
     }
 
     public func remove(participantID: UUID) {
-        lock.withLock { sinks[participantID] = nil }
+        lock.withLock {
+            sinks[participantID] = nil
+            hasSinks = !sinks.isEmpty
+        }
     }
 
     public func removeAll() {
-        lock.withLock { sinks.removeAll() }
+        lock.withLock {
+            sinks.removeAll()
+            hasSinks = false
+        }
     }
 
     public func activeSinkCount() -> Int {
         lock.withLock { sinks.count }
     }
 
+    /// Called on the CoreAudio render thread, so the only work done here is the copy that has to
+    /// happen before the caller's buffer goes away.
+    ///
+    /// Conversion used to run inline: two heap allocations plus an O(frameCount) interleave, per 10ms
+    /// callback, on a thread with a hard deadline - and `Array(sinks.values)` took a lock contended
+    /// against the MainActor on every guest join and leave. Both are unbounded waits, and the audible
+    /// result was host crackle that appeared only once a guest connected. `deliveryQueue.async` alone
+    /// was not enough: it deferred the sink calls but left everything above it on the render thread.
+    ///
+    /// `hasSinks` is read without the lock on purpose: it is a plain `Bool`, a stale read costs one
+    /// frame either way, and a solo session must not pay a lock at all.
     public func renderAudioFrame(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
-        let currentSinks = lock.withLock { Array(sinks.values) }
-        guard !currentSinks.isEmpty,
-              let audioBufferList,
-              let frame = Self.audioFrame(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, sampleRate: sampleRate, channels: channels) else { return }
-        deliver(frame, to: currentSinks)
+        guard hasSinks, let audioBufferList else { return }
+        let list = audioBufferList.assumingMemoryBound(to: AudioBufferList.self)
+        // Raw bytes out of the caller's buffers, still on this thread because they are only valid for
+        // the duration of this callback. Interleaving, resampling and Int16 packing happen off-thread.
+        guard let raw = Self.rawInt16Copy(from: list) else { return }
+        deliveryQueue.async { [weak self] in
+            guard let self else { return }
+            let currentSinks = lock.withLock { Array(sinks.values) }
+            guard !currentSinks.isEmpty,
+                  let frame = Self.audioFrame(from: raw, frameCount: frameCount, sampleRate: sampleRate, channels: channels) else { return }
+            for sink in currentSinks { sink.renderAudioFrame(frame) }
+        }
+    }
+
+    /// One buffer's worth of source samples, flattened, with each source buffer's length kept.
+    ///
+    /// The lengths matter: a deinterleaved source hands over one buffer per channel and they need not
+    /// be the same length, so flattening without them would silently mix the channels together.
+    struct RawInt16Buffers {
+        var samples: [Int16]
+        /// Sample count of each source buffer, in order. `count == 1` means an interleaved source.
+        var lengths: [Int]
+    }
+
+    /// Flat copy of the source buffers, taken on the caller's thread because they are only valid for
+    /// the duration of the callback.
+    ///
+    /// Deliberately allocation-light rather than allocation-free: one `[Int16]` copy is the minimum
+    /// that lets the caller's buffer be released on return. The interleave, resample and `Data` pack
+    /// that used to allocate twice more here now happen on `deliveryQueue`.
+    static func rawInt16Copy(from list: UnsafePointer<AudioBufferList>) -> RawInt16Buffers? {
+        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: list))
+        guard buffers.count > 0 else { return nil }
+        var lengths = [Int]()
+        lengths.reserveCapacity(buffers.count)
+        for buffer in buffers { lengths.append(Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size) }
+        let total = lengths.reduce(0, +)
+        guard total > 0 else { return nil }
+        var samples = [Int16](repeating: 0, count: total)
+        samples.withUnsafeMutableBufferPointer { destination in
+            guard let base = destination.baseAddress else { return }
+            var offset = 0
+            for (index, buffer) in buffers.enumerated() {
+                let count = lengths[index]
+                defer { offset += count }
+                guard count > 0, let data = buffer.mData else { continue }
+                base.advanced(by: offset).update(from: data.bindMemory(to: Int16.self, capacity: count), count: count)
+            }
+        }
+        return RawInt16Buffers(samples: samples, lengths: lengths)
+    }
+
+    /// Both source layouts CoreAudio can hand over, off the render thread, reading the flat copy.
+    static func audioFrame(from raw: RawInt16Buffers, frameCount: UInt32, sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
+        let outputFrames = Int(frameCount)
+        guard outputFrames > 0 else { return nil }
+        let outputChannels = Int(OPNRemoteCoOpHostAudioFrame.channels)
+        let sourceChannels = max(1, Int(channels))
+        var stereo = [Int16](repeating: 0, count: outputFrames * outputChannels)
+
+        if raw.lengths.count == 1 {
+            // Interleaved: one buffer, samples laid out frame-major.
+            let available = raw.lengths[0]
+            guard available >= outputFrames * sourceChannels else { return nil }
+            for frame in 0..<outputFrames {
+                let sourceIndex = frame * sourceChannels
+                let left = raw.samples[sourceIndex]
+                stereo[frame * 2] = left
+                stereo[frame * 2 + 1] = sourceChannels > 1 ? raw.samples[sourceIndex + 1] : left
+            }
+        } else {
+            // Deinterleaved: buffer 0 is the left channel, buffer 1 the right when present.
+            let leftCount = raw.lengths[0]
+            let rightCount = raw.lengths.count > 1 ? raw.lengths[1] : 0
+            let rightOffset = leftCount
+            for frame in 0..<outputFrames {
+                let left = frame < leftCount ? raw.samples[frame] : 0
+                let right = frame < rightCount ? raw.samples[rightOffset + frame] : left
+                stereo[frame * 2] = left
+                stereo[frame * 2 + 1] = right
+            }
+        }
+
+        let resampled = resampledStereoPCM(stereo, sourceSampleRate: sampleRate, targetSampleRate: OPNRemoteCoOpHostAudioFrame.sampleRate)
+        let data = resampled.withUnsafeBufferPointer { buffer -> Data in
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int16>.size)
+        }
+        guard !data.isEmpty else { return nil }
+        return OPNRemoteCoOpHostAudioFrame(samples: data, frameCount: UInt32(resampled.count / outputChannels))
     }
 
     public func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
@@ -117,55 +226,6 @@ public final class OPNRemoteCoOpHostAudioRelay: @unchecked Sendable {
     /// `Int16(...)` would produce there is an audible click, not a quiet distortion.
     private static func int16Sample(_ value: Float) -> Int16 {
         Int16(max(-32768, min(32767, (max(-1, min(1, value)) * 32767).rounded())))
-    }
-
-    private static func audioFrame(from audioBufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32, sampleRate: Double, channels: UInt32) -> OPNRemoteCoOpHostAudioFrame? {
-        guard let stereoSamples = stereoPCM(from: audioBufferList, frameCount: frameCount, channels: channels) else { return nil }
-        let resampledSamples = resampledStereoPCM(stereoSamples, sourceSampleRate: sampleRate, targetSampleRate: OPNRemoteCoOpHostAudioFrame.sampleRate)
-        let data = resampledSamples.withUnsafeBufferPointer { buffer -> Data in
-            guard let baseAddress = buffer.baseAddress else { return Data() }
-            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int16>.size)
-        }
-        guard !data.isEmpty else { return nil }
-        return OPNRemoteCoOpHostAudioFrame(samples: data, frameCount: UInt32(resampledSamples.count / Int(OPNRemoteCoOpHostAudioFrame.channels)))
-    }
-
-    private static func stereoPCM(from audioBufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32, channels: UInt32) -> [Int16]? {
-        let outputFrames = Int(frameCount)
-        guard outputFrames > 0 else { return nil }
-        let sourceChannels = max(1, Int(channels))
-        var samples = [Int16](repeating: 0, count: outputFrames * Int(OPNRemoteCoOpHostAudioFrame.channels))
-        // `UnsafeMutableAudioBufferListPointer` walks the real variable-length buffer array.
-        // `withUnsafePointer(to: list.pointee.mBuffers)` addressed a *copy* of the struct's single
-        // inline `AudioBuffer`, so every buffer past the first was read off the end of a stack
-        // temporary - which is what a deinterleaved source hands over.
-        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
-        if buffers.count == 1, let data = buffers[0].mData {
-            let sourceSampleCount = Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size
-            guard sourceSampleCount >= outputFrames * sourceChannels else { return samples }
-            let source = data.bindMemory(to: Int16.self, capacity: sourceSampleCount)
-            for frame in 0..<outputFrames {
-                let sourceIndex = frame * sourceChannels
-                let left = source[sourceIndex]
-                let right = sourceChannels > 1 ? source[sourceIndex + 1] : left
-                samples[frame * 2] = left
-                samples[frame * 2 + 1] = right
-            }
-            return samples
-        }
-        let leftSampleCount = buffers.count > 0 ? Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size : 0
-        let rightSampleCount = buffers.count > 1 ? Int(buffers[1].mDataByteSize) / MemoryLayout<Int16>.size : 0
-        // Bound once rather than per sample: the old loop called `bindMemory` on the same region on
-        // every frame.
-        let leftBuffer = buffers.count > 0 ? buffers[0].mData?.bindMemory(to: Int16.self, capacity: leftSampleCount) : nil
-        let rightBuffer = buffers.count > 1 ? buffers[1].mData?.bindMemory(to: Int16.self, capacity: rightSampleCount) : nil
-        for frame in 0..<outputFrames {
-            let left = frame < leftSampleCount ? (leftBuffer?[frame] ?? 0) : 0
-            let right = frame < rightSampleCount ? (rightBuffer?[frame] ?? left) : left
-            samples[frame * 2] = left
-            samples[frame * 2 + 1] = right
-        }
-        return samples
     }
 
     private static func resampledStereoPCM(_ samples: [Int16], sourceSampleRate: Double, targetSampleRate: Double) -> [Int16] {
