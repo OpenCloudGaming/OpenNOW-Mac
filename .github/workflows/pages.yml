@@ -1,0 +1,31 @@
+name: Deploy Remote Co-Op guest page
+
+on:
+  push:
+    branches: [main, feature/remote-coop-signal]  # TODO: drop before merge, testing only
+    paths:
+      - "Resources/RemoteCoOp/browser/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: Resources/RemoteCoOp/browser
+      - id: deployment
+        uses: actions/deploy-pages@v4

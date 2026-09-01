@@ -1,0 +1,720 @@
+:root {
+  color-scheme: dark;
+  --bg: #050705;
+  --ink: #f5f7ef;
+  --muted: rgba(245, 247, 239, 0.64);
+  --quiet: rgba(245, 247, 239, 0.38);
+  --panel: rgba(13, 17, 13, 0.82);
+  --line: rgba(245, 247, 239, 0.13);
+  --green: #75e61a;
+  --green-hot: #9bf00b;
+  --red: #ff604f;
+  --display: "Avenir Next Condensed", "Avenir Next", "Helvetica Neue", sans-serif;
+  --body: "Avenir Next", "Helvetica Neue", sans-serif;
+  --mono: "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  font-family: var(--body);
+}
+
+* { box-sizing: border-box; }
+
+html { min-height: 100%; }
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 52% 38%, rgba(117, 230, 26, 0.25), transparent 22rem),
+    linear-gradient(135deg, #0a0f0a, #050705 52%, #0c120c);
+  overflow-x: hidden;
+}
+
+body::before,
+body::after {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+}
+
+body::before {
+  z-index: -2;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 35%, black, transparent 76%);
+}
+
+body::after {
+  z-index: -1;
+  opacity: 0.16;
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 4px);
+  mix-blend-mode: overlay;
+}
+
+button,
+input { font: inherit; }
+
+button {
+  min-height: 54px;
+  padding: 0 18px;
+  color: #0b1405;
+  background: var(--green);
+  border: 1px solid var(--green-hot);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: filter 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--green-hot);
+  filter: brightness(1.08);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+  filter: grayscale(0.7);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(155, 240, 11, 0.5);
+  outline-offset: 3px;
+}
+
+.secondary {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+
+.compact {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.hidden { display: none !important; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shell {
+  width: min(1320px, calc(100vw - 32px));
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.home {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: calc(100svh - 48px);
+  overflow: hidden;
+  padding: clamp(18px, 3vw, 34px);
+  background:
+    linear-gradient(115deg, transparent 0 58%, rgba(117, 230, 26, 0.12) 58.2% 58.8%, transparent 59%),
+    radial-gradient(circle at 50% 44%, rgba(117, 230, 26, 0.17), transparent 18rem),
+    rgba(7, 10, 7, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: 0 34px 110px rgba(0, 0, 0, 0.58);
+}
+
+.home::before {
+  position: absolute;
+  inset: 16% auto auto 50%;
+  width: min(580px, 70vw);
+  aspect-ratio: 1;
+  content: "";
+  border: 1px solid rgba(117, 230, 26, 0.28);
+  transform: translateX(-50%) rotate(45deg);
+  opacity: 0.38;
+}
+
+.topbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  background: var(--green);
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 62%, 62% 100%, 0 100%);
+}
+
+.brand-text {
+  font-family: var(--display);
+  font-size: 23px;
+  font-weight: 950;
+  letter-spacing: 0.03em;
+}
+
+.mode-pill,
+.micro-status span {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mode-pill { padding: 9px 12px; }
+
+.entry-stage {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-height: 620px;
+  place-items: center;
+  padding: 40px 0;
+}
+
+.signal-mark {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: min(620px, 72vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  opacity: 0.72;
+}
+
+.signal-mark span {
+  position: absolute;
+  inset: var(--inset, 0);
+  border: 1px solid rgba(117, 230, 26, 0.28);
+  transform: rotate(45deg);
+}
+
+.signal-mark span:nth-child(1) { --inset: 0; }
+.signal-mark span:nth-child(2) { --inset: 17%; border-color: rgba(155, 240, 11, 0.34); }
+.signal-mark span:nth-child(3) { --inset: 34%; background: rgba(117, 230, 26, 0.06); }
+
+.join-console {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: min(430px, 100%);
+  gap: 14px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 28px 86px rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(22px);
+}
+
+.eyebrow,
+.status-label {
+  margin: 0;
+  color: var(--green-hot);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: -6px 0 2px;
+  font-family: var(--display);
+  font-size: clamp(74px, 12vw, 120px);
+  font-weight: 950;
+  letter-spacing: -0.07em;
+  line-height: 0.78;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field span {
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(245, 247, 239, 0.15);
+  border-radius: 0;
+  outline: none;
+}
+
+.code-field input {
+  min-height: 66px;
+  color: var(--green-hot);
+  font-family: var(--mono);
+  font-size: 31px;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+input::placeholder { color: rgba(245, 247, 239, 0.28); }
+
+.status {
+  min-height: 0;
+  margin: 0;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.micro-status {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.micro-status span { padding: 8px 10px; }
+
+.session-deck {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  width: 100vw;
+  height: 100svh;
+  background: #000;
+}
+
+.video-frame {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 34%, rgba(117, 230, 26, 0.16), transparent 24rem), #020302;
+}
+
+.video-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
+  place-items: center;
+  padding: 40px 28px;
+  text-align: center;
+}
+
+.video-placeholder span {
+  display: block;
+  color: rgba(245, 247, 239, 0.88);
+  font-family: var(--display);
+  font-size: clamp(58px, 10vw, 124px);
+  font-weight: 950;
+  letter-spacing: -0.08em;
+  line-height: 0.88;
+  text-transform: uppercase;
+}
+
+.video-placeholder p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.video-placeholder.streaming {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+#remote-video {
+  display: block;
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
+  background: #000;
+  object-fit: contain;
+}
+
+#remote-audio { display: none; }
+
+.player-badge,
+.diagnostics-toggle,
+.disconnect-button {
+  position: absolute;
+  z-index: 5;
+  background: rgba(8, 11, 8, 0.72);
+  border: 1px solid rgba(245, 247, 239, 0.16);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.player-badge {
+  top: 12px;
+  left: 12px;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  max-width: min(120px, calc(100% - 160px));
+  padding: 6px 9px;
+  color: var(--ink);
+  border-radius: 0;
+}
+
+.player-icon {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--muted);
+}
+
+.player-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.player-badge strong {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.disconnect-button {
+  top: 12px;
+  right: 12px;
+  min-height: 38px;
+  color: var(--ink);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.diagnostics-toggle {
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  width: 42px;
+  min-height: 42px;
+  place-items: center;
+  color: var(--ink);
+  border-radius: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.diagnostics-toggle[aria-expanded="true"] {
+  color: #0b1405;
+  background: var(--green);
+}
+
+.diagnostics {
+  position: absolute;
+  right: 16px;
+  bottom: 68px;
+  z-index: 5;
+  width: min(620px, calc(100% - 32px));
+  max-height: min(56svh, 430px);
+  min-width: 0;
+  background: rgba(11, 14, 11, 0.76);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(18px);
+}
+
+.diagnostics-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+}
+
+#diagnostics-list {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.32fr) 1fr;
+  gap: 8px 12px;
+  max-height: calc(min(56svh, 430px) - 62px);
+  margin: 0;
+  padding: 0 14px 14px;
+  overflow: auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+#diagnostics-list dt {
+  color: var(--green-hot);
+  font-weight: 900;
+}
+
+#diagnostics-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: 100%;
+    padding: 0;
+  }
+
+  .home {
+    min-height: 100svh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .entry-stage {
+    min-height: 560px;
+    padding: 32px 0;
+  }
+
+  .join-console { padding: 16px; }
+
+  h1 { font-size: clamp(72px, 22vw, 104px); }
+
+  .mode-pill,
+  .micro-status span { font-size: 10px; }
+
+  .code-field input { font-size: 26px; }
+
+  .micro-status { justify-content: flex-start; }
+
+  .video-frame,
+  .video-placeholder,
+  #remote-video {
+    min-height: 100svh;
+    height: 100svh;
+  }
+
+  .player-badge {
+    top: 10px;
+    left: 10px;
+    max-width: calc(100% - 144px);
+    padding: 5px 8px;
+  }
+
+  .disconnect-button {
+    top: 10px;
+    right: 10px;
+  }
+
+  .diagnostics-toggle {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .diagnostics {
+    right: 12px;
+    bottom: 62px;
+    width: calc(100% - 24px);
+    max-height: min(62svh, 420px);
+  }
+
+  #diagnostics-list { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after { transition-duration: 0.01ms !important; }
+}
+
+/* Controller requirement
+ *
+ * Guest input is gamepad-only: the wire packet carries pad state and nothing else, and the seat has
+ * no second keyboard to route a guest's keystrokes to. A guest who does not know that presses keys
+ * into a page that silently sends nothing, so both the requirement and the Gamepad API's
+ * press-a-button quirk are stated where they cannot be missed. */
+
+.requirement {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.requirement-mark {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  background: var(--green);
+}
+
+.session-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  padding: 32px 24px;
+  place-items: center;
+  background: rgba(2, 3, 2, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.session-overlay-card {
+  display: grid;
+  gap: 10px;
+  width: min(30rem, 100%);
+  padding: 30px 28px 26px;
+  justify-items: center;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.session-overlay-icon {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 2px;
+  place-items: center;
+  background: rgba(117, 230, 26, 0.12);
+  border: 1px solid rgba(117, 230, 26, 0.34);
+}
+
+.session-overlay-icon svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: var(--green-hot);
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+/* Pulses only while the page is waiting for a button, so it reads as a prompt for action rather
+ * than as decoration. */
+.controller-gate:not(.is-detected) .session-overlay-icon {
+  animation: controller-gate-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes controller-gate-pulse {
+  0%, 100% { transform: scale(1); border-color: rgba(117, 230, 26, 0.34); }
+  50% { transform: scale(1.06); border-color: rgba(155, 240, 11, 0.7); }
+}
+
+.session-overlay-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: clamp(30px, 5.4vw, 44px);
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.session-overlay-card p {
+  margin: 0;
+  max-width: 26rem;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.session-overlay-note {
+  margin-top: 4px;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controller-gate:not(.is-detected) .session-overlay-icon { animation: none; }
+}
+
+/* A failed connection is a real outcome, not a slow one.
+ *
+ * There is no relay to fall back to, so a router pair that refuses to hole-punch simply never
+ * connects. Left alone the page sits on "connecting" forever, which reads as a hang rather than an
+ * answer - so the alert palette separates it from the controller prompt, which is a normal step. */
+.session-overlay-icon.is-alert {
+  background: rgba(255, 96, 79, 0.12);
+  border-color: rgba(255, 96, 79, 0.42);
+}
+
+.session-overlay-icon.is-alert svg {
+  stroke: var(--red);
+}
+
+#connection-notice .session-overlay-note {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+}
