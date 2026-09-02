@@ -110,7 +110,7 @@ struct RemoteCoOpNativeGuestTests {
         // regression test. Collecting everything that arrives in a window makes a second message
         // visible, and `hostHello` doubles as the positive control: seeing it proves this stream
         // would have surfaced a configuration had one been sent.
-        let greeting = await collectMessages(from: messages, for: .milliseconds(700))
+        let greeting = try await collectMessages(from: messages, until: .hostHello, thenFor: .milliseconds(300))
         #expect(greeting.contains { $0.kind == .hostHello && $0.invite?.token == invite.token })
         #expect(!greeting.contains { $0.kind == .networkConfiguration },
                 "relay credentials sent in the greeting, before the guest presented anything")
@@ -219,6 +219,31 @@ struct RemoteCoOpNativeGuestTests {
     ///
     /// Needed wherever the assertion is that something must *not* arrive: a count-based collect
     /// cannot see the message it is meant to rule out.
+    /// Waits for the message that proves the stream is live, then keeps draining for a short window
+    /// so an *absence* can still be asserted.
+    ///
+    /// A fixed window alone was a flake: the greeting is sent from a Task on the server, and under
+    /// full-suite load 700ms could pass before it arrived, failing a test about content with a
+    /// timing failure. Adding a `print` to diagnose it made it pass, which is the tell. Waiting for
+    /// the anchor removes the race; the trailing window is what makes "and nothing followed"
+    /// meaningful, and only runs once the anchor is in hand.
+    private func collectMessages(from stream: AsyncStream<OPNRemoteCoOpWireMessage>,
+                                 until anchor: OPNRemoteCoOpWireMessageKind,
+                                 thenFor trailing: Duration) async throws -> [OPNRemoteCoOpWireMessage] {
+        let box = OPNRemoteCoOpMessageCollector()
+        let drain = Task {
+            for await message in stream { box.append(message) }
+        }
+        defer { drain.cancel() }
+        try await withTimeout {
+            while !box.messages().contains(where: { $0.kind == anchor }) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try? await Task.sleep(for: trailing)
+        return box.messages()
+    }
+
     private func collectMessages(from stream: AsyncStream<OPNRemoteCoOpWireMessage>,
                                  for duration: Duration) async -> [OPNRemoteCoOpWireMessage] {
         let box = OPNRemoteCoOpMessageCollector()
