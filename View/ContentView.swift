@@ -29,6 +29,11 @@ struct ContentView: View {
             }
             .accessibilityHidden(root.isShowingStartupLoading)
 
+            // Above the catalog and the stream surface, below the startup splash: an update prompt
+            // must never cover the launch animation, and must never be covered by a game.
+            OpenNOWUpdateOverlay()
+                .zIndex(90)
+
             if root.isShowingStartupLoading {
                 OpenNOWStartupLoadingView(duration: root.startupAnimationDuration)
                     .transition(.opacity)

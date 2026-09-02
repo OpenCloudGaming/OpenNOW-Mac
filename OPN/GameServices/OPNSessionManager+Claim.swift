@@ -95,6 +95,7 @@ extension OPNSessionManager {
                          token: context.token,
                          deviceId: context.deviceId,
                          clientId: context.clientId,
+                         initialProfile: validatedSession.map { negotiatedStreamProfile(from: $0) } ?? [:],
                          completion: completion)
     }
 
@@ -124,10 +125,13 @@ extension OPNSessionManager {
         let initialProfile = negotiatedStreamProfile(from: session)
         switch state {
         case .readyForConnection, .streaming:
-            var info = sessionInfo(from: session, requestedSessionId: context.sessionId, baseUrl: context.base, clientId: context.clientId, deviceId: context.deviceId, initialProfile: initialProfile)
-            info["isResume"] = true
-            mergeAndStoreAdState(&info)
-            completion(true, info, "")
+            // A live session still needs the RESUME hand-over. Taking its endpoints straight from
+            // the validation poll skips telling the seat who is connecting now, and its RTSPS
+            // control channel then answers the WebSocket upgrade with HTTP 501 — measured against
+            // a session started on another device, where a freshly created session on the same
+            // build upgrades normally. The seat answers the hand-over for an unpaused session with
+            // SESSION_NOT_PAUSED, which `finishClaimRejection` already polls through.
+            return false
         case .initializing, .resuming:
             pollClaimSession(sessionId: context.sessionId, serverIp: context.serverIp, deviceId: context.deviceId, clientId: context.clientId, headers: context.headers, initialProfile: initialProfile, completion: completion)
         case .pausedUnintentional, .pausedIntentional:
@@ -139,7 +143,7 @@ extension OPNSessionManager {
         return true
     }
 
-    func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, initialProfile: [String: Any] = [:], completion: @escaping (Bool, [String: Any], String) -> Void) {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
         let transportMode = streamTransportMode(settings)
@@ -176,7 +180,7 @@ extension OPNSessionManager {
             return
         }
         nonisolated(unsafe) let completion = completion
-        let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers)
+        let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile)
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
         let tracedRequest = request
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -187,12 +191,15 @@ extension OPNSessionManager {
     }
 
     /// What a claim needs to keep polling the seat after the claim request itself returns.
-    struct ClaimPollTarget: Sendable {
+    struct ClaimPollTarget: @unchecked Sendable {
         let sessionId: String
         let serverIp: String
         let deviceId: String
         let clientId: String
         let headers: CloudMatchClientHeaders
+        /// The profile the validation poll already reported, kept as the base for whatever the
+        /// claim response and the poll that follows do not restate.
+        let initialProfile: [String: Any]
     }
 
     func handleClaimResponse(data: Data?,
@@ -230,7 +237,7 @@ extension OPNSessionManager {
                                  completion: completion)
             return
         }
-        let claimProfile = (json["session"] as? [String: Any]).map { self.negotiatedStreamProfile(from: $0) } ?? [:]
+        let claimProfile = (json["session"] as? [String: Any]).map { self.negotiatedStreamProfile(from: $0) } ?? target.initialProfile
         pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: claimProfile, completion: completion)
     }
 
@@ -242,7 +249,7 @@ extension OPNSessionManager {
                                       target: ClaimPollTarget,
                                       completion: @escaping (Bool, [String: Any], String) -> Void) {
         if notPaused {
-            pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: [:], completion: completion)
+            pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: target.initialProfile, completion: completion)
             return
         }
         if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {

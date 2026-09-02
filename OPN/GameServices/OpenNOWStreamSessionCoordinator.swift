@@ -99,20 +99,20 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
         if Task.isCancelled {
-            try? await finishSession(descriptor, reason: .userRequested)
+            await releaseSession(descriptor, reason: .userRequested)
             throw CancellationError()
         }
         activeSession = descriptor
         do {
             let offer = try await connectSignaling(sessionInfo: sessionInfo, settings: launch.settings, descriptor: descriptor)
             if Task.isCancelled {
-                try? await finishSession(descriptor, reason: .userRequested)
+                await releaseSession(descriptor, reason: .userRequested)
                 throw CancellationError()
             }
             return offer
         } catch {
             if error is CancellationError || Task.isCancelled {
-                try? await finishSession(descriptor, reason: .userRequested)
+                await releaseSession(descriptor, reason: .userRequested)
             }
             throw error
         }
@@ -143,7 +143,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
         if Task.isCancelled {
-            try? await finishSession(descriptor, reason: .userRequested)
+            await releaseSession(descriptor, reason: .userRequested)
             throw CancellationError()
         }
         activeSession = descriptor
@@ -180,6 +180,14 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             metadata: configuration.metadata
         )
         return try await startNativeNVSTSession(configuration: recoveryConfiguration)
+    }
+
+    /// Teardown for a session this launch attempt may not own. A resumed session belongs to
+    /// whichever device started it, so it is released locally (`.paused`, which reports nothing to
+    /// CloudMatch) instead of being stopped — stopping it ended the other device's stream.
+    func releaseSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async {
+        let resumed = session.metadata["isResume"] == "true"
+        try? await finishSession(session, reason: resumed ? .paused : reason)
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
@@ -245,7 +253,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         cancelled.0?.resume(throwing: CancellationError())
         if let client = cancelled.2 { await client.disconnect() }
         if let session = cancelled.1 {
-            try? await finishSession(session, reason: .userRequested)
+            await releaseSession(session, reason: .userRequested)
         }
     }
 
@@ -345,6 +353,9 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             "signalingUrl": sessionInfo.signalingUrl,
             "streamingBaseUrl": sessionInfo.streamingBaseUrl,
         ]) { _, new in new }
+        if configuration.resumesExistingSession || sessionInfo.isResume {
+            metadata["isResume"] = "true"
+        }
         if isSessionLimited {
             metadata["sessionLimitSeconds"] = String(sessionLimitSeconds(sessionInfo: sessionInfo))
             metadata["sessionLimitReason"] = sessionInfo.remainingSessionLimitSeconds > 0 ? "serverBacked" : "freeTier"

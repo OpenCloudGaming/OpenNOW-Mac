@@ -11,6 +11,8 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
+    private var deferredUpdateRelease: OpenNOWGitHubRelease?
+    private var streamEndUpdateObserver: NSObjectProtocol?
     private var streamShortcutMonitor: Any?
     private var isCompletingUserApprovedTermination = false
 
@@ -31,6 +33,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
+        bindUpdatePresentation()
         startApplicationUpdateChecks()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
     }
@@ -127,10 +130,25 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
     }
 
+    /// The modal and the What's New card drive the same updater instance the delegate owns, so the
+    /// install action behaves identically wherever it is triggered from.
+    private func bindUpdatePresentation() {
+        OpenNOWReleaseHistoryStore.shared.attach(githubUpdater)
+        let presentation = OpenNOWUpdatePresentation.shared
+        presentation.installHandler = { [weak self] release in
+            self?.installUpdate(release)
+        }
+        presentation.remindHandler = {
+            OpenNOWUpdatePreferences.remindTomorrow()
+        }
+    }
+
     private func stopApplicationUpdateChecks() {
         stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
         updateInstallTask?.cancel()
         updateInstallTask = nil
+        deferredUpdateRelease = nil
+        removeStreamEndUpdateObserver()
     }
 
     private func stopAutomaticApplicationUpdateChecks(cancelActiveCheck: Bool) {
@@ -163,56 +181,56 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
                 let release = try await githubUpdater.checkForUpdate()
                 guard let release else {
                     if showingCurrentStatus {
-                        let currentVersion = githubUpdater.currentVersion
-                        let alert = NSAlert()
-                        alert.messageText = "OpenNOW is up to date"
-                        alert.informativeText = "Version \(currentVersion) is the latest release available on GitHub."
-                        alert.addButton(withTitle: "OK")
-                        presentAlert(alert)
+                        OpenNOWUpdatePresentation.shared.present(.upToDate(version: githubUpdater.currentVersion))
                     }
                     return
                 }
-                presentUpdateAlert(for: release)
+                presentUpdate(for: release, automatic: automatic)
             } catch is CancellationError {
             } catch {
                 guard showingCurrentStatus else { return }
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Update check failed"
-                alert.informativeText = error.localizedDescription
-                alert.addButton(withTitle: "OK")
-                presentAlert(alert)
+                OpenNOWUpdatePresentation.shared.present(.checkFailed(message: error.localizedDescription))
             }
         }
     }
 
-    private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
+    /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
+    /// the stream to end. A check the user asked for is shown immediately either way.
+    private func presentUpdate(for release: OpenNOWGitHubRelease, automatic: Bool) {
+        guard !(automatic && WebRTCMediaStreamLifecycle.hasActiveStream) else {
+            OpenNOWLog.info(.app, "Deferring update prompt for \(release.version) until the active stream ends")
+            deferredUpdateRelease = release
+            observeStreamEndForDeferredUpdate()
+            return
+        }
         updateInstallTask?.cancel()
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let currentVersion = githubUpdater.currentVersion
-            var notes = release.releaseNotes.isEmpty ? "No release notes were provided." : release.releaseNotes
-            if notes.count > 1400 {
-                notes = String(notes.prefix(1400)) + "\n..."
-            }
+        OpenNOWUpdatePresentation.shared.present(.available(release))
+    }
 
-            let alert = NSAlert()
-            alert.messageText = "OpenNOW \(release.version) is available"
-            alert.informativeText = "Current version: \(currentVersion)\n\nA newer signed OpenNOW build is available.\n\n\(notes)"
-            alert.addButton(withTitle: "Install and Relaunch")
-            alert.addButton(withTitle: "Remind Me Tomorrow")
-            alert.addButton(withTitle: "Cancel")
-            presentAlert(alert) { [weak self] response in
-                switch response {
-                case .alertFirstButtonReturn:
-                    self?.installUpdate(release)
-                case .alertSecondButtonReturn:
-                    OpenNOWUpdatePreferences.remindTomorrow()
-                default:
-                    break
-                }
+    private func observeStreamEndForDeferredUpdate() {
+        guard streamEndUpdateObserver == nil else { return }
+        streamEndUpdateObserver = NotificationCenter.default.addObserver(
+            forName: WebRTCMediaStreamLifecycle.activeStreamDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                (NSApp.delegate as? OpenNOWAppDelegate)?.presentDeferredUpdateIfStreamEnded()
             }
         }
+    }
+
+    private func presentDeferredUpdateIfStreamEnded() {
+        guard !WebRTCMediaStreamLifecycle.hasActiveStream, let release = deferredUpdateRelease else { return }
+        deferredUpdateRelease = nil
+        removeStreamEndUpdateObserver()
+        OpenNOWUpdatePresentation.shared.present(.available(release))
+    }
+
+    private func removeStreamEndUpdateObserver() {
+        guard let streamEndUpdateObserver else { return }
+        NotificationCenter.default.removeObserver(streamEndUpdateObserver)
+        self.streamEndUpdateObserver = nil
     }
 
     private func installUpdate(_ release: OpenNOWGitHubRelease) {
@@ -220,36 +238,20 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         updateInstallTask = Task { @MainActor in
             defer { updateInstallTask = nil }
             do {
-                let launchedInstaller = try await githubUpdater.installRelease(release)
+                let launchedInstaller = try await githubUpdater.installRelease(release) { progress in
+                    Task { @MainActor in
+                        OpenNOWUpdatePresentation.shared.reportDownloadProgress(progress)
+                    }
+                }
                 guard launchedInstaller else {
-                    showUpdateInstallFailed(message: "OpenNOW could not launch the update installer.")
+                    OpenNOWUpdatePresentation.shared.reportInstallFailure("OpenNOW could not launch the update installer.")
                     return
                 }
                 NSApp.terminate(self)
             } catch is CancellationError {
             } catch {
-                showUpdateInstallFailed(message: error.localizedDescription.isEmpty ? "OpenNOW could not install the downloaded update." : error.localizedDescription)
+                OpenNOWUpdatePresentation.shared.reportInstallFailure(error.localizedDescription.isEmpty ? "OpenNOW could not install the downloaded update." : error.localizedDescription)
             }
-        }
-    }
-
-    private func showUpdateInstallFailed(message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Update install failed"
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        presentAlert(alert)
-    }
-
-    private func presentAlert(_ alert: NSAlert, completion: ((NSApplication.ModalResponse) -> Void)? = nil) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible }) {
-            alert.beginSheetModal(for: window) { response in
-                completion?(response)
-            }
-        } else {
-            let response = alert.runModal()
-            completion?(response)
         }
     }
 }

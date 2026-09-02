@@ -91,7 +91,14 @@ struct CatalogContentView: View {
                             }
 
                             if !viewModel.errorMessage.isEmpty {
-                                CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                CatalogMessageView(
+                                    message: viewModel.errorMessage,
+                                    systemImage: "exclamationmark.triangle.fill",
+                                    diagnosticsState: viewModel.diagnosticsState,
+                                    onGenerateDiagnostics: {
+                                        viewModel.presentDiagnosticsUploadConfirmation(context: viewModel.errorMessage)
+                                    }
+                                )
                                     .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
                             }
                             if viewModel.isBrowseMode {

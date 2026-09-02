@@ -183,6 +183,11 @@ final class CatalogViewModel {
     var catalogEndCursor = ""
     var errorMessage = ""
     var launchMessage = ""
+    /// Support-diagnostics generation, driven from both the About settings card and the home
+    /// error banner. See CatalogDiagnostics.swift.
+    var diagnosticsState = AboutDiagnosticsState.ready
+    var isDiagnosticsUploadConfirmationVisible = false
+    var diagnosticsErrorContext = ""
     var actionMessage = ""
     var marqueePanels: [OPNCatalogPanelObject] = [] {
         didSet { invalidateDerivedCatalogCaches() }

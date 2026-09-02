@@ -11,8 +11,6 @@ struct AboutSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
     @State private var copiedKey = ""
-    @State private var diagnosticsState = AboutDiagnosticsState.ready
-    @State private var showingDiagnosticsUploadConfirmation = false
     @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
@@ -81,6 +79,8 @@ struct AboutSettingsPage: View {
                 }
             }
 
+            WhatsNewCard(uiScale: uiScale)
+
             SettingsCard(title: "Cache", uiScale: uiScale) {
                 AboutDetailRow(label: "Catalog Images", value: viewModel.catalogImageCacheSummary, copyValue: viewModel.catalogImageCacheSummary, copiedKey: $copiedKey, uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
@@ -102,43 +102,25 @@ struct AboutSettingsPage: View {
                 VStack(alignment: .leading, spacing: 10 * uiScale) {
                     HStack(spacing: 10 * uiScale) {
                         SettingsActionButton(title: diagnosticsButtonTitle, uiScale: uiScale) {
-                            showingDiagnosticsUploadConfirmation = true
+                            viewModel.presentDiagnosticsUploadConfirmation()
                         }
-                        .disabled(diagnosticsState.isWorking)
+                        .disabled(viewModel.diagnosticsState.isWorking)
                         Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
                             .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                     }
-                    Text(diagnosticsState.message)
+                    Text(viewModel.diagnosticsState.message)
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.62))
+                        .foregroundStyle(viewModel.diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.62))
                 }
             }
         }
-            .disabled(showingDiagnosticsUploadConfirmation)
-
-            if showingDiagnosticsUploadConfirmation {
-                DiagnosticsUploadConfirmationDialog(
-                    cancel: { showingDiagnosticsUploadConfirmation = false },
-                    upload: {
-                        showingDiagnosticsUploadConfirmation = false
-                        generateUploadedDiagnostics()
-                    },
-                    uiScale: uiScale
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                .zIndex(1)
-            }
+            .disabled(viewModel.isDiagnosticsUploadConfirmationVisible)
         }
-        .animation(.easeOut(duration: 0.16), value: showingDiagnosticsUploadConfirmation)
         .onAppear {
             viewModel.refreshCatalogImageCacheSummary()
             telemetryDisabled = OPNSentry.isTelemetryDisabled()
         }
-    }
-
-    private var account: SettingsAccountSnapshot {
-        SettingsAccountSnapshot(viewModel: viewModel)
     }
 
     private var route: SettingsRouteSnapshot {
@@ -163,34 +145,8 @@ struct AboutSettingsPage: View {
         return "OpenNOW will not check for new releases automatically. Manual checks remain available."
     }
 
-    private var diagnosticsText: String {
-        diagnosticsText(logURL: nil, uploadError: "", inlineLog: "")
-    }
-
-    private func diagnosticsText(logURL: URL?, uploadError: String, inlineLog: String) -> String {
-        var lines = [
-            "OpenNOW Mac Diagnostics",
-            "Version: \(SettingsAppMetadata.versionWithBuild)",
-            "Bundle: \(bundleIdentifier)",
-            "macOS: \(operatingSystemVersion)",
-            "Account: \(account.displayName)",
-            "Membership: \(account.membershipTier)",
-            "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
-            "Streaming: WebRTC",
-            "Cloudmatch: \(route.summary)",
-            "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
-        ]
-        if !uploadError.isEmpty {
-            lines.append("Upload Error: \(uploadError)")
-        }
-        if !inlineLog.isEmpty {
-            lines.append(contentsOf: ["", "Inline Logs:", inlineLog])
-        }
-        return lines.joined(separator: "\n")
-    }
-
     private var diagnosticsButtonTitle: String {
-        switch diagnosticsState {
+        switch viewModel.diagnosticsState {
         case .ready, .failed: return "GENERATE DIAGNOSTICS"
         case .preparing, .readingLog, .uploading, .copying: return "WORKING"
         case .copied: return "COPIED"
@@ -200,38 +156,6 @@ struct AboutSettingsPage: View {
     private func setTelemetryDisabled(_ disabled: Bool) {
         telemetryDisabled = disabled
         OPNSentry.setTelemetryDisabled(disabled)
-    }
-
-    private func generateUploadedDiagnostics() {
-        guard !diagnosticsState.isWorking else { return }
-        Task { @MainActor in
-            diagnosticsState = .preparing
-            OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Preparing user-requested diagnostics upload"))
-            diagnosticsState = .readingLog
-            let logText = OPNSentry.diagnosticsLogForUpload()
-            diagnosticsState = .uploading
-            do {
-                let logURL = try await OPNSentry.uploadDiagnosticsLog(logText)
-                diagnosticsState = .copying
-                copy(diagnosticsText(logURL: logURL, uploadError: "", inlineLog: ""), key: "diagnostics")
-                diagnosticsState = .copied(logURL.absoluteString)
-                OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Uploaded sanitized diagnostics log url=\(logURL.absoluteString)"))
-            } catch {
-                let message = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
-                diagnosticsState = .copying
-                copy(diagnosticsText(logURL: nil, uploadError: message, inlineLog: logText), key: "diagnostics")
-                diagnosticsState = .failed(message)
-                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed; copied local diagnostics with inline logs error=\(message)"))
-            }
-        }
-    }
-
-    private func copy(_ value: String, key: String) {
-        guard !value.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
-        copiedKey = key
     }
 
 }

@@ -283,6 +283,50 @@ Regular. Hover: #FFFFFF @ 0.16 fill, 1px Stroke Strong. Selected: 2px accent
 stroke, accent checkmark trailing, and the `.isSelected` accessibility trait.
 Square corners.
 
+### Release Notes List (`OpenNOWReleaseNotesView`)
+
+Shared renderer for parsed GitHub release notes (`View/Components/OpenNOWReleaseNotes.swift`),
+used by the Update Modal and the What's New card. Section header is an eyebrow (10pt bold,
+tracking 1.1, Text Tertiary) with a trailing entry count in Text Muted; the settings density
+prefixes it with a 3×12 accent bar. Entries are a 3×3 accent square marker (top-aligned to the
+first line) over 12pt (modal) / 13pt (settings) medium Text Secondary text with 2pt line
+spacing. Commit SHA, pull request, and author render as trailing chips: 9–10pt bold Text Muted
+(Text Secondary on hover), 8 horizontal padding, height 18, #FFFFFF @ 0.05 fill (0.10 hover),
+1px Stroke Subtle, opening the GitHub URL on click. `entryLimit` truncates a section to N
+entries behind an accent `+N MORE` action (10pt bold, tracking 0.7); the modal passes nil and
+scrolls instead. Inline markdown (bold, links) is resolved at parse time; links tint accent.
+
+### Update Modal (`OpenNOWUpdateModal`)
+
+Centered dialog over the Scrim following the modal spec, mounted at the app root so it reaches
+the catalog, login wall, and stream surface alike. Up to 560 wide, shrinking to the window minus
+2 × 40 (Page Horizontal) with a 280 floor. 2px accent top bar; App Bar header block (18
+horizontal, 16 vertical) holding the eyebrow (10pt bold accent, tracking 1.1: UPDATE AVAILABLE /
+UP TO DATE / UPDATE CHECK FAILED / UPDATE INSTALL FAILED), a 20pt bold title, a 12pt medium Text
+Secondary subtitle (installed version · release date · download size), and the square 28×28
+close control. 1px Divider, then an 18-padded body: the Release Notes List inside a ScrollView
+capped at min(340, half the window height), or a 12pt medium message for the status variants.
+1px Divider, then a footer (18 horizontal, 12 vertical) with the accent VIEW ON GITHUB text
+action leading and LATER (`OpenNOWModalSecondaryButtonStyle`, height 36 — defers the
+prompt for a day) plus
+INSTALL AND RELAUNCH (`VendorGetInButtonStyle`) trailing.
+
+While installing, a Section Fill block with a 1px Divider stroke sits under the notes: DOWNLOADING
+or INSTALLING eyebrow, an 11pt bold byte readout, and a 3px progress bar — determinate as two
+Rectangles (accent over #FFFFFF @ 0.10), or `VendorIndeterminateProgressBar` when the server
+sends no content length. Buttons and the close control disable for the duration.
+
+### What's New Card (Settings → About)
+
+`SettingsCard` holding release history (`View/Settings/SettingsWhatsNewViews.swift`). When an
+update is pending, a strip leads the card: 4×32 accent bar, version with an accent AVAILABLE
+badge (9pt bold black on accent, height 18), installed-version and size subtitle, and a VIEW
+UPDATE `SettingsActionButton` that raises the Update Modal. Release rows are chevron + 14pt bold
+version + neutral INSTALLED badge (#FFFFFF @ 0.08 fill, Text Secondary) + date + entry count;
+clicking one expands the Release Notes List at settings density, indented 22, limited to 5
+entries per section. Rows are separated by `SettingsDivider`, and the card ends with an
+OPEN RELEASES ON GITHUB secondary action.
+
 ### Text Fields (login)
 
 14pt regular white text, accent caret, 16 horizontal / 14 vertical padding, #FFFFFF

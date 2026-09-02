@@ -146,6 +146,22 @@ struct OpenNOWApp: App {
                 } label: {
                     Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                 }
+                #if DEBUG
+                Menu("Preview Update Dialog") {
+                    Button("Update Available") {
+                        OpenNOWUpdatePresentation.shared.presentSampleUpdate()
+                    }
+                    Button("Up To Date") {
+                        OpenNOWUpdatePresentation.shared.presentSampleStatus(.upToDate(version: SettingsAppMetadata.version))
+                    }
+                    Button("Check Failed") {
+                        OpenNOWUpdatePresentation.shared.presentSampleStatus(.checkFailed(message: "The Internet connection appears to be offline."))
+                    }
+                    Button("Install Failed") {
+                        OpenNOWUpdatePresentation.shared.presentSampleStatus(.installFailed(message: "The downloaded app bundle did not pass macOS code-signature verification."))
+                    }
+                }
+                #endif
             }
             CommandMenu("Stream") {
                 Button("Join Remote Co-Op as Guest…") {

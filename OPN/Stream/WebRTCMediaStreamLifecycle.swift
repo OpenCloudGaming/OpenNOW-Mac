@@ -22,6 +22,10 @@ enum StreamAntiAFKInputPolicy {
 
 @MainActor
 public enum WebRTCMediaStreamLifecycle {
+    /// Posted whenever a stream starts or ends, so surfaces that must not interrupt gameplay — the
+    /// update prompt — can wait for the stream to finish instead of polling `hasActiveStream`.
+    public static let activeStreamDidChangeNotification = Notification.Name("OpenNOWActiveStreamDidChange")
+
     private static var activeStreamIDs: [UUID] = []
     private static var quitRequestHandlers: [UUID: WebRTCMediaStreamQuitRequestHandler] = [:]
     private static var commandHandlers: [UUID: WebRTCMediaStreamCommandHandler] = [:]
@@ -35,12 +39,14 @@ public enum WebRTCMediaStreamLifecycle {
         activeStreamIDs.append(id)
         quitRequestHandlers[id] = quitRequestHandler
         commandHandlers[id] = commandHandler
+        NotificationCenter.default.post(name: activeStreamDidChangeNotification, object: nil)
     }
 
     public static func deactivate(_ id: UUID) {
         activeStreamIDs.removeAll { $0 == id }
         quitRequestHandlers.removeValue(forKey: id)
         commandHandlers.removeValue(forKey: id)
+        NotificationCenter.default.post(name: activeStreamDidChangeNotification, object: nil)
     }
 
     public static func requestApplicationQuitDecision(completion: @escaping WebRTCMediaStreamQuitDecisionHandler) -> Bool {

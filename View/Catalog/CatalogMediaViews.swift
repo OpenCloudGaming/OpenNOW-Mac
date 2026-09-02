@@ -87,6 +87,10 @@ struct CatalogImageFallback: View {
 struct CatalogMessageView: View {
     let message: String
     let systemImage: String
+    /// Present on surfaces that can raise support diagnostics for the failure shown here. Nil
+    /// leaves the banner as a plain message (controller mode has no pointer for it).
+    var diagnosticsState: AboutDiagnosticsState?
+    var onGenerateDiagnostics: (() -> Void)?
     @State private var copiedDetails = false
 
     var body: some View {
@@ -128,11 +132,35 @@ struct CatalogMessageView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if let diagnosticsState, let onGenerateDiagnostics {
+                Button(action: onGenerateDiagnostics) {
+                    Text(Self.diagnosticsTitle(for: diagnosticsState))
+                        .nvidiaFont(size: 10, weight: .bold)
+                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent)
+                        .tracking(0.7)
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(OpenNOWDesign.accent.opacity(0.10))
+                        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.34), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .disabled(diagnosticsState.isWorking)
+                .help(diagnosticsState.message)
+            }
         }
         .padding(14)
         .background(Color.white.opacity(0.060))
         .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
         .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private static func diagnosticsTitle(for state: AboutDiagnosticsState) -> String {
+        switch state {
+        case .ready: return "DIAGNOSTICS"
+        case .preparing, .readingLog, .uploading, .copying: return "WORKING"
+        case .copied: return "COPIED"
+        case .failed: return "COPIED LOCALLY"
+        }
     }
 
     private func copy(_ value: String) {

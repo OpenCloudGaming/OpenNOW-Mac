@@ -37,6 +37,24 @@ extension ButtonStyle where Self == OpenNOWPressableButtonStyle {
     }
 }
 
+/// Secondary action inside a modal footer, sized to sit beside `VendorGetInButtonStyle(.regular)`.
+/// `SecondaryLoginButtonStyle` is the same design but predates interface scale and hardcodes its
+/// metrics, so it cannot be used on scaled chrome.
+struct OpenNOWModalSecondaryButtonStyle: ButtonStyle {
+    var uiScale: CGFloat = 1
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(OpenNOWNVIDIAFont.font(size: 13 * uiScale, weight: .bold))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .tracking(0.3)
+            .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
+            .frame(height: 36 * uiScale)
+            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+    }
+}
+
 struct OpenNOWCompactButtonStyle: ButtonStyle {
     enum Role {
         case primary

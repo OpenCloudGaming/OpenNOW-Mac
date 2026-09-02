@@ -1,13 +1,42 @@
 import Foundation
 import Security
 
-struct OpenNOWGitHubRelease: Sendable {
+/// A release as the About page lists it: version, date, and notes. The macOS asset is deliberately
+/// absent — releases predating the packaged zip still belong in the history, and requiring an asset
+/// here would drop them from the list instead of merely making them uninstallable.
+struct OpenNOWReleaseSummary: Sendable, Equatable, Identifiable {
     let version: String
     let tagName: String
     let releaseNotes: String
     let releaseURL: String
+    let publishedAt: Date?
+
+    var id: String { tagName.isEmpty ? version : tagName }
+}
+
+/// A release OpenNOW can actually install: a summary plus the signed macOS archive.
+struct OpenNOWGitHubRelease: Sendable, Equatable {
+    let summary: OpenNOWReleaseSummary
     let assetName: String
     let assetDownloadURL: String
+    let assetByteCount: Int64
+
+    var version: String { summary.version }
+    var tagName: String { summary.tagName }
+    var releaseNotes: String { summary.releaseNotes }
+    var releaseURL: String { summary.releaseURL }
+    var publishedAt: Date? { summary.publishedAt }
+}
+
+struct OpenNOWUpdateDownloadProgress: Sendable, Equatable {
+    let receivedBytes: Int64
+    let expectedBytes: Int64
+
+    /// `nil` when the server sends no content length; the modal shows an indeterminate bar then.
+    var fraction: Double? {
+        guard expectedBytes > 0 else { return nil }
+        return min(max(Double(receivedBytes) / Double(expectedBytes), 0), 1)
+    }
 }
 
 actor OpenNOWGitHubUpdater {
@@ -39,6 +68,7 @@ actor OpenNOWGitHubUpdater {
     private let owner: String
     private let repository: String
     let session: URLSession
+    private let releaseDateFormatter = ISO8601DateFormatter()
 
     init(owner: String, repository: String) {
         self.owner = owner
@@ -53,30 +83,7 @@ actor OpenNOWGitHubUpdater {
     }
 
     func checkForUpdate() async throws -> OpenNOWGitHubRelease? {
-        guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest") else {
-            throw UpdateError.invalidResponse("The GitHub release URL is invalid.")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("OpenNOW-Updater", forHTTPHeaderField: "User-Agent")
-
-        logInfo("Checking GitHub release metadata repository=\(owner)/\(repository) currentVersion=\(currentVersion)")
-        let networkStart = OPNNetworkLog.start(&request, operation: "updater.releaseMetadata")
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-            OPNNetworkLog.finish(request, operation: "updater.releaseMetadata", startedAt: networkStart, data: data, response: response, error: nil)
-        } catch {
-            OPNNetworkLog.finish(request, operation: "updater.releaseMetadata", startedAt: networkStart, data: nil, response: nil, error: error)
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
-            throw UpdateError.invalidResponse("GitHub did not return a valid release response.")
-        }
-
+        let data = try await fetchReleaseData(path: "releases/latest", operation: "updater.releaseMetadata")
         let decoded = try JSONSerialization.jsonObject(with: data)
         guard let json = decoded as? [String: Any] else {
             throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
@@ -87,7 +94,52 @@ actor OpenNOWGitHubUpdater {
         return compareVersion(release.version, to: currentVersion) > 0 ? release : nil
     }
 
-    func installRelease(_ release: OpenNOWGitHubRelease) async throws -> Bool {
+    /// Backs the About page's release history. Drafts are excluded; releases without a macOS asset
+    /// are kept, because the history is a reading surface rather than an install surface.
+    func recentReleases(limit: Int = 8) async throws -> [OpenNOWReleaseSummary] {
+        let boundedLimit = min(max(limit, 1), 30)
+        let data = try await fetchReleaseData(path: "releases?per_page=\(boundedLimit)", operation: "updater.releaseHistory")
+        let decoded = try JSONSerialization.jsonObject(with: data)
+        guard let entries = decoded as? [[String: Any]] else {
+            throw UpdateError.invalidResponse("GitHub release history was not valid JSON.")
+        }
+
+        let summaries = entries
+            .filter { ($0["draft"] as? Bool) != true }
+            .map(summary(from:))
+            .filter { !$0.version.isEmpty }
+        logInfo("GitHub release history received count=\(summaries.count) currentVersion=\(currentVersion)")
+        return summaries
+    }
+
+    private func fetchReleaseData(path: String, operation: String) async throws -> Data {
+        guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/\(path)") else {
+            throw UpdateError.invalidResponse("The GitHub release URL is invalid.")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("OpenNOW-Updater", forHTTPHeaderField: "User-Agent")
+
+        logInfo("Requesting GitHub release data repository=\(owner)/\(repository) path=\(path) currentVersion=\(currentVersion)")
+        let networkStart = OPNNetworkLog.start(&request, operation: operation)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+            OPNNetworkLog.finish(request, operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(request, operation: operation, startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
+            throw UpdateError.invalidResponse("GitHub did not return a valid release response.")
+        }
+        return data
+    }
+
+    func installRelease(_ release: OpenNOWGitHubRelease, progress: @escaping @Sendable (OpenNOWUpdateDownloadProgress) -> Void = { _ in }) async throws -> Bool {
         let bundleURL = Bundle.main.bundleURL
         guard bundleURL.pathExtension.lowercased() == "app" else {
             throw UpdateError.notBundledApp
@@ -97,12 +149,16 @@ actor OpenNOWGitHubUpdater {
         }
 
         var request = URLRequest(url: downloadURL)
-        logInfo("Downloading update archive version=\(release.version) asset=\(release.assetName)")
+        logInfo("Downloading update archive version=\(release.version) asset=\(release.assetName) bytes=\(release.assetByteCount)")
+        // The release metadata already carries the asset size, so the bar is determinate from the
+        // first byte even before the response headers land.
+        progress(OpenNOWUpdateDownloadProgress(receivedBytes: 0, expectedBytes: release.assetByteCount))
+        let observer = DownloadProgressObserver(fallbackExpectedBytes: release.assetByteCount, handler: progress)
         let networkStart = OPNNetworkLog.start(&request, operation: "updater.archiveDownload")
         let archiveURL: URL
         let response: URLResponse
         do {
-            (archiveURL, response) = try await session.download(for: request)
+            (archiveURL, response) = try await session.download(for: request, delegate: observer)
             OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -113,6 +169,26 @@ actor OpenNOWGitHubUpdater {
         }
 
         return try stageAndLaunchInstaller(downloadedArchiveURL: archiveURL, release: release, currentBundleURL: bundleURL)
+    }
+
+    /// Per-task delegate: `download(for:delegate:)` handles completion itself, but still forwards
+    /// byte-count callbacks, which is the only way to show progress without hand-rolling the write
+    /// loop over `URLSession.bytes`.
+    private final class DownloadProgressObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+        private let fallbackExpectedBytes: Int64
+        private let handler: @Sendable (OpenNOWUpdateDownloadProgress) -> Void
+
+        init(fallbackExpectedBytes: Int64, handler: @escaping @Sendable (OpenNOWUpdateDownloadProgress) -> Void) {
+            self.fallbackExpectedBytes = fallbackExpectedBytes
+            self.handler = handler
+        }
+
+        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+            let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : fallbackExpectedBytes
+            handler(OpenNOWUpdateDownloadProgress(receivedBytes: totalBytesWritten, expectedBytes: expected))
+        }
+
+        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
     }
 
     private func stageAndLaunchInstaller(downloadedArchiveURL: URL, release: OpenNOWGitHubRelease, currentBundleURL: URL) throws -> Bool {
@@ -189,11 +265,20 @@ actor OpenNOWGitHubUpdater {
         OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Update", message: message))
     }
 
-    private func release(from json: [String: Any]) throws -> OpenNOWGitHubRelease {
+    private func summary(from json: [String: Any]) -> OpenNOWReleaseSummary {
         let tagName = json["tag_name"] as? String ?? ""
-        let version = normalizedVersion(tagName)
-        let releaseNotes = json["body"] as? String ?? ""
-        let releaseURL = json["html_url"] as? String ?? ""
+        let publishedText = json["published_at"] as? String ?? json["created_at"] as? String
+        return OpenNOWReleaseSummary(
+            version: normalizedVersion(tagName),
+            tagName: tagName,
+            releaseNotes: json["body"] as? String ?? "",
+            releaseURL: json["html_url"] as? String ?? "",
+            publishedAt: publishedText.flatMap { releaseDateFormatter.date(from: $0) }
+        )
+    }
+
+    private func release(from json: [String: Any]) throws -> OpenNOWGitHubRelease {
+        let summary = summary(from: json)
         let assets = json["assets"] as? [[String: Any]] ?? []
         let selectedAsset = assets.first { asset in
             let name = asset["name"] as? String ?? ""
@@ -208,17 +293,15 @@ actor OpenNOWGitHubUpdater {
         }
         let assetName = selectedAsset["name"] as? String ?? ""
         let assetDownloadURL = selectedAsset["browser_download_url"] as? String ?? ""
-        guard !version.isEmpty, !assetDownloadURL.isEmpty else {
+        guard !summary.version.isEmpty, !assetDownloadURL.isEmpty else {
             throw UpdateError.noReleaseAsset
         }
 
         return OpenNOWGitHubRelease(
-            version: version,
-            tagName: tagName,
-            releaseNotes: releaseNotes,
-            releaseURL: releaseURL,
+            summary: summary,
             assetName: assetName,
-            assetDownloadURL: assetDownloadURL
+            assetDownloadURL: assetDownloadURL,
+            assetByteCount: (selectedAsset["size"] as? NSNumber)?.int64Value ?? 0
         )
     }
 

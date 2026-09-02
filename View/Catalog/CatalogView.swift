@@ -240,6 +240,16 @@ struct CatalogView: View {
                             .transition(.opacity)
                             .zIndex(18)
                     }
+
+                    if viewModel.isDiagnosticsUploadConfirmationVisible {
+                        DiagnosticsUploadConfirmationDialog(
+                            cancel: { viewModel.cancelDiagnosticsUpload() },
+                            upload: { viewModel.confirmDiagnosticsUpload() },
+                            uiScale: uiScale
+                        )
+                        .transition(.opacity)
+                        .zIndex(19)
+                    }
                 }
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)

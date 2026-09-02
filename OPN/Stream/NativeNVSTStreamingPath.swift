@@ -192,22 +192,25 @@ public actor NativeNVSTStreamingPath {
         }
 
         do {
-            try await stopSessionIfCancelled(allocation.session)
+            try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
             try await publishProgress(configuration: configuration, step: .receiveStreamOffer, message: "Preparing native NVST transport...", progress: progress)
             try validate(allocation: allocation)
             try await publishProgress(configuration: configuration, step: .negotiateWebRTC, message: "Connecting native NVST secure RTSP transport...", progress: progress)
             _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
-            try await stopSessionIfCancelled(allocation.session)
+            try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
         } catch {
             await transport.disconnect()
             await mediaSession.finish()
+            // On a resume attempt allocation.session IS the session the user is trying to
+            // reclaim, and it can still be live on the device that started it. `.paused` tears
+            // down our side without telling the seat to stop — stopping it here killed the other
+            // device's stream on every failed resume.
+            let releaseReason: StreamEndReason = allocation.isResume
+                ? .paused
+                : (Task.isCancelled ? .userRequested : .failed)
             if error as? NativeNVSTError == .sessionLimitReached {
-                // The blocking session is a different one whose identity this error does
-                // not carry. On a resume attempt allocation.session IS the session the user
-                // is trying to reclaim, so only clean up sessions this attempt created.
-                if !allocation.isResume {
-                    try? await sessionProvider.finishSession(allocation.session, reason: .failed)
-                }
+                // The blocking session is a different one whose identity this error does not carry.
+                try? await sessionProvider.finishSession(allocation.session, reason: releaseReason)
                 if let conflict = await sessionProvider.lookupActiveSessionConflict(
                     excludingSessionID: allocation.session.id,
                     applicationID: configuration.applicationID
@@ -216,7 +219,7 @@ public actor NativeNVSTStreamingPath {
                 }
                 throw error
             }
-            try? await sessionProvider.finishSession(allocation.session, reason: Task.isCancelled ? .userRequested : .failed)
+            try? await sessionProvider.finishSession(allocation.session, reason: releaseReason)
             if error is CancellationError || Task.isCancelled { throw error }
             WebRTCMediaTelemetry.capture("nvst.path.transport.error", level: .error, message: Self.message(for: error), attributes: ["sessionId": allocation.session.id])
             throw error
@@ -402,10 +405,12 @@ public actor NativeNVSTStreamingPath {
         cancelStartTask = nil
     }
 
-    private func stopSessionIfCancelled(_ session: StreamSessionDescriptor) async throws {
+    private func stopSessionIfCancelled(_ session: StreamSessionDescriptor, isResume: Bool) async throws {
         guard Task.isCancelled else { return }
         await transport.disconnect()
-        try? await sessionProvider.finishSession(session, reason: .userRequested)
+        // Cancelling a resume must leave the reclaimed session alive: it belongs to whichever
+        // device is still streaming it.
+        try? await sessionProvider.finishSession(session, reason: isResume ? .paused : .userRequested)
         throw CancellationError()
     }
 
