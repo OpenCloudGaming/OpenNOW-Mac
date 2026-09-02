@@ -180,12 +180,37 @@ struct ControllerGameTile: View, Equatable {
     let tileSize: CGSize
     let action: () -> Void
 
+    // `View` conformance isolates the whole struct to the main actor, and `==` has to stay
+    // `nonisolated` to satisfy `Equatable`, so it can only read stored properties that are both
+    // `let` and `Sendable`. `OPNCatalogGameObject` is neither, so the identity the comparison
+    // actually wants is snapshotted here at init instead of being derived from the object.
+    private let gameIdentity: String
+
+    init(
+        game: OPNCatalogGameObject,
+        imageURL: URL?,
+        isFocused: Bool,
+        isQueuedForPatching: Bool,
+        showsFreeAccountAccessBadges: Bool,
+        tileSize: CGSize,
+        action: @escaping () -> Void
+    ) {
+        self.game = game
+        self.imageURL = imageURL
+        self.isFocused = isFocused
+        self.isQueuedForPatching = isQueuedForPatching
+        self.showsFreeAccountAccessBadges = showsFreeAccountAccessBadges
+        self.tileSize = tileSize
+        self.action = action
+        self.gameIdentity = game.catalogIdentity
+    }
+
     // The action closure is deliberately excluded: it is rebuilt on every parent render but always
     // targets the same game, and comparing it would defeat the `.equatable()` body-skip that keeps
     // a d-pad move from re-evaluating every visible tile. The card this replaced had exactly this
     // conformance; swapping it out silently dropped the skip.
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.game.catalogIdentity == rhs.game.catalogIdentity
+        lhs.gameIdentity == rhs.gameIdentity
             && lhs.imageURL == rhs.imageURL
             && lhs.isFocused == rhs.isFocused
             && lhs.isQueuedForPatching == rhs.isQueuedForPatching

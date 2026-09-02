@@ -25,6 +25,7 @@ import Foundation
 /// move, zoom, menu tracking, a modal session — so the only safe move is to wait for the default
 /// mode to come back.
 enum StreamWindowGeometryGate {
+    @MainActor
     static func isLiveResizing(_ window: NSWindow) -> Bool {
         window.inLiveResize || window.contentView?.inLiveResize == true
     }
