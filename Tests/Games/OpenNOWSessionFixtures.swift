@@ -34,19 +34,30 @@ func parsePhysicalResolutionMetadata(_ metadata: [[String: String]]) -> [String:
     return object
 }
 
-func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", extraSession: [String: Any] = [:]) -> [String: Any] {
+func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", advertisesNvstControlEndpoint: Bool = false, extraSession: [String: Any] = [:]) -> [String: Any] {
+    // The default is a seat provisioned for a WebRTC client: one `/nvst/` endpoint on 443 and no
+    // RTSPS control port. A seat that has accepted an NVST hand-over publishes `:322` as well.
+    var connectionInfo: [[String: Any]] = [[
+        "usage": 14,
+        "ip": "signaling.example.test",
+        "port": 443,
+        "resourcePath": "/nvst/",
+    ]]
+    if advertisesNvstControlEndpoint {
+        connectionInfo.append([
+            "usage": 14,
+            "appLevelProtocol": 6,
+            "port": 322,
+            "resourcePath": "rtsps://\(controlHost):322",
+        ])
+    }
     var session: [String: Any] = [
         "sessionId": "resume-session",
         "status": sessionStatus,
         "gpuType": "L40",
         "sessionRequestData": ["appId": 123],
         "sessionControlInfo": ["ip": controlHost],
-        "connectionInfo": [[
-            "usage": 14,
-            "ip": "signaling.example.test",
-            "port": 443,
-            "resourcePath": "/nvst/",
-        ]],
+        "connectionInfo": connectionInfo,
         "monitorSettings": [[
             "widthInPixels": 1920,
             "heightInPixels": 1080,

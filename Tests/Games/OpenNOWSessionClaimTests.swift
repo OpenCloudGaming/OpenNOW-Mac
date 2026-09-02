@@ -86,7 +86,9 @@ import Foundation
             getCount += 1
             let count = getCount
             lock.unlock()
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host))
+            // Post-hand-over the seat publishes its RTSPS control endpoint; the claim poll waits
+            // for that before reporting the session ready on NVST.
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host, advertisesNvstControlEndpoint: count > 1))
         }
         return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
     }

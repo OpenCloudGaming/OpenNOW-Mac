@@ -256,6 +256,11 @@ extension OPNSessionManager {
     func currentAccessToken() -> String { lock.withLock { accessToken } }
     func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
+    /// How long the claim poll waits for the seat to publish its RTSPS control endpoint before
+    /// accepting the session anyway: ~18s at the current backoff, against a measured seat
+    /// re-provisioning time of ~4s.
+    static var nvstControlEndpointGraceAttempts: Int { 30 }
+
     /// True once the session advertises an NVST RTSPS control endpoint. A seat still provisioned
     /// for the client that created the session (a phone's WebRTC session, say) lists only its
     /// `/nvst/` endpoint on 443 — `appLevelProtocol` 5 — and publishes `:322` after the RESUME

@@ -290,10 +290,13 @@ extension OPNSessionManager {
                 context.complete(false, [:], "Resume returned a different session id")
                 return
             }
-            if context.requiresNvstControlEndpoint, !hasAdvertisedNvstControlEndpoint(session) {
+            if context.requiresNvstControlEndpoint, attempt < Self.nvstControlEndpointGraceAttempts,
+               !hasAdvertisedNvstControlEndpoint(session) {
                 // The seat reports the session ready while still provisioned for the client that
                 // created it. Connecting now reaches a host with no RTSP service (HTTP 501), so
-                // keep polling until the hand-over publishes the control endpoint.
+                // keep polling until the hand-over publishes the control endpoint. Bounded: past
+                // the grace window, hand back what the seat gave us and let the transport report
+                // the real failure rather than timing out the whole poll budget.
                 context.retry(after: pollDelay(attempt), attempt: attempt + 1)
                 return
             }
