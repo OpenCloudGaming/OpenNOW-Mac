@@ -167,7 +167,19 @@ enum OPNRemoteCoOpTLSIdentity {
         importLock.lock()
         defer { importLock.unlock() }
         var items: CFArray?
-        let options: [String: Any] = [kSecImportExportPassphrase as String: passphrase]
+        // `kSecImportToMemoryOnly` is not optional. Without it `SecPKCS12Import` imports into the
+        // default keychain on macOS - the documented behaviour, and the opposite of what the note
+        // on `storeDirectory()` promises. Every start left its certificate and RSA private key in
+        // the login keychain permanently: 3196 of them had accumulated by the time it was found,
+        // 99% of a 13MB keychain, and since `codesign` trust-evaluates every certificate while
+        // looking up a signing identity, it had grown into ~1.35s on each of the three bundles
+        // signed per build. Nothing reads these back - `identity(for:)` always re-imports from the
+        // stored p12 - so the keychain copy was pure leak. macOS 15 and later; the deployment
+        // target is 15.0.
+        let options: [String: Any] = [
+            kSecImportExportPassphrase as String: passphrase,
+            kSecImportToMemoryOnly as String: true,
+        ]
         let status = SecPKCS12Import(p12 as CFData, options as CFDictionary, &items)
         guard status == errSecSuccess,
               let array = items as? [[String: Any]],
