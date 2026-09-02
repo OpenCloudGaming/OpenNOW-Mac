@@ -88,7 +88,6 @@ public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Send
     let lock = NSLock()
     var bundle: NvstUdpPortReservation?
     private var mjolnir: NvstUdpPortReservation?
-    private var audio: NvstUdpPortReservation?
     private let dtlsFingerprint: String?
     private let iceCredentials: NvstRtspIceCredentials
 
@@ -121,43 +120,29 @@ public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Send
             bundleSocket.release()
             throw error
         }
-        // Opt-in: without a socket of its own, audio stays on the bundle, where libwebrtc handles
-        // it. That path delivers audio but NetEq mangles it, so this is the replacement.
-        var audioSocket: NvstUdpPortReservation?
-        if Self.receivesAudioOnOwnSocket {
-            audioSocket = try? NvstUdpPortReservation.bindEphemeral()
-        }
-        store(bundle: bundleSocket, mjolnir: mjolnirSocket, audio: audioSocket)
+        // Audio stays on the bundle, where libwebrtc handles it. Reserving a socket of our own was
+        // tried at length and removed: the seat accepts `SETUP streamid=audio/0` and reads
+        // `general.clientPorts.audio`, then routes no audio to it - and publishing that port flips
+        // `carriesAudioOnBundle` false, which also stops the seat sending *video* (repeated
+        // "receiver-report tick produced nothing (ssrc=unbound)", no picture). `audioPort` stays in
+        // the reservation type as nil so ANNOUNCE keeps the shape a working session negotiates.
+        store(bundle: bundleSocket, mjolnir: mjolnirSocket)
         return NvstBundleReservation(
             bundlePort: bundleSocket.port,
             mjolnirPort: mjolnirSocket.port,
-            audioPort: audioSocket?.port,
+            audioPort: nil,
             localAddress: NvstRoutedIPv4.discover(),
             iceCredentials: iceCredentials,
             dtlsFingerprint: dtlsFingerprint
         )
     }
 
-    /// Whether audio should be received on a socket we own instead of through libwebrtc.
-    public static var receivesAudioOnOwnSocket: Bool {
-        ProcessInfo.processInfo.environment["OPN_NVST_AUDIO_SOCKET"] == "1"
-    }
-
     private func store(bundle: NvstUdpPortReservation,
-                       mjolnir: NvstUdpPortReservation,
-                       audio: NvstUdpPortReservation?) {
+                       mjolnir: NvstUdpPortReservation) {
         lock.withLock {
             self.bundle = bundle
             self.mjolnir = mjolnir
-            self.audio = audio
         }
-    }
-
-    /// Hands the audio socket to the audio receiver, preserving its NAT mapping.
-    public func takeAudioDescriptor() -> Int32 {
-        lock.lock()
-        defer { lock.unlock() }
-        return audio?.takeDescriptor() ?? -1
     }
 
     /// Hands the Mjolnir socket to the video receiver, preserving the NAT mapping.
@@ -175,10 +160,9 @@ public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Send
 
     public func release() {
         lock.lock()
-        let sockets = [bundle, mjolnir, audio].compactMap { $0 }
+        let sockets = [bundle, mjolnir].compactMap { $0 }
         bundle = nil
         mjolnir = nil
-        audio = nil
         lock.unlock()
         sockets.forEach { $0.release() }
     }

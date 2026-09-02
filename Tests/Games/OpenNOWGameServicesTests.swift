@@ -99,26 +99,31 @@ import Foundation
 }
 
 @Test func streamCoordinatorNativeNVSTRequiresNVSTTransportSelectionBeforeNetworkWork() async {
-    let originalTransportModeIndex = OPNStreamPreferences.loadProfile().transportModeIndex
-    OPNStreamPreferences.saveNVSTTransportEnabled(false)
-    defer { OPNStreamPreferences.saveTransportModeIndex(originalTransportModeIndex) }
+    // Holds the transport preference for the whole test: another suite writes the same key, and its
+    // write landing between the save below and the coordinator's read made this fail with "No access
+    // token" - the coordinator getting past a transport check that was supposed to stop it.
+    await streamPreferencesTestIsolationLock.withLock {
+        let originalTransportModeIndex = OPNStreamPreferences.loadProfile().transportModeIndex
+        OPNStreamPreferences.saveNVSTTransportEnabled(false)
+        defer { OPNStreamPreferences.saveTransportModeIndex(originalTransportModeIndex) }
 
-    let coordinator = OpenNOWStreamSessionCoordinator()
-    let configuration = StreamLaunchConfiguration(
-        title: "WebRTC Selected",
-        applicationID: "987654321",
-        accessToken: "",
-        accountLinked: true,
-        selectedStore: "Steam"
-    )
+        let coordinator = OpenNOWStreamSessionCoordinator()
+        let configuration = StreamLaunchConfiguration(
+            title: "WebRTC Selected",
+            applicationID: "987654321",
+            accessToken: "",
+            accountLinked: true,
+            selectedStore: "Steam"
+        )
 
-    do {
-        _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
-        Issue.record("Expected native NVST coordinator to reject WebRTC transport selection")
-    } catch let error as OpenNOWStreamSessionError {
-        #expect(error.errorDescription == "Native NVST session requested while WebRTC transport is selected.")
-    } catch {
-        Issue.record("Unexpected error type: \(error)")
+        do {
+            _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
+            Issue.record("Expected native NVST coordinator to reject WebRTC transport selection")
+        } catch let error as OpenNOWStreamSessionError {
+            #expect(error.errorDescription == "Native NVST session requested while WebRTC transport is selected.")
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
     }
 }
 
@@ -259,11 +264,10 @@ import Foundation
 @Test func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "*"
-    SessionManagerURLProtocol.install(host: host) { request in
-        #expect(request.httpMethod == "GET")
-        #expect(request.url?.path == "/v2/session")
-        #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token")
-        return SessionManagerURLProtocol.response(json: [
+    // Asserted after the call rather than inside the handler: a `URLProtocol` runs on a networking
+    // thread outside any test's scope, so a failure there is attributed to no test at all.
+    SessionManagerURLProtocol.install(host: host, paths: ["/v2/session"]) { _ in
+        SessionManagerURLProtocol.response(json: [
             "requestStatus": [
                 "statusCode": 1,
                 "statusDescription": "SUCCESS",
@@ -287,6 +291,8 @@ import Foundation
 
     let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
     let plan = try #require(result.2)
+    #expect(request.httpMethod == "GET")
+    #expect(request.url?.path == "/v2/session")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token")
     #expect(result.0 == true)
     #expect(result.1 == "Launching Regression Game...")

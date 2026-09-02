@@ -64,7 +64,13 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var latestNativeStats: NativeNVSTPerformanceSnapshot?
     var nativeStatsTask: Task<Void, Never>?
     var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
-    var inputDispatcher: NativeNVSTInputDispatcher?
+    /// Held in a lock-guarded holder rather than directly, so Remote Co-Op guest input can reach the
+    /// dispatcher without hopping to this actor. See `NativeNVSTInputDispatcherHolder`.
+    let inputDispatcherHolder = NativeNVSTInputDispatcherHolder()
+    var inputDispatcher: NativeNVSTInputDispatcher? {
+        get { inputDispatcherHolder.dispatcher }
+        set { inputDispatcherHolder.dispatcher = newValue }
+    }
     @Published var microphoneAvailable = false
     @Published var microphoneEnabled = false
     var microphoneDesiredEnabled = false
@@ -72,6 +78,13 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var microphonePendingStates: [Bool] = []
     @Published var microphoneUpdateTask: Task<Void, Never>?
     @Published var antiAFKMouseMovementEnabled = false
+    /// Local speaker output only - a guest over Remote Co-Op still hears everything regardless, since
+    /// the audio relay taps decoded PCM independently of the player this mutes. Exists for testing a
+    /// session host and guest side on the same Mac, where both otherwise play the same audio at once.
+    @Published var nativeLocalAudioMuted = false
+    /// True while `startRemoteCoOpInvite` is building a session. Published so the HUD button follows
+    /// it; see `canStartRemoteCoOpInvite`.
+    @Published var isStartingRemoteCoOpInvite = false
     var antiAFKMouseMovementTask: Task<Void, Never>?
     var lastAcceptedStreamInputAt = Date()
     @Published var transientStreamMessage = ""
@@ -80,6 +93,42 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var streamingPerformanceActivity: (any NSObjectProtocol)?
     @Published var sessionLimit: StreamSessionSidebarLimit?
     @Published var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
+
+    // MARK: - Remote Co-Op
+    //
+    // The host half of a Remote Co-Op session. The relays are created here rather than inside the
+    // transport so they survive `makeTransport` and can be handed to the peer controller: they are
+    // the seam between the NVST decode/audio threads and each guest's WebRTC peer.
+    let remoteCoOpHostSession = OPNRemoteCoOpHostSession()
+    let remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
+    let remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
+    var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
+    var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
+    var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
+    var remoteCoOpListenTask: Task<Void, Never>?
+    /// Set only while OpenNOW is hosting the signaling itself, and stopped with the invite.
+    var remoteCoOpEmbeddedServer: OPNRemoteCoOpEmbeddedServer?
+    /// The listener native guests connect to. Held so the HUD can show the address a guest joining
+    /// over a tunnel has to type, which Bonjour cannot deliver to them.
+    var remoteCoOpNativeServer: OPNRemoteCoOpNativeGuestServer?
+    @Published var remoteCoOpNativeGuestAddress: String?
+    /// What each guest is really receiving, refreshed with the snapshot. A preset is a ceiling, so
+    /// this is the only place the difference between "asked for 4K" and "getting 4K" is visible.
+    @Published var remoteCoOpDeliveryStats: [UUID: OPNRemoteCoOpGuestDeliveryStats] = [:]
+    @Published var remoteCoOpCertificateFingerprint: String?
+    @Published var remoteCoOpIsLocallyHosted = false
+    @Published var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
+    @Published var remoteCoOpMessage = ""
+    var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(
+        transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode,
+        latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode
+    )
+    /// The pads physically attached to this Mac. Guest slots are merged with these before the seat
+    /// is told the topology, so a guest joining never un-announces the host's own controller.
+    var localGamepadTopology = NativeWebRTCGamepadTopology(playerIndices: [])
+    /// What the seat was last told is connected. Diffed on every announce so a pad leaving the set
+    /// gets a neutral state before it stops being announced.
+    var lastAnnouncedGamepadIndices: Set<Int> = []
     var networkGovernor: NativeNVSTNetworkGovernor?
     var networkPathTask: Task<Void, Never>?
     @Published var networkPathAvailable = true
@@ -221,7 +270,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)
-            }
+            },
+            remoteCoOpVideoRelay: remoteCoOpVideoRelay,
+            remoteCoOpAudioRelay: remoteCoOpAudioRelay
         )
         // Match the local pointer to the game's: the seat stops compositing its own cursor as soon
         // as it starts publishing cursor state, so from then on the only pointer is ours and it has
@@ -286,7 +337,14 @@ final class NativeNVSTHostViewModel: ObservableObject {
         nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
         nativeView.setNativeNVSTVideoVisible(true)
         nativeView.restoreInputFocus()
-        Task { try? await path.updateGamepadTopology(nativeView.gamepadTopology) }
+        localGamepadTopology = nativeView.gamepadTopology
+        // Through the same entry point as every other announce, so `lastAnnouncedGamepadIndices`
+        // reflects what the seat was actually told. Announcing directly here left it empty, and the
+        // first unplug then had nothing to diff against and skipped the pad's release.
+        Task { @MainActor in await syncRemoteCoOpGamepadTopology() }
+        // Loads the launch-time Remote Co-Op preferences and sizes the guest relay. Nothing is
+        // advertised or connected here - the invite is still an explicit action in the HUD.
+        refreshRemoteCoOpState()
         loadingStepIndex = StreamLaunchStep.connected.rawValue
         startNativeStatsPolling(path: path)
         refreshAntiAFKMouseMovementTask()

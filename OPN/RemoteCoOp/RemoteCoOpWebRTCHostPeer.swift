@@ -16,17 +16,18 @@ public struct OPNRemoteCoOpWebRTCHostPeerFactory: OPNRemoteCoOpHostPeerFactory {
 
 public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, OPNRemoteCoOpHostAudioSink, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
     public let participantID: UUID
-    private static let inputChannelLabel = "remote-coop-input"
-    private let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
-    private let qualityPreset: OPNRemoteCoOpQualityPreset
-    private let latencyMode: OPNRemoteCoOpLatencyMode
-    private let callbacks: OPNRemoteCoOpHostPeerCallbacks
-    private let stateLock = NSLock()
-    private let videoQueue: DispatchQueue
+    private static let inputChannelLabel = OPNRemoteCoOpDataChannelLabel.input
+    let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    /// Mutable: the host can retarget one guest mid-session. Guarded by `stateLock`.
+    var qualityPreset: OPNRemoteCoOpQualityPreset
+    let latencyMode: OPNRemoteCoOpLatencyMode
+    let callbacks: OPNRemoteCoOpHostPeerCallbacks
+    let stateLock = NSLock()
+    let videoQueue: DispatchQueue
     private var factory: RTCPeerConnectionFactory?
     private var peerConnection: RTCPeerConnection?
-    private var videoSource: RTCVideoSource?
-    private var videoCapturer: RTCVideoCapturer?
+    var videoSource: RTCVideoSource?
+    var videoCapturer: RTCVideoCapturer?
     private var videoTrack: RTCVideoTrack?
     private var videoSender: RTCRtpSender?
     private var audioDevice: OPNRemoteCoOpHostAudioDevice?
@@ -34,12 +35,23 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private var audioTrack: RTCAudioTrack?
     private var audioSender: RTCRtpSender?
     private var inputChannels: [RTCDataChannel] = []
-    private var lastVideoFrameTimestampNs: Int64 = 0
-    private var pendingVideoFrame: RTCVideoFrame?
-    private var isVideoFrameDeliveryScheduled = false
-    private var nextVideoFrameDeliveryNanoseconds: UInt64 = 0
-    private var deliveredVideoFrameCount: UInt64 = 0
-    private var droppedVideoFrameCount: UInt64 = 0
+    /// Owned by `videoQueue`. See `OPNRemoteCoOpVideoRateLimiter` for why frames are never delayed.
+    var videoRateLimiter: OPNRemoteCoOpVideoRateLimiter
+    /// Published copies of the limiter's counters, for readers that are not on `videoQueue`. Reading
+    /// the limiter itself from the stats task raced the per-frame mutation.
+    var publishedRelayCounts = (forwarded: UInt64(0), dropped: UInt64(0))
+    var senderStatsTask: Task<Void, Never>?
+    /// Previous outbound sample, so rates can be differenced rather than reported as lifetime sums.
+    var previousSenderStats: (framesEncoded: Int, framesSent: Int, encodeTime: Double, timestamp: Date)?
+    var previousSendDelay: Double?
+    var previousPacketsSent: Int?
+    /// The size of the last frame handed to this peer, which is the ceiling on what its guest can be
+    /// sent. Recorded here rather than asked of the relay because the peer already sees every frame,
+    /// and it is what separates "the link is slow" from "the preset is above what the seat produces".
+    var lastSourceWidth = 0
+    var lastSourceHeight = 0
+    /// What was last handed to `adaptOutputFormat`, so a re-request only happens when it would differ.
+    var appliedAdaptBox = (width: 0, height: 0, fps: 0)
     private var isClosed = false
 
     public init(participantID: UUID,
@@ -53,6 +65,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         self.latencyMode = latencyMode
         self.callbacks = callbacks
         self.videoQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.video.\(participantID.uuidString)")
+        self.videoRateLimiter = OPNRemoteCoOpVideoRateLimiter(targetFps: qualityPreset.fps)
         super.init()
     }
 
@@ -61,6 +74,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         let peerConnection = try makePeerConnection()
         createInputChannel(peerConnection: peerConnection)
         try await createAndSendOffer(peerConnection: peerConnection)
+        startSenderStatsPolling(peerConnection: peerConnection)
         WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.started", level: .info, message: "WebRTC Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
     }
 
@@ -71,23 +85,51 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             try await setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp))
         case .iceCandidate:
             guard let candidate = signal.candidate, !candidate.isEmpty else { throw OPNRemoteCoOpHostPeerError.invalidSignal }
-            try await addIceCandidate(RTCIceCandidate(sdp: candidate, sdpMLineIndex: Int32(signal.sdpMLineIndex ?? 0), sdpMid: signal.sdpMid))
+            // `Int32(_:)` traps on anything a 32-bit integer cannot hold, and this value is decoded
+            // straight out of a guest's JSON, so an m-line index of 2147483648 crashed the whole
+            // process from the far side of the wire.
+            guard let mLineIndex = Int32(exactly: signal.sdpMLineIndex ?? 0) else { throw OPNRemoteCoOpHostPeerError.invalidSignal }
+            try await addIceCandidate(RTCIceCandidate(sdp: candidate, sdpMLineIndex: mLineIndex, sdpMid: signal.sdpMid))
         case .offer:
             throw OPNRemoteCoOpHostPeerError.invalidSignal
         }
     }
 
+    /// What `close()` carries out of the lock so libwebrtc is never called while it is held.
+    private struct ClosingState {
+        var peerConnection: RTCPeerConnection?
+        var inputChannels: [RTCDataChannel] = []
+        var videoTrack: RTCVideoTrack?
+        var videoSender: RTCRtpSender?
+        var audioTrack: RTCAudioTrack?
+        var audioSender: RTCRtpSender?
+        var audioDevice: OPNRemoteCoOpHostAudioDevice?
+    }
+
     public func close() async {
-        let state = stateLock.withLock { () -> (RTCPeerConnection?, [RTCDataChannel]) in
-            guard !isClosed else { return (nil, []) }
+        // Everything libwebrtc runs OUTSIDE the lock, deliberately.
+        //
+        // `removeTrack` is a proxy method that blocks onto libwebrtc's signaling thread, and that same
+        // thread delivers `didGenerate` / `didOpen dataChannel` / `didReceiveMessageWith`
+        // synchronously - all of which take `stateLock` (via `closed` and `bindInputChannel`). Calling
+        // it while holding the lock is a two-party deadlock that wedges this peer and, because
+        // `close()` is awaited from `OPNRemoteCoOpHostPeerController`, the whole peer-controller actor
+        // behind it. ICE gathering and SCTP open overlap teardown routinely - a guest's Wi-Fi blip is
+        // enough - so this is reachable, not theoretical. The sibling
+        // `OPNRemoteCoOpNativeGuestPeer.close()` and `NvstWebRtcBundle.close()` already snapshot then
+        // release; this was the one place that did not.
+        let state = stateLock.withLock { () -> ClosingState in
+            guard !isClosed else { return ClosingState() }
             isClosed = true
-            let peerConnection = peerConnection
-            let inputChannels = inputChannels
-            let videoTrack = videoTrack
-            let videoSender = videoSender
-            let audioDevice = audioDevice
-            let audioTrack = audioTrack
-            let audioSender = audioSender
+            let state = ClosingState(
+                peerConnection: peerConnection,
+                inputChannels: inputChannels,
+                videoTrack: videoTrack,
+                videoSender: videoSender,
+                audioTrack: audioTrack,
+                audioSender: audioSender,
+                audioDevice: audioDevice
+            )
             self.peerConnection = nil
             self.inputChannels = []
             self.videoSource = nil
@@ -99,23 +141,30 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             self.audioTrack = nil
             self.audioSender = nil
             factory = nil
-            if let videoSender { _ = peerConnection?.removeTrack(videoSender) }
-            if let audioSender { _ = peerConnection?.removeTrack(audioSender) }
-            videoTrack?.isEnabled = false
-            audioTrack?.isEnabled = false
-            audioDevice?.shutdown()
-            return (peerConnection, inputChannels)
+            return state
         }
-        videoQueue.async { [weak self] in
-            self?.pendingVideoFrame = nil
-            self?.isVideoFrameDeliveryScheduled = false
+        if let videoSender = state.videoSender { _ = state.peerConnection?.removeTrack(videoSender) }
+        if let audioSender = state.audioSender { _ = state.peerConnection?.removeTrack(audioSender) }
+        state.videoTrack?.isEnabled = false
+        state.audioTrack?.isEnabled = false
+        state.audioDevice?.shutdown()
+        // Under the lock like every other member: `start()` writes this from whatever task called it
+        // while `close()` reads it from another, and a torn `Task?` is a reference-count race rather
+        // than merely a stale read.
+        let statsTask = stateLock.withLock { () -> Task<Void, Never>? in
+            let statsTask = senderStatsTask
+            senderStatsTask = nil
+            return statsTask
         }
-        for inputChannel in state.1 {
+        statsTask?.cancel()
+        // Nothing is buffered on the video queue any more - frames are forwarded or dropped on
+        // arrival - so close only has to stop accepting them, which `isClosed` above already did.
+        for inputChannel in state.inputChannels {
             inputChannel.delegate = nil
             inputChannel.close()
         }
-        state.0?.delegate = nil
-        state.0?.close()
+        state.peerConnection?.delegate = nil
+        state.peerConnection?.close()
     }
 
     public func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
@@ -157,9 +206,13 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     }
 
     public func renderVideoFrame(_ frame: RTCVideoFrame) {
+        renderSharedVideoFrame(OPNRemoteCoOpSharedVideoFrame(sourceFrame: frame))
+    }
+
+    public func renderSharedVideoFrame(_ frame: OPNRemoteCoOpSharedVideoFrame) {
         guard stateLock.withLock({ !isClosed && videoCapturer != nil }) else { return }
         videoQueue.async { [weak self] in
-            self?.enqueueVideoFrame(frame)
+            self?.forwardVideoFrame(frame)
         }
     }
 
@@ -167,7 +220,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         stateLock.withLock { audioDevice }?.renderAudioFrame(frame)
     }
 
-    private var closed: Bool {
+    var closed: Bool {
         stateLock.withLock { isClosed }
     }
 
@@ -176,6 +229,15 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         if let existing { return existing }
 
         let encoderFactory = RTCDefaultVideoEncoderFactory()
+        // Constrained High rather than libwebrtc's Baseline: same hardware encoder, but CABAC and 8x8
+        // transforms are worth ~15-20% bitrate at equal quality. Only reorders the offer, so a guest
+        // that cannot do it still negotiates what it can.
+        encoderFactory.preferredCodec = RTCVideoCodecInfo(name: kRTCVideoCodecH264Name, parameters: [
+            "profile-level-id": kRTCMaxSupportedH264ProfileLevelConstrainedHigh,
+            "level-asymmetry-allowed": "1",
+            // Mode 1 splits a NAL unit across packets, which a keyframe at these resolutions needs.
+            "packetization-mode": "1"
+        ])
         let decoderFactory = RTCDefaultVideoDecoderFactory()
         let audioDevice = OPNRemoteCoOpHostAudioDevice()
         let factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
@@ -223,14 +285,84 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         if shouldBind { channel.delegate = self }
     }
 
+    var currentQualityPreset: OPNRemoteCoOpQualityPreset {
+        stateLock.withLock { qualityPreset }
+    }
+
+    @discardableResult
+    public func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) async -> Bool {
+        // `isSettled` separates "nothing to do" from "cannot do it yet". Only the second wants a retry,
+        // and the caller records the preset as applied on anything else.
+        var isSettled = true
+        let state = stateLock.withLock { () -> (RTCVideoSource, RTCRtpSender?)? in
+            guard !isClosed, qualityPreset != preset else { return nil }
+            guard let videoSource else {
+                isSettled = false
+                return nil
+            }
+            qualityPreset = preset
+            return (videoSource, videoSender)
+        }
+        guard let state else { return isSettled }
+        applyOutputFormat(to: state.0, preset: preset)
+        if let sender = state.1 { configureVideoSender(sender, preset: preset) }
+        // The limiter is owned by `videoQueue`, not `stateLock`.
+        videoQueue.async { [weak self] in
+            self?.videoRateLimiter = OPNRemoteCoOpVideoRateLimiter(targetFps: preset.fps)
+        }
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.quality", level: .info, message: "Remote Co-Op guest quality retargeted.", attributes: [
+            "participantID": participantID.uuidString,
+            "preset": "\(preset.width)x\(preset.height)@\(preset.fps)",
+            "maxBitrateBps": String(preset.videoMaxBitrateBps(for: latencyMode))
+        ])
+        return true
+    }
+
+    /// Requests a box shaped like the *source*, not like the preset.
+    ///
+    /// `adaptOutputFormat` is not a bounding box: libwebrtc's `VideoAdapter` reads the dimensions as a
+    /// target aspect ratio and **crops** the frame to it before scaling. Asking for a preset's literal
+    /// 3840x2160 against a 5120x2160 seat therefore cut 25% off the width - measured as a guest
+    /// receiving 2880x1620 - discarding picture rather than scaling it.
+    ///
+    /// Fitting the source into the preset first gives an equal aspect ratio, so there is nothing for
+    /// the adapter to crop and the preset does what it reads like: a ceiling on size, not a reshape.
+    func applyOutputFormat(to source: RTCVideoSource, preset: OPNRemoteCoOpQualityPreset) {
+        let box = adaptBox(for: preset)
+        let alreadyApplied = stateLock.withLock { () -> Bool in
+            guard appliedAdaptBox == box else {
+                appliedAdaptBox = box
+                return false
+            }
+            return true
+        }
+        guard !alreadyApplied else { return }
+        source.adaptOutputFormat(toWidth: Int32(box.width), height: Int32(box.height), fps: Int32(box.fps))
+    }
+
+    /// Falls back to the preset's own shape until a frame has been seen, which is the best available
+    /// guess and matches what the encoder would have been configured with anyway.
+    func adaptBox(for preset: OPNRemoteCoOpQualityPreset) -> (width: Int, height: Int, fps: Int) {
+        let source = stateLock.withLock { (width: lastSourceWidth, height: lastSourceHeight) }
+        guard source.width > 0, source.height > 0 else { return (preset.width, preset.height, preset.fps) }
+        let fitted = OPNRemoteCoOpHostVideoRelay.adaptedSize(
+            sourceWidth: source.width,
+            sourceHeight: source.height,
+            maximumWidth: preset.width,
+            maximumHeight: preset.height
+        )
+        return (fitted.width, fitted.height, preset.fps)
+    }
+
     private func attachVideoTrack(peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
+        let preset = currentQualityPreset
         let source = factory.videoSource(forScreenCast: true)
-        source.adaptOutputFormat(toWidth: Int32(qualityPreset.width), height: Int32(qualityPreset.height), fps: Int32(qualityPreset.fps))
+        applyOutputFormat(to: source, preset: preset)
         let capturer = RTCVideoCapturer(delegate: source)
         let track = factory.videoTrack(with: source, trackId: "remote-coop-video-\(participantID.uuidString)")
         track.isEnabled = true
         let sender = peerConnection.add(track, streamIds: ["remote-coop-stream-\(participantID.uuidString)"])
-        if let sender { configureVideoSender(sender) }
+        if let sender { configureVideoSender(sender, preset: preset) }
         stateLock.withLock {
             videoSource = source
             videoCapturer = capturer
@@ -239,80 +371,19 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         }
     }
 
-    private func enqueueVideoFrame(_ frame: RTCVideoFrame) {
-        guard !closed else {
-            pendingVideoFrame = nil
-            return
-        }
-        if pendingVideoFrame != nil { droppedVideoFrameCount &+= 1 }
-        pendingVideoFrame = frame
-        scheduleVideoFrameDeliveryIfNeeded()
-    }
-
-    private func scheduleVideoFrameDeliveryIfNeeded() {
-        guard !isVideoFrameDeliveryScheduled else { return }
-        isVideoFrameDeliveryScheduled = true
-        let now = DispatchTime.now().uptimeNanoseconds
-        let deadlineNanoseconds = max(now, nextVideoFrameDeliveryNanoseconds)
-        videoQueue.asyncAfter(deadline: DispatchTime(uptimeNanoseconds: deadlineNanoseconds)) { [weak self] in
-            self?.deliverPendingVideoFrame()
-        }
-    }
-
-    private func deliverPendingVideoFrame() {
-        isVideoFrameDeliveryScheduled = false
-        guard !closed else {
-            pendingVideoFrame = nil
-            return
-        }
-        guard let frame = pendingVideoFrame else { return }
-        pendingVideoFrame = nil
-        guard let capturer = stateLock.withLock({ videoCapturer }), let relayFrame = makeRelayVideoFrame(from: frame) else { return }
-        capturer.delegate?.capturer(capturer, didCapture: relayFrame)
-        deliveredVideoFrameCount &+= 1
-        nextVideoFrameDeliveryNanoseconds = DispatchTime.now().uptimeNanoseconds &+ videoFrameIntervalNanoseconds
-        captureVideoPacingTelemetryIfNeeded()
-        if pendingVideoFrame != nil { scheduleVideoFrameDeliveryIfNeeded() }
-    }
-
-    private var videoFrameIntervalNanoseconds: UInt64 {
-        UInt64(1_000_000_000 / max(1, qualityPreset.fps))
-    }
-
-    private func captureVideoPacingTelemetryIfNeeded() {
-        guard deliveredVideoFrameCount.isMultiple(of: 240), droppedVideoFrameCount > 0 else { return }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.video.paced", level: .debug, message: "Remote Co-Op video pacing dropped stale frames.", attributes: [
-            "participantID": participantID.uuidString,
-            "deliveredFrames": String(deliveredVideoFrameCount),
-            "droppedFrames": String(droppedVideoFrameCount),
-            "fps": String(qualityPreset.fps),
-            "latencyMode": latencyMode.rawValue
-        ])
-    }
-
-    private func makeRelayVideoFrame(from frame: RTCVideoFrame) -> RTCVideoFrame? {
-        let buffer = frame.buffer is RTCI420Buffer ? frame.buffer : frame.newI420().buffer
-        guard buffer.width > 0, buffer.height > 0 else { return nil }
-        return RTCVideoFrame(buffer: buffer, rotation: frame.rotation, timeStampNs: nextVideoFrameTimestampNs())
-    }
-
-    private func nextVideoFrameTimestampNs() -> Int64 {
-        stateLock.withLock {
-            let now = Int64(truncatingIfNeeded: DispatchTime.now().uptimeNanoseconds)
-            let timestamp = max(now, lastVideoFrameTimestampNs + 1)
-            lastVideoFrameTimestampNs = timestamp
-            return timestamp
-        }
-    }
-
-    private func configureVideoSender(_ sender: RTCRtpSender) {
+    /// Hands a frame to libwebrtc immediately, or drops it. Nothing is ever delayed - the decision
+    /// and the reasoning behind it live in `OPNRemoteCoOpVideoRateLimiter`.
+    private func configureVideoSender(_ sender: RTCRtpSender, preset: OPNRemoteCoOpQualityPreset) {
         let parameters = sender.parameters
         let encodings = parameters.encodings.isEmpty ? [RTCRtpEncodingParameters()] : parameters.encodings
+        let maxBitrateBps = preset.videoMaxBitrateBps(for: latencyMode)
         for encoding in encodings {
             encoding.isActive = true
-            encoding.maxBitrateBps = NSNumber(value: qualityPreset.videoMaxBitrateBps(for: latencyMode))
-            encoding.minBitrateBps = qualityPreset.videoMinBitrateBps(for: latencyMode).map(NSNumber.init(value:))
-            encoding.maxFramerate = NSNumber(value: qualityPreset.fps)
+            encoding.maxBitrateBps = NSNumber(value: maxBitrateBps)
+            // Without a floor the receiver's jitter buffer target climbs to the worst pacing delay it
+            // sees during the ramp (~200 ms on loopback) and decays at roughly 1 ms/s.
+            encoding.minBitrateBps = NSNumber(value: preset.videoMinBitrateBps(for: latencyMode) ?? maxBitrateBps / 2)
+            encoding.maxFramerate = NSNumber(value: preset.fps)
             encoding.scaleResolutionDownBy = 1
             encoding.bitratePriority = latencyMode == .lowLatency ? 1 : 2
             encoding.networkPriority = .high
@@ -324,11 +395,26 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         sender.parameters = parameters
     }
 
+    /// `maxaveragebitrate` in the SDP is what the encoder *may* use; this is what the allocator will
+    /// give it. Without both, the stereo mix is encoded down into a voice-call slice.
+    private func configureAudioSender(_ sender: RTCRtpSender) {
+        let parameters = sender.parameters
+        let encodings = parameters.encodings.isEmpty ? [RTCRtpEncodingParameters()] : parameters.encodings
+        for encoding in encodings {
+            encoding.isActive = true
+            encoding.maxBitrateBps = NSNumber(value: 256_000)
+            encoding.networkPriority = .high
+        }
+        parameters.encodings = encodings
+        sender.parameters = parameters
+    }
+
     private func attachAudioTrack(peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
         let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
         let track = factory.audioTrack(with: source, trackId: "remote-coop-audio-\(participantID.uuidString)")
         track.isEnabled = true
         let sender = peerConnection.add(track, streamIds: ["remote-coop-stream-\(participantID.uuidString)"])
+        if let sender { configureAudioSender(sender) }
         stateLock.withLock {
             audioSource = source
             audioTrack = track
@@ -339,8 +425,11 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private func createAndSendOffer(peerConnection: RTCPeerConnection) async throws {
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.create", level: .info, message: "Creating Remote Co-Op WebRTC offer.", attributes: ["participantID": participantID.uuidString])
-        let offer = try await createOffer(peerConnection: peerConnection, constraints: constraints)
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.created", level: .info, message: "Remote Co-Op WebRTC offer created.", attributes: ["participantID": participantID.uuidString, "sdpBytes": String(offer.sdp.utf8.count)])
+        let generatedOffer = try await createOffer(peerConnection: peerConnection, constraints: constraints)
+        // The guest has to be offered the same description this side sets locally, so the tuning is
+        // applied once and both uses read from it.
+        let offer = RTCSessionDescription(type: generatedOffer.type, sdp: OPNRemoteCoOpSDPTuning.tunedForGameStreaming(generatedOffer.sdp))
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.created", level: .info, message: "Remote Co-Op WebRTC offer created.", attributes: ["participantID": participantID.uuidString, "sdpBytes": String(offer.sdp.utf8.count), "audioTuned": String(offer.sdp != generatedOffer.sdp)])
         try await setLocalDescription(offer, peerConnection: peerConnection)
         WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.local_description", level: .info, message: "Remote Co-Op local offer description set.", attributes: ["participantID": participantID.uuidString])
         await callbacks.sendSignal(OPNRemoteCoOpWirePeerSignal(kind: .offer, sdp: offer.sdp))

@@ -9,6 +9,7 @@ public enum OPNRemoteCoOpWireMessageKind: String, Codable, Equatable, Sendable {
     case inputRejected
     case guestJoinRequested
     case guestInput
+    case guestQualityRequested
     case guestDisconnected
     case heartbeat
     case peerSignal
@@ -79,6 +80,12 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var reason: String?
     public var peerSignal: OPNRemoteCoOpWirePeerSignal?
     public var networkConfiguration: OPNRemoteCoOpNetworkConfiguration?
+    /// Carried by `guestQualityRequested`. Nil clears the guest's own request and puts them back on
+    /// whatever the host allows.
+    public var qualityPreset: OPNRemoteCoOpQualityPreset?
+    /// The session's own preset, sent with `participantUpdated`. A guest following the default has no
+    /// per-guest override to read, so without this it cannot tell what its ceiling actually is.
+    public var sessionQualityPreset: OPNRemoteCoOpQualityPreset?
     public var sentAtEpochMilliseconds: Int64
 
     public init(kind: OPNRemoteCoOpWireMessageKind,
@@ -94,6 +101,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 reason: String? = nil,
                 peerSignal: OPNRemoteCoOpWirePeerSignal? = nil,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration? = nil,
+                qualityPreset: OPNRemoteCoOpQualityPreset? = nil,
+                sessionQualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 sentAt: Date = Date()) {
         self.protocolVersion = 1
         self.kind = kind
@@ -109,6 +118,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.reason = reason
         self.peerSignal = peerSignal
         self.networkConfiguration = networkConfiguration
+        self.qualityPreset = qualityPreset
+        self.sessionQualityPreset = sessionQualityPreset
         self.sentAtEpochMilliseconds = Int64((sentAt.timeIntervalSince1970 * 1_000).rounded())
     }
 
@@ -128,39 +139,65 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         peerSignal = try container.decodeIfPresent(OPNRemoteCoOpWirePeerSignal.self, forKey: .peerSignal)
         networkConfiguration = try container.decodeIfPresent(OPNRemoteCoOpNetworkConfiguration.self, forKey: .networkConfiguration)
+        qualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .qualityPreset)
+        sessionQualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .sessionQualityPreset)
         sentAtEpochMilliseconds = try container.decodeIfPresent(Int64.self, forKey: .sentAtEpochMilliseconds) ?? Int64((Date().timeIntervalSince1970 * 1_000).rounded())
     }
 
     public func signalingEvent() -> OPNRemoteCoOpSignalingEvent? {
+        guestSignalingEvent() ?? sessionSignalingEvent()
+    }
+
+    /// The four kinds a guest may originate. Split from the rest only to keep each switch small
+    /// enough to read; the authorisation decision lives in `OPNRemoteCoOpGuestMessageGate`, not here.
+    private func guestSignalingEvent() -> OPNRemoteCoOpSignalingEvent? {
         switch kind {
         case .guestJoinRequested:
             guard let participantID, let inviteToken else { return nil }
             return .guestJoinRequested(participantID: participantID, inviteToken: inviteToken, displayName: displayName ?? "Guest")
         case .guestInput:
+            // `input ?? inputs?.last`: the browser populates the array form, so a message omitting the
+            // singular field is still routed - which is why the gate checks ownership of both.
             guard let input = input ?? inputs?.last else { return nil }
             return .guestInput(input)
+        case .guestQualityRequested:
+            guard let participantID else { return nil }
+            return .guestQualityRequested(participantID: participantID, preset: qualityPreset)
         case .guestDisconnected:
             guard let participantID else { return nil }
             return .guestDisconnected(participantID)
+        default:
+            return nil
+        }
+    }
+
+    /// Everything else that becomes an event. The host-to-guest kinds deliberately produce none: they
+    /// are commands, and a guest sending one back is refused by the gate.
+    private func sessionSignalingEvent() -> OPNRemoteCoOpSignalingEvent? {
+        switch kind {
         case .peerSignal:
             guard let participantID, let peerSignal else { return nil }
             return .peerSignal(participantID: participantID, signal: peerSignal)
         case .networkConfiguration:
             guard let networkConfiguration else { return nil }
             return .networkConfiguration(networkConfiguration)
-        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .error:
+        case .error:
+            return .signalingError(reason ?? "The Remote Co-Op signaling channel rejected this session.")
+        default:
             return nil
         }
     }
 
-    public static func message(for command: OPNRemoteCoOpSignalingCommand, roomID fallbackRoomID: UUID? = nil) -> OPNRemoteCoOpWireMessage? {
+    public static func message(for command: OPNRemoteCoOpSignalingCommand,
+                               roomID fallbackRoomID: UUID? = nil,
+                               sessionQualityPreset: OPNRemoteCoOpQualityPreset? = nil) -> OPNRemoteCoOpWireMessage? {
         switch command {
         case .inviteCreated(let invite):
             return OPNRemoteCoOpWireMessage(kind: .hostHello, roomID: invite.id, invite: invite)
         case .inviteEnded:
             return OPNRemoteCoOpWireMessage(kind: .inviteEnded, roomID: fallbackRoomID)
         case .participantUpdated(let participant):
-            return OPNRemoteCoOpWireMessage(kind: .participantUpdated, roomID: fallbackRoomID, participantID: participant.id, participant: participant)
+            return OPNRemoteCoOpWireMessage(kind: .participantUpdated, roomID: fallbackRoomID, participantID: participant.id, participant: participant, sessionQualityPreset: sessionQualityPreset)
         case .participantRemoved(let participantID):
             return OPNRemoteCoOpWireMessage(kind: .participantRemoved, roomID: fallbackRoomID, participantID: participantID)
         case .guestRejected(let participantID, let reason):
@@ -172,6 +209,13 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
             return OPNRemoteCoOpWireMessage(kind: .peerSignal, roomID: fallbackRoomID, participantID: participantID, peerSignal: signal)
         }
     }
+}
+
+/// Well-known data channel labels. The browser page and native guests must use the same label:
+/// the host opens channels by name and binds whichever the peer exposes.
+public enum OPNRemoteCoOpDataChannelLabel {
+    /// Host-opened channel carrying guest gamepad packets.
+    public static let input = "remote-coop-input"
 }
 
 public enum OPNRemoteCoOpWireCodec {

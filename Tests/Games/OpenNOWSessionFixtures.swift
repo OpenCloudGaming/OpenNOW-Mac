@@ -142,13 +142,23 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
+    /// Paths a wildcard handler is willing to claim.
+    ///
+    /// A `"*"` handler otherwise claims every host, including traffic from a test that has already
+    /// finished - a request that outlived its own handler lands on whichever wildcard is installed
+    /// next. That handler then answers it with the wrong body and, if it asserts, records the failure
+    /// against no test at all, because a `URLProtocol` runs outside any test's scope.
+    nonisolated(unsafe) private static var wildcardPaths: [String] = []
     nonisolated(unsafe) private static var requestsByHost: [String: [URLRequest]] = [:]
     nonisolated(unsafe) private static var bodiesByHost: [String: [Data]] = [:]
     nonisolated(unsafe) private static var installed = false
 
-    static func install(host: String, handler: @escaping Handler) {
+    /// `paths` narrows a wildcard handler to the requests its test actually expects. Ignored for a
+    /// named host, which is already scoped by the host itself.
+    static func install(host: String, paths: [String] = [], handler: @escaping Handler) {
         lock.withLock {
             handlers[host] = handler
+            if host == "*" { wildcardPaths = paths }
             requestsByHost[host] = []
             bodiesByHost[host] = []
             if !installed {
@@ -161,6 +171,7 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
     static func uninstall(host: String) {
         lock.withLock {
             handlers[host] = nil
+            if host == "*" { wildcardPaths = [] }
             requestsByHost[host] = nil
             bodiesByHost[host] = nil
             if handlers.isEmpty, installed {
@@ -186,7 +197,12 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
-        return lock.withLock { handlers[host] != nil || handlers["*"] != nil }
+        let path = request.url?.path ?? ""
+        return lock.withLock {
+            if handlers[host] != nil { return true }
+            guard handlers["*"] != nil else { return false }
+            return wildcardPaths.isEmpty || wildcardPaths.contains(path)
+        }
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -201,6 +217,7 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
         let body = Self.bodyData(from: request)
         let handler = Self.lock.withLock { () -> Handler? in
             let key = Self.handlers[host] == nil && Self.handlers["*"] != nil ? "*" : host
+            guard key != "*" || Self.wildcardPaths.isEmpty || Self.wildcardPaths.contains(url.path) else { return nil }
             Self.requestsByHost[key, default: []].append(request)
             if let body { Self.bodiesByHost[key, default: []].append(body) }
             return Self.handlers[key]

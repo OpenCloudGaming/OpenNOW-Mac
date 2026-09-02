@@ -3,9 +3,19 @@ import Foundation
 public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
     case guestJoinRequested(participantID: UUID, inviteToken: String, displayName: String)
     case guestInput(OPNRemoteCoOpInputPacket)
+    /// A guest asking to lower their own stream. Nil clears the request. Never raises past what the
+    /// host allowed - the clamp lives in the coordinator, not on the guest's side of the wire.
+    case guestQualityRequested(participantID: UUID, preset: OPNRemoteCoOpQualityPreset?)
     case guestDisconnected(UUID)
     case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
     case networkConfiguration(OPNRemoteCoOpNetworkConfiguration)
+    /// The signaling channel refused something. Previously dropped on the floor, which made a
+    /// refusal indistinguishable from a healthy session: the HUD showed "Invite Ready" while nothing
+    /// was listening, and every guest sat waiting for a host that was never going to arrive.
+    ///
+    /// Named for the broker when a Node process owned signaling. That is gone - this process hosts it
+    /// - and the name reached the HUD as user-facing text, so it says what it means now.
+    case signalingError(String)
 }
 
 public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
@@ -100,6 +110,10 @@ public final class OPNInProcessRemoteCoOpSignalingSession: OPNRemoteCoOpSignalin
 public actor OPNRemoteCoOpHostCoordinator {
     private let hostSession: OPNRemoteCoOpHostSession
     let signaling: any OPNRemoteCoOpSignalingSession
+    /// The last rejection each guest was told about, so a steady stream of identically-rejected
+    /// packets is answered once rather than per packet. Cleared when a packet routes, so the next
+    /// rejection after a working spell is reported again.
+    private var lastReportedInputRejection: [UUID: OPNRemoteCoOpInputRoutingResult] = [:]
 
     public init(hostSession: OPNRemoteCoOpHostSession, signaling: any OPNRemoteCoOpSignalingSession) {
         self.hostSession = hostSession
@@ -110,8 +124,9 @@ public actor OPNRemoteCoOpHostCoordinator {
         await hostSession.snapshot()
     }
 
-    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, signalingServerURL: String = "", lifetimeSeconds: TimeInterval = 3_600) async throws -> OPNRemoteCoOpInvite {
-        let invite = try await hostSession.startInvite(applicationID: applicationID, title: title, joinBaseURL: joinBaseURL, signalingServerURL: signalingServerURL, lifetimeSeconds: lifetimeSeconds)
+    public func startInvite(inviteID: UUID = UUID(), applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, signalingServerURL: String = "", lifetimeSeconds: TimeInterval = 3_600,
+                            hostedSignaling: (@Sendable (UUID, Date) -> OPNRemoteCoOpInviteSignaling?)? = nil) async throws -> OPNRemoteCoOpInvite {
+        let invite = try await hostSession.startInvite(inviteID: inviteID, applicationID: applicationID, title: title, joinBaseURL: joinBaseURL, signalingServerURL: signalingServerURL, lifetimeSeconds: lifetimeSeconds, hostedSignaling: hostedSignaling)
         await signaling.send(.inviteCreated(invite))
         return invite
     }
@@ -134,6 +149,18 @@ public actor OPNRemoteCoOpHostCoordinator {
         return participant
     }
 
+    public func setQualityPreset(_ preset: OPNRemoteCoOpQualityPreset?, for id: UUID) async throws -> OPNRemoteCoOpParticipant {
+        let participant = try await hostSession.setQualityPreset(preset, for: id)
+        await signaling.send(.participantUpdated(participant))
+        return participant
+    }
+
+    public func setGuestRequestedQualityPreset(_ preset: OPNRemoteCoOpQualityPreset?, for id: UUID) async throws -> OPNRemoteCoOpParticipant {
+        let participant = try await hostSession.setGuestRequestedQualityPreset(preset, for: id)
+        await signaling.send(.participantUpdated(participant))
+        return participant
+    }
+
     public func removeParticipant(_ id: UUID) async throws -> [UserInputEvent] {
         let events = try await hostSession.removeParticipant(id)
         await signaling.send(.participantRemoved(id))
@@ -152,29 +179,48 @@ public actor OPNRemoteCoOpHostCoordinator {
             return []
         case .guestInput(let packet):
             let result = await hostSession.route(packet)
-            if case .routed(let event) = result { return [event] }
+            if case .routed(let event) = result {
+                lastReportedInputRejection[packet.participantID] = nil
+                return [event]
+            }
+            // On transition only.
+            //
+            // A guest the host has benched stays `.connected`, so its sender keeps forwarding at up
+            // to 200 Hz and every packet was refused *and answered*. The reply fans out to every
+            // transport in the composite - on the hosted path that is 200 billed Ably publishes a
+            // second, enough to hit the per-channel rate limit - and tells the guest nothing it was
+            // not told by the first one.
+            guard lastReportedInputRejection[packet.participantID] != result else { return [] }
+            lastReportedInputRejection[packet.participantID] = result
             await signaling.send(.inputRejected(participantID: packet.participantID, result: result))
             return []
-        case .guestDisconnected(let participantID):
+        case .guestQualityRequested(let participantID, let preset):
+            // Recorded, not obeyed. `effectiveQualityPreset` takes the lower of this and the host's
+            // allowance, so a guest asking for more than they were given simply stays where they are.
             do {
-                let events = try await hostSession.removeParticipant(participantID)
-                await signaling.send(.participantRemoved(participantID))
-                return events
+                let participant = try await hostSession.setGuestRequestedQualityPreset(preset, for: participantID)
+                await signaling.send(.participantUpdated(participant))
             } catch {
-                await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))
-                return []
+                // Answered with the record as it stands rather than swallowed. Not `guestRejected`:
+                // that ejects the guest, and a preset the host would not apply is no reason to end
+                // their session - but leaving the request unanswered made a failure look identical
+                // to a change that landed.
+                if let participant = await hostSession.snapshot().participants.first(where: { $0.id == participantID }) {
+                    await signaling.send(.participantUpdated(participant))
+                }
             }
-        case .peerSignal, .networkConfiguration:
             return []
-        }
-    }
-
-    public func listen(forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) -> Task<Void, Never> {
-        Task {
-            for await event in signaling.events() {
-                let routedEvents = await handle(event)
-                for routedEvent in routedEvents { await forwardInput(routedEvent) }
-            }
+        case .guestDisconnected(let participantID):
+            lastReportedInputRejection[participantID] = nil
+            // The slot is held rather than released: a dropped socket is usually a blip, and the
+            // guest page reconnects with the same participant ID to reclaim it. Neutral pad state
+            // still goes out now so nothing stays held during the grace period.
+            //
+            // No `participantRemoved` either - that tells the guest page it was ejected and stops
+            // it reconnecting. `expireDisconnectedParticipants` is what eventually gives up.
+            return await hostSession.noteGuestDisconnected(participantID)
+        case .peerSignal, .networkConfiguration, .signalingError:
+            return []
         }
     }
 

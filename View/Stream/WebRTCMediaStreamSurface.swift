@@ -41,6 +41,11 @@ public struct WebRTCMediaStreamSurface: View {
     @State var nativeView: NativeWebRTCStreamView?
     @State var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State var runtimeSettings = StreamRuntimeSettings()
+    /// Read once when the surface appears, not per HUD frame. Remote Co-Op cannot be hosted on this
+    /// transport at all, so this only decides whether the HUD explains that - and it is a
+    /// launch-time value, which is why reading it inside `body` was a synchronous store hit on every
+    /// tick.
+    @State var remoteCoOpEnabled = false
     @State var microphoneEnabled = false
     @State var recordingStatus = WebRTCStreamRecordingStatus.idle
     @State var recordingNotificationTask: Task<Void, Never>?
@@ -49,16 +54,10 @@ public struct WebRTCMediaStreamSurface: View {
     @State var transientStreamMessage = ""
     @State var transientStreamMessageTask: Task<Void, Never>?
     @State var streamingPerformanceActivity: (any NSObjectProtocol)?
-    @State var remoteCoOpHostSession = OPNRemoteCoOpHostSession()
-    @State var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
-    @State var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
-    @State var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
-    @State var remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
-    @State var remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
-    @State var remoteCoOpListenTask: Task<Void, Never>?
-    @State var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
-    @State var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
-    @State var remoteCoOpMessage = ""
+    /// Set only while OpenNOW is hosting the signaling itself, and stopped with the invite.
+    /// Held so Transport and Latency changes reach it mid-session. Handed only to the composite
+    /// session, its concrete `updateNetworkConfiguration` had no caller on this path and a native
+    /// guest joining after a settings change was greeted with the invite-time configuration.
     @State var controllerBatteries: [ControllerBatteryInfo] = []
     @State var batteryAlertTracker = ControllerBatteryAlertTracker()
     @State var hudFocusID: String?
@@ -119,7 +118,7 @@ public struct WebRTCMediaStreamSurface: View {
         .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
         .onAppear {
             registerStreamLifecycle()
-            refreshRemoteCoOpState()
+            remoteCoOpEnabled = OPNRemoteCoOpPreferencesStore.load().isEnabled
         }
         // A `Timer.publish` stored on the view would be rebuilt on every
         // re-render, resetting the interval before it ever fires.

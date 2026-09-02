@@ -29,13 +29,16 @@ extension NvstBifrostFreeTransport {
         // when the surface is hidden, and so nothing on the decode thread has to reach the main
         // actor. It costs one uncontended lock per frame while idle.
         let recorder = self.recorder
+        // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
+        // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
+        let coOpVideoRelay = self.remoteCoOpVideoRelay
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             recorder.appendNativePixelBuffer(pixelBuffer)
+            coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
         lastHandoff = handoff
-        startAudioReceiver(handoff: handoff)
 
         // The negotiation already bound and punched this socket; adopt the descriptor rather than
         // rebinding the port, which would lose the seat's NAT mapping.
@@ -208,8 +211,10 @@ extension NvstBifrostFreeTransport {
         // Straight to the recorder, no actor hop: this runs on the CoreAudio render thread, where
         // waiting on anything is a priority inversion. The recorder copies and returns.
         let recorder = self.recorder
+        let coOpAudioRelay = self.remoteCoOpAudioRelay
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            coOpAudioRelay.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task { await self?.startQosFeedback() }
@@ -272,37 +277,6 @@ extension NvstBifrostFreeTransport {
                 await self.sendControlKeepAlive()
                 try? await Task.sleep(for: .seconds(NvstControlCommand.pingBackIntervalSeconds))
             }
-        }
-    }
-
-    /// Brings up audio on a socket we own, when one was reserved for it. libwebrtc's own path stays
-    /// as the fallback: it delivers audio but NetEq discards most of a clean stream.
-    func startAudioReceiver(handoff: NVSTVideoHandoff) {
-        guard NvstLocalBundleReserver.receivesAudioOnOwnSocket, audioReceiver == nil else { return }
-        let descriptor = reserver?.takeAudioDescriptor() ?? -1
-        guard descriptor >= 0 else {
-            logger?("NVST audio socket was not reserved; audio stays on the bundle")
-            return
-        }
-        do {
-            let receiver = try NvstAudioReceiver(existingDescriptor: descriptor)
-            receiver.onDiagnostic = { [weak self] message in self?.logger?(message) }
-            // In this mode audio never reaches libwebrtc's audio device, so the bundle's playout
-            // tee sees nothing; without this the recording would get a silent audio track.
-            let recorder = self.recorder
-            receiver.onDecodedPCM = { samples in
-                recorder.appendGameAudioSamples(samples,
-                                                sampleRate: NvstAudioPlayer.sampleRate,
-                                                channels: UInt32(NvstAudioPlayer.channels))
-            }
-            // The audio stream's own SETUP names the port the seat sends audio from; punching the
-            // video port instead reached nothing at all.
-            let peerPort = handoff.audioPeerPort ?? handoff.videoPeerPort
-            receiver.start(peerIP: handoff.videoPeerIP, peerPort: peerPort, handoff: handoff)
-            audioReceiver = receiver
-            logger?("NVST audio receiver armed on port \(receiver.localPort) toward \(handoff.videoPeerIP):\(peerPort)\(handoff.audioPeerPort == nil ? " (no audio SETUP port; using the video peer)" : "")")
-        } catch {
-            logger?("NVST audio receiver failed: \(error.localizedDescription)")
         }
     }
 
@@ -613,11 +587,20 @@ extension NvstBifrostFreeTransport {
         // seat registered TWO devices: the game showed two XInput pads and listened to the first
         // while our input drove the second, which reads as "the controller does nothing". Announcing
         // the gamepad's own index here collapses them back to a single pad.
-        sent.append("descriptor=\(bundle.sendControl(NvstInputActivation.deviceDescriptor(timestampMicroseconds: sessionElapsedMicroseconds(), connectedBitmap: NvstGamepadPacket.connectedBitmap)))")
+        // Activation announces whatever is connected now, which at connect time is the host alone.
+        // Remote Co-Op guests join mid-session and re-announce the widened bitmap through
+        // `updateGamepadTopology`; that later `0x20d` carries the same descriptor field as this
+        // one, so it widens the existing device set rather than registering a second one.
+        // Pad 0 is what the captured client announces here and what `connectedBitmap(for:)` falls
+        // back to; seeding the set with it keeps the announced bitmap and the set that gates state
+        // packets in agreement from the first frame.
+        if connectedGamepadIndices.isEmpty { connectedGamepadIndices = [0] }
+        let activationBitmap = NvstGamepadPacket.connectedBitmap(for: connectedGamepadIndices)
+        sent.append("descriptor=\(bundle.sendControl(NvstInputActivation.deviceDescriptor(timestampMicroseconds: sessionElapsedMicroseconds(), connectedBitmap: activationBitmap)))")
         // The pad is registered now, so the lazy pre-first-input descriptor must not fire as well:
-        // the official client sends exactly one 0x20d per session, and a second one is what created
-        // the phantom pad.
-        didRegisterGamepad = true
+        // the official client sends exactly one 0x20d per session, and a second one at a *different*
+        // index is what created the phantom pad.
+        registeredGamepadBitmap = activationBitmap
         // Cursor capture ON for startup so the seat composites a pointer immediately, plus remote
         // cursor tracking so it publishes shape/mode notifications. Once a notification arrives the
         // capture is turned back off (see `handleRemoteCursorNotification`) and the pointer becomes

@@ -18,6 +18,7 @@ struct CatalogTopBar: View {
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
 
     /// The collapsed button and the expanded field are one element to SwiftUI, so the trip between
@@ -83,6 +84,26 @@ struct CatalogTopBar: View {
                         .buttonStyle(.opnPressable(scale: 0.90))
                         .accessibilityLabel("Switch to controller mode")
                         .help("Controller mode")
+                        // Joining someone else's session is a thing you do *instead* of browsing your
+                        // own library, so it belongs where you already are rather than only in a menu.
+                        //
+                        // Behind the feature toggle, not the old alpha opt-in. Note this hides the
+                        // entry point for someone who only wants to *join* - joining needs nothing
+                        // configured on this Mac - which is the deliberate cost of one switch that
+                        // means "Remote Co-Op is on for me". Settings > Remote Co-Op is always
+                        // reachable, so the toggle can still be found.
+                        if viewModel.remoteCoOpPreferences.isEnabled {
+                            Button { openWindow(id: "remote-coop-guest") } label: {
+                                CatalogTopBarIconLabel(systemName: "person.2")
+                                    .overlay(alignment: .topTrailing) {
+                                        OpenNOWBetaTag(uiScale: 0.8, prominent: true)
+                                            .offset(x: 8, y: -6)
+                                    }
+                            }
+                            .buttonStyle(.opnPressable(scale: 0.90))
+                            .accessibilityLabel("Join a Remote Co-Op session (beta)")
+                            .help("Join Remote Co-Op")
+                        }
                     }
                     Button {
                         showsAccountMenu.toggle()

@@ -48,167 +48,6 @@ extension NativeNVSTMediaStreamSurface {
             .allowsHitTesting(false)
     }
 
-    var nativeStatsHUD: some View {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        let streamFramesPerSecond = model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
-        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
-        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 0) {
-                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), label: "GAME FPS", color: nativeGameFPSColor(target: streamFramesPerSecond))
-                nativeStatsVerticalDivider
-                nativeStatsCompactBox(value: nativeStatsWholeNumber(streamFramesPerSecond), label: "STREAM FPS", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsVerticalDivider
-                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), label: "MS", color: nativeLatencyColor)
-            }
-            .frame(height: 48)
-
-            nativeStatsHorizontalDivider
-
-            VStack(alignment: .leading, spacing: 5) {
-                nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
-                // Percent over the last interval, matching what the WebRTC HUD shows; the running
-                // count stays alongside it as the detail.
-                nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
-                nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
-                // Client-side decode cost. It used to occupy the MS box, where it read as network
-                // latency and was not one.
-                nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
-                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-            }
-        }
-        .padding(10)
-        .frame(width: 264, alignment: .topLeading)
-        .background(Color.black.opacity(0.90))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(WebRTCMediaStreamTheme.accent)
-                .frame(height: 2)
-        }
-        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
-        .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
-        .padding([.top, .trailing], OpenNOWDesign.Spacing.small)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .allowsHitTesting(false)
-    }
-
-    func nativeStatsCompactBox(value: String, label: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.streamNvidia(size: 22, weight: .bold))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
-            Text(label)
-                .font(.streamNvidia(size: 9, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.opacity(0.055))
-    }
-
-    var nativeStatsVerticalDivider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.18))
-            .frame(width: 1)
-            .padding(.vertical, 4)
-    }
-
-    var nativeStatsHorizontalDivider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.18))
-            .frame(height: 1)
-    }
-
-    func nativeStatsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.streamNvidia(size: 10, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .foregroundStyle(color)
-                .lineLimit(1)
-            if let detail {
-                Text(detail)
-                    .font(.streamNvidia(size: 10, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    func nativeGameFPSColor(target: Double) -> Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.gameFramesPerSecond >= max(1, target * 0.9) ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
-    }
-
-    var nativeLatencyColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
-        if latestNativeStats.latencyMilliseconds >= 120 { return WebRTCMediaStreamTheme.danger }
-        if latestNativeStats.latencyMilliseconds >= 90 { return WebRTCMediaStreamTheme.warning }
-        return WebRTCMediaStreamTheme.accent
-    }
-
-    var nativeFrameLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.frameLoss == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
-    }
-
-    var nativePacketLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.packetLossPercent <= 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
-    }
-
-    func nativeStatsWholeNumber(_ value: Double?) -> String {
-        guard let value, value >= 0 else { return "--" }
-        return String(format: "%.0f", value)
-    }
-
-    func nativeLiveStatsWholeNumber(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true else { return "--" }
-        return nativeStatsWholeNumber(value)
-    }
-
-    func nativeStatsCount(_ value: UInt64?) -> String {
-        guard model.latestNativeStats?.available == true, let value else { return "--" }
-        return String(value)
-    }
-
-    func nativeStatsTotal(_ value: UInt64?) -> String {
-        guard model.latestNativeStats?.available == true, let value else { return "(-- Total)" }
-        return "(\(value) Total)"
-    }
-
-    func nativeStatsPercentage(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
-        return String(format: "%.1f%%", value)
-    }
-
-    /// Sub-millisecond values are the normal case for decode, so one decimal rather than none.
-    func nativeStatsMilliseconds(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
-        return String(format: "%.1f", value)
-    }
-
-    func nativeStatsMegabits(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
-        return String(format: "%.1f", value)
-    }
-
-    func nonEmptyNativeStat(_ value: String?, fallback: String) -> String {
-        guard let value, !value.isEmpty else { return fallback }
-        return value
-    }
-
     var nativeMicrophoneStatusText: String {
         guard model.microphoneAvailable else { return "Disabled" }
         if model.microphoneMode == "push-to-talk" { return model.microphoneEnabled ? "PTT Active" : "PTT Ready" }
@@ -263,7 +102,7 @@ extension NativeNVSTMediaStreamSurface {
                 nativeHUDStatusPanel
                 nativeHUDControlsPanel
                 nativeHUDNetworkPanel
-                if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isAlphaOptedIn {
+                if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isEnabled {
                     nativeHUDRemoteCoOpPanel
                 }
                 nativeHUDVideoPanel
@@ -281,8 +120,8 @@ extension NativeNVSTMediaStreamSurface {
                     StreamHUDMetricCard(title: "Session", value: nativeSessionLimitText(at: context.date), positive: nativeSessionLimitIsHealthy(at: context.date))
                 }
             }
-            if model.remoteCoOpPreferences.isAlphaOptedIn {
-                StreamHUDMetricCard(title: "Co-Op", value: "Unavailable", positive: false)
+            if model.remoteCoOpPreferences.isEnabled {
+                StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
             }
             ForEach(model.controllerBatteries.sorted { $0.label < $1.label }) { battery in
                 StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
@@ -309,6 +148,15 @@ extension NativeNVSTMediaStreamSurface {
                     isDisabled: !model.sidebarCapabilities.supports(.microphone) || !model.microphoneAvailable || model.microphoneUpdateTask != nil,
                     isFocused: model.hudFocusID == "microphone",
                     action: model.toggleNativeMicrophone
+                )
+                StreamHUDActionRow(
+                    title: model.nativeLocalAudioMuted ? "Unmute Local Audio" : "Mute Local Audio",
+                    subtitle: model.nativeLocalAudioMuted ? "Muted on this Mac" : "Playing on this Mac",
+                    systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    isActive: model.nativeLocalAudioMuted,
+                    isDisabled: !model.isConnected,
+                    isFocused: model.hudFocusID == "localAudioMute",
+                    action: model.toggleNativeLocalAudioMute
                 )
                 StreamHUDActionRow(
                     title: model.recordingCanStop ? "Stop Recording" : "Record",
@@ -385,41 +233,183 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDRemoteCoOpPanel: some View {
-        StreamHUDSection(label: "CO-OP", spacing: 8) {
+        StreamHUDSection(label: "CO-OP", spacing: 8, showsBetaTag: true) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Remote Co-Op")
+                        Text(model.remoteCoOpTitle)
                             .font(.streamNvidia(size: 14, weight: .bold))
                             .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        Text("Video and audio relay require WebRTC transport.")
+                        Text(model.remoteCoOpSubtitle)
                             .font(.streamNvidia(size: 11, weight: .medium))
                             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Text("NVST")
+                    Text(model.remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
                         .font(.streamNvidia(size: 9, weight: .bold))
                         .tracking(0.7)
-                        .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(Color.white.opacity(0.07))
                         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
                 }
-                StreamHUDActionRow(
-                    title: "Create Invite",
-                    subtitle: "Unavailable with native NVST",
-                    systemName: "person.badge.plus",
-                    isActive: false,
-                    isDisabled: !model.sidebarCapabilities.supports(.remoteCoOp),
-                    action: {}
-                )
-                nativeHUDDetailRow(label: "Slots", value: "\(model.remoteCoOpPreferences.effectiveReservedGuestSlots)")
-                nativeHUDDetailRow(label: "Quality", value: model.remoteCoOpPreferences.qualityPreset.label)
-                nativeHUDDetailRow(label: "Latency", value: model.remoteCoOpPreferences.latencyMode.label)
+                HStack(spacing: 8) {
+                    StreamHUDActionRow(
+                        title: model.remoteCoOpSnapshot.invite == nil ? "Create Invite" : "End Invite",
+                        subtitle: model.remoteCoOpInviteActionSubtitle,
+                        systemName: model.remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
+                        isActive: model.remoteCoOpSnapshot.invite != nil,
+                        isDisabled: !model.sidebarCapabilities.supports(.remoteCoOp) || (model.remoteCoOpSnapshot.invite == nil && !model.canStartRemoteCoOpInvite),
+                        isFocused: model.hudFocusID == "coop-invite",
+                        action: { model.remoteCoOpSnapshot.invite == nil ? model.startRemoteCoOpInvite() : model.stopRemoteCoOpInvite() }
+                    )
+                    if model.remoteCoOpSnapshot.invite != nil {
+                        StreamHUDActionRow(
+                            title: "Copy Invite",
+                            // Not the code: it printed the six characters a guest cannot join with,
+                            // directly under the button that copies the token they can.
+                            subtitle: model.remoteCoOpClipboardLabel,
+                            systemName: "doc.on.doc",
+                            isActive: false,
+                            isDisabled: false,
+                            isFocused: model.hudFocusID == "coop-copy",
+                            action: { model.copyRemoteCoOpInvite() }
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+                nativeHUDDetailRow(label: "Slots", value: "\(model.remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
+                nativeHUDDetailRow(label: "Quality", value: model.remoteCoOpSnapshot.preferences.qualityPreset.label)
+                nativeHUDDetailRow(label: "Latency", value: model.remoteCoOpSnapshot.preferences.latencyMode.label)
+                nativeHUDDetailRow(label: "Details", value: model.remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
+                // What a guest in another OpenNOW types into "connect by address". Only needed off
+                // the LAN - a guest on this network finds the host through Bonjour - so it is shown
+                // rather than copied into the invite, which is a browser link.
+                if let address = model.remoteCoOpNativeGuestAddress {
+                    // Copyable: it is the one value in this panel a guest has to be given by hand, and
+                    // reading it off a screen mid-game is how it gets mistyped.
+                    Button { model.copyRemoteCoOpGuestAddress() } label: {
+                        HStack(spacing: 6) {
+                            nativeHUDDetailRow(label: "App Guests", value: address)
+                            Image(systemName: "doc.on.doc")
+                                .font(.streamNvidia(size: 9, weight: .bold))
+                                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy the address app guests connect to")
+                }
+                if let remaining = model.remoteCoOpInviteRemainingText {
+                    nativeHUDDetailRow(label: "Expires", value: remaining)
+                }
+                if !model.remoteCoOpMessage.isEmpty {
+                    Text(model.remoteCoOpMessage)
+                        .font(.streamNvidia(size: 11, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                if !model.remoteCoOpSnapshot.participants.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(model.remoteCoOpSnapshot.participants) { participant in
+                            VStack(alignment: .leading, spacing: 3) {
+                                nativeHUDRemoteCoOpParticipantRow(participant)
+                                nativeHUDRemoteCoOpDeliveryRow(participant)
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    func nativeHUDRemoteCoOpParticipantRow(_ participant: OPNRemoteCoOpParticipant) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(participant.connectionState == .connected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning)
+                .frame(width: 7, height: 7)
+            Text(participant.displayName)
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+            Spacer(minLength: 8)
+            Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.label)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            if participant.connectionState == .connected {
+                nativeHUDRemoteCoOpQualityMenu(participant)
+            }
+            if participant.connectionState == .waitingForApproval {
+                StreamHUDParticipantIconButton(
+                    systemName: "checkmark",
+                    label: "Approve guest",
+                    color: WebRTCMediaStreamTheme.accent,
+                    isFocused: model.hudFocusID == "coop-approve-\(participant.id.uuidString)"
+                ) {
+                    model.approveRemoteCoOpParticipant(participant.id)
+                }
+            }
+            StreamHUDParticipantIconButton(
+                systemName: "xmark",
+                label: "Remove guest",
+                color: WebRTCMediaStreamTheme.danger,
+                isFocused: model.hudFocusID == "coop-remove-\(participant.id.uuidString)"
+            ) {
+                model.removeRemoteCoOpParticipant(participant.id)
+            }
+        }
+    }
+
+    /// What the guest is actually receiving, under their row.
+    ///
+    /// A preset is a ceiling, not a promise: the relay never upscales, the box preserves aspect ratio,
+    /// and Low Latency mode lets libwebrtc trade resolution away to hold frame rate. All three are
+    /// correct and all three look identical from a menu that says "4K", so the delivered size and the
+    /// reason it is not larger are shown rather than left to be guessed at.
+    @ViewBuilder
+    func nativeHUDRemoteCoOpDeliveryRow(_ participant: OPNRemoteCoOpParticipant) -> some View {
+        if participant.connectionState == .connected, let stats = model.remoteCoOpDeliveryStats[participant.id] {
+            HStack(spacing: 6) {
+                Image(systemName: stats.isAtBest ? "checkmark.circle" : "arrow.down.circle")
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .foregroundStyle(stats.isAtBest ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.warning)
+                Text(stats.summary)
+                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 15)
+        }
+    }
+
+    /// Per-guest quality. Guests are not interchangeable - one may be on Ethernet next door and
+    /// another on a hotel connection - and the encode is already per guest, so moving one up or down
+    /// costs the others nothing. "Session default" is a distinct choice from the preset that happens
+    /// to match it today: a guest left on it follows later changes to the session setting.
+    func nativeHUDRemoteCoOpQualityMenu(_ participant: OPNRemoteCoOpParticipant) -> some View {
+        Menu {
+            Button {
+                model.setRemoteCoOpParticipantQualityPreset(nil, for: participant.id)
+            } label: {
+                Label("Session Default (\(model.remoteCoOpSnapshot.preferences.qualityPreset.label))", systemImage: participant.qualityPreset == nil ? "checkmark" : "")
+            }
+            Divider()
+            ForEach(OPNRemoteCoOpQualityPreset.allCases, id: \.self) { preset in
+                Button {
+                    model.setRemoteCoOpParticipantQualityPreset(preset, for: participant.id)
+                } label: {
+                    Label(preset.label, systemImage: participant.qualityPreset == preset ? "checkmark" : "")
+                }
+            }
+        } label: {
+            Text(participant.qualityPreset?.label ?? "Auto")
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(participant.qualityPreset == nil ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.accent)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Stream quality for this guest")
     }
 
     /// Split into two boxes, matching how every other HUD group (MIC/REC/AFK, NETWORK) already

@@ -55,6 +55,7 @@ extension NativeNVSTHostViewModel {
         // Visibility is dropped by the transport's shutdown hook once the native session
         // is gone; hiding the Metal layer before `path.stop` wedges Geronimo's render loop.
         guard !didEnd else {
+            Task { @MainActor in _ = await stopRemoteCoOpSession() }
             inputDispatcher?.cancel()
             return
         }
@@ -68,11 +69,18 @@ extension NativeNVSTHostViewModel {
         nativeView?.onScreenKeyboardCapture = nil
         if let path {
             Task {
+                // Ends the guests' peers and hands back the neutral pad states they were holding.
+                // Delivered through the dispatcher before it is drained, because after `finish()`
+                // there is nothing left to carry them and whatever a guest had pressed would stay
+                // pressed in the game for as long as the seat keeps the session.
+                let neutralEvents = await stopRemoteCoOpSession()
+                for event in neutralEvents { inputDispatcher?.enqueue(event) }
                 await inputDispatcher?.finish()
                 try? await path.setMicrophoneEnabled(false)
                 _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
             }
         } else {
+            Task { @MainActor in _ = await stopRemoteCoOpSession() }
             inputDispatcher?.cancel()
         }
     }
@@ -90,6 +98,8 @@ extension NativeNVSTHostViewModel {
             isEnding = true
             return dispatcher
         }
+        let remoteCoOpNeutralEvents = await stopRemoteCoOpSession()
+        for event in remoteCoOpNeutralEvents { inputDispatcher?.enqueue(event) }
         await inputDispatcher?.finish()
         guard let path else {
             await MainActor.run {
@@ -139,6 +149,9 @@ extension NativeNVSTHostViewModel {
     func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
         nativeView?.remoteInputEnabled = false
+        // Idempotent, and the backstop for the paths that reach `finishOnce` without going through
+        // `finish` - a transport-side termination, for instance.
+        Task { @MainActor in _ = await stopRemoteCoOpSession() }
         inputDispatcher?.cancel()
         inputDispatcher = nil
         didEnd = true

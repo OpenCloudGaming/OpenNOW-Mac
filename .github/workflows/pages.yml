@@ -2,7 +2,7 @@ name: Deploy Remote Co-Op guest page
 
 on:
   push:
-    branches: [main, feature/remote-coop-signal]  # TODO: drop before merge, testing only
+    branches: [main]
     paths:
       - "Resources/RemoteCoOp/browser/**"
       - ".github/workflows/pages.yml"

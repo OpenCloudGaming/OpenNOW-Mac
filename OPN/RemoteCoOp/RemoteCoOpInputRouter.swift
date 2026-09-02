@@ -32,6 +32,16 @@ public actor OPNRemoteCoOpInputRouter {
         lastSequenceByParticipantID[id] = nil
     }
 
+    /// Forgets the sequence high-water mark for a participant that has just reconnected.
+    ///
+    /// A guest numbers packets from 1 for each socket, while the slot - and therefore this router's
+    /// entry - survives the disconnect grace period. Without this, every packet after a reconnect
+    /// arrives below the mark left by the previous socket and is rejected as `.stalePacket`, so a
+    /// guest that reconnects has a dead controller for the rest of the session.
+    public func resetSequence(for id: UUID) {
+        lastSequenceByParticipantID[id] = nil
+    }
+
     public func route(_ packet: OPNRemoteCoOpInputPacket, receivedAtNanoseconds: UInt64 = DispatchTime.now().uptimeNanoseconds) -> OPNRemoteCoOpInputRoutingResult {
         guard var participant = participantsByID[packet.participantID] else { return .participantNotFound }
         guard participant.inputEnabled else { return .inputDisabled }

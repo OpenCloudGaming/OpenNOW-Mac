@@ -71,5 +71,11 @@
 	<string>$(OPN_SENTRY_DSN)</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_opennow-coop._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OpenNOW uses the local network to host and join Remote Co-Op sessions between Macs.</string>
 </dict>
 </plist>

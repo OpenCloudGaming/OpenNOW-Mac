@@ -30,6 +30,7 @@ public protocol NativeNVSTTransport: Sendable {
     func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws
     func setMicrophoneEnabled(_ enabled: Bool) async throws
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws
+    func setLocalAudioPlaybackMuted(_ muted: Bool) async throws
     func togglePerformanceOverlay() async throws
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
@@ -60,6 +61,7 @@ public extension NativeNVSTTransport {
     func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
     func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws { throw NativeNVSTError.notRunning }
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
+    func setLocalAudioPlaybackMuted(_ muted: Bool) async throws { throw NativeNVSTError.notRunning }
 
     /// Recording is optional for a transport. The status handler is the only channel the UI
     /// listens on, so a transport that never installs one simply leaves the HUD at `.idle`.
@@ -250,6 +252,11 @@ public actor NativeNVSTStreamingPath {
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setMicrophoneEnabled(enabled)
+    }
+
+    public func setLocalAudioPlaybackMuted(_ muted: Bool) async throws {
+        guard activeSession != nil else { throw NativeNVSTError.notRunning }
+        try await transport.setLocalAudioPlaybackMuted(muted)
     }
 
     /// Returns whether the recorder was actually started. The caller shows "Starting" optimistically

@@ -54,6 +54,77 @@ struct SettingsCard<Content: View>: View {
     }
 }
 
+/// A card for a setting most hosts never touch: collapsed by default, so its status is visible without
+/// its full field set reading as something everyone has to configure. Callers should seed `isExpanded`
+/// from whether the setting is already configured, so a host who set it up in a previous session still
+/// sees it open.
+struct SettingsCollapsibleCard<Content: View>: View {
+    let title: String
+    let statusSummary: String
+    let isConfigured: Bool
+    let uiScale: CGFloat
+    @Binding var isExpanded: Bool
+    private let content: Content
+
+    init(title: String, statusSummary: String, isConfigured: Bool, uiScale: CGFloat, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.statusSummary = statusSummary
+        self.isConfigured = isConfigured
+        self.uiScale = uiScale
+        self._isExpanded = isExpanded
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { isExpanded.toggle() } label: {
+                HStack(spacing: 10 * uiScale) {
+                    Rectangle()
+                        .fill(OpenNOWDesign.accent)
+                        .frame(width: 4 * uiScale, height: 18 * uiScale)
+                    Text(title.uppercased())
+                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .tracking(1.1)
+                    Spacer(minLength: 0)
+                    Text(statusSummary)
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .foregroundStyle(isConfigured ? OpenNOWDesign.accent : .white.opacity(0.4))
+                        .fixedSize()
+                    Text(isExpanded ? "\u{25BE}" : "\u{25B8}")
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .padding(.horizontal, 18 * uiScale)
+                .padding(.top, 17 * uiScale)
+                .padding(.bottom, isExpanded ? 12 * uiScale : 17 * uiScale)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+                .padding(.horizontal, 20 * uiScale)
+                .padding(.bottom, 20 * uiScale)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack(alignment: .topLeading) {
+                SettingsVendorLayout.card
+                LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
+                Rectangle()
+                    .fill(OpenNOWDesign.accent.opacity(0.10))
+                    .frame(width: 1)
+            }
+        )
+        .overlay { Rectangle().stroke(Color.white.opacity(0.115), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
+    }
+}
+
 struct SettingsDivider: View {
     let uiScale: CGFloat
 
@@ -568,5 +639,28 @@ struct SettingsFlowLayout: Layout {
             x += subviewSize.width + spacing
             lineHeight = max(lineHeight, subviewSize.height)
         }
+    }
+}
+
+/// A small "BETA" tag, for surfaces that are shipped but still settling.
+///
+/// One component rather than three inline `Text`s: it appears on the Settings tab, in the stream
+/// HUD and on the Home entry point, and three copies would drift in colour and casing the way the
+/// relay rows already did.
+struct OpenNOWBetaTag: View {
+    let uiScale: CGFloat
+    /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
+    /// Settings wants the quieter treatment.
+    var prominent = false
+
+    var body: some View {
+        Text("BETA")
+            .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+            .tracking(0.7)
+            .foregroundStyle(prominent ? .black : OpenNOWDesign.accent)
+            .padding(.horizontal, 5 * uiScale)
+            .padding(.vertical, 2 * uiScale)
+            .background(prominent ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.16))
+            .accessibilityLabel("Beta")
     }
 }

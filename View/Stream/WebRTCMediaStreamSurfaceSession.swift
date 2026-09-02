@@ -20,8 +20,6 @@ extension WebRTCMediaStreamSurface {
         defer { startTask = nil }
         beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
-        transport.setRemoteCoOpVideoRelay(remoteCoOpVideoRelay)
-        transport.setRemoteCoOpAudioRelay(remoteCoOpAudioRelay)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
             handleTransportEnded(message: message)
@@ -483,9 +481,6 @@ extension WebRTCMediaStreamSurface {
         antiAFKMouseMovementTask = nil
         sessionLimitUpdateTask?.cancel()
         sessionLimitUpdateTask = nil
-        let remoteNeutralEvents = await stopRemoteCoOpSession()
-        remoteNeutralEvents.forEach { transport?.sendNow($0) }
-        remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
         guard let path else { return fallbackReport }
         defer { Task { @MainActor in endStreamingPerformanceMode() } }
         do {
@@ -523,12 +518,6 @@ extension WebRTCMediaStreamSurface {
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         transport?.stopRecording()
-        let currentTransport = transport
-        Task { @MainActor in
-            let neutralEvents = await stopRemoteCoOpSession()
-            neutralEvents.forEach { currentTransport?.sendNow($0) }
-            remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
-        }
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }

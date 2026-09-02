@@ -78,9 +78,10 @@ extension WebRTCMediaStreamSurface {
                         hudInputPanel
                         hudNetworkPanel
                         hudStatsPanel
-                        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-                            hudRemoteCoOpPanel
-                        }
+                        // Behind the feature toggle, like every other Remote Co-Op surface. The
+                        // value is read once on appear rather than from the store on every HUD
+                        // frame, which is what the alpha check used to do.
+                        if remoteCoOpEnabled { hudRemoteCoOpPanel }
                         hudVideoPanel
                     }
                     .padding(.horizontal, 18)
@@ -208,8 +209,8 @@ extension WebRTCMediaStreamSurface {
                     hudMetricCard(title: "Session", value: sessionLimitHUDText(at: context.date), positive: sessionLimitIsHealthy(at: context.date))
                 }
             }
-            if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-                hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
+            if remoteCoOpEnabled {
+                hudMetricCard(title: "Co-Op", value: "NVST Only", positive: false)
             }
             ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
                 StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
@@ -381,108 +382,32 @@ extension WebRTCMediaStreamSurface {
         }
     }
 
+    /// Remote Co-Op is not offered on this transport.
+    ///
+    /// It was, and it did not work: the WebRTC path decodes into libwebrtc's own pipeline and has no
+    /// frame tap comparable to the native decoder's, so guest video was assembled from re-rendered
+    /// output. That cost a second decode and encode per frame on the host and delivered a stream
+    /// guests described as sluggish. The native NVST path hands over the decoder's CVPixelBuffer
+    /// directly, which is what makes the relay cheap enough to be worth having.
+    ///
+    /// Stated rather than hidden: a host who has enabled Remote Co-Op in Settings and finds no way to
+    /// invite anyone needs to know it is the transport, not a missing setting.
     var hudRemoteCoOpPanel: some View {
         hudSection(label: "CO-OP", spacing: 8) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(remoteCoOpTitle)
-                            .font(.streamNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                        Text(remoteCoOpSubtitle)
-                            .font(.streamNvidia(size: 11, weight: .medium))
-                            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Text(remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
-                        .font(.streamNvidia(size: 9, weight: .bold))
-                        .tracking(0.7)
-                        .foregroundStyle(remoteCoOpSnapshot.preferences.transportMode == .relayOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
-                        .padding(.horizontal, 8)
-                        .frame(height: 24)
-                        .background(Color.white.opacity(0.07))
-                        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
-                }
-                HStack(spacing: 8) {
-                    StreamHUDActionRow(
-                        title: remoteCoOpSnapshot.invite == nil ? "Create Invite" : "End Invite",
-                        subtitle: remoteCoOpInviteActionSubtitle,
-                        systemName: remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
-                        isActive: remoteCoOpSnapshot.invite != nil,
-                        isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
-                        isFocused: hudFocusID == "coop-invite",
-                        action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
-                    )
-                    if remoteCoOpSnapshot.invite != nil {
-                        StreamHUDActionRow(
-                            title: "Copy Invite",
-                            subtitle: remoteCoOpInviteCode,
-                            systemName: "doc.on.doc",
-                            isActive: false,
-                            isDisabled: false,
-                            isFocused: hudFocusID == "coop-copy",
-                            action: copyRemoteCoOpInvite
-                        )
-                    }
-                    Spacer(minLength: 0)
-                }
-                settingsRow("Slots", "\(remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
-                settingsRow("Quality", remoteCoOpSnapshot.preferences.qualityPreset.label)
-                settingsRow("Latency", remoteCoOpSnapshot.preferences.latencyMode.label)
-                settingsRow("Details", remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
-                if !remoteCoOpMessage.isEmpty {
-                    Text(remoteCoOpMessage)
-                        .font(.streamNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                        .lineLimit(1)
-                }
-                if !remoteCoOpSnapshot.participants.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(remoteCoOpSnapshot.participants) { participant in
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(participant.connectionState == .connected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning)
-                                    .frame(width: 7, height: 7)
-                                Text(participant.displayName)
-                                    .font(.streamNvidia(size: 11, weight: .bold))
-                                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
-                                Spacer(minLength: 8)
-                                Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.rawValue)
-                                    .font(.streamNvidia(size: 10, weight: .bold))
-                                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                                if participant.connectionState == .waitingForApproval {
-                                    participantIconButton(systemName: "checkmark", label: "Approve guest", color: WebRTCMediaStreamTheme.accent) {
-                                        approveRemoteCoOpParticipant(participant.id)
-                                    }
-                                }
-                                participantIconButton(systemName: "xmark", label: "Remove guest", color: WebRTCMediaStreamTheme.danger) {
-                                    removeRemoteCoOpParticipant(participant.id)
-                                }
-                            }
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Not available on this transport")
+                    .font(.streamNvidia(size: 14, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                Text("Remote Co-Op needs the Native NVST transport, which is where the host can share decoded frames without paying for them twice. Switch in Settings > Streaming and relaunch.")
+                    .font(.streamNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     func hudSection<Content: View>(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) -> some View {
         StreamHUDSection(label: label, spacing: spacing, content: content)
-    }
-
-    func participantIconButton(systemName: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .foregroundStyle(color)
-                .frame(width: 22, height: 22)
-                .background(Color.white.opacity(0.07))
-                .overlay { Rectangle().stroke(color.opacity(0.32), lineWidth: 1) }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .help(label)
     }
 
     var microphoneToggleOverlay: some View {

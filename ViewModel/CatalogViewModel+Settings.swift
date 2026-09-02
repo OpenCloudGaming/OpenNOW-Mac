@@ -177,13 +177,6 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    func setRemoteCoOpAlphaOptedIn(_ optedIn: Bool) {
-        OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(optedIn)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        actionMessage = optedIn ? "Remote Co-Op alpha access enabled. Configure Remote Co-Op from Gameplay settings." : "Remote Co-Op alpha access disabled. Remote Co-Op settings are hidden."
-        loadSettingsPreferences()
-    }
-
     func setRemoteCoOpReservedGuestSlots(_ index: Int) {
         OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(index)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
@@ -221,16 +214,220 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    func setRemoteCoOpSignalingServerURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setSignalingServerURL(url)
-        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
+
+    /// Both secrets go to the keychain, never to preferences: the API token can create billable
+    /// resources on the host's account, so neither may sit beside the display settings or reach
+    /// launch metadata.
+    func setRemoteCoOpCloudflareAPIToken(_ token: String) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.account = OPNRemoteCoOpCloudflareAccount(accountID: credentials.account.accountID, apiToken: token)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+        remoteCoOpTURNSetupMessage = ""
     }
 
-    func setRemoteCoOpGuestJoinBaseURL(_ url: String) {
-        OPNRemoteCoOpPreferencesStore.setGuestJoinBaseURL(url)
+    /// Proves the relay end to end rather than just checking the fields are filled in.
+    ///
+    /// Every way relay credentials go wrong - a wrong password, a URL with no TLS variant, a provider
+    /// that has not activated the account - produces the same symptom: a session that works for
+    /// everyone except the one guest who needed the relay, on a network the host cannot test from.
+    func testRemoteCoOpRelay() {
+        let credentials = OPNRemoteCoOpTURNKeyStore.load()
+        guard credentials.canRelay else {
+            remoteCoOpRelayTestPassed = false
+            remoteCoOpRelayTestMessage = "Configure a relay first."
+            return
+        }
+        remoteCoOpRelayTestInFlight = true
+        remoteCoOpRelayTestPassed = false
+        remoteCoOpRelayTestMessage = "Asking the relay for an allocation..."
+        Task { @MainActor in
+            defer { remoteCoOpRelayTestInFlight = false }
+            let servers = await credentials.iceServers()
+            guard !servers.isEmpty else {
+                remoteCoOpRelayTestMessage = credentials.provider == .cloudflare
+                    ? "Cloudflare would not mint credentials. Run setup again."
+                    : "No usable relay URLs. Each needs a turns:, turn: or stun: prefix."
+                return
+            }
+            let result = await OPNRemoteCoOpRelayProbe.run(iceServers: servers)
+            remoteCoOpRelayTestPassed = result.succeeded
+            remoteCoOpRelayTestMessage = result.summary
+        }
+    }
+
+    /// Stores the pasted Ably key, or says why it was refused.
+    ///
+    /// Refused rather than half-accepted: a key without the `APP_ID.KEY_ID:SECRET` shape signs a JWT
+    /// Ably rejects for a reason the host cannot act on, so the failure belongs here where it can be
+    /// explained rather than at the moment a guest fails to connect.
+    func setRemoteCoOpAblyKey(_ pasted: String) {
+        let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            OPNRemoteCoOpAblyKeyStore.save(OPNRemoteCoOpAblyKey(name: "", secret: ""))
+            remoteCoOpAblyKey = OPNRemoteCoOpAblyKeyStore.load()
+            remoteCoOpAblyKeyMessage = "Hosted signaling turned off. Guests must reach this Mac directly or through a tunnel."
+            return
+        }
+        guard let key = OPNRemoteCoOpAblyKey(pasted: trimmed) else {
+            remoteCoOpAblyKeyMessage = "That does not look like an Ably key. They read APP_ID.KEY_ID:SECRET."
+            return
+        }
+        OPNRemoteCoOpAblyKeyStore.save(key)
+        remoteCoOpAblyKey = OPNRemoteCoOpAblyKeyStore.load()
+        remoteCoOpAblyKeyMessage = "Saved. New invites will also work for guests that cannot reach this Mac."
+    }
+
+    func setRemoteCoOpHostedGuestPageURL(_ url: String) {
+        OPNRemoteCoOpPreferencesStore.setHostedGuestPageURL(url)
         remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
-        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpRelayProviderIndex(_ index: Int) {
+        guard OPNRemoteCoOpRelayProvider.allCases.indices.contains(index) else { return }
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.provider = OPNRemoteCoOpRelayProvider.allCases[index]
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+        remoteCoOpTURNSetupMessage = ""
+        remoteCoOpRelayTestMessage = ""
+        remoteCoOpRelayTestPassed = false
+        refreshRemoteCoOpTURNUsage()
+    }
+
+    func setRemoteCoOpStaticRelayURLs(_ text: String) {
+        updateStaticRelay { OPNRemoteCoOpStaticRelay(urlText: text, username: $0.username, password: $0.password) }
+    }
+
+    func setRemoteCoOpStaticRelayUsername(_ username: String) {
+        updateStaticRelay { OPNRemoteCoOpStaticRelay(urls: $0.urls, username: username, password: $0.password) }
+    }
+
+    func setRemoteCoOpStaticRelayPassword(_ password: String) {
+        updateStaticRelay { OPNRemoteCoOpStaticRelay(urls: $0.urls, username: $0.username, password: password) }
+    }
+
+    func setRemoteCoOpSharedSecretRelayURLs(_ text: String) {
+        updateSharedSecretRelay { OPNRemoteCoOpSharedSecretRelay(urlText: text, secret: $0.secret, username: $0.username) }
+    }
+
+    func setRemoteCoOpSharedSecretRelaySecret(_ secret: String) {
+        updateSharedSecretRelay { OPNRemoteCoOpSharedSecretRelay(urls: $0.urls, secret: secret, username: $0.username) }
+    }
+
+    private func updateStaticRelay(_ transform: (OPNRemoteCoOpStaticRelay) -> OPNRemoteCoOpStaticRelay) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.staticRelay = transform(credentials.staticRelay)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+    }
+
+    private func updateSharedSecretRelay(_ transform: (OPNRemoteCoOpSharedSecretRelay) -> OPNRemoteCoOpSharedSecretRelay) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.sharedSecretRelay = transform(credentials.sharedSecretRelay)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+    }
+
+    /// Manual entry, for when `POST /calls/turn_keys` refuses a token that carries Cloudflare Calls
+    /// (Edit) - a documented-enough failure that automatic provisioning cannot be the only path. A key
+    /// made in the dashboard works identically; only the making of it differs.
+    func setRemoteCoOpTURNKeyID(_ keyID: String) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.turnKey = OPNRemoteCoOpTURNKey(keyID: keyID, keyToken: credentials.turnKey.keyToken)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+        remoteCoOpTURNSetupMessage = ""
+    }
+
+    func setRemoteCoOpTURNKeyToken(_ token: String) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.turnKey = OPNRemoteCoOpTURNKey(keyID: credentials.turnKey.keyID, keyToken: token)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+        remoteCoOpTURNSetupMessage = remoteCoOpRelayCredentials.canRelay
+            ? "Relay ready."
+            : "Add the TURN key ID as well."
+    }
+
+    func setRemoteCoOpTURNAccountID(_ accountID: String) {
+        var credentials = OPNRemoteCoOpTURNKeyStore.load()
+        credentials.account = OPNRemoteCoOpCloudflareAccount(accountID: accountID, apiToken: credentials.account.apiToken)
+        OPNRemoteCoOpTURNKeyStore.save(credentials)
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+    }
+
+    /// Derives the account ID and the TURN key from the pasted API token, so the host visits the
+    /// Cloudflare dashboard once instead of three times.
+    func setUpRemoteCoOpRelay() {
+        let credentials = OPNRemoteCoOpTURNKeyStore.load()
+        guard credentials.account.hasToken else {
+            remoteCoOpTURNSetupMessage = "Paste a Cloudflare API token first."
+            return
+        }
+        remoteCoOpTURNSetupInFlight = true
+        remoteCoOpTURNSetupMessage = "Contacting Cloudflare..."
+        Task { @MainActor in
+            defer { remoteCoOpTURNSetupInFlight = false }
+            do {
+                let provisioned = try await OPNRemoteCoOpTURNProvisioner.provision(
+                    apiToken: credentials.account.apiToken,
+                    accountID: credentials.account.accountID,
+                    existingKey: credentials.turnKey
+                )
+                OPNRemoteCoOpTURNKeyStore.save(provisioned)
+                remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+                remoteCoOpTURNSetupMessage = credentials.turnKey.isUsable
+                    ? "Relay ready. Kept the existing TURN key."
+                    : "Relay ready. Created a TURN key on your account."
+                refreshRemoteCoOpTURNUsage()
+            } catch {
+                remoteCoOpTURNSetupMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func clearRemoteCoOpRelay() {
+        OPNRemoteCoOpTURNKeyStore.save(OPNRemoteCoOpRelayCredentials(
+            provider: OPNRemoteCoOpTURNKeyStore.load().provider,
+            turnKey: OPNRemoteCoOpTURNKey(keyID: "", keyToken: ""),
+            account: OPNRemoteCoOpCloudflareAccount(accountID: "", apiToken: "")
+        ))
+        remoteCoOpRelayCredentials = OPNRemoteCoOpTURNKeyStore.load()
+        remoteCoOpTURNUsage = nil
+        remoteCoOpTURNUsageMessage = ""
+        remoteCoOpTURNSetupMessage = "Relay credentials removed from this Mac. The TURN key still exists on your Cloudflare account."
+    }
+
+    /// Reads month-to-date relay usage. On demand rather than polled: it is a billing figure, not a
+    /// live meter, and the query needs the Account Analytics permission on top of Calls - so a failure
+    /// here has to name it instead of showing zero.
+    func refreshRemoteCoOpTURNUsage() {
+        let credentials = OPNRemoteCoOpTURNKeyStore.load()
+        guard credentials.canReportUsage else {
+            remoteCoOpTURNUsage = nil
+            remoteCoOpTURNUsageMessage = credentials.canRelay ? "Add your account ID to see usage." : ""
+            return
+        }
+        remoteCoOpTURNUsageMessage = "Checking..."
+        Task { @MainActor in
+            do {
+                let usage = try await OPNRemoteCoOpTURNUsageReporter.monthToDateEgress(
+                    for: credentials.account,
+                    keyID: credentials.turnKey.keyID
+                )
+                remoteCoOpTURNUsage = usage
+                remoteCoOpTURNUsageMessage = ""
+            } catch {
+                remoteCoOpTURNUsage = nil
+                remoteCoOpTURNUsageMessage = "Usage unavailable. \(error.localizedDescription) The token also needs the Account Analytics permission."
+            }
+        }
+    }
+
+    func setRemoteCoOpPublicAddress(_ address: String) {
+        OPNRemoteCoOpPreferencesStore.setPublicAddress(address)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     }
 
     func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {

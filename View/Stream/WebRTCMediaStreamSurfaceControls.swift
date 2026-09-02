@@ -18,25 +18,16 @@ extension WebRTCMediaStreamSurface {
         WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
     }
 
+    /// No Remote Co-Op entries here: this HUD belongs to the WebRTC surface, which can no longer host
+    /// a session, so the invite and copy rows that used to be appended went with it.
     var hudFocusEntries: [StreamHUDFocusEntry] {
-        var entries: [StreamHUDFocusEntry] = [
+        [
             StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
             StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
         ]
-        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
-            entries.append(StreamHUDFocusEntry(
-                id: "coop-invite",
-                isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
-                action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
-            ))
-            if remoteCoOpSnapshot.invite != nil {
-                entries.append(StreamHUDFocusEntry(id: "coop-copy", isDisabled: false, action: copyRemoteCoOpInvite))
-            }
-        }
-        return entries
     }
 
     func handleHUDGamepad(_ state: GamepadState) {

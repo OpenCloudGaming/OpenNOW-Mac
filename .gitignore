@@ -104,12 +104,6 @@ Testing/
 sentry.properties
 
 # Remote Co-Op local service state and secrets
-RemoteCoOp/state/*
-!RemoteCoOp/state/.gitkeep
-RemoteCoOp/panel/state/*
-!RemoteCoOp/panel/state/.gitkeep
-RemoteCoOp/service/*.env
-RemoteCoOp/service/*.local
 
 # Unattended NVST experiment tooling (autopilot harness, frame dumper, one-shot experiment
 # runner). Env-gated at every entry point (OPN_NVST_AUTORUN_*, OPN_NVST_FRAME_DUMP_*) so it is

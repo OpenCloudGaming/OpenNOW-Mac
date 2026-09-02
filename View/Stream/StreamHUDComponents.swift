@@ -335,20 +335,28 @@ struct StreamUnifiedSidebar<Content: View>: View {
 struct StreamHUDSection<Content: View>: View {
     let label: String
     let spacing: CGFloat
+    /// Marks a section as still settling. Sits beside the label rather than in the content so it
+    /// reads as a property of the feature, not of one control inside it.
+    let showsBetaTag: Bool
     let content: Content
 
-    init(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) {
+    init(label: String, spacing: CGFloat = 10, showsBetaTag: Bool = false, @ViewBuilder content: () -> Content) {
         self.label = label
         self.spacing = spacing
+        self.showsBetaTag = showsBetaTag
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) {
-            Text(label)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .tracking(1.1)
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                if showsBetaTag { OpenNOWBetaTag(uiScale: 1, prominent: true) }
+                Spacer(minLength: 0)
+            }
             content
         }
         .padding(10)
@@ -500,5 +508,35 @@ struct StreamHUDSliderRow: View {
         }
         .hudFocusRing(isFocused)
         .opacity(isDisabled ? 0.46 : 1)
+    }
+}
+
+/// The approve / remove control on a Remote Co-Op participant row.
+///
+/// Shared when both stream HUDs hosted Remote Co-Op; only the native HUD does now and the row has to look identical in each:
+/// it was a private helper on the WebRTC HUD until the native NVST transport grew the same panel.
+struct StreamHUDParticipantIconButton: View {
+    let systemName: String
+    let label: String
+    let color: Color
+    /// Drawn with the same ring the rest of the HUD uses, so a controller can find these rows.
+    /// Approving a guest happens mid-game, when reaching for the trackpad is worst.
+    var isFocused = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 22, height: 22)
+                .background(Color.white.opacity(isFocused ? 0.16 : 0.07))
+                .overlay {
+                    Rectangle().stroke(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .help(label)
     }
 }
