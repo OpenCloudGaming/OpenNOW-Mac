@@ -62,7 +62,7 @@ struct RecordingRightsNotice: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.72).ignoresSafeArea()
+            Color.black.opacity(0.88).ignoresSafeArea()
             VStack(alignment: .leading, spacing: 16 * uiScale) {
                 HStack(spacing: 12 * uiScale) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -85,8 +85,12 @@ struct RecordingRightsNotice: View {
             }
             .padding(28 * uiScale)
             .frame(maxWidth: 460 * uiScale)
-            .background(RecordingsLayout.card)
+            .background {
+                Rectangle().fill(RecordingsLayout.surface)
+                Rectangle().fill(RecordingsLayout.card)
+            }
             .overlay { Rectangle().stroke(RecordingsLayout.strongStroke, lineWidth: 1) }
+            .shadow(color: .black.opacity(0.55), radius: 24 * uiScale, y: 10 * uiScale)
         }
     }
 }
