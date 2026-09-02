@@ -294,6 +294,13 @@ extension CatalogViewModel {
         return "Current Stream"
     }
 
+    /// Whether this game is the session the seat is currently holding, which is what earns a tile
+    /// the resumable treatment.
+    func isResumableSessionGame(_ game: OPNCatalogGameObject) -> Bool {
+        guard let session = activeHomeSession, session.isResumable, session.appId > 0 else { return false }
+        return Self.game(game, matchesApplicationID: String(session.appId))
+    }
+
     func cancelVendorLaunch() {
         clearLaunchFlow()
         launchMessage = ""

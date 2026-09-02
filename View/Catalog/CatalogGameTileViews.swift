@@ -44,6 +44,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     let isSelected: Bool
     let isSelectionActive: Bool
     let isQueuedForPatching: Bool
+    /// This game is the live seat session, so it carries the vendor's resumable treatment.
+    let isResumableSession: Bool
     let showsFreeAccountAccessBadges: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
@@ -57,7 +59,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         lhs.imageURL == rhs.imageURL &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isSelectionActive == rhs.isSelectionActive &&
-        lhs.isQueuedForPatching == rhs.isQueuedForPatching
+        lhs.isQueuedForPatching == rhs.isQueuedForPatching &&
+        lhs.isResumableSession == rhs.isResumableSession
     }
 
     var body: some View {
@@ -145,6 +148,15 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .clipped()
+                if isResumableSession {
+                    ZStack {
+                        Color.black.opacity(0.40)
+                        GameTileResumableArrowSweep()
+                    }
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .clipped()
+                    .allowsHitTesting(false)
+                }
                 if isActive {
                     Color.black.opacity(0.50)
                     LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
@@ -303,6 +315,74 @@ struct MallRibbonShape: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.28))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The vendor's `game-tile-resumable-overlay` sweep: one chevron crossing the tile art in the first
+/// 40% of a 2s cycle, then parked past the right edge until it loops. Shape, timing and alphas are
+/// its own `gfn-game-tile_moveArrow` keyframes.
+private struct GameTileResumableArrowSweep: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private enum Phase: CaseIterable {
+        case start, sweep, hold
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let arrowWidth = proxy.size.height * GameTileResumableArrowShape.aspectRatio
+            if reduceMotion {
+                // A looping sweep is the thing reduce-motion asks us to drop. The dimmed art still
+                // marks the tile, and the banner names the session in text.
+                Color.clear
+            } else {
+                PhaseAnimator(Phase.allCases) { phase in
+                    GameTileResumableArrowShape()
+                        .fill(Color.white)
+                        .frame(width: arrowWidth, height: proxy.size.height)
+                        .opacity(phase == .start ? 0.1 : 0.5)
+                        .offset(x: phase == .start ? -arrowWidth : proxy.size.width)
+                } animation: { phase in
+                    switch phase {
+                    case .sweep: .easeInOut(duration: 0.8)
+                    case .hold: .linear(duration: 1.2)
+                    // Reset behind the left edge with no tween, or the arrow tracks back visibly.
+                    case .start: .linear(duration: 0)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The vendor's arrow path, verbatim from its inline SVG (`viewBox 0 0 103 168`), normalised to the
+/// drawing rect.
+private struct GameTileResumableArrowShape: Shape {
+    static let aspectRatio: CGFloat = 103.0 / 168.0
+
+    private static let points = [
+        CGPoint(x: 103, y: 84),
+        CGPoint(x: 54.6607, y: 168),
+        CGPoint(x: 0, y: 168),
+        CGPoint(x: 47.6725, y: 84),
+        CGPoint(x: 0, y: 0),
+        CGPoint(x: 54.6607, y: 0),
+    ]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let scaleX = rect.width / 103
+        let scaleY = rect.height / 168
+        for (index, point) in Self.points.enumerated() {
+            let scaled = CGPoint(x: rect.minX + point.x * scaleX, y: rect.minY + point.y * scaleY)
+            if index == 0 {
+                path.move(to: scaled)
+            } else {
+                path.addLine(to: scaled)
+            }
+        }
         path.closeSubpath()
         return path
     }
