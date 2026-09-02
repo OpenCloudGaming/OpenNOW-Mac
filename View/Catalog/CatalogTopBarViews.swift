@@ -59,8 +59,10 @@ struct CatalogTopBar: View {
                             .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                     }
-                } else {
-                    Text(viewModel.selectedMainPage == .recordings ? "Saved gameplay videos" : viewModel.selectedSettingsGroup.title)
+                } else if viewModel.selectedMainPage == .settings {
+                    // Only Settings earns a centred label: it names the group you are in. Recordings
+                    // is a single page, so a subtitle there only repeats the title on the left.
+                    Text(viewModel.selectedSettingsGroup.title)
                         .nvidiaFont(size: 15, weight: .bold)
                         .foregroundStyle(.white.opacity(0.70))
                         .tracking(1.1)
