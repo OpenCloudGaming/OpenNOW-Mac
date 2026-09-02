@@ -92,14 +92,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swiftlint-v1-
 
-      # Enforces the MVVM layering rules in docs/MVVMMigrationPlan.md and the size budgets in
-      # .swiftlint.yml. There is no baseline: the tree lints clean, so any violation fails the build.
+      # Enforces the MVVM layering rules in docs/MVVMMigrationPlan.md, the size budgets in
+      # .swiftlint.yml and the DESIGN.md design-system rules. The layering and size rules have no
+      # baseline. The design rules do: .swiftlint-baseline.json grandfathers the pre-existing
+      # surfaces (see .swiftlint.yml) so new and edited code is held to DESIGN.md while the legacy
+      # burn-down happens on its own schedule. Regenerate it only to record a *removed* violation:
+      #
+      #   swift package --scratch-path .build/lint plugin --allow-writing-to-package-directory \
+      #     swiftlint lint --write-baseline .swiftlint-baseline.json App GFN Model OPN View ViewModel Tests
+      #
+      # then drop every non-design rule back out of the file — those must keep failing the build.
       - name: Lint
         run: |
           set -euo pipefail
           swift package --scratch-path .build/lint \
             plugin --allow-writing-to-package-directory \
-            swiftlint lint --strict \
+            swiftlint lint --strict --baseline .swiftlint-baseline.json \
             App GFN Model OPN View ViewModel Tests
         shell: bash
 

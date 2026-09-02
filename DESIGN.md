@@ -65,8 +65,9 @@ Token sources of truth:
 
 ### Semantic
 
-- **Warning** (#FF9500, system orange): `WebRTCMediaStreamTheme.warning`. Low battery,
-  degraded states, validation messages.
+- **Warning** (#FF9500, system orange): `WebRTCMediaStreamTheme.warning` on the stream HUD,
+  `OpenNOWDesign.Semantic.warning` on the app shell. Low battery, unsaved edits, degraded
+  states, validation messages. The same condition uses the same colour on both surfaces.
 - **Danger** (#FF0000, system red): `WebRTCMediaStreamTheme.danger`. Live badges and
   destructive-state indicators. Destructive dialog actions still use the standard
   secondary button style.
@@ -176,7 +177,11 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   `Rectangle`s with 1px strokes. No `RoundedRectangle`, no `Capsule`.
 - **Avatar**: 14 (`OpenNOWDesign.Radius.avatar`).
 - **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
-  icon buttons (`size * 0.32`). New UI must not add further exceptions.
+  icon buttons (`size * 0.32`), and the controller diagram artwork
+  (`SteamControllerDiagramView`), which traces physical hardware — round face buttons, pill
+  grips, oval trackpads — rather than chrome. Everything laid out *around* that drawing,
+  including its 2px accent selection ring, stays square. New UI must not add further
+  exceptions.
 
 ## Components
 
@@ -395,6 +400,43 @@ height 34). The embedded ad player accessory is a square `Rectangle` card with a
 1px Stroke Regular and floating-layer shadow; its countdown badge is black @ 0.72,
 square.
 
+### Steam Controller Sheets (test / mapping)
+
+The two controller sheets (`SteamControllerTestView`, `SteamControllerMappingView`) are
+full-window settings-style flows on Surface Deep, wrapped in the modal spec: 2px accent top bar
+(`SteamControllerModalTopBar`), App Bar header block (`SteamControllerModalHeader` — 10pt bold
+accent eyebrow "STEAM CONTROLLER", tracking 1.1, over a 20pt bold title, with the shared square
+28×28 `OpenNOWModalCloseButton`), 18 (Card) horizontal / 16 (Medium) vertical header padding, and
+1px Stroke Subtle rules (`SteamControllerModalRule`) between every band. Escape dismisses both.
+Every size is pre-scale and multiplied by `opnUIScale`, which the sheets read from the
+environment; hairline rules stay 1px at all scales.
+
+Shared square pieces live in `SteamControllerModalChrome.swift`:
+
+- **Chip** (`SteamControllerChip`): square selectable, Row Fill (#FFFFFF @ 0.075) resting / 0.14
+  hover / accent + black label when selected, 1px Stroke Subtle (accent when selected), 12
+  (Control Row) horizontal padding. Heights 26 (chord chips), 28 (default), 30 (list rows).
+  Disabled: opacity 0.46.
+- **Option Picker** (`SteamControllerOptionPicker`): the square stand-in for
+  `.pickerStyle(.segmented)` and `.pickerStyle(.menu)` — a `SettingsFlowLayout` row of chips at 8
+  (X-Small) spacing. Native pickers are not used on these surfaces.
+- **Value Bar** (`SteamControllerValueBar`): 8-high square bar, Row Fill track, accent fill.
+  Signed axes grow from a Stroke Regular centre tick; unsigned ones from the leading edge.
+- **Status Marker** (`SteamControllerStatusMarker`): 8×8 square — accent connected, Semantic
+  Destructive disconnected. No glow. The circular status dot stays a stream-surface exception.
+- **Badge** (`SteamControllerBadge`) and **Section** (`SteamControllerSection`): Section Fill
+  (#FFFFFF @ 0.055) with a 1px Stroke Subtle; the badge is height 20 with 8 padding, the section
+  18 (Card) padding under an eyebrow header.
+
+Mapping-specific chrome: the profile picker is an `OpenNOWDropdownMenu` (trigger height 30, Row
+Fill, 1px Stroke Regular), the profile name is a 14pt regular field on Surface Field with a 2px
+accent focus stroke, and the category sidebar (width 168) follows the Main Menu row spec — height
+30, 12 (Control Row) padding, white 0.08 on hover, accent @ 0.095 fill with a 3px accent leading
+bar when active. The footer carries a `Semantic.warning` "UNSAVED CHANGES" eyebrow, CANCEL
+(`OpenNOWModalSecondaryButtonStyle`, `.cancelAction`) and SAVE (`VendorGetInButtonStyle`,
+`.defaultAction`, opacity 0.46 while there is nothing to save). Row actions elsewhere in the bar
+use `OpenNOWCompactButtonStyle`.
+
 ### Focus Ring (`openNowFocusRing`)
 
 2px accent `Rectangle` stroke overlay on the focused control. Used for gamepad and
@@ -409,6 +451,23 @@ reserved for floating layers above the stream:
 - **Stats HUD**: #000000 @ 0.45, radius 24, y 12.
 - **HUD dock**: #000000 @ 0.58, radius 28, x 14, y 20.
 - **Modal dialog**: #000000 @ 0.58, radius 28, y 20.
+
+## Enforcement
+
+Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanically over `View/`:
+`design_no_corner_radius`, `design_no_native_picker`, `design_no_system_font_design`,
+`design_no_raw_semantic_color`, `design_no_accent_glow_shadow`, `design_no_native_divider`,
+`design_no_hardcoded_surface_color`. They are regex rules, so they read text, not intent:
+
+- A genuine documented exception is annotated at the site —
+  `// swiftlint:disable:next design_no_corner_radius` plus the reason — which keeps the exception
+  list visible in review. The controller diagram disables the radius rule file-wide for its
+  artwork; the login vendor icon annotates its one line.
+- Surfaces that predate the rules are grandfathered in `.swiftlint-baseline.json`, not exempted:
+  the tree still reports them when the baseline is dropped, and each one is a burn-down item.
+- Token files (`OpenNOWDesign.swift`, `StreamHUDComponents.swift`, `SettingsView.swift`,
+  `LoginStyles.swift`, `OpenNOWButtons.swift`) are excluded where they define the literals the
+  rules ban elsewhere — that is where a colour or font is allowed to be spelled out.
 
 ## Guidelines
 

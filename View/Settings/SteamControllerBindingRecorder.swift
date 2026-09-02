@@ -9,34 +9,51 @@ struct SteamControllerBindingRecorder: View {
     let currentLabel: String
     let onRecord: (UInt16, KeyboardModifiers) -> Void
 
+    @Environment(\.opnUIScale) private var uiScale
     @State private var isRecording = false
+    @State private var isHovering = false
     @State private var monitor: Any?
 
     var body: some View {
         Button {
             isRecording ? cancel() : startRecording()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 6 * uiScale) {
                 if isRecording {
                     Image(systemName: "keyboard")
-                        .font(.nvidiaSans(size: 10, weight: .bold))
+                        .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
                     Text("Press a key… (Esc to cancel)")
                 } else {
                     Text(currentLabel)
                 }
             }
-            .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
-            .foregroundStyle(isRecording ? OpenNOWDesign.accent : .white.opacity(0.85))
+            .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+            .foregroundStyle(foreground)
             .frame(maxWidth: .infinity)
-            .frame(height: 32)
-            .background(isRecording ? OpenNOWDesign.accent.opacity(0.12) : Color.white.opacity(0.05))
-            .overlay(
-                Rectangle()
-                    .stroke(isRecording ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
-            )
+            .frame(height: 32 * uiScale)
+            .background(background)
+            .overlay {
+                Rectangle().stroke(
+                    isRecording ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle,
+                    lineWidth: isRecording ? 2 : 1
+                )
+            }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.opnPressable)
+        .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         .onDisappear { stopMonitoring() }
+    }
+
+    private var foreground: Color {
+        if isRecording { return OpenNOWDesign.accent }
+        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+    }
+
+    private var background: Color {
+        if isRecording { return OpenNOWDesign.accent.opacity(0.12) }
+        return Color.white.opacity(isHovering ? 0.14 : 0.075)
     }
 
     private func startRecording() {

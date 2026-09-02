@@ -158,7 +158,7 @@ struct RecordingEmptyPlayer: View {
     var body: some View {
         VStack(spacing: 18 * uiScale) {
             ZStack {
-                RoundedRectangle(cornerRadius: 0)
+                Rectangle()
                     .fill(Color.white.opacity(0.045))
                     .frame(width: 180 * uiScale, height: 108 * uiScale)
                     .overlay { DiagonalGrid().stroke(Color.white.opacity(0.08), lineWidth: 1) }

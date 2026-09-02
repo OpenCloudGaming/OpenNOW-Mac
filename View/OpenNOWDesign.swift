@@ -17,6 +17,10 @@ enum OpenNOWDesign {
 
     enum Semantic {
         static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
+        /// Degraded-but-not-broken state on app-shell surfaces: unsaved edits, a low battery, a
+        /// value that still works but wants attention. Matches `WebRTCMediaStreamTheme.warning`
+        /// so the same condition reads the same colour in the stream HUD and in Settings.
+        static let warning = Color.orange
     }
 
     enum Text {

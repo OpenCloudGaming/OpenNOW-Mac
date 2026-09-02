@@ -1,0 +1,1262 @@
+[
+  {
+    "text": "                .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))",
+    "violation": {
+      "location": {
+        "character": 29,
+        "file": "View/Catalog/CatalogGameTileViews.swift",
+        "line": 212
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Catalog/CatalogGameTileViews.swift",
+        "line": 233
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    static let black = CatalogMarqueeScrimColor(red: 0, green: 0, blue: 0)",
+    "violation": {
+      "location": {
+        "character": 43,
+        "file": "View/Catalog/CatalogHeroImageViews.swift",
+        "line": 135
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        Color(red: red / 255, green: green / 255, blue: blue / 255)",
+    "violation": {
+      "location": {
+        "character": 9,
+        "file": "View/Catalog/CatalogHeroImageViews.swift",
+        "line": 142
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        return CatalogMarqueeScrimColor(red: red / count, green: green / count, blue: blue / count)",
+    "violation": {
+      "location": {
+        "character": 35,
+        "file": "View/Catalog/CatalogHeroImageViews.swift",
+        "line": 284
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .foregroundStyle(warning ? Color.yellow.opacity(0.86) : .white.opacity(0.72))",
+    "violation": {
+      "location": {
+        "character": 36,
+        "file": "View/Catalog/CatalogLaunchOverlayViews.swift",
+        "line": 336
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))",
+    "violation": {
+      "location": {
+        "character": 25,
+        "file": "View/Catalog/CatalogRailViews.swift",
+        "line": 266
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: OpenNOWDesign.accent, radius: 4)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Catalog/CatalogRailViews.swift",
+        "line": 350
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    static let tileTray = Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255)",
+    "violation": {
+      "location": {
+        "character": 27,
+        "file": "View/Catalog/CatalogShowAllGridView.swift",
+        "line": 544
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    var cornerRadius: CGFloat = 0",
+    "violation": {
+      "location": {
+        "character": 9,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 45
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)",
+    "violation": {
+      "location": {
+        "character": 9,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 49
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 49
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 24,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 71
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 41,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 71
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    SkeletonBlock(cornerRadius: 4)",
+    "violation": {
+      "location": {
+        "character": 35,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 103
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    SkeletonBlock(cornerRadius: 2)",
+    "violation": {
+      "location": {
+        "character": 35,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 113
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                SkeletonBlock(cornerRadius: 2)",
+    "violation": {
+      "location": {
+        "character": 31,
+        "file": "View/Catalog/CatalogSkeletonView.swift",
+        "line": 157
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Login/LoginComponents.swift",
+        "line": 202
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accent : .orange)",
+    "violation": {
+      "location": {
+        "character": 99,
+        "file": "View/Login/LoginFormView.swift",
+        "line": 421
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color(red: 14 / 255, green: 15 / 255, blue: 15 / 255))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Recordings/RecordingEditorView.swift",
+        "line": 42
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .pickerStyle(.segmented)",
+    "violation": {
+      "location": {
+        "character": 14,
+        "file": "View/Recordings/RecordingEditorView.swift",
+        "line": 149
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                Menu {",
+    "violation": {
+      "location": {
+        "character": 17,
+        "file": "View/Recordings/RecordingEditorView.swift",
+        "line": 180
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .pickerStyle(.segmented)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Recordings/RecordingEditorView.swift",
+        "line": 253
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                        .foregroundStyle(.orange)",
+    "violation": {
+      "location": {
+        "character": 42,
+        "file": "View/Recordings/RecordingFormatting.swift",
+        "line": 70
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        RoundedRectangle(cornerRadius: 2)",
+    "violation": {
+      "location": {
+        "character": 9,
+        "file": "View/Recordings/RecordingTimelineView.swift",
+        "line": 104
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        RoundedRectangle(cornerRadius: 2)",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Recordings/RecordingTimelineView.swift",
+        "line": 104
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 6)",
+    "violation": {
+      "location": {
+        "character": 14,
+        "file": "View/Recordings/RecordingTimelineView.swift",
+        "line": 110
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .shadow(color: OpenNOWDesign.accent.opacity(0.95), radius: 7)",
+    "violation": {
+      "location": {
+        "character": 14,
+        "file": "View/Recordings/RecordingTimelineView.swift",
+        "line": 134
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .shadow(color: OpenNOWDesign.accent.opacity(0.80), radius: 8)",
+    "violation": {
+      "location": {
+        "character": 14,
+        "file": "View/Recordings/RecordingTimelineView.swift",
+        "line": 150
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color(red: 17 / 255, green: 18 / 255, blue: 18 / 255))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Recordings/RecordingsInspector.swift",
+        "line": 86
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Recordings/RecordingsView.swift",
+        "line": 6
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    static let surface = Color(red: 12 / 255, green: 13 / 255, blue: 13 / 255)",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Recordings/RecordingsView.swift",
+        "line": 7
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "    static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)",
+    "violation": {
+      "location": {
+        "character": 25,
+        "file": "View/Recordings/RecordingsView.swift",
+        "line": 12
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                                Divider()",
+    "violation": {
+      "location": {
+        "character": 33,
+        "file": "View/Recordings/RecordingsView.swift",
+        "line": 120
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                            .clipShape(Capsule())",
+    "violation": {
+      "location": {
+        "character": 40,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 136
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .clipShape(RoundedRectangle(cornerRadius: 14 * uiScale, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 20,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 285
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .clipShape(RoundedRectangle(cornerRadius: 14 * uiScale, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 37,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 285
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .clipShape(Capsule())",
+    "violation": {
+      "location": {
+        "character": 24,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 301
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Menu {",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 334
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                Divider()",
+    "violation": {
+      "location": {
+        "character": 17,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 336
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .clipShape(Capsule())",
+    "violation": {
+      "location": {
+        "character": 28,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 350
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .clipShape(Capsule())",
+    "violation": {
+      "location": {
+        "character": 20,
+        "file": "View/RemoteCoOp/RemoteCoOpGuestView.swift",
+        "line": 377
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))",
+    "violation": {
+      "location": {
+        "character": 25,
+        "file": "View/Settings/SettingsAboutViews.swift",
+        "line": 217
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    .fill(positive ? OpenNOWDesign.accent : Color.orange)",
+    "violation": {
+      "location": {
+        "character": 61,
+        "file": "View/Settings/SettingsAccountViews.swift",
+        "line": 193
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .overlay(alignment: .leading) { Rectangle().fill(positive ? OpenNOWDesign.accent : Color.orange).frame(width: 3 * uiScale) }",
+    "violation": {
+      "location": {
+        "character": 92,
+        "file": "View/Settings/SettingsAccountViews.swift",
+        "line": 208
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }",
+    "violation": {
+      "location": {
+        "character": 87,
+        "file": "View/Settings/SettingsAccountViews.swift",
+        "line": 209
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OpenNOWDesign.accent : .orange)",
+    "violation": {
+      "location": {
+        "character": 115,
+        "file": "View/Settings/SettingsControllerViews.swift",
+        "line": 67
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                            .foregroundStyle(accessibilityPermissionGranted ? OpenNOWDesign.accent : .orange)",
+    "violation": {
+      "location": {
+        "character": 102,
+        "file": "View/Settings/SettingsControllerViews.swift",
+        "line": 108
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Divider().overlay(Color.white.opacity(0.12))",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/Settings/SettingsRemoteCoOpRelayWizard.swift",
+        "line": 56
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Divider().overlay(Color.white.opacity(0.12))",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/Settings/SettingsRemoteCoOpRelayWizard.swift",
+        "line": 59
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Settings/SettingsRemoteCoOpRelayWizard.swift",
+        "line": 64
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Divider().overlay(Color.white.opacity(0.12))",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/Settings/SettingsRemoteCoOpSetupWizard.swift",
+        "line": 101
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Divider().overlay(Color.white.opacity(0.12))",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/Settings/SettingsRemoteCoOpSetupWizard.swift",
+        "line": 114
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Settings/SettingsRemoteCoOpSetupWizard.swift",
+        "line": 147
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .font(.system(size: 11 * uiScale, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 51,
+        "file": "View/Settings/SettingsRemoteCoOpSetupWizardSteps.swift",
+        "line": 67
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                        .font(.system(size: 11 * uiScale, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 59,
+        "file": "View/Settings/SettingsRemoteCoOpViews.swift",
+        "line": 253
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 68,
+        "file": "View/Settings/SettingsRowComponents.swift",
+        "line": 411
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        if latencyMs <= 65 { return Color(red: 1.0, green: 0.77, blue: 0.24) }",
+    "violation": {
+      "location": {
+        "character": 37,
+        "file": "View/Settings/SettingsRowComponents.swift",
+        "line": 576
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        return Color(red: 1.0, green: 0.32, blue: 0.26)",
+    "violation": {
+      "location": {
+        "character": 16,
+        "file": "View/Settings/SettingsRowComponents.swift",
+        "line": 577
+      },
+      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_hardcoded_surface_color",
+      "ruleName": "Hardcoded colour channels",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    .foregroundStyle(Color.orange)",
+    "violation": {
+      "location": {
+        "character": 38,
+        "file": "View/Settings/SettingsStreamingViews.swift",
+        "line": 64
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                        .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 76,
+        "file": "View/Settings/SettingsStreamingViews.swift",
+        "line": 73
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .background(Color.orange.opacity(0.08))",
+    "violation": {
+      "location": {
+        "character": 21,
+        "file": "View/Settings/SettingsStreamingViews.swift",
+        "line": 86
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        .overlay { Rectangle().stroke(Color.orange.opacity(0.22), lineWidth: 1) }",
+    "violation": {
+      "location": {
+        "character": 39,
+        "file": "View/Settings/SettingsStreamingViews.swift",
+        "line": 87
+      },
+      "reason": "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_raw_semantic_color",
+      "ruleName": "Raw semantic colour",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: accent.opacity(0.85), radius: 8 * metrics.uiScale)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 397
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: accent.opacity(0.30), radius: 22 * metrics.uiScale)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 398
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: accent.opacity(0.34 + bloom * 0.22), radius: (metrics.compact ? 14 : 20) * metrics.uiScale)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 479
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 4 * scale)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 622
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .shadow(color: settled ? accent.opacity(0.85) : .clear, radius: 6 * scale)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 647
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    .shadow(color: isHead ? accent.opacity(0.95) : .clear, radius: 10 * scale)",
+    "violation": {
+      "location": {
+        "character": 22,
+        "file": "View/Startup/OpenNOWStartupLoadingView.swift",
+        "line": 724
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "        Menu {",
+    "violation": {
+      "location": {
+        "character": 9,
+        "file": "View/Stream/NativeNVSTStreamHUD.swift",
+        "line": 391
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            Divider()",
+    "violation": {
+      "location": {
+        "character": 13,
+        "file": "View/Stream/NativeNVSTStreamHUD.swift",
+        "line": 397
+      },
+      "reason": "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_divider",
+      "ruleName": "Native Divider",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .pickerStyle(.segmented)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Stream/NativeNVSTStreamHUD.swift",
+        "line": 440
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                        .font(.system(size: 11, weight: .medium, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 66,
+        "file": "View/Stream/NativeNVSTStreamHUD.swift",
+        "line": 557
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                        .font(.system(size: 74, weight: .black, design: .monospaced))",
+    "violation": {
+      "location": {
+        "character": 65,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 230
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 28, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 55,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 241
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 28, style: .continuous))",
+    "violation": {
+      "location": {
+        "character": 72,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 241
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))",
+    "violation": {
+      "location": {
+        "character": 26,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 242
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))",
+    "violation": {
+      "location": {
+        "character": 43,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 242
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .font(.system(size: 12, weight: .black, design: .rounded))",
+    "violation": {
+      "location": {
+        "character": 53,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 443
+      },
+      "reason": "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_system_font_design",
+      "ruleName": "System rounded or monospaced font",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .background(.black.opacity(0.68), in: Capsule())",
+    "violation": {
+      "location": {
+        "character": 51,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 447
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "            .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))",
+    "violation": {
+      "location": {
+        "character": 22,
+        "file": "View/Stream/WebRTCMediaStreamHUD.swift",
+        "line": 448
+      },
+      "reason": "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_corner_radius",
+      "ruleName": "Corner radius on chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                .pickerStyle(.segmented)",
+    "violation": {
+      "location": {
+        "character": 18,
+        "file": "View/Stream/WebRTCMediaStreamHUDPanels.swift",
+        "line": 43
+      },
+      "reason": "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow).",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_native_picker",
+      "ruleName": "Native picker or menu chrome",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                                .shadow(color: OpenNOWDesign.accent, radius: 6)",
+    "violation": {
+      "location": {
+        "character": 34,
+        "file": "View/Stream/WebRTCMediaStreamHost.swift",
+        "line": 126
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  },
+  {
+    "text": "                    .shadow(color: OpenNOWDesign.accent, radius: 8)",
+    "violation": {
+      "location": {
+        "character": 22,
+        "file": "View/Stream/WebRTCMediaStreamHost.swift",
+        "line": 198
+      },
+      "reason": "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only.",
+      "ruleDescription": "",
+      "ruleIdentifier": "design_no_accent_glow_shadow",
+      "ruleName": "Accent glow shadow",
+      "severity": "error"
+    }
+  }
+]

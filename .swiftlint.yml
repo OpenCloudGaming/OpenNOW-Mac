@@ -1,12 +1,16 @@
 # SwiftLint configuration for OpenNOW.
 #
-# Purpose is narrow: enforce the MVVM layering rules from docs/MVVMMigrationPlan.md and provide a
-# size burn-down for the views that still carry logic. It is not a style linter — every stylistic
-# rule stays disabled so the diff noise stays zero.
+# Purpose is narrow: enforce the MVVM layering rules from docs/MVVMMigrationPlan.md, provide a
+# size burn-down for the views that still carry logic, and hold new UI to DESIGN.md. It is not a
+# style linter — every stylistic rule stays disabled so the diff noise stays zero.
 #
-# There is no baseline: the tree lints clean, so every rule below applies to every file. CI runs:
+# Layering and size rules have no baseline and apply to every file. The `design_*` rules ship with
+# one: .swiftlint-baseline.json records the surfaces that predate them (stream HUD legacy pills,
+# the startup splash glow, the recordings pickers, the guest window), so new and edited code is
+# held to DESIGN.md without a 100-line annotation diff across files nobody is touching. Anything
+# not in that file fails. CI runs:
 #
-#   swiftlint lint --strict App GFN Model OPN View ViewModel Tests
+#   swiftlint lint --strict --baseline .swiftlint-baseline.json App GFN Model OPN View ViewModel Tests
 
 only_rules:
   - file_length
@@ -108,3 +112,117 @@ custom_rules:
     regex: '(Timer\.scheduledTimer|NotificationCenter\.default\.addObserver)'
     message: "Start and stop timers and notification observers in the view model, where the lifetime is explicit."
     severity: warning
+
+  # --- DESIGN.md rules ------------------------------------------------------
+  #
+  # The design system is a document (DESIGN.md), and a document only holds if something checks it.
+  # Every rule below encodes one of its "Don't" bullets. All of them are regex rules, so they see
+  # text, not semantics: a genuine documented exception is annotated at the site with
+  #
+  #     // swiftlint:disable:next design_no_corner_radius -- <why, referencing DESIGN.md>
+  #
+  # which keeps the exception list reviewable in the diff instead of hidden in a lint baseline.
+  #
+  # `excluded_match_kinds` keeps every rule off comments and string literals; without it a doc
+  # comment explaining a rule trips the rule.
+
+  design_no_corner_radius:
+    name: "Corner radius on chrome"
+    included: ".*/View/.*\\.swift"
+    regex: '(RoundedRectangle|UnevenRoundedRectangle|Capsule)\s*\(|\.cornerRadius\(|cornerRadius:'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason."
+    severity: error
+
+  design_no_native_picker:
+    name: "Native picker or menu chrome"
+    included: ".*/View/.*\\.swift"
+    regex: 'pickerStyle\(\.(segmented|menu|automatic|inline|radioGroup)\)|(?<![\w.])Menu\s*\{'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow)."
+    severity: error
+
+  design_no_system_font_design:
+    name: "System rounded or monospaced font"
+    included: ".*/View/.*\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|Stream/StreamHUDComponents)\\.swift"
+    regex: 'design:\s*\.(rounded|monospaced|serif)'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Typography: new surfaces use NVIDIA Sans; reach for `.monospacedDigit()` instead of a monospaced system face. Legacy overlays annotate the line with the reason."
+    severity: error
+
+  design_no_raw_semantic_color:
+    name: "Raw semantic colour"
+    included: ".*/View/.*\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|Stream/StreamHUDComponents|Components/OpenNOWButtons)\\.swift"
+    regex: 'Color\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])|(?<![\w.])\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour."
+    severity: error
+
+  design_no_accent_glow_shadow:
+    name: "Accent glow shadow"
+    included: ".*/View/.*\\.swift"
+    regex: 'shadow\(\s*color:[^\n)]*accent'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Elevation: surfaces are flat - state reads through accent fills and strokes, not glows. Shadows are the documented floating-layer set only."
+    severity: error
+
+  design_no_native_divider:
+    name: "Native Divider"
+    included: ".*/View/.*\\.swift"
+    regex: '(?<![\w.])Divider\s*\('
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider."
+    severity: error
+
+  design_no_hardcoded_surface_color:
+    name: "Hardcoded colour channels"
+    included: ".*/View/.*\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|Settings/SettingsView|Stream/StreamHUDComponents|Login/LoginStyles)\\.swift"
+    regex: 'Color\(\s*(red|white|hue):'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme."
+    severity: error

@@ -5,6 +5,9 @@
 //  The per-binding editors — gamepad chord, keyboard key, mouse button — and the pad/stick
 //  behaviour section. Split out of SteamControllerMappingView.swift.
 //
+//  Every control here is a square chip from SteamControllerModalChrome; the native segmented and
+//  menu pickers this used to draw render rounded system chrome the app shell does not have.
+//
 
 import SwiftUI
 
@@ -16,29 +19,24 @@ extension SteamControllerMappingView {
             if case .gamepadChord(let combo) = target { return combo }
             return SteamControllerGripCombo()
         }()
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? .white.opacity(0.4) : OpenNOWDesign.accent.opacity(0.9))
-            let columns = [GridItem(.adaptive(minimum: 64), spacing: 6)]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                .foregroundStyle(combo.isEmpty ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.accent)
+            let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale))]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 ForEach(SteamControllerGripComboTarget.all) { chip in
-                    let selected = combo.contains(chip.element)
-                    Button {
+                    SteamControllerChip(
+                        label: chip.label,
+                        isSelected: combo.contains(chip.element),
+                        height: 26,
+                        fontSize: 10,
+                        uiScale: uiScale
+                    ) {
                         var updated = combo
                         updated.toggle(chip.element)
                         draft?.bindings[control] = updated.isEmpty ? .passthroughButton : .gamepadChord(updated)
-                    } label: {
-                        Text(chip.label)
-                            .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
-                            .foregroundStyle(selected ? .black : .white.opacity(0.55))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 24)
-                            .background(selected ? OpenNOWDesign.accent : Color.white.opacity(0.05))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(selected ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -66,23 +64,17 @@ extension SteamControllerMappingView {
             return nil
         }()
         let options: [(MouseButton, String)] = [(.left, "Left Click"), (.right, "Right Click"), (.middle, "Middle Click"), (.back, "Back"), (.forward, "Forward")]
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 6 * uiScale) {
             ForEach(options, id: \.0) { button, label in
-                Button {
+                SteamControllerChip(
+                    label: label,
+                    isSelected: current == button,
+                    height: 30,
+                    alignment: .leading,
+                    uiScale: uiScale
+                ) {
                     draft?.bindings[control] = .mouseButton(button)
-                } label: {
-                    HStack {
-                        Text(label)
-                            .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
-                            .foregroundStyle(current == button ? .black : .white.opacity(0.7))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(current == button ? OpenNOWDesign.accent : Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -132,33 +124,38 @@ extension SteamControllerMappingView {
             ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
             : [.mouse, .scrollWheel, .disabled]
 
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("BEHAVIOR")
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
-                .tracking(1.0)
-                .foregroundStyle(.white.opacity(0.35))
-            Picker("", selection: binding.mode) {
-                ForEach(availableModes) { mode in
-                    Text(mode.label).tag(mode)
-                }
+        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+            SteamControllerEyebrow(text: "BEHAVIOR", uiScale: uiScale)
+            SteamControllerOptionPicker(
+                options: availableModes.map { (value: $0, label: $0.label) },
+                selection: binding.wrappedValue.mode,
+                uiScale: uiScale
+            ) { mode in
+                binding.mode.wrappedValue = mode
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
 
             if binding.wrappedValue.mode == .mouse || binding.wrappedValue.mode == .scrollWheel {
                 HStack {
                     Text("Sensitivity")
-                        .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     Spacer()
                     Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.accent)
+                        .monospacedDigit()
                 }
                 Slider(value: binding.sensitivity, in: 0.1...4.0)
-                Toggle("Invert Y-Axis", isOn: binding.invertY)
-                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                    .toggleStyle(.switch)
+                    .tint(OpenNOWDesign.accent)
+                HStack {
+                    Text("Invert Y-Axis")
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    Spacer()
+                    Toggle("", isOn: binding.invertY)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
             }
         }
     }

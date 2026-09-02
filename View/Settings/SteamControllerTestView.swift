@@ -1,18 +1,30 @@
 import Combine
 import SwiftUI
 
+/// Live input tester: connection state, the shared controller diagram, and every raw axis and
+/// button value. Chrome follows the modal spec in DESIGN.md — accent top bar, App Bar header,
+/// square surfaces, tokenised colours — and scales with the interface scale setting.
 struct SteamControllerTestView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.opnUIScale) private var uiScale
     @StateObject private var model = SteamControllerTestModel()
 
-    private static let backgroundColor = OpenNOWDesign.Surface.deep
+    private var sheetSize: CGSize {
+        SteamControllerSheetMetrics.size(width: 860, height: 700, uiScale: uiScale)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().overlay(Color.white.opacity(0.12))
+            SteamControllerModalTopBar()
+            SteamControllerModalHeader(
+                eyebrow: "STEAM CONTROLLER",
+                title: "Controller Test",
+                uiScale: uiScale,
+                onClose: { dismiss() }
+            )
+            SteamControllerModalRule()
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: OpenNOWDesign.Spacing.xLarge(scale: uiScale)) {
                     connectionStatusBar
                     if model.isConnected {
                         controllerDiagram
@@ -21,72 +33,45 @@ struct SteamControllerTestView: View {
                         noControllerMessage
                     }
                 }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
+                .padding(.horizontal, OpenNOWDesign.Spacing.railHorizontal(scale: uiScale))
+                .padding(.vertical, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
             }
         }
-        .frame(minWidth: 860, minHeight: 700)
-        .background(Self.backgroundColor)
-        .foregroundStyle(.white)
+        .frame(minWidth: sheetSize.width, minHeight: sheetSize.height)
+        .background(OpenNOWDesign.Surface.deep)
+        .foregroundStyle(OpenNOWDesign.Text.primary)
+        .onExitCommand { dismiss() }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }
 
-    private var header: some View {
-        HStack {
-            Image(systemName: "gamecontroller.fill")
-                .font(.nvidiaSans(size: 18))
-                .foregroundStyle(OpenNOWDesign.accent)
-            Text("STEAM CONTROLLER TEST")
-                .font(OpenNOWNVIDIAFont.font(size: 15, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(.white.opacity(0.78))
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.nvidiaSans(size: 13, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
-    }
-
     private var connectionStatusBar: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(model.isConnected ? OpenNOWDesign.accent : Color.red.opacity(0.7))
-                .frame(width: 8, height: 8)
-                .shadow(color: (model.isConnected ? OpenNOWDesign.accent : Color.red).opacity(0.5), radius: 3)
+        HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+            SteamControllerStatusMarker(
+                color: model.isConnected ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive,
+                uiScale: uiScale
+            )
             Text(model.isConnected ? "Connected" : "No controller detected")
-                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
             if model.isConnected {
                 Spacer()
                 if let battery = model.batteryLevel {
-                    HStack(spacing: 4) {
-                        Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
-                            .font(.nvidiaSans(size: 11, weight: .medium))
-                            .foregroundStyle(model.isCharging ? .yellow : batteryColor(for: battery))
-                        Text("\(Int(battery))%")
-                            .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .monospacedDigit()
+                    SteamControllerBadge(uiScale: uiScale) {
+                        HStack(spacing: 4 * uiScale) {
+                            Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
+                                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                                .foregroundStyle(model.isCharging ? OpenNOWDesign.accent : batteryColor(for: battery))
+                            Text("\(Int(battery))%")
+                                .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .monospacedDigit()
+                        }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.04))
-                    .clipShape(Capsule())
                 }
                 Text(model.deviceID)
-                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                    .foregroundStyle(OpenNOWDesign.Text.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -106,68 +91,57 @@ struct SteamControllerTestView: View {
     private func batteryColor(for level: UInt8) -> Color {
         switch level {
         case 20...: return OpenNOWDesign.accent
-        case 10..<20: return .orange
-        default: return .red
+        case 10..<20: return OpenNOWDesign.Semantic.warning
+        default: return OpenNOWDesign.Semantic.destructive
         }
     }
 
     private var noControllerMessage: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             Image(systemName: "gamecontroller")
-                .font(.nvidiaSans(size: 48))
-                .foregroundStyle(.white.opacity(0.15))
+                .font(.settingsNvidia(size: 40 * uiScale))
+                .foregroundStyle(OpenNOWDesign.Text.muted.opacity(0.5))
             Text("Connect a Steam Controller to begin testing")
-                .font(OpenNOWNVIDIAFont.font(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
+                .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
             Text("Make sure Steam Controller Support is enabled in Experimental Features")
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.25))
+                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
+        .padding(.vertical, 80 * uiScale)
     }
 
     // MARK: - Controller diagram
 
     private var controllerDiagram: some View {
-        VStack(spacing: 6) {
-            SteamControllerDiagramView(snapshot: model.snapshot, backgroundColor: Self.backgroundColor)
+        VStack(spacing: 6 * uiScale) {
+            SteamControllerDiagramView(snapshot: model.snapshot, backgroundColor: OpenNOWDesign.Surface.deep)
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
-                .font(OpenNOWNVIDIAFont.font(size: 9, weight: .medium))
-                .tracking(0.5)
-                .foregroundStyle(.white.opacity(0.2))
+                .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
         }
     }
 
     // MARK: - Raw values
 
     private var rawValuesPanel: some View {
-        VStack(spacing: 16) {
-            Text("RAW INPUT VALUES")
-                .font(OpenNOWNVIDIAFont.font(size: 11, weight: .bold))
-                .tracking(1.0)
-                .foregroundStyle(.white.opacity(0.35))
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(alignment: .top, spacing: 24) {
+        SteamControllerSection(title: "RAW INPUT VALUES", uiScale: uiScale) {
+            HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.xLarge(scale: uiScale)) {
                 axesColumn
                 buttonStatesGrid
             }
         }
-        .padding(20)
-        .background(Color.white.opacity(0.02))
-        .overlay(Rectangle().stroke(Color.white.opacity(0.06), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var axesColumn: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
             axisBar("LX", value: model.snapshot.leftStickX)
             axisBar("LY", value: model.snapshot.leftStickY)
             axisBar("RX", value: model.snapshot.rightStickX)
             axisBar("RY", value: model.snapshot.rightStickY)
-            axisBar("LT", value: model.snapshot.leftTrigger * 2 - 1, raw: model.snapshot.leftTrigger, unsigned: true)
-            axisBar("RT", value: model.snapshot.rightTrigger * 2 - 1, raw: model.snapshot.rightTrigger, unsigned: true)
+            axisBar("LT", value: model.snapshot.leftTrigger, unsigned: true)
+            axisBar("RT", value: model.snapshot.rightTrigger, unsigned: true)
             axisBar("LPX", value: model.snapshot.leftPad.x)
             axisBar("LPY", value: model.snapshot.leftPad.y)
             axisBar("RPX", value: model.snapshot.rightPad.x)
@@ -176,48 +150,26 @@ struct SteamControllerTestView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func axisBar(_ label: String, value: Float, raw: Float? = nil, unsigned: Bool = false) -> some View {
-        let displayValue = raw ?? value
-        return HStack(spacing: 8) {
+    private func axisBar(_ label: String, value: Float, unsigned: Bool = false) -> some View {
+        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(width: 28, alignment: .leading)
-            GeometryReader { geo in
-                let barWidth = geo.size.width
-                if unsigned {
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.white.opacity(0.06))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(OpenNOWDesign.accent.opacity(0.6))
-                            .frame(width: barWidth * CGFloat(max(0, min(1, displayValue))))
-                    }
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.white.opacity(0.06))
-                        Rectangle()
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 1)
-                            .position(x: barWidth / 2, y: geo.size.height / 2)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(OpenNOWDesign.accent.opacity(0.6))
-                            .frame(width: barWidth * CGFloat(abs(value) / 2))
-                            .offset(x: value >= 0 ? barWidth * CGFloat(value) / 4 : -barWidth * CGFloat(abs(value)) / 4)
-                    }
-                }
-            }
-            .frame(height: 8)
-            Text(String(format: unsigned ? "%.2f" : "%+.3f", unsigned ? displayValue : value))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(width: 52, alignment: .trailing)
+                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .frame(width: 30 * uiScale, alignment: .leading)
+            SteamControllerValueBar(value: value, signed: !unsigned, uiScale: uiScale)
+            Text(String(format: unsigned ? "%.2f" : "%+.3f", value))
+                .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .monospacedDigit()
+                .frame(width: 52 * uiScale, alignment: .trailing)
         }
     }
 
     private var buttonStatesGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 2), spacing: 4) {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 6 * uiScale), count: 2),
+            spacing: 4 * uiScale
+        ) {
             buttonStateRow("A", active: model.snapshot.buttons.contains(.south))
             buttonStateRow("B", active: model.snapshot.buttons.contains(.east))
             buttonStateRow("X", active: model.snapshot.buttons.contains(.west))
@@ -247,14 +199,17 @@ struct SteamControllerTestView: View {
     }
 
     private func buttonStateRow(_ label: String, active: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 6 * uiScale) {
             Text(label)
-                .font(OpenNOWNVIDIAFont.font(size: 10, weight: .bold))
-                .foregroundStyle(active ? OpenNOWDesign.accent : .white.opacity(0.35))
-                .frame(width: 28, alignment: .leading)
+                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .foregroundStyle(active ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .frame(width: 30 * uiScale, alignment: .leading)
+            // Fixed column: "ON" and "OFF" are different widths, and NVIDIA Sans is not monospaced,
+            // so an unconstrained label makes the whole grid twitch as buttons are pressed.
             Text(active ? "ON" : "OFF")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(active ? OpenNOWDesign.accent.opacity(0.8) : .white.opacity(0.2))
+                .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                .foregroundStyle(active ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                .frame(width: 26 * uiScale, alignment: .leading)
         }
     }
 }

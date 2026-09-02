@@ -5,8 +5,12 @@ import SwiftUI
 /// whatever's selected. Every control can go to a gamepad-button chord (today's default),
 /// a keyboard key, a mouse action, or off; trackpads and sticks additionally get a
 /// continuous-motion "Behavior" (mouse / scroll wheel / joystick / disabled).
+///
+/// Chrome follows the modal spec in DESIGN.md: accent top bar, App Bar header, Stroke Subtle
+/// rules, square controls throughout, and every size multiplied by the interface scale.
 struct SteamControllerMappingView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.opnUIScale) var uiScale
     @ObservedObject var store: SteamControllerMappingStore
 
     init(store: SteamControllerMappingStore = .shared) {
@@ -16,10 +20,14 @@ struct SteamControllerMappingView: View {
     @State var draft: SteamControllerMappingProfile?
     @State var selectedControl: SteamControllerControl = .leftGrip
     @State var bindingKindOverride: BindingKind?
+    @FocusState private var nameFieldFocused: Bool
 
-    private static let backgroundColor = OpenNOWDesign.Surface.deep
-    private static let panelColor = Color(red: 24 / 255, green: 25 / 255, blue: 24 / 255)
-    private static let sidebarColor = Color(red: 21 / 255, green: 22 / 255, blue: 21 / 255)
+    private static let sidebarWidth: CGFloat = 168
+    private static let bindingPanelWidth: CGFloat = 320
+
+    private var sheetSize: CGSize {
+        SteamControllerSheetMetrics.size(width: 1120, height: 720, uiScale: uiScale)
+    }
 
     enum BindingKind: String, CaseIterable, Identifiable {
         case gamepad, keyboard, mouse, off
@@ -45,23 +53,35 @@ struct SteamControllerMappingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().overlay(Color.white.opacity(0.12))
+            SteamControllerModalTopBar()
+            SteamControllerModalHeader(
+                eyebrow: "STEAM CONTROLLER",
+                title: "Controller Mapping",
+                uiScale: uiScale,
+                onClose: { dismiss() }
+            )
+            SteamControllerModalRule()
             profileBar
-                .padding(.horizontal, 28)
-                .padding(.vertical, 16)
-            Divider().overlay(Color.white.opacity(0.12))
+                .padding(.horizontal, OpenNOWDesign.Spacing.card(scale: uiScale))
+                .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+            SteamControllerModalRule()
             if draft != nil {
                 configuratorLayout
             } else {
                 noProfileMessage
             }
-            Divider().overlay(Color.white.opacity(0.12))
+            SteamControllerModalRule()
             footer
         }
-        .frame(minWidth: 1120, idealWidth: 1120, minHeight: 720, idealHeight: 720)
-        .background(Self.backgroundColor)
-        .foregroundStyle(.white)
+        .frame(
+            minWidth: sheetSize.width,
+            idealWidth: sheetSize.width,
+            minHeight: sheetSize.height,
+            idealHeight: sheetSize.height
+        )
+        .background(OpenNOWDesign.Surface.deep)
+        .foregroundStyle(OpenNOWDesign.Text.primary)
+        .onExitCommand { dismiss() }
         .onAppear {
             liveModel.start()
             draft = savedProfile
@@ -75,98 +95,82 @@ struct SteamControllerMappingView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Image(systemName: "gamecontroller.fill")
-                .font(.nvidiaSans(size: 18))
-                .foregroundStyle(OpenNOWDesign.accent)
-            Text("CONTROLLER MAPPING")
-                .font(OpenNOWNVIDIAFont.font(size: 15, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(.white.opacity(0.78))
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.nvidiaSans(size: 13, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
-    }
-
     private var profileBar: some View {
-        HStack(spacing: 12) {
-            Menu {
-                ForEach(store.profiles) { profile in
-                    Button(profile.name) { store.setActiveProfile(profile.id) }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(savedProfile?.name ?? "Default")
-                        .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.88))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.nvidiaSans(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Selecting another profile discards unsaved changes.")
-
+        HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            profilePicker
             if draft != nil {
-                TextField("Profile name", text: draftNameBinding)
-                    .textFieldStyle(.plain)
-                    .font(OpenNOWNVIDIAFont.font(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 10)
-                    .frame(width: 200, height: 30)
-                    .background(Color.white.opacity(0.04))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                Button {
+                nameField
+                SteamControllerChip(
+                    label: "Delete",
+                    isSelected: false,
+                    systemImage: "trash",
+                    fontSize: 11,
+                    fillsWidth: false,
+                    uiScale: uiScale
+                ) {
                     if let id = savedProfile?.id, store.profiles.count > 1 {
                         store.deleteProfile(id)
                     }
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.nvidiaSans(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.plain)
                 .disabled(store.profiles.count <= 1)
                 .help("Delete this profile")
             }
 
             Spacer()
 
-            Button("New Profile") {
-                store.createProfile(named: "")
-            }
-            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-            .background(OpenNOWDesign.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .buttonStyle(.plain)
+            Button("New Profile") { store.createProfile(named: "") }
+                .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
         }
+    }
+
+    /// The styled dropdown, not a native `Menu`: the system menu renders rounded chrome the rest
+    /// of the app shell does not have.
+    private var profilePicker: some View {
+        OpenNOWDropdownMenu(
+            items: store.profiles.map { profile in
+                OpenNOWDropdownItem(
+                    id: profile.id.uuidString,
+                    title: profile.name.isEmpty ? "Untitled" : profile.name,
+                    isSelected: profile.id == savedProfile?.id,
+                    action: { store.setActiveProfile(profile.id) }
+                )
+            }
+        ) {
+            HStack(spacing: 6 * uiScale) {
+                Text(savedProfile?.name ?? "Default")
+                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            }
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+            .frame(height: 30 * uiScale)
+            .background(Color.white.opacity(0.075))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .contentShape(Rectangle())
+        }
+        .fixedSize()
+        .help("Selecting another profile discards unsaved changes.")
+    }
+
+    private var nameField: some View {
+        TextField("Profile name", text: draftNameBinding)
+            .textFieldStyle(.plain)
+            .font(.settingsNvidia(size: 14 * uiScale))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .tint(OpenNOWDesign.accent)
+            .focused($nameFieldFocused)
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+            .frame(width: 200 * uiScale, height: 30 * uiScale)
+            .background(OpenNOWDesign.Surface.field)
+            .overlay {
+                Rectangle().stroke(
+                    nameFieldFocused ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular,
+                    lineWidth: nameFieldFocused ? 2 : 1
+                )
+            }
     }
 
     private var draftNameBinding: Binding<String> {
@@ -174,48 +178,40 @@ struct SteamControllerMappingView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             if hasUnsavedChanges {
-                Text("Unsaved changes")
-                    .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                    .foregroundStyle(.orange.opacity(0.85))
+                Text("UNSAVED CHANGES")
+                    .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .tracking(1.1)
+                    .foregroundStyle(OpenNOWDesign.Semantic.warning)
             }
             Spacer()
-            Button("Cancel") { dismiss() }
-                .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.75))
-                .padding(.horizontal, 18)
-                .frame(height: 32)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .buttonStyle(.plain)
+            Button("CANCEL") { dismiss() }
+                .buttonStyle(OpenNOWModalSecondaryButtonStyle(uiScale: uiScale))
+                .keyboardShortcut(.cancelAction)
 
-            Button("Save") {
+            Button("SAVE") {
                 if let draft { store.updateProfile(draft) }
                 SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
                 dismiss()
             }
-            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-            .foregroundStyle(hasUnsavedChanges ? .black : .black.opacity(0.4))
-            .padding(.horizontal, 22)
-            .frame(height: 32)
-            .background(OpenNOWDesign.accent.opacity(hasUnsavedChanges ? 1 : 0.35))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .buttonStyle(.plain)
+            .buttonStyle(VendorGetInButtonStyle(uiScale: uiScale))
+            .keyboardShortcut(.defaultAction)
             .disabled(!hasUnsavedChanges)
+            .opacity(hasUnsavedChanges ? 1 : 0.46)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
+        .padding(.horizontal, OpenNOWDesign.Spacing.card(scale: uiScale))
+        .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
     }
 
     private var noProfileMessage: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             Image(systemName: "gamecontroller")
-                .font(.nvidiaSans(size: 44))
-                .foregroundStyle(.white.opacity(0.15))
+                .font(.settingsNvidia(size: 40 * uiScale))
+                .foregroundStyle(OpenNOWDesign.Text.muted.opacity(0.5))
             Text("No profile selected")
-                .font(OpenNOWNVIDIAFont.font(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
+                .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -225,57 +221,51 @@ struct SteamControllerMappingView: View {
     private var configuratorLayout: some View {
         HStack(spacing: 0) {
             categorySidebar
-                .frame(width: 168)
-            Divider().overlay(Color.white.opacity(0.12))
+                .frame(width: Self.sidebarWidth * uiScale)
+            Rectangle()
+                .fill(OpenNOWDesign.Stroke.subtle)
+                .frame(width: 1)
             ScrollView {
-                VStack(spacing: 10) {
+                VStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                     SteamControllerDiagramView(
                         snapshot: liveModel.snapshot,
                         selectedControl: selectedControl,
                         onSelectControl: { selectedControl = $0 },
-                        backgroundColor: Self.backgroundColor
+                        backgroundColor: OpenNOWDesign.Surface.deep
                     )
                     Text("Click any control to bind it")
-                        .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
-                        .tracking(0.3)
-                        .foregroundStyle(.white.opacity(0.25))
+                        .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                 }
-                .padding(24)
+                .padding(OpenNOWDesign.Spacing.xLarge(scale: uiScale))
                 .frame(maxWidth: .infinity)
             }
-            Divider().overlay(Color.white.opacity(0.12))
+            Rectangle()
+                .fill(OpenNOWDesign.Stroke.subtle)
+                .frame(width: 1)
             bindingPanel
-                .frame(width: 320)
+                .frame(width: Self.bindingPanelWidth * uiScale)
         }
         .frame(maxHeight: .infinity)
     }
 
     private var categorySidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2 * uiScale) {
             ForEach(SteamControllerMappingCategory.allCases) { category in
-                Button {
+                SteamControllerCategoryRow(
+                    label: category.label,
+                    systemImage: category.systemImage,
+                    isActive: selectedControl.category == category,
+                    uiScale: uiScale
+                ) {
                     selectedControl = SteamControllerControl.allCases.first(where: { $0.category == category }) ?? selectedControl
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: category.systemImage)
-                            .font(.nvidiaSans(size: 12, weight: .semibold))
-                            .frame(width: 16)
-                        Text(category.label)
-                            .font(OpenNOWNVIDIAFont.font(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(selectedControl.category == category ? OpenNOWDesign.accent : .white.opacity(0.6))
-                    .padding(.horizontal, 14)
-                    .frame(height: 34)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(selectedControl.category == category ? OpenNOWDesign.accent.opacity(0.12) : Color.clear)
                 }
-                .buttonStyle(.plain)
             }
             Spacer()
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, OpenNOWDesign.Spacing.section(scale: uiScale))
         .frame(maxHeight: .infinity)
-        .background(Self.sidebarColor)
+        .background(OpenNOWDesign.Surface.panelRaised)
     }
 
     // MARK: - Binding panel
@@ -288,49 +278,53 @@ struct SteamControllerMappingView: View {
         let displayedKind = bindingKindOverride ?? committedKind
 
         return ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+                // The badge sizes to its label. A fixed width truncated the long ones — every pad
+                // and stick control reads "R. Pad Click", not "R4".
+                HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                     Text(control.label)
-                        .font(OpenNOWNVIDIAFont.font(size: 13, weight: .bold))
-                        .foregroundStyle(held ? .black : .white.opacity(0.9))
-                        .frame(width: 44, height: 26)
-                        .background(held ? OpenNOWDesign.accent : Color.white.opacity(0.08))
-                        .clipShape(Capsule())
+                        .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                        .foregroundStyle(held ? .black : OpenNOWDesign.Text.primary)
+                        .fixedSize()
+                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(minWidth: 48 * uiScale)
+                        .frame(height: 26 * uiScale)
+                        .background(held ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+                        .overlay {
+                            Rectangle().stroke(
+                                held ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle,
+                                lineWidth: 1
+                            )
+                        }
                     Text(control.category.label)
-                        .font(OpenNOWNVIDIAFont.font(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Spacer(minLength: 0)
                 }
 
                 if let padSettingsKind = padSettingsKind(for: control) {
                     behaviorSection(padSettingsKind)
-                    Divider().overlay(Color.white.opacity(0.1))
-                    Text("CLICK BINDING")
-                        .font(OpenNOWNVIDIAFont.font(size: 9, weight: .bold))
-                        .tracking(1.0)
-                        .foregroundStyle(.white.opacity(0.35))
+                    SteamControllerModalRule()
+                    SteamControllerEyebrow(text: "CLICK BINDING", uiScale: uiScale)
                 }
 
-                Picker("", selection: Binding(
-                    get: { displayedKind },
-                    set: { newKind in
-                        bindingKindOverride = newKind
-                        switch newKind {
-                        case .off:
-                            draft?.bindings[control] = .disabled
-                        case .gamepad:
-                            if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
-                        case .keyboard, .mouse:
-                            break // wait for the recorder / chip picker below to commit a concrete value
-                        }
-                    }
-                )) {
-                    ForEach(BindingKind.allCases) { kind in
-                        Text(kind.label).tag(kind)
+                SteamControllerOptionPicker(
+                    options: BindingKind.allCases.map { (value: $0, label: $0.label) },
+                    selection: displayedKind,
+                    uiScale: uiScale
+                ) { newKind in
+                    bindingKindOverride = newKind
+                    switch newKind {
+                    case .off:
+                        draft?.bindings[control] = .disabled
+                    case .gamepad:
+                        if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
+                    case .keyboard, .mouse:
+                        break // wait for the recorder / chip picker below to commit a concrete value
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
 
                 switch displayedKind {
                 case .gamepad:
@@ -346,13 +340,13 @@ struct SteamControllerMappingView: View {
                 Spacer(minLength: 0)
 
                 Text("While a control is bound to a gamepad combo, L1/R1/L2/R2 in that combo land first and the rest follow a moment later so games register them as modifier + press.")
-                    .font(OpenNOWNVIDIAFont.font(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                    .foregroundStyle(OpenNOWDesign.Text.muted)
             }
-            .padding(20)
+            .padding(OpenNOWDesign.Spacing.card(scale: uiScale))
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Self.panelColor)
+        .background(OpenNOWDesign.Surface.panel)
     }
 
     private func isHeld(_ control: SteamControllerControl) -> Bool {
@@ -375,4 +369,55 @@ struct SteamControllerMappingView: View {
         }
     }
 
+}
+
+/// Sidebar category row, on the Main Menu row spec: accent tint plus a 3px accent leading bar when
+/// active, white 0.08 on hover.
+private struct SteamControllerCategoryRow: View {
+    let label: String
+    let systemImage: String
+    let isActive: Bool
+    let uiScale: CGFloat
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+                Image(systemName: systemImage)
+                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .frame(width: 16 * uiScale)
+                Text(label)
+                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(foreground)
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+            .frame(height: 30 * uiScale)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background)
+            .overlay(alignment: .leading) {
+                if isActive {
+                    Rectangle()
+                        .fill(OpenNOWDesign.accent)
+                        .frame(width: 3 * uiScale)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+    }
+
+    private var foreground: Color {
+        if isActive { return OpenNOWDesign.accent }
+        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+    }
+
+    private var background: Color {
+        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
+        return isHovering ? Color.white.opacity(0.08) : .clear
+    }
 }

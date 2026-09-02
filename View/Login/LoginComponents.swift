@@ -351,6 +351,8 @@ struct AccountAvatar: View {
             .nvidiaFont(size: size * 0.34, weight: .bold)
             .foregroundStyle(.black)
             .frame(width: size, height: size)
+            // DESIGN.md radius exception: the login vendor icon button, at size * 0.32.
+            // swiftlint:disable:next design_no_corner_radius
             .background(OpenNOWDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }
