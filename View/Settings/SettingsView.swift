@@ -259,6 +259,13 @@ struct SettingsTabItem: View {
     var showsBetaTag = false
     let action: () -> Void
 
+    /// Wider when a tag shares the row, or the title truncates - "Remote Co-Op" became "Remo…" at the
+    /// uniform width. The tab bar scrolls horizontally, so tabs need not all be the same width; the
+    /// selection underline follows this so it cannot disagree with the tab it sits under.
+    private var width: CGFloat {
+        (showsBetaTag ? 194 : 150) * uiScale
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10 * uiScale) {
@@ -276,11 +283,11 @@ struct SettingsTabItem: View {
             }
             .padding(.horizontal, 12 * uiScale)
             .padding(.vertical, 10 * uiScale)
-            .frame(width: 150 * uiScale, height: 44 * uiScale)
+            .frame(width: width, height: 44 * uiScale)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(isSelected ? OpenNOWDesign.accent : .clear)
-                    .frame(width: 150 * uiScale, height: 3 * uiScale)
+                    .frame(width: width, height: 3 * uiScale)
             }
             .contentShape(Rectangle())
         }

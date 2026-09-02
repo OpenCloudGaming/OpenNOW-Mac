@@ -94,10 +94,15 @@ struct CatalogTopBar: View {
                         // reachable, so the toggle can still be found.
                         if viewModel.remoteCoOpPreferences.isEnabled {
                             Button { openWindow(id: "remote-coop-guest") } label: {
+                                // Overlapping the icon's top-right rather than floating above the
+                                // bar: at a negative offset it sat outside the plate, where the row's
+                                // own padding clipped it.
                                 CatalogTopBarIconLabel(systemName: "person.2")
                                     .overlay(alignment: .topTrailing) {
-                                        OpenNOWBetaTag(uiScale: 0.8, prominent: true)
-                                            .offset(x: 8, y: -6)
+                                        // No horizontal offset: the plate is 44pt and the next
+                                        // button is 4pt away, so anything pushed right overhangs it.
+                                        OpenNOWBetaTag(uiScale: 0.75, prominent: true)
+                                            .offset(y: 3 * uiScale)
                                     }
                             }
                             .buttonStyle(.opnPressable(scale: 0.90))
