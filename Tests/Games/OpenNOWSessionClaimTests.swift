@@ -119,12 +119,23 @@ import Foundation
     }
 }
 
-@Test func sessionManagerReadySessionSkipsRedundantResumeClaim() async {
+/// A session the validation poll already reports as connectable still gets the RESUME hand-over:
+/// its endpoints are only usable once the seat has been told who is connecting now, otherwise its
+/// RTSPS control channel answers the WebSocket upgrade with HTTP 501. The seat rejects the
+/// hand-over for an unpaused session with SESSION_NOT_PAUSED, which the claim polls through.
+@Test func sessionManagerReadySessionStillSendsResumeClaim() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-not-paused.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
-        #expect(request.httpMethod == "GET")
-        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        if request.httpMethod == "GET" {
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 34,
+                "statusDescription": "SESSION_NOT_PAUSED",
+            ],
+        ])
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
@@ -141,7 +152,7 @@ import Foundation
     #expect(result.0 == true)
     #expect(result.1 == true)
     #expect(result.2.isEmpty)
-    #expect(requests.map(\.httpMethod) == ["GET"])
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     }
 }
 

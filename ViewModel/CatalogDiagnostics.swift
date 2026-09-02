@@ -6,7 +6,6 @@
 //  so a failed session can be reported without walking back through Settings.
 //
 
-import AppKit
 import Foundation
 
 @MainActor
@@ -81,8 +80,6 @@ extension CatalogViewModel {
 
     private func copyDiagnosticsToPasteboard(_ value: String) {
         guard !value.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
+        systemIntegration.copyToPasteboard(value)
     }
 }
