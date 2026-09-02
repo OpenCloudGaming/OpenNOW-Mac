@@ -441,6 +441,7 @@
 				MARKETING_VERSION = 0.0.0;
 				OPN_SENTRY_DSN = "";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow.dev;
+				PRODUCT_MODULE_NAME = OpenNOW;
 				PRODUCT_NAME = "OpenNOW Dev";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -517,7 +518,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenNOW.app/Contents/MacOS/OpenNOW";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenNOW Dev.app/Contents/MacOS/OpenNOW Dev";
 			};
 			name = Debug;
 		};
