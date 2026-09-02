@@ -256,6 +256,18 @@ extension OPNSessionManager {
     func currentAccessToken() -> String { lock.withLock { accessToken } }
     func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
+    /// True once the session advertises an NVST RTSPS control endpoint. A seat still provisioned
+    /// for the client that created the session (a phone's WebRTC session, say) lists only its
+    /// `/nvst/` endpoint on 443 — `appLevelProtocol` 5 — and publishes `:322` after the RESUME
+    /// hand-over completes.
+    func hasAdvertisedNvstControlEndpoint(_ session: [String: Any]) -> Bool {
+        array(session["connectionInfo"]).compactMap { $0 as? [String: Any] }.contains { connection in
+            let resourcePath = string(connection["resourcePath"]).lowercased()
+            if resourcePath.hasPrefix("rtsps://") || resourcePath.hasPrefix("rtsp://") { return true }
+            return int(connection["appLevelProtocol"]) == 6 || int(connection["port"]) == Int(NvstRtspEndpoints.defaultControlPort)
+        }
+    }
+
     func isReadyActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
 
     func isResumableActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isVendorResumable == true }

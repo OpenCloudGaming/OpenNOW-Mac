@@ -231,10 +231,13 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
 
         let endpoints = NvstRtspEndpoints.collect(
             rawSessionJSON: allocation.rawSessionJSON,
-            fallbackHost: Self.host(from: allocation.signalingServer)
+            fallbackHost: Self.host(from: allocation.signalingServer),
+            allowsAssumedControlPort: !allocation.isResume
         )
         guard !endpoints.isEmpty else {
-            throw NativeNVSTError.transportFailed("This session provided no RTSPS control endpoint, so NVST cannot be negotiated.")
+            throw NativeNVSTError.transportFailed(allocation.isResume
+                ? "This session has not published an RTSPS control endpoint, so the seat has not finished handing it over to this device."
+                : "This session provided no RTSPS control endpoint, so NVST cannot be negotiated.")
         }
         sessionServerLocation = Self.sessionServerLocation(for: allocation)
         let profile = Self.resolvedStreamProfile(allocation: allocation,

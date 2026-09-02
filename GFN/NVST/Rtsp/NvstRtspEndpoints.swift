@@ -10,7 +10,7 @@ public enum NvstRtspEndpoints {
     /// `connectionInfo` entries with `usage == 16` (or `appLevelProtocol == 6`) carry the RTSPS
     /// control endpoint. Some seats put a full `rtsps://host:port` in `resourcePath`; others only
     /// give a port, in which case the session's server host is used.
-    public static func collect(connections: [[String: Any]], fallbackHost: String?) -> [String] {
+    public static func collect(connections: [[String: Any]], fallbackHost: String?, allowsAssumedControlPort: Bool = true) -> [String] {
         var endpoints: [String] = []
         var untagged: [String] = []
         var taggedOtherPort: [String] = []
@@ -45,7 +45,13 @@ public enum NvstRtspEndpoints {
         endpoints.append(contentsOf: taggedOtherPort)
         // Last resort: the seat may not advertise the control endpoint at all. Trying the default
         // port beats refusing to negotiate, and a wrong guess fails fast on connect.
-        if let fallbackHost, !fallbackHost.isEmpty {
+        //
+        // Resumes opt out. A session created by a WebRTC client advertises one `/nvst/` endpoint on
+        // 443 and no `:322` at all until the seat accepts the hand-over and re-provisions for NVST
+        // — the official client's own RESUME response only lists `rtsps://...:322` afterwards, on a
+        // different seat host than the pre-claim listing named. Guessing :322 there reaches a host
+        // that does not serve RTSP, which answers the WebSocket upgrade with HTTP 501.
+        if allowsAssumedControlPort, let fallbackHost, !fallbackHost.isEmpty {
             let assumed = "rtsps://\(fallbackHost):\(defaultControlPort)"
             if seen.insert(assumed).inserted { endpoints.append(assumed) }
         }
@@ -59,11 +65,11 @@ public enum NvstRtspEndpoints {
     }
 
     /// Collects the endpoints out of a raw `startSession`/`resumeSession` JSON body.
-    public static func collect(rawSessionJSON: String, fallbackHost: String?) -> [String] {
+    public static func collect(rawSessionJSON: String, fallbackHost: String?, allowsAssumedControlPort: Bool = true) -> [String] {
         guard let data = rawSessionJSON.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         let connections = (object["connectionInfo"] as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
-        return collect(connections: connections, fallbackHost: fallbackHost)
+        return collect(connections: connections, fallbackHost: fallbackHost, allowsAssumedControlPort: allowsAssumedControlPort)
     }
 
     /// Every usable candidate, in preference order. The negotiator walks them until one answers,

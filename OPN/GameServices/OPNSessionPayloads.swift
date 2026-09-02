@@ -17,10 +17,13 @@ final class OPNPollClaimSessionContext: @unchecked Sendable {
     let clientId: String
     let headers: CloudMatchClientHeaders
     let initialProfile: [String: Any]
+    /// NVST cannot connect until the seat publishes its RTSPS control endpoint, so on that
+    /// transport "ready" is not enough to stop polling.
+    let requiresNvstControlEndpoint: Bool
     private let completion: (Bool, [String: Any], String) -> Void
     private let maxRetries = 60
 
-    init(manager: OPNSessionManager, sessionId: String, base: String, token: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+    init(manager: OPNSessionManager, sessionId: String, base: String, token: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], requiresNvstControlEndpoint: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
         self.manager = manager
         self.sessionId = sessionId
         self.base = base
@@ -29,6 +32,7 @@ final class OPNPollClaimSessionContext: @unchecked Sendable {
         self.clientId = clientId
         self.headers = headers
         self.initialProfile = initialProfile
+        self.requiresNvstControlEndpoint = requiresNvstControlEndpoint
         self.completion = completion
     }
 
