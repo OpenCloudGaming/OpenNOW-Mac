@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.2.0...v0.3.0) (2026-09-02)
+
+
+### Features
+
+* add resume banner overlay ([5698727](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5698727a5c398002280d8722f21b7ffedc1746f2))
+* improve update annoucement ([599f5cc](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/599f5ccefe9207007624dfbfdda2127784781ac2))
+* redesign steam controller screens ([bfdd17d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bfdd17d233b4e57fe2dea192728c141da6634cfa))
+* **remote-coop:** add native guest client and nvst ([#7](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/7)) ([0b9a0e1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0b9a0e19fa0ef9c344099a6eb747f43be5694f00))
+
+
+### Bug Fixes
+
+* beta tag position ([#9](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/9)) ([622d967](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/622d96788d43b0a56da9c0b3b2d2e4be0220641b))
+* bound NVST control-endpoint wait and model it in fixtures ([0c6a222](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0c6a2227fc52095a5480aa92674fe79d7670091b))
+* resolve Swift 6 actor isolation errors in tile equality and resize gate ([74fb53c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/74fb53c9ba893fd52c718cad618da35de07d675a))
+* resume session from another device ([d227b3c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d227b3cb2769eb39ffb09c01e810652b74d8ff60))
+
 ## [0.2.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.1.0...v0.2.0) (2026-08-31)
 
 
