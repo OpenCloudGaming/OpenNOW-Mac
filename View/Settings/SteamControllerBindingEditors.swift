@@ -148,10 +148,7 @@ extension SteamControllerMappingView {
                         .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     Spacer()
-                    Toggle("", isOn: binding.invertY)
-                        .toggleStyle(.switch)
-                        .tint(OpenNOWDesign.accent)
-                        .labelsHidden()
+                    Toggle(isOn: binding.invertY, uiScale: uiScale)
                 }
             }
         }

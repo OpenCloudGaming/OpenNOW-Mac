@@ -214,6 +214,43 @@ struct SettingsOptionRow: View {
     }
 }
 
+/// Square-track switch matching the app's sharp-cornered design language, in place of the
+/// native pill-shaped `Toggle(.switch)` (which no macOS API lets us square off).
+struct Toggle: View {
+    @Binding var isOn: Bool
+    var isLocked = false
+    let uiScale: CGFloat
+    @State private var isHovering = false
+
+    private var trackWidth: CGFloat { 34 * uiScale }
+    private var trackHeight: CGFloat { 18 * uiScale }
+    private var knobInset: CGFloat { 2 * uiScale }
+    private var knobSize: CGFloat { trackHeight - knobInset * 2 }
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Rectangle()
+                    .fill(isOn ? OpenNOWDesign.accent.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(isHovering ? 0.12 : 0.09))
+                    .overlay { Rectangle().stroke(isOn ? OpenNOWDesign.accent.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.16), lineWidth: 1) }
+                Rectangle()
+                    .fill(isOn ? Color.black.opacity(isLocked ? 0.5 : 0.85) : Color.white.opacity(isLocked ? 0.35 : 0.72))
+                    .frame(width: knobSize, height: knobSize)
+                    .padding(knobInset)
+            }
+            .frame(width: trackWidth, height: trackHeight)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLocked)
+        .opacity(isLocked ? 0.45 : 1)
+        .onHover { isHovering = $0 }
+        .opnMotion(OpenNOWDesign.Motion.toggle, value: isOn)
+        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(isOn ? "On" : "Off")
+    }
+}
+
 struct SettingsToggleRow: View {
     @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
@@ -234,12 +271,7 @@ struct SettingsToggleRow: View {
                     .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
             }
             Spacer()
-            Toggle("", isOn: Binding(get: { isOn }, set: { action($0) }))
-                .toggleStyle(.switch)
-                .tint(OpenNOWDesign.accent)
-                .labelsHidden()
-                .disabled(isLocked)
-                .opacity(isLocked ? 0.45 : 1)
+            Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isLocked: isLocked, uiScale: uiScale)
         }
         .controllerFocusable(
             focusIdentity,
