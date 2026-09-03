@@ -53,23 +53,8 @@
       </BuildableProductRunnable>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "OPN_PROTOCOL_DEBUG"
-            value = "1"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
             key = "OPN_PROTOCOL_CAPTURE_DIR"
             value = "/tmp/opn-protocol-capture"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "OPN_NVST_BIFROST_FREE"
-            value = "1"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "ENABLE_DEBUG_DYLIB"
-            value = "0"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

@@ -855,36 +855,6 @@
     }
   },
   {
-    "text": "        if latencyMs <= 65 { return Color(red: 1.0, green: 0.77, blue: 0.24) }",
-    "violation": {
-      "location": {
-        "character": 37,
-        "file": "View/Settings/SettingsRowComponents.swift",
-        "line": 576
-      },
-      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
-      "ruleDescription": "",
-      "ruleIdentifier": "design_no_hardcoded_surface_color",
-      "ruleName": "Hardcoded colour channels",
-      "severity": "error"
-    }
-  },
-  {
-    "text": "        return Color(red: 1.0, green: 0.32, blue: 0.26)",
-    "violation": {
-      "location": {
-        "character": 16,
-        "file": "View/Settings/SettingsRowComponents.swift",
-        "line": 577
-      },
-      "reason": "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme.",
-      "ruleDescription": "",
-      "ruleIdentifier": "design_no_hardcoded_surface_color",
-      "ruleName": "Hardcoded colour channels",
-      "severity": "error"
-    }
-  },
-  {
     "text": "                    .foregroundStyle(Color.orange)",
     "violation": {
       "location": {
