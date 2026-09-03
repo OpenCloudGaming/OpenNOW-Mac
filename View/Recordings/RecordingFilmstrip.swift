@@ -95,12 +95,11 @@ private enum RecordingFilmstripDecoder {
                 generator.cancelAllCGImageGeneration()
                 break
             }
-            guard case .success(let item) = result else { continue }
-            let seconds = item.requestedTime.seconds
+            guard case .success(let requestedTime, let image, _) = result else { continue }
+            let seconds = requestedTime.seconds
             // Map back to the value the caller asked for: the generator round-trips through a
             // timescale and need not hand back the identical Double.
             guard let match = sorted.min(by: { abs($0 - seconds) < abs($1 - seconds) }) else { continue }
-            let image = item.image
             decoded[match] = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
         }
         return decoded
@@ -216,7 +215,6 @@ enum RecordingFilmstripLoader {
         if let existing = window[id], existing.range == range { return }
         windowBuilders[id]?.cancel()
         let url = recording.videoURL
-        let recordingID = recording.id
         let size = decodeSize(for: recording, height: windowFrameHeight)
         let span = max(0.01, range.upperBound - range.lowerBound)
         let times = (0..<windowFrameCount).map { range.lowerBound + (Double($0) + 0.5) * span / Double(windowFrameCount) }
