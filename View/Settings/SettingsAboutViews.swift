@@ -47,7 +47,7 @@ struct AboutSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
-                            AboutStatusPill(title: "Stream", value: "WebRTC", uiScale: uiScale)
+                            AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
                             AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
                             AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On", uiScale: uiScale)
                         }
