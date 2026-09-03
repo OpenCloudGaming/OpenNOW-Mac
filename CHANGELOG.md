@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.3.0...v0.4.0) (2026-09-03)
+
+
+### Features
+
+* add custom toggle button ([cc6b24b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cc6b24bedf8406df220801e6791377a7a9e05efc))
+* add nvst microphone ([384bca8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/384bca8812cb14fa5c20025238d03c50edde9994))
+* improve recording editor ([e8b5e2e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e8b5e2e8d92a2af20c6782bfdb7938f56d9e9771))
+* remove confusing steam controller matched label ([6dec3cf](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6dec3cf854fe1ffdf79dd68f5c6bdfd3cf499bfa))
+* separate nvst hud controls and input ([80b280e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/80b280ee0de8daebd5c24a77a86b889aec83e590))
+
+
+### Bug Fixes
+
+* recording agreement modal opacity ([4d54f64](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4d54f6447a0ec309c6a08fd165d37c752e6bf683))
+* settings pill not showing nvst ([eb70579](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/eb705798bf2238ec8a72bb80b16e29129c04554f))
+* tint settings toggle switches with app accent color ([84b5b49](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/84b5b49048e204edc190fe1cb78fa5a90ce93929))
+
 ## [0.3.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.2.0...v0.3.0) (2026-09-02)
 
 
