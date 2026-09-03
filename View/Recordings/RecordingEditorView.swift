@@ -1,7 +1,3 @@
-//
-//  RecordingEditorView.swift
-//  OpenNOW
-//
 //  The editor drawer under the recordings player: header, timeline, transport, quick actions and
 //  the export bar. The Advanced drawer and the shared chrome live in RecordingEditorPanels.swift.
 //

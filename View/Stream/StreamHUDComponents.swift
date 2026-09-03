@@ -1,8 +1,3 @@
-//
-//  StreamHUDComponents.swift
-//  OpenNOW
-//
-
 import AppKit
 import Combine
 import GameController

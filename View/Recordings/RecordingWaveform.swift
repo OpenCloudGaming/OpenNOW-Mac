@@ -1,7 +1,3 @@
-//
-//  RecordingWaveform.swift
-//  OpenNOW
-//
 //  Audio peaks under the editor's timeline clips. Most cuts are made to a sound - a shot, a line,
 //  the moment a car lands - and without a waveform the only way to find one is to scrub and listen.
 //

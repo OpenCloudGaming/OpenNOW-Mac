@@ -1,7 +1,3 @@
-//
-//  StreamRuntimeSettings.swift
-//  OpenNOW
-//
 //  Runtime video/audio settings carried between the stream host and the render surface. Pure value
 //  types: no UI framework, so the model layer can own them and tests can build them directly.
 //

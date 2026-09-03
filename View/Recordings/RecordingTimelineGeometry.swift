@@ -1,7 +1,3 @@
-//
-//  RecordingTimelineGeometry.swift
-//  OpenNOW
-//
 //  The seconds-to-pixels mapping for the editor timeline, as a value rather than as arithmetic
 //  scattered through the view. Zoom made that necessary: eight places computed `seconds / total *
 //  width` independently, and every one of them had to learn about the visible window at once.

@@ -1,7 +1,3 @@
-//  CatalogViewModel+Settings.swift
-//  OpenNOW
-//
-
 import Foundation
 
 @MainActor

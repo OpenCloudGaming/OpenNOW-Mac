@@ -1,7 +1,3 @@
-//
-//  NativeNVSTStreamTypes.swift
-//  OpenNOW
-//
 //  The values the native NVST path exchanges: a live connection, a performance snapshot, how a
 //  session ended and whether it should be recovered. Split out of NativeNVSTStreamingPath.swift.
 //

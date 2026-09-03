@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpSetupWizardSteps.swift
-//  OpenNOW
-//
 //  The wizard's two conditional configuration steps: how guests are reached, and how their video
 //  gets through a filtering network.
 //

@@ -1,8 +1,3 @@
-//
-//  CatalogDataCaching.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol CatalogDataCaching {

@@ -1,7 +1,3 @@
-//
-//  ControllerCatalogRails.swift
-//  OpenNOW
-//
 //  The hero billboard and the game rails beneath it, plus the tile they are made of.
 //  Split out of ControllerCatalogView.swift.
 //

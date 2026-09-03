@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpRelayProviders.swift
-//  OpenNOW
-//
 //  Relay credentials from somewhere other than Cloudflare.
 //
 //  Cloudflare has the largest free allowance but the most setup: an account, a subscription with a

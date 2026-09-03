@@ -1,7 +1,3 @@
-//
-//  RecordingCropOverlay.swift
-//  OpenNOW
-//
 //  A crop rectangle you drag on the video, instead of four sliders labelled X, Y, W and H.
 //
 //  While it is up the preview shows the *original* frame - no crop, no rotation, no flips - because

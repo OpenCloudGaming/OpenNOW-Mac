@@ -1,7 +1,3 @@
-//
-//  NativeNVSTHostViewModel.swift
-//  OpenNOW
-//
 //  The native NVST stream session: starting it, tearing it down, and everything the HUD can do to
 //  it while it runs - microphone, anti-AFK, pointer lock, video enhancement, stats polling and the
 //  network governor.

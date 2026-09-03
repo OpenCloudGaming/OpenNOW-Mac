@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestPeer.swift
-//  OpenNOW
-//
 //  The guest's end of a native Remote Co-Op media session: a receive-only `RTCPeerConnection`
 //  that answers the host's offer and surfaces the tracks it gets.
 //

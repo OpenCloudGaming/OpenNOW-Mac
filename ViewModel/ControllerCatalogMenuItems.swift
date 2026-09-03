@@ -1,7 +1,3 @@
-//
-//  ControllerCatalogMenuItems.swift
-//  OpenNOW
-//
 //  The choices controller mode can offer: detail-panel actions, the actions menu, and the search
 //  overlay's sort/filter picker. Moved out of the view so the controller view model can decide
 //  which are available and what confirming one does, without a rendered catalog.

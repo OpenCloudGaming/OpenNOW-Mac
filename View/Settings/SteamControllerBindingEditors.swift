@@ -1,7 +1,3 @@
-//
-//  SteamControllerBindingEditors.swift
-//  OpenNOW
-//
 //  The per-binding editors — gamepad chord, keyboard key, mouse button — and the pad/stick
 //  behaviour section. Split out of SteamControllerMappingView.swift.
 //

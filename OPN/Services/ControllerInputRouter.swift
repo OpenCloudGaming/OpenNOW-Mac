@@ -1,8 +1,3 @@
-//  OpenNOW
-//
-//  Created by OpenAI on 7/6/26.
-//
-
 import Combine
 import Foundation
 import GameController

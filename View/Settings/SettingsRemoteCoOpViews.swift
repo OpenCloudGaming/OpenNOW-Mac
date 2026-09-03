@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpViews.swift
-//  OpenNOW
-//
 //  The Remote Co-Op settings tab.
 //
 //  This was a single card at the bottom of Gameplay. It outgrew that: alongside the session

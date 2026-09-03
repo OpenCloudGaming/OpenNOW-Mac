@@ -1,7 +1,3 @@
-//
-//  OpenNOWStreamSessionTypes.swift
-//  OpenNOW
-//
 //  The values the stream-session coordinator passes between its stages: a prepared launch, an
 //  allocated seat session, a required ad, and where a free-tier session's clock starts.
 //  Split out of OpenNOWStreamSessionCoordinator.swift.

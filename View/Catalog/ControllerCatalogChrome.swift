@@ -1,7 +1,3 @@
-//
-//  ControllerCatalogChrome.swift
-//  OpenNOW
-//
 //  Controller-mode chrome: overlay headers, metadata pills, the hint bar and its glyphs, the
 //  artwork backdrop and the keyboard input bridge. Split out of ControllerCatalogView.swift.
 //

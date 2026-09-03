@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestInput.swift
-//  OpenNOW
-//
 //  The guest's gamepad, forwarded: sends state changes down the host-opened `remote-coop-input` data
 //  channel as the same packets the browser guest produces.
 //

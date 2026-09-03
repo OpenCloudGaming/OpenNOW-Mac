@@ -1,7 +1,3 @@
-//
-//  NativeNVSTHostRemoteCoOp.swift
-//  OpenNOW
-//
 //  Hosting a Remote Co-Op session from the native NVST stream: the invite, the participants, and
 //  the peer plumbing behind them.
 //

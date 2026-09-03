@@ -1,7 +1,3 @@
-//
-//  JarvisAuthService.swift
-//  OpenNOW
-//
 //  The Jarvis auth actor: session lifecycle, token exchange and the account operations built on
 //  it. Split out of JarvisService.swift, which keeps the value types and the operation factory.
 //

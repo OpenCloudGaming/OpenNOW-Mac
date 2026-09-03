@@ -1,8 +1,3 @@
-//
-//  ControllerPageCommand.swift
-//  OpenNOW
-//
-
 import SwiftUI
 
 /// A controller command handed to a page that controller mode embeds but does not own.

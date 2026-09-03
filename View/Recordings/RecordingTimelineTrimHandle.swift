@@ -1,7 +1,3 @@
-//
-//  RecordingTimelineTrimHandle.swift
-//  OpenNOW
-//
 //  The green trim handles and the preview of what releasing one would do.
 //
 //  A drag does not change the clip. Applying it live meant the clip regrew to fill the track on

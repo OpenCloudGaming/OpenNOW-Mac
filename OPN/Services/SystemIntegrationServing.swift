@@ -1,7 +1,3 @@
-//
-//  SystemIntegrationServing.swift
-//  OpenNOW
-//
 //  Desktop integration the catalog needs: opening a URL in the user's browser, putting text on the
 //  pasteboard, and stamping the app icon onto a generated shortcut file.
 //

@@ -1,7 +1,3 @@
-//
-//  NvstWebRtcBundleSDP.swift
-//  OpenNOW
-//
 //  The SDP this bundle synthesizes for a seat that is not an ICE agent, and the async bridges
 //  over libwebrtc's callback API. Split out of NvstWebRtcBundle.swift.
 //

@@ -1,8 +1,3 @@
-//
-//  CatalogImageCache.swift
-//  OpenNOW
-//
-
 import AppKit
 import CoreGraphics
 import Foundation

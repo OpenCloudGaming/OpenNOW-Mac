@@ -1,7 +1,3 @@
-//  CatalogAccountParsing.swift
-//  OpenNOW
-//
-
 import Foundation
 
 /// Pure mappings from the account/store/subscription wire objects onto the catalog

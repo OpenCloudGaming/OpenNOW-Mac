@@ -1,7 +1,3 @@
-//
-//  OpenNOWStreamSessionCoordinator+Signaling.swift
-//  OpenNOW
-//
 //  The signaling leg: connecting to the seat's WebSocket, wiring its callbacks and turning
 //  its offer into a `StreamOffer`. Split out of OpenNOWStreamSessionCoordinator.swift.
 //

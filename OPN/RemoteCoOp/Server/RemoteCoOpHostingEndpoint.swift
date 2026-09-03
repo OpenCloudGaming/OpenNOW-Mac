@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpHostingEndpoint.swift
-//  OpenNOW
-//
 //  Decides where a Remote Co-Op session's signaling lives, and hands back a session plus the two
 //  addresses that go into the invite.
 //

@@ -1,8 +1,3 @@
-//
-//  CatalogLaunchPrefetch.swift
-//  OpenNOW
-//
-
 import Foundation
 
 /// Fetches everything the home screen needs at process launch, before the catalog view exists.

@@ -1,7 +1,3 @@
-//
-//  OPNVideoEnhancementEncoding.swift
-//  OpenNOW
-//
 //  The Metal encoding passes: the spatial scaler, the temporal motion/current passes, the
 //  present blit, and the pillarbox fill history they sample. Split out of
 //  OPNVideoEnhancementRenderer.swift.

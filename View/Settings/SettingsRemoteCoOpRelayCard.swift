@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpRelayCard.swift
-//  OpenNOW
-//
 //  The Relay card and the provider-specific rows behind it.
 //
 //  Split from `SettingsRemoteCoOpViews.swift` on the seam the card boundaries already draw: four

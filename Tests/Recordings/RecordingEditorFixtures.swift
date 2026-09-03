@@ -1,7 +1,3 @@
-//
-//  RecordingEditorFixtures.swift
-//  OpenNOWTests
-//
 //  Recordings and editors for the recording-editor tests, shared by the behaviour tests and the
 //  geometry ones.
 //

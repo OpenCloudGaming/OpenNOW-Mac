@@ -1,7 +1,3 @@
-//
-//  RecordingTimelineScrollZoom.swift
-//  OpenNOW
-//
 //  Scroll-wheel zoom for the editor timeline.
 //
 //  A window-level event monitor rather than a view that overrides `scrollWheel`: the track already

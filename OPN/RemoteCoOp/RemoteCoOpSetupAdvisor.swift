@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpSetupAdvisor.swift
-//  OpenNOW
-//
 //  Turns two questions a host can answer into the setup they actually need.
 //
 //  The settings page asks the opposite way round: it offers a transport mode, a tunnel and a relay,

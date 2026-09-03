@@ -1,7 +1,3 @@
-//
-//  NativeNVSTStreamHUD.swift
-//  OpenNOW
-//
 //  The native NVST surface's own HUD: stats, network health, the unified dock and its panels.
 //  Split out of WebRTCMediaStreamHost.swift.
 //

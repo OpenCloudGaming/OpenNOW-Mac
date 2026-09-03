@@ -1,7 +1,3 @@
-//
-//  RecordingEditorControl.swift
-//  OpenNOW
-//
 //  The one button the editor is built from.
 //
 //  There were five: `zoomButton`, `transportButton`, `transportStepButton`, `quickButton` and

@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpHostedSignalingSession.swift
-//  OpenNOW
-//
 //  Signaling over a hosted pub/sub channel, so the host needs no inbound reachability at all.
 //
 //  This is a fallback, never the preferred path: a guest that can reach the host directly has no

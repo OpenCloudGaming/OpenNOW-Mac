@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpAblyCredentials.swift
-//  OpenNOW
-//
 //  Mints the credential a guest presents to the hosted signaling channel.
 //
 //  Signed here, on this machine, with no network call: an Ably JWT is HS256 over the key secret, so

@@ -1,7 +1,3 @@
-//
-//  GameDetailDescription.swift
-//  OpenNOW
-//
 //  The scrolling half of the detail panel: description, NVIDIA tech, content rating and the
 //  read-more control. Split out of GameDetailPanel.swift.
 //

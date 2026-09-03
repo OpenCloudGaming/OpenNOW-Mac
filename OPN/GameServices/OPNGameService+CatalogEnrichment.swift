@@ -1,13 +1,5 @@
-//
-//  OPNGameService+CatalogEnrichment.swift
-//  OpenNOW
-//
 //  Second pass over a catalog page: app metadata, campaign promo tags and rating definitions
 //  folded into the rows the browse query returned. Split out of OPNGameService+Catalog.swift.
-//
-
-//
-//  OpenNOW
 //
 
 import AppKit

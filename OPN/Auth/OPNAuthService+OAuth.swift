@@ -1,7 +1,3 @@
-//
-//  OPNAuthService+OAuth.swift
-//  OpenNOW
-//
 //  The browser OAuth leg: token exchange, the loopback callback listener and the PKCE
 //  material it is keyed by. Split out of OPNAuthService.swift.
 //

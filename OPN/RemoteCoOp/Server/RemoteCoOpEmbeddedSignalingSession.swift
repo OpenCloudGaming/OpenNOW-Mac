@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpEmbeddedSignalingSession.swift
-//  OpenNOW
-//
 //  Adapts the locally hosted server to `OPNRemoteCoOpSignalingSession`, so the host session,
 //  coordinator and peer controller are the same code on every transport - this server, the native
 //  listener, or a hosted channel.

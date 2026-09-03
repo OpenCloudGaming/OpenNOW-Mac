@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestAspectTests.swift
-//  OpenNOWTests
-//
 //  A preset is a ceiling on size, never a reshape.
 //
 //  `adaptOutputFormat` is not a bounding box: libwebrtc's VideoAdapter reads its dimensions as a

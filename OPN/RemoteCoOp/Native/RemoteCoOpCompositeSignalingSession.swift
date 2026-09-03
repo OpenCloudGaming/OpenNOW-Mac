@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpCompositeSignalingSession.swift
-//  OpenNOW
-//
 //  Presents several signaling transports - the embedded server for browser guests, the native
 //  listener for OpenNOW guests - as the single session the coordinator and peer controller
 //  expect.

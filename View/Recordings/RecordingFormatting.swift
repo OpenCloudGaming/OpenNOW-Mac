@@ -1,7 +1,3 @@
-//
-//  RecordingFormatting.swift
-//  OpenNOW
-//
 //  How a recording's date, duration, size and quality are written in the recordings UI.
 //  Namespaced rather than left as free functions: names this generic (`dateText`,
 //  `durationText`) already exist elsewhere in the module with different formatting.

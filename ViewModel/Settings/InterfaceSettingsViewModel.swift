@@ -1,7 +1,3 @@
-//
-//  InterfaceSettingsViewModel.swift
-//  OpenNOW
-//
 //  Owns the controller plumbing the Interface settings page reads to decide whether a pad is
 //  attached and which glyph set to draw.
 //

@@ -1,7 +1,3 @@
-//
-//  CatalogOwnership.swift
-//  OpenNOW
-//
 //  Which store a game plays from and whether the account owns it there: the store picker,
 //  favourites, shortcuts, ownership marking and account linking.
 //  Split out of CatalogViewModel.swift.

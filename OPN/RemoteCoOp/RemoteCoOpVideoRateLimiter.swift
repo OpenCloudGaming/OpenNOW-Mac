@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpVideoRateLimiter.swift
-//  OpenNOW
-//
 //  Decides, per frame, whether a guest's video relay forwards it or drops it.
 //
 //  This replaced a pacer that held one frame and released it on its own timer at the guest preset's

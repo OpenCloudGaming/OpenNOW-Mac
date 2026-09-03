@@ -1,7 +1,3 @@
-//
-//  CatalogRailViews.swift
-//  OpenNOW
-//
 //  The home rails and the destination grid they scroll inside, plus the tiles that end them.
 //  Split out of CatalogContentViews.swift.
 //

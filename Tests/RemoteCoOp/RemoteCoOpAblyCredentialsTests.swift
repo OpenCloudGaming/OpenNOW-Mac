@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpAblyCredentialsTests.swift
-//  OpenNOWTests
-//
 //  The signaling credential: an Ably JWT minted locally, and the invite fields that carry it.
 //
 //  Ably rejects a malformed JWT with an error the host cannot act on, so the structure is asserted

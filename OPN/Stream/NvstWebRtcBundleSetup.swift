@@ -1,7 +1,3 @@
-//
-//  NvstWebRtcBundleSetup.swift
-//  OpenNOW
-//
 //  Bringing the ICE/DTLS/SCTP bundle up and tearing it down, plus the feedback and control
 //  channels it opens. Split out of NvstWebRtcBundle.swift.
 //

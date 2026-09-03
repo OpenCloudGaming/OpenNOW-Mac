@@ -1,7 +1,3 @@
-//
-//  SteamControllerHIDReports.swift
-//  OpenNOW
-//
 //  Turning input reports into published controller state, plus the battery and power-off
 //  paths that ride the same reports. Split out of SteamControllerHIDMonitor.swift.
 //

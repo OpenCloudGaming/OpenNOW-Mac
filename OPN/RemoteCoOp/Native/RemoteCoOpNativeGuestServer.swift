@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestServer.swift
-//  OpenNOW
-//
 //  Host-side listener for native Remote Co-Op guests: another OpenNOW instance on the same
 //  network or a shared VPN, speaking the browser's wire protocol over a plain TCP socket
 //  instead of a WebSocket.

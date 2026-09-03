@@ -1,7 +1,3 @@
-//
-//  OPNSessionManager+SessionInfo.swift
-//  OpenNOW
-//
 //  Reading a seat's session payload: connection info, the negotiated stream profile, ad state
 //  and the small status predicates around them. Split out of OPNSessionManager.swift.
 //

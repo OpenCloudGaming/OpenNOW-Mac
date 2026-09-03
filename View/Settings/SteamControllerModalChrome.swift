@@ -1,7 +1,3 @@
-//
-//  SteamControllerModalChrome.swift
-//  OpenNOW
-//
 //  Shared chrome for the two Steam Controller sheets (tester, mapping editor). Both used to
 //  hand-roll rounded buttons, rounded panels, native pickers and their own opacity ramp; these
 //  pieces put them on the documented modal spec — 2px accent top bar, App Bar header, 1px

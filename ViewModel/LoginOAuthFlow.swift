@@ -1,7 +1,3 @@
-//
-//  LoginOAuthFlow.swift
-//  OpenNOW
-//
 //  The sign-in flows: browser OAuth, the device-code flow, and restoring or ending a session.
 //  Split out of LoginViewModel.swift.
 //

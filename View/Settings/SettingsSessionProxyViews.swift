@@ -1,8 +1,3 @@
-//
-//  SettingsSessionProxyViews.swift
-//  OpenNOW
-//
-
 import SwiftUI
 
 struct SessionProxySettingsPage: View {

@@ -1,8 +1,3 @@
-//
-//  SettingsWhatsNewViews.swift
-//  OpenNOW
-//
-
 import SwiftUI
 
 /// Release history for Settings → About, rendered from the same parsed notes and the same pending

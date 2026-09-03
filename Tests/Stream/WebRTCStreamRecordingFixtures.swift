@@ -1,7 +1,3 @@
-//
-//  WebRTCStreamRecordingFixtures.swift
-//  OpenNOWTests
-//
 //  Synthetic frames, audio and finished recordings for the recording tests. Split out of
 //  WebRTCStreamRecordingTests.swift: they are setup, not assertions, and inside the suite they
 //  pushed it past the type-size budget.

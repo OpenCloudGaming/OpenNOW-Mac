@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpInputLatencyMeasurementTests.swift
-//  OpenNOW
-//
 //  Measures the guest-to-host input path over a real WebRTC data channel, because reasoning about it
 //  from the code was wrong in both directions more than once.
 //

@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpSetupAdvisorTests.swift
-//  OpenNOWTests
-//
 //  The decision table behind the setup interview.
 //
 

@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpAblyChannel.swift
-//  OpenNOW
-//
 //  The Ably side of hosted signaling: everything that touches the SDK, and nothing that decides
 //  anything.
 //

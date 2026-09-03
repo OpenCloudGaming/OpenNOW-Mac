@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpRelayProviderTests.swift
-//  OpenNOWTests
-//
 //  The relay providers that need no API: pasted credentials, and coturn's shared-secret scheme.
 //
 

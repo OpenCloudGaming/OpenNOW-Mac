@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestMessageGate.swift
-//  OpenNOW
-//
 //  The one place a guest-originated message is authorised.
 //
 //  This policy lived twice, once per listener, and has already drifted once: the native listener

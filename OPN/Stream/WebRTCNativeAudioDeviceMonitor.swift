@@ -1,7 +1,3 @@
-//
-//  WebRTCNativeAudioDeviceMonitor.swift
-//  OpenNOW
-//
 //  Lets `OPNCoreAudioRTCDevice` follow the default output device on its own.
 //
 //  `OPNLibWebRTCAudio` already does this for the libwebrtc session, but it is tied to an

@@ -1,8 +1,3 @@
-//
-//  OPNRequestConcurrencyLimiter.swift
-//  OpenNOW
-//
-
 import Foundation
 
 /// Caps how many callback-style requests of one kind are in flight, queueing the

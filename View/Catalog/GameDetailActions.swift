@@ -1,7 +1,3 @@
-//
-//  GameDetailActions.swift
-//  OpenNOW
-//
 //  The action half of the detail panel: the play button and its menu, the variant status row
 //  and the access message behind them. Split out of GameDetailPanel.swift.
 //

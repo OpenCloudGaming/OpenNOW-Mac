@@ -1,7 +1,3 @@
-//
-//  SessionAdPlaybackModel.swift
-//  OpenNOW
-//
 //  Plays the sponsored message a free-tier session requires before it continues. The player, its
 //  observers and the countdown live here rather than in the overlay, so their lifetime is tied to
 //  an object the view owns rather than to a view body that can be rebuilt at any time.

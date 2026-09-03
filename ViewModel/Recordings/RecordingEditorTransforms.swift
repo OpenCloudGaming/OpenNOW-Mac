@@ -1,7 +1,3 @@
-//
-//  RecordingEditorTransforms.swift
-//  OpenNOW
-//
 //  Frame transforms (crop, rotate, flip), undo/redo, and turning the edit into an export
 //  request. Split out of RecordingEditorViewModel.swift.
 //

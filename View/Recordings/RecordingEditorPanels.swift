@@ -1,7 +1,3 @@
-//
-//  RecordingEditorPanels.swift
-//  OpenNOW
-//
 //  The editor's Advanced drawer and the small chrome the editor is built from. Split out of
 //  RecordingEditorView.swift, which had grown past the type-size budget once the transport and the
 //  design-system controls landed.

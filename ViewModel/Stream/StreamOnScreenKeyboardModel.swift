@@ -1,7 +1,3 @@
-//
-//  StreamOnScreenKeyboardModel.swift
-//  OpenNOW
-//
 //  Drives the on-screen keyboard: it owns the key state and the pad/gamepad navigation, and
 //  the overlay in View/ only renders it.
 //

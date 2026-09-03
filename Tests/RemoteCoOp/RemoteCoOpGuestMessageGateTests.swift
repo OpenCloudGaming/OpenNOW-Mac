@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestMessageGateTests.swift
-//  OpenNOWTests
-//
 //  The authorisation rule both listeners now share.
 //
 //  Written against the decision rather than either transport, because the point of extracting it was

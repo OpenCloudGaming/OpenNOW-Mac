@@ -1,7 +1,3 @@
-//
-//  RecordingSharedHelpers.swift
-//  OpenNOW
-//
 //  Small pieces the recording editor uses in several places.
 //
 

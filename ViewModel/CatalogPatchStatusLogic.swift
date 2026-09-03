@@ -1,7 +1,3 @@
-//  CatalogPatchStatusLogic.swift
-//  OpenNOW
-//
-
 import Foundation
 
 /// Patch-status merging and application. The catalog game objects are reference types,

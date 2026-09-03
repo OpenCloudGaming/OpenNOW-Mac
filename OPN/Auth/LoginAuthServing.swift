@@ -1,8 +1,3 @@
-//
-//  LoginAuthServing.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol LoginAuthServing {

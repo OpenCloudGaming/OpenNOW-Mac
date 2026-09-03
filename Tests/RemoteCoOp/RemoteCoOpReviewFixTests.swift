@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpReviewFixTests.swift
-//  OpenNOW
-//
 //  Regression cover for the review findings. Each of these was reachable and none had a test.
 //
 

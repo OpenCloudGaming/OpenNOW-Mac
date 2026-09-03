@@ -1,7 +1,3 @@
-//
-//  WebRTCMediaStreamHUDPanels.swift
-//  OpenNOW
-//
 //  The HUD's stats and video panels, the quit menu, and the formatting the numbers go through.
 //  Split out of WebRTCMediaStreamHUD.swift.
 //

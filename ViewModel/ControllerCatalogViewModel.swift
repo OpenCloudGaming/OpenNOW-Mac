@@ -1,8 +1,3 @@
-//
-//  ControllerCatalogViewModel.swift
-//  OpenNOW
-//
-
 import Combine
 import Foundation
 

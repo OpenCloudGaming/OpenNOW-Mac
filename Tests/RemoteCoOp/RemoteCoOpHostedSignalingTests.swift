@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpHostedSignalingTests.swift
-//  OpenNOWTests
-//
 //  The hosted signaling transport, driven through a stub channel so nothing here needs a network or
 //  an Ably account.
 //

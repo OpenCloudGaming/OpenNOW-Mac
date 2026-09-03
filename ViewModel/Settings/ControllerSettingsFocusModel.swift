@@ -1,7 +1,3 @@
-//
-//  ControllerSettingsFocusModel.swift
-//  OpenNOW
-//
 //  Pad focus for the settings surface: which row is focused, what order they traverse in, and the
 //  command aimed at the focused row.
 //

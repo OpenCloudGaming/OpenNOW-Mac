@@ -1,7 +1,3 @@
-//
-//  SteamControllerHIDDiscovery.swift
-//  OpenNOW
-//
 //  IOHID device discovery: matching a controller's vendor and gamepad interfaces, opening
 //  them, and tearing them down again. Split out of SteamControllerHIDMonitor.swift.
 //

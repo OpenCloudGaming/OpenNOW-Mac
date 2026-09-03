@@ -1,8 +1,3 @@
-//  OpenNOW
-//
-//  Created by OpenCode on 6/16/26.
-//
-
 import Combine
 import Foundation
 import SwiftUI

@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpTURNTests.swift
-//  OpenNOWTests
-//
 //  Cloudflare TURN credential minting, the quota readout, and the rule that a relay is added to the
 //  ICE list rather than substituted for it.
 //

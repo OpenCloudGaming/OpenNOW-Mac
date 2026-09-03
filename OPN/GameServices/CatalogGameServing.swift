@@ -1,8 +1,3 @@
-//
-//  CatalogGameServing.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol CatalogGameServing {

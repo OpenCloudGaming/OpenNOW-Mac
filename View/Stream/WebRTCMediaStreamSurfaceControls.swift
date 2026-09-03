@@ -1,7 +1,3 @@
-//
-//  WebRTCMediaStreamSurfaceControls.swift
-//  OpenNOW
-//
 //  What the HUD's controls do: focus movement, recording, upscaling changes and the paste and
 //  pointer shortcuts. Split out of WebRTCMediaStreamSurface.swift.
 //

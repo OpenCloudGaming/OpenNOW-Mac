@@ -1,7 +1,3 @@
-//
-//  OPNAuthService+Storage.swift
-//  OpenNOW
-//
 //  On-disk session storage: where the property lists live, how a session is written to and
 //  read from one, and the legacy-token drain. Split out of OPNAuthService.swift.
 //

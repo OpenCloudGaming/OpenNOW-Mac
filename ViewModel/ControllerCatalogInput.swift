@@ -1,7 +1,3 @@
-//
-//  ControllerCatalogInput.swift
-//  OpenNOW
-//
 //  Controller-mode input routing and the actions it can trigger. This is the whole of what a
 //  D-pad, A/B, LB/RB and the menu buttons do in the catalog, moved out of `ControllerCatalogView`
 //  so it can be exercised without a rendered catalog.

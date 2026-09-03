@@ -1,7 +1,3 @@
-//
-//  StarfleetTokens.swift
-//  OpenNOW
-//
 //  Token exchange and the plumbing around it: what a token response looks like, when a client
 //  token needs refreshing, how requests are sent, retried and reported, and what can go wrong.
 //  Split out of Starfleet.swift, which keeps the OAuth request surface.

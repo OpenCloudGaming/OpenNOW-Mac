@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpEmbeddedServer.swift
-//  OpenNOW
-//
 //  Remote Co-Op hosted by OpenNOW itself: no deployed server, no shared secret.
 //
 //  A Node broker in `RemoteCoOp/` used to be the alternative, because a rendezvous both sides dial

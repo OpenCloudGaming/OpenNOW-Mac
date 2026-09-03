@@ -1,8 +1,3 @@
-//
-//  SettingsStreamingViews.swift
-//  OpenNOW
-//
-
 import AppKit
 import CryptoKit
 import SwiftUI

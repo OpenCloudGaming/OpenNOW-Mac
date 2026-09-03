@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeFraming.swift
-//  OpenNOW
-//
 //  Framing for native Remote Co-Op guests: `OPNRemoteCoOpWireMessage` values over a plain stream
 //  socket instead of the browser's WebSocket.
 //

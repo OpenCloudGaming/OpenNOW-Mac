@@ -1,8 +1,3 @@
-//
-//  GameDetailPanel.swift
-//  OpenNOW
-//
-
 import AppKit
 import AVKit
 import Combine

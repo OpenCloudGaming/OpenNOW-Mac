@@ -1,7 +1,3 @@
-//
-//  OPNSentryScrubbing.swift
-//  OpenNOW
-//
 //  Metrics, environment resolution and the scrubbing every event, breadcrumb and log line
 //  passes through before it leaves the process. Split out of OPNSentry.swift.
 //

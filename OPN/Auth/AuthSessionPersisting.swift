@@ -1,8 +1,3 @@
-//
-//  AuthSessionPersisting.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol AuthSessionPersisting {

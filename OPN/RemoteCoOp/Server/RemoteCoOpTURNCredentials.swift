@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpTURNCredentials.swift
-//  OpenNOW
-//
 //  Mints short-lived Cloudflare Realtime TURN credentials so a guest whose network refuses a direct
 //  connection can still play.
 //

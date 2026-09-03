@@ -1,7 +1,3 @@
-//
-//  RecordingProgressivePolling.swift
-//  OpenNOW
-//
 //  Both the filmstrip and the waveform are built in the background and published in pieces, and
 //  both are read by a view that wants to redraw as the pieces land. Three copies of the same
 //  five-line loop had already drifted - one returned on completion, one kept looping, one skipped

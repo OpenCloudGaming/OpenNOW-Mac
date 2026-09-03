@@ -1,7 +1,3 @@
-//
-//  OPNStreamPreferences+Support.swift
-//  OpenNOW
-//
 //  Storage plumbing behind the preference store: game-profile dictionaries, region
 //  measurement, JSON coercion and the defaults keys. Split out of OPNStreamPreferences.swift.
 //

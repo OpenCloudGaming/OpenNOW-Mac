@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpRelayProbe.swift
-//  OpenNOW
-//
 //  Asks the configured relay for an allocation and reports whether it gave one.
 //
 //  Relay credentials fail silently. A wrong password, a URL with no TLS variant, a provider that has

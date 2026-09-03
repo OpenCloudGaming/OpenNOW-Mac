@@ -1,7 +1,3 @@
-//
-//  NvstBifrostFreeAllocation.swift
-//  OpenNOW
-//
 //  Reading the seat's allocation: the stream profile it implies, and where the session is
 //  running. Split out of NvstBifrostFreeTransport.swift.
 //

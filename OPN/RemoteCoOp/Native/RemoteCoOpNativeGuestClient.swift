@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestClient.swift
-//  OpenNOW
-//
 //  The guest half of native Remote Co-Op: find hosts on the local network (or a shared VPN)
 //  with Bonjour, then speak the browser's wire protocol over a plain TCP socket.
 //

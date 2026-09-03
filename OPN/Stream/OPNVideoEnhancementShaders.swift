@@ -1,7 +1,3 @@
-//
-//  OPNVideoEnhancementShaders.swift
-//  OpenNOW
-//
 //  The Metal shader source the enhancement renderer compiles at runtime. Kept apart from the
 //  Swift that drives it so neither is buried in the other.
 //

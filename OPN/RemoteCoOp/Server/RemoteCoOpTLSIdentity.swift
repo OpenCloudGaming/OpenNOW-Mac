@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpTLSIdentity.swift
-//  OpenNOW
-//
 //  The TLS identity the embedded Remote Co-Op server presents.
 //
 //  TLS is not optional here. Browsers gate `RTCPeerConnection` and the Gamepad API behind a secure

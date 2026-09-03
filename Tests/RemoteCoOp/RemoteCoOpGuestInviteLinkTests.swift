@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestInviteLinkTests.swift
-//  OpenNOW
-//
 //  A native guest joining by invite link, which is the only route that works through a tunnel.
 //
 

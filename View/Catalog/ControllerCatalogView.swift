@@ -1,8 +1,3 @@
-//
-//  ControllerCatalogView.swift
-//  OpenNOW
-//
-
 import AppKit
 import SwiftUI
 

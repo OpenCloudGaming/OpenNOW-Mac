@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpVideoRelayConversionBenchmark.swift
-//  OpenNOW
-//
 //  Measures what a guest costs the host per frame, before deciding what to do about it.
 //
 //  The relay hands the same `RTCVideoFrame` to every guest's peer, and each peer independently

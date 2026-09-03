@@ -1,7 +1,3 @@
-//
-//  OpenNOW
-//
-
 import AppKit
 import Foundation
 

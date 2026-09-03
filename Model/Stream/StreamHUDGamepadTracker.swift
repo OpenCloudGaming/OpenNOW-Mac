@@ -1,7 +1,3 @@
-//
-//  StreamHUDGamepadTracker.swift
-//  OpenNOW
-//
 //  Edge-detects gamepad navigation for the stream HUD. Pure state machine over GamepadState, so it
 //  belongs to the model layer and is testable without a rendered HUD.
 //

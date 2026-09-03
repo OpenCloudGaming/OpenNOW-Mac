@@ -1,7 +1,3 @@
-//
-//  CatalogPatchingAndState.swift
-//  OpenNOW
-//
 //  Settings preferences, the patching poll a queued launch waits on, and the small state
 //  updates the rest of the catalog makes. Split out of CatalogViewModel.swift.
 //

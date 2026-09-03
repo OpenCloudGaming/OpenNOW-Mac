@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeNVSTTests.swift
-//  OpenNOW
-//
 //  The three seams that let Remote Co-Op host from the native NVST transport rather than the
 //  WebRTC one: the multi-pad gamepad wire format, the pixel-buffer video relay, and the
 //  float-PCM audio relay.

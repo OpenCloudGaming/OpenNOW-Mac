@@ -1,7 +1,3 @@
-//
-//  OPNSessionManager+Claim.swift
-//  OpenNOW
-//
 //  Claiming an already-running seat session: validating it, resuming it where the state allows,
 //  and otherwise asking the seat to hand it over. Split out of OPNSessionManager.swift.
 //

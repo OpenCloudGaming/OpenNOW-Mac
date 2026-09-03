@@ -1,7 +1,3 @@
-//
-//  RecordingEditorHeaderBar.swift
-//  OpenNOW
-//
 //  The editor's identity, name field, status and actions - at the top of the page rather than at
 //  the top of the drawer.
 //

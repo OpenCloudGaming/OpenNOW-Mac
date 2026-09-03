@@ -1,8 +1,3 @@
-//
-//  StreamOnScreenKeyboardOverlay.swift
-//  OpenNOW
-//
-
 import Combine
 import SwiftUI
 

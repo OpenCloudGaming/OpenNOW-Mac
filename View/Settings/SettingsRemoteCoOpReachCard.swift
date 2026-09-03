@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpReachCard.swift
-//  OpenNOW
-//
 //  "How Guests Reach You": the glossary, the per-situation readiness table, and the route an invite
 //  will actually take.
 //

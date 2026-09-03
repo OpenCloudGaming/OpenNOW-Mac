@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpRelayWizard.swift
-//  OpenNOW
-//
 //  Guided setup for the Cloudflare relay.
 //
 //  The relay is the one part of Remote Co-Op whose setup happens somewhere else. Three things have to

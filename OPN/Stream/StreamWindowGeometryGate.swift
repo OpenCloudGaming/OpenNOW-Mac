@@ -1,7 +1,3 @@
-//
-//  StreamWindowGeometryGate.swift
-//  OpenNOW
-//
 //  When it is safe to change a window's styleMask, aspect ratio or frame.
 //
 //  Split out of StreamWindowAspectCoordinator.swift so the catalog window's coordinator answers the

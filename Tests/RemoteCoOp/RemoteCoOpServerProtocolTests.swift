@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpServerProtocolTests.swift
-//  OpenNOW
-//
 //  The wire layers the embedded Remote Co-Op server implements itself: RFC 6455 framing, the HTTP
 //  request head, and static file resolution. Every one of these faces a browser directly on a
 //  machine that is also running a game, so the cases here are mostly the hostile ones.

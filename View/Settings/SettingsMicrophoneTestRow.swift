@@ -1,8 +1,3 @@
-//
-//  SettingsMicrophoneTestRow.swift
-//  OpenNOW
-//
-
 import SwiftUI
 
 /// Live microphone check that needs no stream: opens the selected input device and shows its

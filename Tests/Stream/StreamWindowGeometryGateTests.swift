@@ -1,7 +1,3 @@
-//
-//  StreamWindowGeometryGateTests.swift
-//  OpenNOWTests
-//
 //  The gate's whole job is telling "AppKit is between events" from "AppKit is inside a nested run
 //  loop of its own". A titlebar double-click crashed the app because the old guard only knew about
 //  live resize, and a zoom animation is neither live resize nor observable through a notification —

@@ -1,7 +1,3 @@
-//
-//  CatalogStorePresentation.swift
-//  OpenNOW
-//
 //  Copy for the store-picker's success stage. Extracted from `CatalogStorePickerViews`, where it
 //  was `private` inside a view and therefore only reachable by rendering the flow's last step.
 //

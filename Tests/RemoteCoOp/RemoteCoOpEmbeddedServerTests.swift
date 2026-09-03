@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpEmbeddedServerTests.swift
-//  OpenNOW
-//
 //  The embedded server end to end: a real TLS listener, a real WebSocket upgrade, and the
 //  authorisation cases that decide whether a guest may act as a participant at all.
 //

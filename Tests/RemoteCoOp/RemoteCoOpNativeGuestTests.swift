@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestTests.swift
-//  OpenNOW
-//
 //  The native guest transport: frame framing, the loopback path between the host listener and a
 //  guest connection, and the composite session that serves browser and native guests at once.
 //

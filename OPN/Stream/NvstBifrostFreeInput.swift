@@ -1,7 +1,3 @@
-//
-//  NvstBifrostFreeInput.swift
-//  OpenNOW
-//
 //  Input, text and the runtime session controls the client can change mid-stream.
 //  Split out of NvstBifrostFreeTransport.swift.
 //

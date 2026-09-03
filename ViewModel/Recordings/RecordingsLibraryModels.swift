@@ -1,7 +1,3 @@
-//
-//  RecordingsLibraryModels.swift
-//  OpenNOW
-//
 //  How the recordings library is summarised, sorted and filtered. Moved out of `RecordingsView`
 //  where these were `private`, so `RecordingsViewModel` can own the list state and tests can build
 //  the shapes directly.

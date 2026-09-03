@@ -1,7 +1,3 @@
-//
-//  NativeNVSTStreamStatsHUD.swift
-//  OpenNOW
-//
 //  The floating stats overlay and the formatters behind it.
 //
 //  Split from `NativeNVSTStreamHUD.swift` on the seam that was already there: this is a diagnostic

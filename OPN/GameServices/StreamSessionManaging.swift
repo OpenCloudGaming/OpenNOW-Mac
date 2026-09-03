@@ -1,8 +1,3 @@
-//
-//  StreamSessionManaging.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol StreamSessionManaging {

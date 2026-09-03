@@ -1,7 +1,3 @@
-//
-//  LoginSessionStorage.swift
-//  OpenNOW
-//
 //  Persisting a signed-in session: the account row, the session row and which of them is
 //  active. Split out of LoginViewModel.swift.
 //

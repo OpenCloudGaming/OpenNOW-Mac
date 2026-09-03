@@ -1,7 +1,3 @@
-//
-//  StarfleetService.swift
-//  OpenNOW
-//
 //  The authenticated session — what it holds, how it is parsed, and the actor that drives the
 //  login, refresh and user-info calls. Split out of Starfleet.swift.
 //

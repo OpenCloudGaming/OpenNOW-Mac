@@ -1,7 +1,3 @@
-//
-//  NvstRtspSdp+Announce.swift
-//  OpenNOW
-//
 //  The client's ANNOUNCE body. Split out of NvstRtspSdp.swift so neither declaration carries the
 //  whole RTSP/SDP surface: this file owns what the client offers the seat, NvstRtspSdp.swift owns
 //  parsing what the seat offers back.

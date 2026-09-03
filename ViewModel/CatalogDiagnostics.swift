@@ -1,7 +1,3 @@
-//
-//  CatalogDiagnostics.swift
-//  OpenNOW
-//
 //  Support diagnostics generation. Shared by the About settings card and the home error banner,
 //  so a failed session can be reported without walking back through Settings.
 //

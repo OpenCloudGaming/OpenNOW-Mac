@@ -1,7 +1,3 @@
-//
-//  StreamSessionSidebarLimit.swift
-//  OpenNOW
-//
 //  Remaining-session-time model shown in the stream sidebar. Pure value type over the session
 //  descriptor and the seat's limit updates.
 //

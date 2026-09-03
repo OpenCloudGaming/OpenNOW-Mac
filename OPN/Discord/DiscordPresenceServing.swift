@@ -1,8 +1,3 @@
-//
-//  DiscordPresenceServing.swift
-//  OpenNOW
-//
-
 import Foundation
 
 @MainActor

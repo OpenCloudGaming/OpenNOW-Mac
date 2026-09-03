@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpLatencyTuningTests.swift
-//  OpenNOW
-//
 //  The pieces added for the low-latency guest path: the binary input frame, the Opus SDP tuning, and
 //  the typed-in host address that Bonjour cannot discover.
 //

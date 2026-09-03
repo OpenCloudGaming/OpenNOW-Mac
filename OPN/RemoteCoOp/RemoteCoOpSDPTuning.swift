@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpSDPTuning.swift
-//  OpenNOW
-//
 //  Retunes Opus from libwebrtc's conversational defaults (~32 kbit/s mono, 20 ms packets) for a game
 //  mix. Only reachable through the SDP: `RTCRtpEncodingParameters` covers video bitrate, but the Opus
 //  knobs exist solely in the `fmtp` line.

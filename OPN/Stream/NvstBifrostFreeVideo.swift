@@ -1,7 +1,3 @@
-//
-//  NvstBifrostFreeVideo.swift
-//  OpenNOW
-//
 //  Bringing the video plane up: the Mjolnir receiver, the ICE/DTLS bundle, the decoder and the
 //  feedback the seat's rate controller runs on. Split out of NvstBifrostFreeTransport.swift.
 //

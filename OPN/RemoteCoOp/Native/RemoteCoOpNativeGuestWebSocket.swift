@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpNativeGuestWebSocket.swift
-//  OpenNOW
-//
 //  Lets a guest running OpenNOW join over the same WebSocket a browser guest uses.
 //
 //  Tunnels forward HTTP and point at the embedded server on 32188, not the native listener's raw TCP

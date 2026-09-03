@@ -1,7 +1,3 @@
-//
-//  SteamControllerTestModel.swift
-//  OpenNOW
-//
 //  Live Steam Controller input for the settings test pane and the binding recorder: it turns the
 //  HID monitor on while a view needs it and publishes the raw snapshot.
 //

@@ -1,8 +1,3 @@
-//
-//  GameLaunchBridging.swift
-//  OpenNOW
-//
-
 import Foundation
 
 @MainActor

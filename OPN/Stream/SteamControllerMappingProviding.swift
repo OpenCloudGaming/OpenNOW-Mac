@@ -1,8 +1,3 @@
-//
-//  SteamControllerMappingProviding.swift
-//  OpenNOW
-//
-
 import Foundation
 
 @MainActor

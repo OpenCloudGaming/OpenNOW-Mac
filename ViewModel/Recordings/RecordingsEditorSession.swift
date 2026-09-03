@@ -1,7 +1,3 @@
-//
-//  RecordingsEditorSession.swift
-//  OpenNOW
-//
 //  Everything the recordings page does once an edit is open: the live preview pipeline, the export,
 //  the guards that stop an unexported edit being thrown away, and the pad routing for the editor.
 //

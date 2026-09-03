@@ -1,7 +1,3 @@
-//
-//  NativeNVSTHostTeardown.swift
-//  OpenNOW
-//
 //  Ending a native NVST session. Teardown order is load-bearing — see the note in
 //  NativeNVSTHostViewModel.swift — and `didEnd` is a once-guard that must not be reset while a
 //  session can still end. Split out of NativeNVSTHostViewModel.swift.

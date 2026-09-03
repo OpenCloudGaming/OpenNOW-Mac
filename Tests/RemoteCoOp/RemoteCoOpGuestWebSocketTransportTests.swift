@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestWebSocketTransportTests.swift
-//  OpenNOW
-//
 //  The native guest's WebSocket transport against a real embedded server.
 //
 //  This is the route that makes a tunnel work for guests running OpenNOW, and it is the half that

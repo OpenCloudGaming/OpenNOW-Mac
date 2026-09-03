@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestViewModel.swift
-//  OpenNOW
-//
 //  Drives the native Remote Co-Op guest window: browse for hosts, join one, and run the message
 //  pump that carries the session from invite to video.
 //

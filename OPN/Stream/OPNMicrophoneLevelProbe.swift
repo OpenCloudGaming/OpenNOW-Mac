@@ -1,7 +1,3 @@
-//
-//  OPNMicrophoneLevelProbe.swift
-//  OpenNOW
-//
 //  Standalone CoreAudio input tap for the Settings microphone test. Deliberately libwebrtc-free:
 //  settings has no streaming session, and needing one to confirm the mic is alive is exactly the
 //  trap the test exists to avoid. Opens a HAL input unit on the selected (or default) input

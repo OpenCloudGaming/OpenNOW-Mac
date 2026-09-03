@@ -1,7 +1,3 @@
-//
-//  OPNVideoEnhancementFillShaders.swift
-//  OpenNOW
-//
 //  The second half of the runtime Metal source: the pillarbox fill history, the temporal
 //  passes and the present blit. Concatenated onto OPNVideoEnhancementShaders.swift's half.
 //

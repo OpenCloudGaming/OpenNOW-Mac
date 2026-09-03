@@ -1,7 +1,3 @@
-//  CatalogModels.swift
-//  OpenNOW
-//
-
 import Foundation
 
 struct CatalogSectionModel: Identifiable, Equatable {

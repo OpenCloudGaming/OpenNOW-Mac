@@ -1,7 +1,3 @@
-//
-//  NativeWebRTCStreamSurface.swift
-//  OpenNOW
-//
 //  SwiftUI bridge to the AppKit stream view. Lives in the view layer because it is presentation:
 //  the service layer must not import SwiftUI.
 //

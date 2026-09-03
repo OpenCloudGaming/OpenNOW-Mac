@@ -1,7 +1,3 @@
-//
-//  OPNStreamPreferences+Regions.swift
-//  OpenNOW
-//
 //  Region selection and the cloud-variable / network-preflight payloads that inform it.
 //  Split out of OPNStreamPreferences.swift.
 //

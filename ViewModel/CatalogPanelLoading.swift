@@ -1,7 +1,3 @@
-//
-//  CatalogPanelLoading.swift
-//  OpenNOW
-//
 //  Loading what the catalog shows: home panels, library and favourites, the account's stores,
 //  and the image cache behind the artwork. Split out of CatalogViewModel.swift.
 //

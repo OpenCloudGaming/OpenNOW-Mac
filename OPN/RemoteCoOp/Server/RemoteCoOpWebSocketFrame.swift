@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpWebSocketFrame.swift
-//  OpenNOW
-//
 //  RFC 6455 framing for the embedded Remote Co-Op server.
 //
 //  Network.framework does ship `NWProtocolWebSocket`, but it wants the whole listener to be a

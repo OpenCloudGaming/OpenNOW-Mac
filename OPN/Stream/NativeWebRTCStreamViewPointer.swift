@@ -1,7 +1,3 @@
-//
-//  NativeWebRTCStreamViewPointer.swift
-//  OpenNOW
-//
 //  Pointer lock and absolute-cursor confinement: taking the cursor for a stream and giving it
 //  back. Split out of NativeWebRTCStreamView.swift.
 //

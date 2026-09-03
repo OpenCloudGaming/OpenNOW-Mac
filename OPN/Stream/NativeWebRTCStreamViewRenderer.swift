@@ -1,7 +1,3 @@
-//
-//  NativeWebRTCStreamViewRenderer.swift
-//  OpenNOW
-//
 //  The native NVST renderer window this view hosts: where it sits, what colour space it
 //  presents in, and how its Metal view is embedded. Split out of NativeWebRTCStreamView.swift.
 //

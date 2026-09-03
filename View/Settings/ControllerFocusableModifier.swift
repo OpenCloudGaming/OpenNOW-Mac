@@ -1,8 +1,3 @@
-//
-//  ControllerSettingsFocusModel.swift
-//  OpenNOW
-//
-
 import Combine
 import SwiftUI
 

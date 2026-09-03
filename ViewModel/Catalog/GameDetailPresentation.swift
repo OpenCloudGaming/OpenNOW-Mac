@@ -1,7 +1,3 @@
-//
-//  GameDetailPresentation.swift
-//  OpenNOW
-//
 //  Turns a catalog game into the strings the detail panel shows: eyebrow metadata, capability
 //  chips, rating descriptors, the access explanation, and the spec rows.
 //

@@ -1,7 +1,3 @@
-//
-//  RecordingsViewModel.swift
-//  OpenNOW
-//
 //  The recordings library: what is on disk, what is selected, what the player is doing, and the
 //  editor preview pipeline behind it. Extracted from `RecordingsView`, which owned all of it as
 //  `@State` and could therefore only be exercised by rendering it.

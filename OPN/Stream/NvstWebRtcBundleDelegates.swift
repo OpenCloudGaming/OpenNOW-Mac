@@ -1,7 +1,3 @@
-//
-//  NvstWebRtcBundleDelegates.swift
-//  OpenNOW
-//
 //  libwebrtc's peer-connection and data-channel callbacks, and what the bundle does with the
 //  seat's messages on them. Split out of NvstWebRtcBundle.swift.
 //

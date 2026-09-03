@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpPerGuestQualityTests.swift
-//  OpenNOW
-//
 //  Per-guest stream quality: each guest streams at their own preset, and changing one retargets that
 //  peer in place rather than rebuilding it.
 //

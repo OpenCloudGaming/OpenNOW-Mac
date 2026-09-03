@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpWebRTCHostPeerStats.swift
-//  OpenNOW
-//
 //  What one guest's peer connection is actually achieving: the outbound sample loop and the pacing
 //  telemetry derived from it.
 //

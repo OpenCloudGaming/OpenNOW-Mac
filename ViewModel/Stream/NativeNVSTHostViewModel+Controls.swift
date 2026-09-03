@@ -1,7 +1,3 @@
-//
-//  NativeNVSTHostViewModel+Controls.swift
-//  OpenNOW
-//
 //  What the HUD and the shortcut keys can do to a running stream: focus traversal, the video
 //  enhancement controls, microphone, anti-AFK, pointer lock, the on-screen keyboard, stats polling
 //  and the network governor.

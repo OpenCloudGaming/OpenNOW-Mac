@@ -1,7 +1,3 @@
-//
-//  CatalogImagePrefetch.swift
-//  OpenNOW
-//
 //  Warming the image cache ahead of a rail or grid scrolling into view.
 //
 //  This was two near-identical copies inside `CatalogContentViews`, each reaching for the shared

@@ -1,7 +1,3 @@
-//
-//  SettingsRemoteCoOpSetupWizard.swift
-//  OpenNOW
-//
 //  Asks a host where their guests will be, and configures what that implies.
 //
 //  The settings page presents a transport mode, a tunnel, Hosted Signaling and a relay and expects the

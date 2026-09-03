@@ -1,7 +1,3 @@
-//
-//  WebRTCNativeStreamSDP.swift
-//  OpenNOW
-//
 //  SDP rewriting and inspection for the libwebrtc session — offer/answer munging, ICE candidate
 //  rewriting, and the value coercion the session's dictionaries need. Split out of
 //  WebRTCNativeStreamSession.swift.

@@ -1,7 +1,3 @@
-//
-//  NativeNVSTHostInput.swift
-//  OpenNOW
-//
 //  Wiring the native stream view's callbacks into the host: where input goes, which commands
 //  the shell keeps, and how the on-screen keyboard is fed. Split out of
 //  NativeNVSTHostViewModel.swift.

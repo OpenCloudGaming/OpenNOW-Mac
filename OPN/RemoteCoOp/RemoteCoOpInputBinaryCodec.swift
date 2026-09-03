@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpInputBinaryCodec.swift
-//  OpenNOW
-//
 //  A 62-byte frame for guest gamepad packets, which arrive at the pad's HID report rate - up to
 //  ~1000/second - where JSON costs an encoder allocation, ~330 bytes and a UUID string parse each.
 //  Session control stays JSON.

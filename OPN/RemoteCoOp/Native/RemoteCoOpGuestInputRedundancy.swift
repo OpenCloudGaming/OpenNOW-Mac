@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestInputRedundancy.swift
-//  OpenNOW
-//
 //  The input channel is unordered with no retransmits, and the sender emits only on change - so one
 //  lost packet is a *stuck* input, not a dropped one, and re-polling cannot recover it because the
 //  poll sees the state it believes it already sent. Fixed by sending each state more than once:

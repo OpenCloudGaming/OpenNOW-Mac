@@ -1,7 +1,3 @@
-//
-//  AppKitViewFrameObserver.swift
-//  OpenNOW
-//
 //  Watches an `NSView` for frame changes.
 //
 //  A type rather than a bare `NotificationCenter` registration at the call site: the observation's

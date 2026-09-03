@@ -1,7 +1,3 @@
-//
-//  WebRTCStreamRecordingWriter.swift
-//  OpenNOW
-//
 //  The writer half of a recording: appending sample buffers, finishing the file and the state
 //  that decides which video source a frame is allowed to come from.
 //  Split out of WebRTCStreamRecording.swift.

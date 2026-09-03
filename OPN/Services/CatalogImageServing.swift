@@ -1,8 +1,3 @@
-//
-//  CatalogImageServing.swift
-//  OpenNOW
-//
-
 import Foundation
 
 protocol CatalogImageServing: Sendable {

@@ -1,7 +1,3 @@
-//  OPNVideoTextureSource.swift
-//  OpenNOW
-//
-
 import CoreGraphics
 import CoreImage
 import CoreVideo

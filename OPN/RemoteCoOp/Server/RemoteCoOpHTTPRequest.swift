@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpHTTPRequest.swift
-//  OpenNOW
-//
 //  Just enough HTTP for the embedded Remote Co-Op server: parse a request head, serve a file from
 //  the bundled guest page, or complete a WebSocket upgrade.
 //

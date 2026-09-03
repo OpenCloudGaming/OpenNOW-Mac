@@ -1,7 +1,3 @@
-//
-//  AppRootViewModel.swift
-//  OpenNOW
-//
 //  App-root orchestration: the one-shot bootstrap, the startup animation's lifetime, the window
 //  title, and the file-open plumbing that arrives either through `onOpenURL` or through a
 //  notification posted by the app delegate.

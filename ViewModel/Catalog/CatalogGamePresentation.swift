@@ -1,7 +1,3 @@
-//
-//  CatalogGamePresentation.swift
-//  OpenNOW
-//
 //  Everything the catalog derives from a game object: its identity, the best image for each slot,
 //  the labels the cards and detail panel print, and the text advanced search matches against.
 //

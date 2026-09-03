@@ -1,7 +1,3 @@
-//
-//  RecordingFilmstrip.swift
-//  OpenNOW
-//
 //  Frame previews behind the editor's timeline clips. Without them a clip is a green rectangle
 //  with a filename on it, and finding the moment to cut at means scrubbing the player and watching
 //  the playhead rather than reading the timeline.

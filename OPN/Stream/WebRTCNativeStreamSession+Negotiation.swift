@@ -1,7 +1,3 @@
-//
-//  WebRTCNativeStreamSession+Negotiation.swift
-//  OpenNOW
-//
 //  Bringing a libwebrtc session up: the peer-connection factory, the ICE configuration, the
 //  offer rewrite this receiver needs, and the answer that closes the handshake.
 //  Split out of WebRTCNativeStreamSession.swift.

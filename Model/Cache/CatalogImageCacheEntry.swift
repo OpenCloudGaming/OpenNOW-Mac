@@ -1,8 +1,3 @@
-//
-//  CatalogImageCacheEntry.swift
-//  OpenNOW
-//
-
 import Foundation
 import SwiftData
 

@@ -1,7 +1,3 @@
-//
-//  RemoteCoOpGuestView.swift
-//  OpenNOW
-//
 //  The native Remote Co-Op guest window: discover hosts on this network, join one, watch the
 //  stream. Video renders through the same Metal view the main stream surface uses.
 //
