@@ -108,9 +108,38 @@ extension NvstWebRtcBundle {
         }
 
         let answer = try await createAnswer(connection, constraints: constraints)
-        // Bifrost length-checks ICE credentials, so force the official 4/22 pair libwebrtc gives no
-        // API for. If it refuses the munged answer, fall back to its own credentials and say so —
-        // the seat's behaviour then tells us whether that check is real.
+        let (forced, usesOfficialCredentials) = try await applyLocalAnswer(
+            answer,
+            connection: connection,
+            credentials: credentials
+        )
+
+        let candidates = try await waitForHostCandidates()
+        let hosts = candidates.compactMap { Self.hostAddress(fromCandidateLine: $0.sdp) }
+        logger?("NVST bundle gathered host candidates: \(hosts.map { "\($0.address):\($0.port)" }.joined(separator: ", "))")
+        guard let host = Self.preferredHost(among: hosts, matching: preferredLocalAddress) else {
+            throw BundleError.noHostCandidate
+        }
+        if host.address != preferredLocalAddress {
+            logger?("NVST bundle announcing \(host.address):\(host.port), which is not the routed address \(preferredLocalAddress ?? "unknown")")
+        }
+        return try preparedIdentity(
+            connection: connection,
+            fallbackSdp: forced,
+            host: host,
+            usesOfficialCredentials: usesOfficialCredentials)
+    }
+
+    /// Forces the official ICE credentials into the created answer and sets it as the local
+    /// description, munging in the deterministic mic sender SSRC first when the mic negotiated.
+    /// Bifrost length-checks ICE credentials, so this forces the official 4/22 pair libwebrtc
+    /// gives no API for; if it refuses the munged answer, this falls back to libwebrtc's own
+    /// credentials and says so — the seat's behaviour then tells us whether that check is real.
+    private func applyLocalAnswer(
+        _ answer: RTCSessionDescription,
+        connection: RTCPeerConnection,
+        credentials: NVSTHandoffIceCredentials
+    ) async throws -> (sdp: String, usesOfficialCredentials: Bool) {
         var forced = Self.replacingIceCredentials(
             in: answer.sdp,
             usernameFragment: credentials.localUsernameFragment,
@@ -132,21 +161,7 @@ extension NvstWebRtcBundle {
             usesOfficialCredentials = false
             try await setLocalDescription(connection, answer)
         }
-
-        let candidates = try await waitForHostCandidates()
-        let hosts = candidates.compactMap { Self.hostAddress(fromCandidateLine: $0.sdp) }
-        logger?("NVST bundle gathered host candidates: \(hosts.map { "\($0.address):\($0.port)" }.joined(separator: ", "))")
-        guard let host = Self.preferredHost(among: hosts, matching: preferredLocalAddress) else {
-            throw BundleError.noHostCandidate
-        }
-        if host.address != preferredLocalAddress {
-            logger?("NVST bundle announcing \(host.address):\(host.port), which is not the routed address \(preferredLocalAddress ?? "unknown")")
-        }
-        return try preparedIdentity(
-            connection: connection,
-            fallbackSdp: forced,
-            host: host,
-            usesOfficialCredentials: usesOfficialCredentials)
+        return (forced, usesOfficialCredentials)
     }
 
     /// Reads what the answer actually negotiated — the fingerprint ANNOUNCE carries, a per-m-line
