@@ -187,15 +187,6 @@ struct SteamControllerSettingsPage: View {
                         }
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
-                            Text("Devices Matched")
-                                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.58))
-                            Text("\(hidMonitor.matchedDeviceCount)")
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.88))
-                        }
-
-                        VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text("Controllers Connected")
                                 .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.58))
