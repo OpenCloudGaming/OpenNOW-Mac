@@ -10,15 +10,16 @@ import AppKit
 import AVKit
 import SwiftUI
 
+/// Everything about the selected recording, above the video: what it is, what you can do with it,
+/// and its four numbers. It used to sit under the player, which put the identity a screen away from
+/// the picture it described and left the actions competing with the editor for the bottom edge.
 struct RecordingInspector: View {
     let recording: WebRTCStreamRecording
     let copiedPath: Bool
     let message: String
-    let editorEarlyBetaEnabled: Bool
     let uiScale: CGFloat
     let onRestart: () -> Void
     let onEdit: () -> Void
-    let onEditorLocked: () -> Void
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
@@ -26,41 +27,67 @@ struct RecordingInspector: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 14 * uiScale) {
-                VStack(alignment: .leading, spacing: 5 * uiScale) {
-                    Text(recording.title)
-                        .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.96))
-                        .lineLimit(1)
-                    Text("\(RecordingFormat.dateText(recording.createdAt)) · \(recording.videoURL.deletingLastPathComponent().lastPathComponent)")
-                        .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 12 * uiScale)
-                Button("Restart", action: onRestart)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
-                if editorEarlyBetaEnabled {
-                    Button("Edit", action: onEdit)
-                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                } else {
-                    Button("Editor Locked", action: onEditorLocked)
-                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                }
-                Button("Open", action: onOpen)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                Button("Reveal", action: onReveal)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                Button(copiedPath ? "Copied" : "Copy Path", action: onCopyPath)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                Button("Delete", role: .destructive, action: onDelete)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))
-            }
-            .padding(.horizontal, 22 * uiScale)
-            .padding(.vertical, 16 * uiScale)
-
+            identityRow
             Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1)
+            tileRow
+        }
+        .background(OpenNOWDesign.Surface.deep)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1) }
+    }
 
+    /// Identity on the left, what you can do with it on the right - one row rather than a title
+    /// block and a separate action bar.
+    private var identityRow: some View {
+        HStack(alignment: .center, spacing: 12 * uiScale) {
+            Circle()
+                .fill(OpenNOWDesign.accent)
+                .frame(width: 7 * uiScale, height: 7 * uiScale)
+            Text("NOW PLAYING")
+                .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+                .tracking(1.3)
+                .foregroundStyle(OpenNOWDesign.accent)
+                .fixedSize()
+            Text(recording.title)
+                .font(.recordingsNvidia(size: 15 * uiScale, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .lineLimit(1)
+            Text(RecordingFormat.dateText(recording.createdAt))
+                .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                .foregroundStyle(.white.opacity(0.48))
+                .lineLimit(1)
+            Spacer(minLength: 12 * uiScale)
+            actionButtons
+        }
+        .padding(.horizontal, 22 * uiScale)
+        .padding(.vertical, 14 * uiScale)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Now playing \(recording.title)")
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button("Restart", action: onRestart)
+            .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
+        Button(action: onEdit) {
+            HStack(spacing: 6 * uiScale) {
+                Text("Edit")
+                OpenNOWBetaTag(uiScale: uiScale * 0.9)
+            }
+        }
+        .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
+        .help("Trim, arrange and export a new video. Beta.")
+        Button("Open", action: onOpen)
+            .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
+        Button("Reveal", action: onReveal)
+            .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
+        Button(copiedPath ? "Copied" : "Copy Path", action: onCopyPath)
+            .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
+        Button("Delete", role: .destructive, action: onDelete)
+            .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))
+    }
+
+    private var tileRow: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 10 * uiScale) {
                 RecordingDetailTile(title: "QUALITY", value: RecordingFormat.qualityText(recording), detail: "\(recording.width)x\(recording.height)", uiScale: uiScale)
                 RecordingDetailTile(title: "BITRATE", value: RecordingFormat.bitrateText(recording), detail: "Audio \(recording.audioBitrateKbps) Kbps", uiScale: uiScale)
@@ -83,8 +110,6 @@ struct RecordingInspector: View {
                 .padding(.bottom, 14 * uiScale)
             }
         }
-        .background(Color(red: 17 / 255, green: 18 / 255, blue: 18 / 255))
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1) }
     }
 }
 
@@ -113,6 +138,9 @@ struct RecordingDetailTile: View {
         .padding(12 * uiScale)
         .background(RecordingsLayout.card)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value), \(detail)")
     }
 }
 
@@ -221,6 +249,9 @@ struct RecordingActionButtonStyle: ButtonStyle {
         case destructive
     }
 
+    /// Shared so anything sitting in a row of these buttons can match them rather than guess.
+    static let height = RecordingEditorMetrics.headerControlHeight
+
     let tone: Tone
     var uiScale: CGFloat = 1.0
 
@@ -229,9 +260,13 @@ struct RecordingActionButtonStyle: ButtonStyle {
             .font(.recordingsNvidia(size: 12 * uiScale, weight: .bold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 14 * uiScale)
-            .frame(height: 36 * uiScale)
+            .frame(height: Self.height * uiScale)
             .background(background(isPressed: configuration.isPressed))
-            .overlay { Rectangle().stroke(stroke, lineWidth: 1) }
+            // `strokeBorder`, not `stroke`: a stroke is centred on the path and spills half a point
+            // outside the frame. On the secondary tones that spill is invisible, but the primary
+            // tone strokes in its own fill colour, so the spill painted as extra button - measurably
+            // 49 px against 47 px, and it read as the primary button being taller than its row.
+            .overlay { Rectangle().strokeBorder(stroke, lineWidth: 1) }
     }
 
     private var foreground: Color {

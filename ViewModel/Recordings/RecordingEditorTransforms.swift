@@ -13,7 +13,7 @@ import Foundation
 extension RecordingEditorViewModel {
     func applyCropPreset(_ preset: RecordingEditorCropPreset) {
         recordUndo()
-        if let crop = preset.crop {
+        if let crop = preset.crop(sourceAspect: sourceAspect) {
             cropEnabled = true
             cropX = crop.x
             cropY = crop.y
@@ -25,7 +25,28 @@ extension RecordingEditorViewModel {
             cropY = 0
             cropWidth = 1
             cropHeight = 1
+            setAdjustingCrop(false)
         }
+    }
+
+    /// Keyboard-sized steps for the crop rectangle. Dropping the X/Y/W/H sliders in favour of the
+    /// drag-on-video overlay took arbitrary crops away from anyone without a pointer; these put
+    /// them back, and give VoiceOver something to adjust.
+    static let cropNudgeStep = 0.02
+    static let minimumCropSize = 0.1
+
+    func nudgeCrop(dx: Double, dy: Double) {
+        guard cropEnabled else { return }
+        recordUndo()
+        cropX = min(max(0, cropX + dx), max(0, 1 - cropWidth))
+        cropY = min(max(0, cropY + dy), max(0, 1 - cropHeight))
+    }
+
+    func resizeCrop(dWidth: Double, dHeight: Double) {
+        guard cropEnabled else { return }
+        recordUndo()
+        cropWidth = min(max(Self.minimumCropSize, cropWidth + dWidth), 1 - cropX)
+        cropHeight = min(max(Self.minimumCropSize, cropHeight + dHeight), 1 - cropY)
     }
 
     func rotateLeft() {
@@ -50,6 +71,7 @@ extension RecordingEditorViewModel {
 
     func resetEdits() {
         recordUndo()
+        setAdjustingCrop(false)
         let segment = RecordingEditorSegment(recording: primaryRecording, startSeconds: 0, endSeconds: primaryRecording.durationSeconds)
         outputTitle = primaryRecording.title + " Edit"
         segments = [segment]
@@ -75,12 +97,14 @@ extension RecordingEditorViewModel {
     func undo() {
         guard let snapshot = undoStack.popLast() else { return }
         redoStack.append(makeSnapshot())
+        coalescedUndoToken = nil
         apply(snapshot)
     }
 
     func redo() {
         guard let snapshot = redoStack.popLast() else { return }
         undoStack.append(makeSnapshot())
+        coalescedUndoToken = nil
         apply(snapshot)
     }
 
@@ -104,22 +128,21 @@ extension RecordingEditorViewModel {
         return min(max(segment.startSeconds, playheadSeconds), segment.endSeconds)
     }
 
+    /// Only an adjacent neighbour. This used to take the nearest joinable clip anywhere in the
+    /// timeline, which meant two time-contiguous clips separated by others merged into one and
+    /// landed at the left clip's position - reordering the timeline as a side effect of a join.
     func joinablePairContainingSelectedSegment() -> (leftIndex: Int, rightIndex: Int, selectedIndex: Int)? {
         guard let index = selectedSegmentIndex else { return nil }
         let selected = segments[index]
-        if let previousSourceIndex = nearestJoinableIndex(to: index, matching: { canJoin(left: segments[$0], right: selected) }) {
-            return (previousSourceIndex, index, index)
+        let previousIndex = index - 1
+        if segments.indices.contains(previousIndex), canJoin(left: segments[previousIndex], right: selected) {
+            return (previousIndex, index, index)
         }
-        if let nextSourceIndex = nearestJoinableIndex(to: index, matching: { canJoin(left: selected, right: segments[$0]) }) {
-            return (index, nextSourceIndex, index)
+        let nextIndex = index + 1
+        if segments.indices.contains(nextIndex), canJoin(left: selected, right: segments[nextIndex]) {
+            return (index, nextIndex, index)
         }
         return nil
-    }
-
-    func nearestJoinableIndex(to selectedIndex: Int, matching isJoinable: (Int) -> Bool) -> Int? {
-        segments.indices
-            .filter { $0 != selectedIndex && isJoinable($0) }
-            .min { abs($0 - selectedIndex) < abs($1 - selectedIndex) }
     }
 
     func canJoin(left: RecordingEditorSegment, right: RecordingEditorSegment) -> Bool {
@@ -130,6 +153,20 @@ extension RecordingEditorViewModel {
         undoStack.append(makeSnapshot())
         if undoStack.count > 50 { undoStack.removeFirst() }
         redoStack.removeAll()
+        coalescedUndoToken = nil
+    }
+
+    /// One undo step per run of edits from the same control. Without it the title field pushed a
+    /// snapshot per keystroke and undo walked back through the typing instead of the edit.
+    func recordCoalescedUndo(token: String) {
+        guard coalescedUndoToken != token else { return }
+        recordUndo()
+        coalescedUndoToken = token
+    }
+
+    /// Closes a coalescing run, so returning to the same control later starts a new undo step.
+    func endInteractiveEdit() {
+        coalescedUndoToken = nil
     }
 
     func makeSnapshot() -> RecordingEditorSnapshot {
@@ -142,6 +179,7 @@ extension RecordingEditorViewModel {
             cropWidth: cropWidth,
             cropHeight: cropHeight,
             cropEnabled: cropEnabled,
+            isAdjustingCrop: isAdjustingCrop,
             rotation: rotation,
             isFlippedHorizontally: isFlippedHorizontally,
             isFlippedVertically: isFlippedVertically,
@@ -163,6 +201,10 @@ extension RecordingEditorViewModel {
         cropWidth = snapshot.cropWidth
         cropHeight = snapshot.cropHeight
         cropEnabled = snapshot.cropEnabled
+        // Restored with the crop it edits. Left out, undoing past the point the overlay opened left
+        // it on screen with `cropEnabled` false: the rectangle still dragged, still wrote cropX/Y,
+        // and the export ignored all of it.
+        isAdjustingCrop = snapshot.isAdjustingCrop
         rotation = snapshot.rotation
         isFlippedHorizontally = snapshot.isFlippedHorizontally
         isFlippedVertically = snapshot.isFlippedVertically

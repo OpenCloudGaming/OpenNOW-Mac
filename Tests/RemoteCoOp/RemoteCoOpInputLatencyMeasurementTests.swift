@@ -19,15 +19,22 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// Deltas are paired by index because a routed `UserInputEvent` does not preserve the guest's send
-/// time. That is only valid with no loss and no reordering, so the tests check both first.
+/// Two arrival paths, paired two different ways.
+///
+/// A packet arriving at the host peer still carries its sequence number, so it is paired with the
+/// send that actually produced it. A packet routed on to the dispatcher arrives as a
+/// `UserInputEvent`, which does not preserve the sequence number or the send time, so that path has
+/// only index pairing left.
 private actor InputLatencyRecorder {
     private(set) var arrivalNanoseconds: [UInt64] = []
-    private(set) var sequenceNumbers: [UInt64] = []
+    private(set) var sequencedArrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)] = []
+
+    var sequenceNumbers: [UInt64] { sequencedArrivals.map(\.sequenceNumber) }
 
     func recordPacket(_ packet: OPNRemoteCoOpInputPacket) {
-        arrivalNanoseconds.append(DispatchTime.now().uptimeNanoseconds)
-        sequenceNumbers.append(packet.sequenceNumber)
+        let now = DispatchTime.now().uptimeNanoseconds
+        arrivalNanoseconds.append(now)
+        sequencedArrivals.append((packet.sequenceNumber, now))
     }
 
     func recordArrival() {
@@ -36,18 +43,23 @@ private actor InputLatencyRecorder {
 
     func reset() {
         arrivalNanoseconds.removeAll()
-        sequenceNumbers.removeAll()
+        sequencedArrivals.removeAll()
     }
 }
 
-/// Send instants, kept on the sending side so the recorder stays free of the pairing logic.
+/// Send instants, kept on the sending side so the recorder stays free of the pairing logic. Keyed
+/// by sequence number as well as ordered, so a caller that can identify its arrivals does not have
+/// to fall back on position.
 private final class SendLog: @unchecked Sendable {
     private let lock = NSLock()
     private var nanoseconds: [UInt64] = []
+    private var nanosecondsBySequence: [UInt64: UInt64] = [:]
 
-    func note() {
+    func note(sequenceNumber: UInt64) {
+        let now = DispatchTime.now().uptimeNanoseconds
         lock.lock()
-        nanoseconds.append(DispatchTime.now().uptimeNanoseconds)
+        nanoseconds.append(now)
+        nanosecondsBySequence[sequenceNumber] = now
         lock.unlock()
     }
 
@@ -57,9 +69,16 @@ private final class SendLog: @unchecked Sendable {
         return nanoseconds
     }
 
+    var bySequence: [UInt64: UInt64] {
+        lock.lock()
+        defer { lock.unlock() }
+        return nanosecondsBySequence
+    }
+
     func reset() {
         lock.lock()
         nanoseconds.removeAll()
+        nanosecondsBySequence.removeAll()
         lock.unlock()
     }
 }
@@ -67,6 +86,17 @@ private final class SendLog: @unchecked Sendable {
 private enum LatencyStatistics {
     /// Milliseconds per delivered packet, paired by index. Extra arrivals beyond the sends recorded
     /// (a redundant copy landing late, say) are ignored rather than paired with the wrong send.
+    /// Milliseconds per delivered packet, paired by the sequence number the packet carried. The
+    /// channel is unordered by design, so pairing on position turned an ordinary reordering into a
+    /// failure - and the assertion that guarded against it made the test flaky rather than the
+    /// measurement sound.
+    static func latenciesMilliseconds(sendsBySequence: [UInt64: UInt64], arrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)]) -> [Double] {
+        arrivals.compactMap { arrival in
+            guard let send = sendsBySequence[arrival.sequenceNumber], arrival.nanoseconds >= send else { return nil }
+            return Double(arrival.nanoseconds - send) / 1_000_000
+        }
+    }
+
     static func latenciesMilliseconds(sends: [UInt64], arrivals: [UInt64]) -> [Double] {
         zip(sends, arrivals).compactMap { send, arrival in
             guard arrival >= send else { return nil }
@@ -125,7 +155,7 @@ private final class LoopbackPeerPair: @unchecked Sendable {
     }
 
     func send(_ packet: OPNRemoteCoOpInputPacket) {
-        sendLog.note()
+        sendLog.note(sequenceNumber: packet.sequenceNumber)
         guestPeer.sendInput(packet)
     }
 
@@ -208,7 +238,7 @@ private final class LoopbackControllerHarness: @unchecked Sendable {
     }
 
     func send(_ packet: OPNRemoteCoOpInputPacket) {
-        sendLog.note()
+        sendLog.note(sequenceNumber: packet.sequenceNumber)
         guestPeer?.sendInput(packet)
     }
 
@@ -270,16 +300,15 @@ struct RemoteCoOpInputLatencyMeasurementTests {
         }
         try? await Task.sleep(for: .milliseconds(500))
 
-        let arrived = await pair.recorder.sequenceNumbers
-        let outOfOrder = zip(arrived, arrived.dropFirst()).count { $0.1 <= $0.0 }
-        let samples = LatencyStatistics.latenciesMilliseconds(sends: pair.sendLog.all, arrivals: await pair.recorder.arrivalNanoseconds)
+        let arrivals = await pair.recorder.sequencedArrivals
+        let samples = LatencyStatistics.latenciesMilliseconds(sendsBySequence: pair.sendLog.bySequence, arrivals: arrivals)
         print(LatencyStatistics.report("guest sendInput -> host peer receiveInput, loopback ICE", samples, sent: sampleCount))
 
-        // Index pairing is only sound with no loss and no reordering, so both are checked here rather
-        // than assumed. The channel is unordered with no retransmits by design, so a stray loss is
-        // legitimate - losing a tenth of the packets on loopback would not be.
-        #expect(arrived.count >= sampleCount * 9 / 10, "delivered \(arrived.count) of \(sampleCount)")
-        #expect(outOfOrder == 0, "\(outOfOrder) out-of-order arrivals, which invalidates index pairing")
+        // Loss is checked, reordering is not: the channel is unordered with no retransmits by
+        // design, so an arrival out of order is as legitimate as a dropped one. Each sample is
+        // paired with the send that carried its sequence number, so reordering cannot skew the
+        // numbers below either. Losing a tenth of the packets on loopback would not be legitimate.
+        #expect(samples.count >= sampleCount * 9 / 10, "delivered \(samples.count) of \(sampleCount)")
         // Median, not the tail: alone this suite sees a p99 under 1 ms, but under full-suite load the
         // same code has hit 6.5 ms - indistinguishable from the 6.9 ms the old coalescing timer gave.
         // The median discriminates, moving from 6.48 ms before this branch to 0.77 ms after.
@@ -323,5 +352,59 @@ struct RemoteCoOpInputLatencyMeasurementTests {
             #expect(LatencyStatistics.percentile(samples, 0.5) < 2.0, "\(latencyMode.rawValue) median")
             await harness.close()
         }
+    }
+}
+
+/// The pairing itself, without a network. The loopback tests cannot make reordering happen on
+/// demand - it is exactly what made them flaky - so the property is pinned here instead.
+@Suite("Remote Co-Op latency pairing")
+struct RemoteCoOpLatencyPairingTests {
+    private static let millisecond: UInt64 = 1_000_000
+
+    @Test func arrivalsArePairedWithTheirOwnSendEvenWhenTheyLandOutOfOrder() {
+        let sends: [UInt64: UInt64] = [1: 0, 2: 10 * Self.millisecond, 3: 20 * Self.millisecond]
+        // Sequence 2 overtakes 1, which the channel is allowed to do: it is unordered with no
+        // retransmits. Pairing by position read this as a 12 ms trip and a negative one.
+        let arrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)] = [
+            (2, 11 * Self.millisecond),
+            (1, 12 * Self.millisecond),
+            (3, 21 * Self.millisecond),
+        ]
+
+        let samples = LatencyStatistics.latenciesMilliseconds(sendsBySequence: sends, arrivals: arrivals)
+
+        #expect(samples == [1, 12, 1])
+    }
+
+    @Test func aLostPacketCostsOneSampleAndNothingElse() {
+        let sends: [UInt64: UInt64] = [1: 0, 2: 10 * Self.millisecond, 3: 20 * Self.millisecond]
+        let arrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)] = [
+            (1, 1 * Self.millisecond),
+            (3, 21 * Self.millisecond),
+        ]
+
+        let samples = LatencyStatistics.latenciesMilliseconds(sendsBySequence: sends, arrivals: arrivals)
+
+        #expect(samples == [1, 1], "the survivors keep their own timings")
+    }
+
+    @Test func anArrivalWithNoMatchingSendIsIgnoredRatherThanMispaired() {
+        // A packet left over from the probe that opened the channel, or from before a reset.
+        let sends: [UInt64: UInt64] = [2: 10 * Self.millisecond]
+        let arrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)] = [
+            (99, 5 * Self.millisecond),
+            (2, 11 * Self.millisecond),
+        ]
+
+        let samples = LatencyStatistics.latenciesMilliseconds(sendsBySequence: sends, arrivals: arrivals)
+
+        #expect(samples == [1])
+    }
+
+    @Test func aClockThatRanBackwardsDropsTheSampleRatherThanReportingANegativeTrip() {
+        let sends: [UInt64: UInt64] = [1: 10 * Self.millisecond]
+        let arrivals: [(sequenceNumber: UInt64, nanoseconds: UInt64)] = [(1, 9 * Self.millisecond)]
+
+        #expect(LatencyStatistics.latenciesMilliseconds(sendsBySequence: sends, arrivals: arrivals).isEmpty)
     }
 }

@@ -18,16 +18,11 @@ extension Font {
     }
 }
 
-enum RecordingEditorBetaPreference {
-    static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
-}
-
 enum RecordingRightsNoticePreference {
     static let key = "OpenNOW.Recordings.RightsNoticeAcknowledged"
 }
 
 struct RecordingsView: View {
-    @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @AppStorage(RecordingRightsNoticePreference.key) private var rightsNoticeAcknowledged = false
     @Environment(\.opnUIScale) private var uiScale
     /// Owns the library, the selection, the player and the editor preview pipeline. A
@@ -55,6 +50,9 @@ struct RecordingsView: View {
             }
         }
         .background(RecordingsBackdrop())
+        // The page owns the bottom of the window: the editor drawer sits on that edge, and stopping
+        // at the safe area left a band of whatever is behind it.
+        .ignoresSafeArea(edges: .bottom)
         .overlay {
             if !rightsNoticeAcknowledged {
                 RecordingRightsNotice(onAcknowledge: { rightsNoticeAcknowledged = true }, uiScale: uiScale)
@@ -68,9 +66,11 @@ struct RecordingsView: View {
         .onChange(of: visibleRecordings.map(\.id)) { _, ids in
             model.reconcileSelection(withVisibleIDs: ids)
         }
-        .onChange(of: recordingEditorEarlyBetaEnabled) { _, enabled in
-            guard !enabled, model.editorViewModel != nil else { return }
-            model.closeEditorForDisabledBeta()
+        .confirmationDialog("Discard the edits to this recording?", isPresented: discardEditsDialogPresented) {
+            Button("Discard Edits", role: .destructive) { model.confirmPendingEditorDiscard() }
+            Button("Keep Editing", role: .cancel) { model.cancelPendingEditorDiscard() }
+        } message: {
+            Text("The edit has not been exported. Nothing is written to disk until you save it as a new video.")
         }
         .confirmationDialog(model.deleteDialogTitle, isPresented: deleteDialogPresented) {
             Button("Delete Recording", role: .destructive) { model.deletePendingRecording() }
@@ -105,16 +105,12 @@ struct RecordingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 10 * uiScale) {
                         ForEach(visibleRecordings) { recording in
-                            RecordingRow(recording: recording, isSelected: model.selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled, uiScale: uiScale) {
-                                model.select(recording, autoplay: true)
+                            RecordingRow(recording: recording, isSelected: model.selectedRecording?.id == recording.id, uiScale: uiScale) {
+                                model.requestSelect(recording, autoplay: true)
                             }
                             .contextMenu {
                                 Button("Open Recording") { model.open(recording) }
-                                if recordingEditorEarlyBetaEnabled {
-                                    Button("Edit Recording") { model.startEditing(recording, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) }
-                                } else {
-                                    Button("Enable in Settings > Experimental Features") { model.showRecordingEditorBetaSettingsMessage() }
-                                }
+                                Button("Edit Recording") { model.startEditing(recording) }
                                 Button("Reveal in Finder") { model.reveal(recording) }
                                 Button("Copy File Path") { model.copyPath(recording) }
                                 Divider()
@@ -226,51 +222,74 @@ struct RecordingsView: View {
     }
 
     private func selectedPlayer(recording: WebRTCStreamRecording, player: AVPlayer) -> some View {
-        VStack(spacing: 0) {
+        let isEditing = model.editorViewModel?.primaryRecording.id == recording.id
+        return VStack(spacing: 0) {
+            pageHeader(recording: recording, editorViewModel: isEditing ? model.editorViewModel : nil)
             ZStack(alignment: .topLeading) {
                 RecordingPlayerView(player: player)
                     .background(Color.black)
-                    .overlay(alignment: .top) {
-                        LinearGradient(colors: [.black.opacity(0.62), .black.opacity(0.00)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 120 * uiScale)
-                    }
                     .overlay(alignment: .bottom) {
                         LinearGradient(colors: [.black.opacity(0.00), .black.opacity(0.58)], startPoint: .top, endPoint: .bottom)
                             .frame(height: 140 * uiScale)
                     }
                     .onAppear { player.play() }
 
-                RecordingNowPlayingBadge(recording: recording, uiScale: uiScale)
-                    .padding(22 * uiScale)
+                if let editorViewModel = model.editorViewModel {
+                    RecordingCropOverlayHost(viewModel: editorViewModel, uiScale: uiScale)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay { Rectangle().stroke(Color.black.opacity(0.72), lineWidth: 1) }
 
+            if let editorViewModel = model.editorViewModel, editorViewModel.primaryRecording.id == recording.id {
+                RecordingEditorView(
+                    viewModel: editorViewModel,
+                    playheadSeconds: model.playerTimeSeconds,
+                    previewDurationSeconds: model.editorPreviewDuration,
+                    isPlaying: model.isPlaying,
+                    onSeek: model.seekEditorPreview,
+                    onStep: model.stepEditorPreview,
+                    onTogglePlayback: model.togglePlayback,
+                    onSkipToEnd: model.seekEditorPreviewToEnd,
+                    onPreviewChanged: { model.refreshEditedPreview(debounce: true) },
+                    isControllerFocused: controllerPageCommand != nil && model.controllerFocus == .editor
+                )
+                .frame(maxWidth: .infinity, maxHeight: RecordingEditorView.preferredHeight(uiScale: uiScale))
+            }
+        }
+    }
+
+    private var discardEditsDialogPresented: Binding<Bool> {
+        Binding(
+            get: { model.pendingEditorDiscardSelection != nil || model.isPendingEditorClose },
+            set: { if !$0 { model.cancelPendingEditorDiscard() } }
+        )
+    }
+
+    /// The editor's header replaces the recording's while an edit is open: same row, different job.
+    @ViewBuilder
+    private func pageHeader(recording: WebRTCStreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
+        if let editorViewModel {
+            RecordingEditorHeaderBar(
+                viewModel: editorViewModel,
+                isControllerFocused: controllerPageCommand != nil && model.controllerFocus == .editor,
+                onCancel: model.requestCloseEditor,
+                onExport: model.startEditorExport,
+                onCancelExport: model.cancelEditorExport
+            )
+        } else {
             RecordingInspector(
                 recording: recording,
                 copiedPath: model.copiedPathRecordingID == recording.id,
                 message: model.message,
-                editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled,
                 uiScale: uiScale,
                 onRestart: { model.restart(recording) },
-                onEdit: { model.startEditing(recording, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) },
-                onEditorLocked: model.showRecordingEditorBetaSettingsMessage,
+                onEdit: { model.startEditing(recording) },
                 onOpen: { model.open(recording) },
                 onReveal: { model.reveal(recording) },
                 onCopyPath: { model.copyPath(recording) },
                 onDelete: { model.pendingDelete = recording }
             )
-            if let editorViewModel = model.editorViewModel, editorViewModel.primaryRecording.id == recording.id {
-                RecordingEditorView(
-                    viewModel: editorViewModel,
-                    playheadSeconds: model.playerTimeSeconds,
-                    onSeek: model.seekEditorPreview,
-                    onCancel: model.closeEditor,
-                    onSaved: model.editedRecordingSaved,
-                    onPreviewChanged: { model.refreshEditedPreview(debounce: true) }
-                )
-                .frame(maxHeight: 390)
-            }
         }
     }
 
@@ -360,20 +379,16 @@ private struct RecordingFilterChip: View {
 private struct RecordingRow: View {
     let recording: WebRTCStreamRecording
     let isSelected: Bool
-    let editorEarlyBetaEnabled: Bool
     let uiScale: CGFloat
     let action: () -> Void
     @State private var isHovering = false
 
+    /// Draggable so a second recording can be dropped straight onto the editor timeline.
     var body: some View {
-        if editorEarlyBetaEnabled {
-            content
-                .onDrag {
-                    NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
-                }
-        } else {
-            content
-        }
+        content
+            .onDrag {
+                NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
+            }
     }
 
     private var content: some View {
@@ -411,6 +426,10 @@ private struct RecordingRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(recording.title)
+        .accessibilityValue("\(RecordingFormat.relativeDateText(recording.createdAt)), \(RecordingFormat.durationText(recording.durationSeconds)), \(RecordingFormat.qualityText(recording)), \(RecordingFormat.compactFileSizeText(recording.fileSizeBytes))")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var background: some ShapeStyle {
@@ -543,35 +562,5 @@ private struct RecordingPill: View {
             .frame(height: 20 * uiScale)
             .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.065))
             .overlay { Rectangle().stroke(active ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
-    }
-}
-
-private struct RecordingNowPlayingBadge: View {
-    let recording: WebRTCStreamRecording
-    let uiScale: CGFloat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8 * uiScale) {
-            HStack(spacing: 8 * uiScale) {
-                Circle()
-                    .fill(OpenNOWDesign.accent)
-                    .frame(width: 8 * uiScale, height: 8 * uiScale)
-                Text("NOW PLAYING")
-                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
-                    .tracking(1.3)
-                    .foregroundStyle(OpenNOWDesign.accent)
-            }
-            Text(recording.title)
-                .font(.recordingsNvidia(size: 20 * uiScale, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            Text("\(RecordingFormat.qualityText(recording)) · \(RecordingFormat.durationText(recording.durationSeconds)) · \(RecordingFormat.compactFileSizeText(recording.fileSizeBytes))")
-                .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.70))
-                .lineLimit(1)
-        }
-        .padding(15 * uiScale)
-        .background(.black.opacity(0.55))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
     }
 }

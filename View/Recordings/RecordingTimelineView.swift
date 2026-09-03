@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -7,6 +8,8 @@ struct RecordingTimelineView: View {
     let playheadSeconds: Double
     let markInSeconds: Double?
     let markOutSeconds: Double?
+    let zoom: Double
+    let uiScale: CGFloat
     let onSelect: (RecordingEditorSegment) -> Void
     let onSeek: (Double) -> Void
     let onRangeSelected: (Double, Double) -> Void
@@ -17,190 +20,354 @@ struct RecordingTimelineView: View {
 
     @State private var dragStartSeconds: Double?
     @State private var dragEndSeconds: Double?
-    @State private var activeTrimHandleID: String?
+    @State var activeTrimHandleID: String?
+    /// The edge's source time when the drag started. Read live it would feed back on itself, since
+    /// the segment it comes from is being edited by the drag.
+    @State var trimBaseSeconds: Double?
+    @State var trimSecondsPerPoint: Double = 0
+    /// Where the handle currently is, before the trim is committed. Applying it live meant the clip
+    /// regrew to fill the track on every frame of the drag, so the track rescaled under the pointer
+    /// and there was no way to see what was about to be cut - or what a drag outward would restore.
+    @State var pendingTrim: PendingTrim?
+    /// Room reserved at one end of the track while a handle is dragged outward.
+    ///
+    /// The timeline fits its clips exactly, so a clip that fills the track has nowhere to grow: the
+    /// handle hit the edge and stopped while the pointer kept going, which is what felt like losing
+    /// the cursor. Reserving the space once, at drag start, gives the extension somewhere to be
+    /// drawn and keeps the handle under the pointer for the whole drag.
+    @State var trimHeadroom = RecordingTrimHeadroom.none
+
+    struct PendingTrim: Equatable {
+        let segmentID: UUID
+        let isLeading: Bool
+        /// The committed edge, so the preview knows which way and how far this has moved.
+        let committedSeconds: Double
+        var seconds: Double
+    }
     @State private var proposedInsertionIndex: Int?
 
-    private var totalDuration: Double {
+    /// The track's vertical layout, in one place. These were eight literals scattered through the
+    /// file and they drifted: the trim handles were centred on the track while the clips were
+    /// centred three points lower, which is exactly what it looked like.
+    var trackHeight: CGFloat { 170 * uiScale }
+    var rulerHeight: CGFloat { 18 * uiScale }
+    var clipHeight: CGFloat { trackHeight - rulerHeight - 12 * uiScale }
+    var clipTop: CGFloat { rulerHeight }
+    var committedDuration: Double {
         max(segments.reduce(0) { $0 + $1.durationSeconds }, 0.01)
+    }
+
+    var totalDuration: Double {
+        committedDuration + trimHeadroom.leading + trimHeadroom.trailing
+    }
+
+    private func geometry(width: CGFloat) -> RecordingTimelineGeometry {
+        RecordingTimelineGeometry(totalDuration: totalDuration, width: width, zoom: zoom, playheadSeconds: playheadSeconds)
     }
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack(alignment: .leading) {
+            let layout = geometry(width: proxy.size.width)
+            // `.topLeading`, not `.leading`: a `ZStack` centres its children vertically, so every
+            // `offset(y:)` below was a delta from the middle of the track rather than a position in
+            // it. That put the clips 15pt lower than intended - past the bottom edge, where they
+            // were clipped - and the trim handles 25pt above them.
+            ZStack(alignment: .topLeading) {
                 Rectangle().fill(Color.black.opacity(0.34))
-                timelineTicks(width: proxy.size.width)
-                ForEach(segmentFrames(in: proxy.size.width), id: \.segment.id) { item in
-                    timelineClip(item)
+                timelineRuler(layout: layout)
+                ForEach(segmentFrames(layout: layout), id: \.segment.id) { item in
+                    timelineClip(item, layout: layout)
                     if item.segment.id == selectedSegmentID {
-                        trimHandle(item: item, isLeading: true)
-                            .offset(x: item.x - 6)
-                        trimHandle(item: item, isLeading: false)
-                            .offset(x: item.x + item.width - 6)
+                        trimHandle(item: item, layout: layout, isLeading: true)
+                            .offset(x: handleOffset(edgeX: handleEdgeX(item: item, isLeading: true), layout: layout), y: handleTop)
+                        trimHandle(item: item, layout: layout, isLeading: false)
+                            .offset(x: handleOffset(edgeX: handleEdgeX(item: item, isLeading: false), layout: layout), y: handleTop)
                     }
                 }
-                if let frame = activeSelectionFrame(in: proxy.size.width) {
+                if let item = segmentFrames(layout: layout).first(where: { $0.segment.id == pendingTrim?.segmentID }) {
+                    trimPreview(item: item, layout: layout)
+                }
+                if let frame = activeSelectionFrame(layout: layout) {
                     selectionOverlay(frame: frame, opacity: 0.24)
                 }
-                if let frame = markedSelectionFrame(in: proxy.size.width) {
+                if let frame = markedSelectionFrame(layout: layout) {
                     selectionOverlay(frame: frame, opacity: 0.36)
                 }
-                if let insertionX = insertionX(index: proposedInsertionIndex, width: proxy.size.width) {
+                ForEach(cutBoundaries(layout: layout), id: \.x) { boundary in
+                    cutMarker(x: boundary.x, isRemovedRange: boundary.isRemovedRange)
+                }
+                if let insertionX = insertionX(index: proposedInsertionIndex, layout: layout) {
                     insertionIndicator(x: insertionX)
                 }
-                playhead(width: proxy.size.width)
+                playhead(layout: layout)
             }
+            // Zoomed clips run past both edges of the track.
+            .clipped()
             .contentShape(Rectangle())
-            .gesture(timelineGesture(width: proxy.size.width))
+            .gesture(timelineGesture(layout: layout))
             .onDrop(of: [.text], delegate: RecordingTimelineDropDelegate(
-                width: proxy.size.width,
+                layout: layout,
                 segments: segments,
                 proposedInsertionIndex: $proposedInsertionIndex,
                 onPayloadDropped: onPayloadDropped
             ))
         }
-        .frame(height: 86)
+        .frame(height: trackHeight)
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Editor timeline")
+        .accessibilityValue(accessibilityValueText)
     }
 
-    private func timelineClip(_ item: (segment: RecordingEditorSegment, x: CGFloat, width: CGFloat)) -> some View {
+    /// The timeline is a drag surface with no discrete controls in it, so it announces its state
+    /// rather than pretending to be a list of buttons.
+    private var accessibilityValueText: String {
+        let clips = "\(segments.count) clip\(segments.count == 1 ? "" : "s")"
+        let position = "playhead at \(recordingEditorPreciseTimeText(playheadSeconds)) of \(recordingEditorPreciseTimeText(totalDuration))"
+        guard let markInSeconds, let markOutSeconds else { return "\(clips), \(position)" }
+        return "\(clips), \(position), selection \(String(format: "%.1f", abs(markOutSeconds - markInSeconds))) seconds"
+    }
+
+    // MARK: - Clips
+
+    private func timelineClip(_ item: TimelineClipFrame, layout: RecordingTimelineGeometry) -> some View {
         let isSelected = item.segment.id == selectedSegmentID
+        let drawn = layout.displayFrame(x: item.x, width: item.width)
+        // The source range the drawn rect actually covers. `displayFrame` clamps a zoomed clip to
+        // the track, so the rect is a *window* onto the clip - handing the strip the clip's whole
+        // start...end spread it across that window and drew frames from the wrong moments, by up to
+        // the zoom factor.
+        let drawnRange = drawnSourceRange(of: item, drawn: drawn)
         return ZStack(alignment: .leading) {
             Rectangle()
-                .fill(isSelected ? OpenNOWDesign.accent.opacity(0.30) : Color.white.opacity(0.10))
+                .fill(Color.black.opacity(0.30))
+            if drawn.width > 24 {
+                RecordingFilmstripView(
+                    recording: item.segment.recording,
+                    clipID: item.segment.id,
+                    startSeconds: drawnRange.lowerBound,
+                    endSeconds: drawnRange.upperBound,
+                    size: CGSize(width: drawn.width, height: clipHeight),
+                    visibleRange: visibleSourceRange(of: item, layout: layout)
+                )
+            }
+            // Only behind the label. Across the whole clip this washed out every frame to the
+            // right of it as well, for no reason.
+            LinearGradient(colors: [.black.opacity(0.80), .black.opacity(0.00)], startPoint: .leading, endPoint: .trailing)
+                .frame(width: min(drawn.width, 210 * uiScale))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if drawn.width > 24 {
+                waveform(for: item, range: drawnRange, width: drawn.width)
+            }
+            // Selection reads from the border; a heavy fill on top of the frames only greened them.
+            Rectangle()
+                .fill(isSelected ? OpenNOWDesign.accent.opacity(0.07) : Color.clear)
             Rectangle()
                 .stroke(isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8 * uiScale) {
+                VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(item.segment.recording.title)
-                        .font(.recordingsNvidia(size: 11, weight: .bold))
+                        .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
                     Text("\(recordingEditorDurationText(item.segment.startSeconds)) - \(recordingEditorDurationText(item.segment.endSeconds))")
-                        .font(.recordingsNvidia(size: 9, weight: .medium))
+                        .font(.recordingsNvidia(size: 9 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.52))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if isSelected {
                     Text("KEEP")
-                        .font(.recordingsNvidia(size: 8, weight: .bold))
+                        .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
                         .foregroundStyle(.black.opacity(0.82))
-                        .padding(.horizontal, 5)
-                        .frame(height: 15)
+                        .padding(.horizontal, 5 * uiScale)
+                        .frame(height: 15 * uiScale)
                         .background(OpenNOWDesign.accent)
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 10 * uiScale)
         }
-        .frame(width: max(2, item.width), height: 58)
-        .offset(x: item.x, y: 14)
+        .frame(width: max(2, drawn.width), height: clipHeight)
+        .offset(x: drawn.x, y: clipTop)
         .onTapGesture { onSelect(item.segment) }
         .onDrag {
             NSItemProvider(object: RecordingEditorDragPayload.segment(item.segment.id).stringValue as NSString)
         }
     }
 
-    private func trimHandle(item: (segment: RecordingEditorSegment, x: CGFloat, width: CGFloat), isLeading: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(OpenNOWDesign.accent)
-            .frame(width: 12, height: 72)
-            .overlay(alignment: isLeading ? .leading : .trailing) {
-                Rectangle().fill(Color.black.opacity(0.30)).frame(width: 2)
-            }
-            .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 6)
-            .gesture(DragGesture(minimumDistance: 1)
-                .onChanged { value in
-                    let key = item.segment.id.uuidString + (isLeading ? "-leading" : "-trailing")
-                    if activeTrimHandleID != key {
-                        activeTrimHandleID = key
-                        onTrimBegin(item.segment)
-                    }
-                    let handleX = item.x + (isLeading ? 0 : item.width) + value.translation.width
-                    let seconds = sourceSeconds(in: item, timelineX: handleX)
-                    if isLeading {
-                        onSegmentTrimStart(item.segment, seconds)
-                    } else {
-                        onSegmentTrimEnd(item.segment, seconds)
-                    }
-                }
-                .onEnded { _ in activeTrimHandleID = nil }
-            )
+    /// The clip's source range that the drawn rect covers, which is the whole clip only while it
+    /// fits on the track.
+    private func waveform(for item: TimelineClipFrame, range: ClosedRange<Double>, width: CGFloat) -> some View {
+        RecordingWaveformView(
+            recording: item.segment.recording,
+            startSeconds: range.lowerBound,
+            endSeconds: range.upperBound,
+            size: CGSize(width: width, height: 34 * uiScale)
+        )
+        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
-    private func playhead(width: CGFloat) -> some View {
+    private func drawnSourceRange(of item: TimelineClipFrame, drawn: (x: CGFloat, width: CGFloat)) -> ClosedRange<Double> {
+        let span = item.segment.durationSeconds
+        guard item.width > 1, span > 0 else { return item.segment.startSeconds...item.segment.endSeconds }
+        let leading = min(max(0, Double((drawn.x - item.x) / item.width)), 1)
+        let trailing = min(max(leading, Double((drawn.x + drawn.width - item.x) / item.width)), 1)
+        let lower = item.segment.startSeconds + span * leading
+        let upper = item.segment.startSeconds + span * trailing
+        return lower...max(lower + 0.0001, upper)
+    }
+
+    /// The part of the clip's source that is actually on screen, so the strip can decode fine
+    /// frames for it. At zoom 1 that is the whole clip and the coarse grid is enough; zoomed in it
+    /// is a few seconds, which is worth sixty-four frames of its own.
+    private func visibleSourceRange(of item: TimelineClipFrame, layout: RecordingTimelineGeometry) -> ClosedRange<Double>? {
+        guard layout.isZoomed, item.width > 1 else { return nil }
+        let leadingFraction = min(max(0, -item.x / item.width), 1)
+        let trailingFraction = min(max(0, (layout.width - item.x) / item.width), 1)
+        guard trailingFraction > leadingFraction else { return nil }
+        let span = item.segment.durationSeconds
+        let lower = item.segment.startSeconds + span * Double(leadingFraction)
+        let upper = item.segment.startSeconds + span * Double(trailingFraction)
+        guard upper > lower else { return nil }
+        return lower...upper
+    }
+
+    // MARK: - Overlays
+
+    private func playhead(layout: RecordingTimelineGeometry) -> some View {
         Rectangle()
             .fill(Color.white.opacity(0.94))
-            .frame(width: 2, height: 94)
+            .frame(width: 2, height: trackHeight + 8 * uiScale)
             .shadow(color: OpenNOWDesign.accent.opacity(0.95), radius: 7)
-            .offset(x: playheadX(in: width), y: -4)
+            .offset(x: layout.x(forSeconds: playheadSeconds + trimHeadroom.leading), y: -4 * uiScale)
     }
 
     private func selectionOverlay(frame: (x: CGFloat, width: CGFloat), opacity: Double) -> some View {
         Rectangle()
             .fill(Color.red.opacity(opacity))
-            .frame(width: max(2, frame.width), height: 58)
-            .overlay { Rectangle().stroke(Color.red.opacity(0.62), lineWidth: 1) }
-            .offset(x: frame.x, y: 14)
+            .frame(width: max(2, frame.width), height: clipHeight)
+            .overlay { Rectangle().strokeBorder(Color.red.opacity(0.62), lineWidth: 1) }
+            .offset(x: frame.x, y: clipTop)
+    }
+
+    /// Where one section of a recording meets the next. Two sections of the same source read as
+    /// two unrelated clips otherwise, which is what made a Remove Selection look like it had split
+    /// the video by mistake.
+    private func cutBoundaries(layout: RecordingTimelineGeometry) -> [(x: CGFloat, isRemovedRange: Bool)] {
+        let frames = segmentFrames(layout: layout)
+        return zip(frames, frames.dropFirst()).compactMap { left, right in
+            guard left.segment.recording.id == right.segment.recording.id else { return nil }
+            let x = right.x
+            guard x >= 0, x <= layout.width else { return nil }
+            // Contiguous in the source means a plain split; a jump means footage was removed here.
+            let isRemovedRange = abs(left.segment.endSeconds - right.segment.startSeconds) > RecordingEditorViewModel.sectionJoinTolerance
+            return (x, isRemovedRange)
+        }
+    }
+
+    private func cutMarker(x: CGFloat, isRemovedRange: Bool) -> some View {
+        VStack(spacing: 1 * uiScale) {
+            Image(systemName: isRemovedRange ? "scissors" : "arrow.left.and.right")
+                .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                .foregroundStyle(.black.opacity(0.86))
+                .frame(width: 14 * uiScale, height: 12 * uiScale)
+                .background(isRemovedRange ? RecordingsLayout.danger : OpenNOWDesign.accent)
+            Rectangle()
+                .fill(isRemovedRange ? RecordingsLayout.danger : OpenNOWDesign.accent)
+                .frame(width: 2, height: clipHeight - 14 * uiScale)
+        }
+        .offset(x: x - 7 * uiScale, y: clipTop - 2 * uiScale)
+        .allowsHitTesting(false)
+        .help(isRemovedRange ? "Footage was removed here. The sections play back to back." : "Split point. Join merges them back.")
     }
 
     private func insertionIndicator(x: CGFloat) -> some View {
         Rectangle()
             .fill(OpenNOWDesign.accent)
-            .frame(width: 3, height: 78)
+            .frame(width: 3, height: clipHeight + 8 * uiScale)
             .shadow(color: OpenNOWDesign.accent.opacity(0.80), radius: 8)
-            .offset(x: x - 1.5, y: 8)
+            .offset(x: x - 1.5, y: clipTop - 4 * uiScale)
     }
 
-    private func timelineTicks(width: CGFloat) -> some View {
-        Path { path in
-            let tickCount = 12
-            for index in 0...tickCount {
-                let x = CGFloat(index) / CGFloat(tickCount) * width
-                path.move(to: CGPoint(x: x, y: 5))
-                path.addLine(to: CGPoint(x: x, y: index.isMultiple(of: 3) ? 16 : 11))
+    private func timelineRuler(layout: RecordingTimelineGeometry) -> some View {
+        let ticks = layout.rulerTickSeconds()
+        let step = RecordingTimelineGeometry.rulerStepSeconds(visibleDuration: layout.visibleDuration)
+        return ZStack(alignment: .topLeading) {
+            Path { path in
+                for seconds in ticks {
+                    let x = layout.x(forSeconds: seconds)
+                    path.move(to: CGPoint(x: x, y: rulerHeight - 7 * uiScale))
+                    path.addLine(to: CGPoint(x: x, y: rulerHeight))
+                }
+            }
+            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+            ForEach(ticks, id: \.self) { seconds in
+                let x = layout.x(forSeconds: seconds)
+                // The last label would otherwise hang off the right edge of the track.
+                if x >= 0, x < layout.width - 26 * uiScale {
+                    // Tenths once the step is sub-second: whole-second labels repeat themselves
+                    // ("0:11 0:11 0:12 0:12") at exactly the zoom where the sub-second detail is
+                    // the reason to be there.
+                    Text(step < 1 ? recordingEditorPreciseTimeText(seconds) : recordingEditorDurationText(seconds))
+                        .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .fixedSize()
+                        .offset(x: x + 3 * uiScale, y: 0)
+                }
             }
         }
-        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        .allowsHitTesting(false)
     }
 
-    private func timelineGesture(width: CGFloat) -> some Gesture {
+    // MARK: - Gestures
+
+    private func timelineGesture(layout: RecordingTimelineGeometry) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let current = timelineSeconds(for: value.location.x, width: width)
+                let current = layout.seconds(forX: value.location.x) - trimHeadroom.leading
                 if dragStartSeconds == nil { dragStartSeconds = current }
                 dragEndSeconds = current
             }
             .onEnded { value in
-                let end = timelineSeconds(for: value.location.x, width: width)
+                let end = layout.seconds(forX: value.location.x) - trimHeadroom.leading
                 let start = dragStartSeconds ?? end
                 defer {
                     dragStartSeconds = nil
                     dragEndSeconds = nil
                 }
                 if abs(value.translation.width) < 4 {
-                    if let segment = segment(at: end) { onSelect(segment) }
-                    onSeek(end)
+                    // Shift-click marks from the playhead to where you clicked, the same range a
+                    // drag would have produced. Read from the current modifier state because a
+                    // SwiftUI drag gesture does not carry the flags that were held during it.
+                    if NSEvent.modifierFlags.contains(.shift) {
+                        onRangeSelected(playheadSeconds, end)
+                    } else {
+                        if let segment = segment(at: end) { onSelect(segment) }
+                        onSeek(end)
+                    }
                 } else {
                     onRangeSelected(start, end)
                 }
             }
     }
 
-    private func segmentFrames(in width: CGFloat) -> [(segment: RecordingEditorSegment, x: CGFloat, width: CGFloat)] {
-        var cursor = 0.0
+    // MARK: - Layout
+
+    func segmentFrames(layout: RecordingTimelineGeometry) -> [TimelineClipFrame] {
+        var cursor = trimHeadroom.leading
         return segments.map { segment in
-            let segmentWidth = CGFloat(segment.durationSeconds / totalDuration) * width
-            let x = CGFloat(cursor / totalDuration) * width
+            let x = layout.x(forSeconds: cursor)
+            let end = layout.x(forSeconds: cursor + segment.durationSeconds)
             cursor += segment.durationSeconds
-            return (segment, x, segmentWidth)
+            return TimelineClipFrame(segment: segment, x: x, width: end - x)
         }
     }
 
-    private func insertionX(index: Int?, width: CGFloat) -> CGFloat? {
+    private func insertionX(index: Int?, layout: RecordingTimelineGeometry) -> CGFloat? {
         guard let index else { return nil }
-        let frames = segmentFrames(in: width)
-        if index <= 0 { return 0 }
-        if index >= frames.count { return width }
+        let frames = segmentFrames(layout: layout)
+        if index <= 0 { return layout.x(forSeconds: 0) }
+        if index >= frames.count { return layout.x(forSeconds: totalDuration) }
         return frames[index].x
     }
 
@@ -214,48 +381,53 @@ struct RecordingTimelineView: View {
         return nil
     }
 
-    private func timelineSeconds(for x: CGFloat, width: CGFloat) -> Double {
-        totalDuration * min(max(0, Double(x / max(width, 1))), 1)
-    }
-
-    private func sourceSeconds(in item: (segment: RecordingEditorSegment, x: CGFloat, width: CGFloat), timelineX: CGFloat) -> Double {
+    private func sourceSeconds(in item: TimelineClipFrame, timelineX: CGFloat) -> Double {
         let ratio = min(max(0, Double((timelineX - item.x) / max(item.width, 1))), 1)
         return item.segment.startSeconds + item.segment.durationSeconds * ratio
     }
 
-    private func playheadX(in width: CGFloat) -> CGFloat {
-        guard let selected = segments.first(where: { $0.id == selectedSegmentID }) ?? segments.first else { return 0 }
-        var cursor = 0.0
-        for segment in segments {
-            if segment.id == selected.id {
-                let local = min(max(selected.startSeconds, playheadSeconds), selected.endSeconds) - selected.startSeconds
-                return CGFloat((cursor + local) / totalDuration) * width
-            }
-            cursor += segment.durationSeconds
-        }
-        return 0
-    }
-
-    private func markedSelectionFrame(in width: CGFloat) -> (x: CGFloat, width: CGFloat)? {
+    private func markedSelectionFrame(layout: RecordingTimelineGeometry) -> (x: CGFloat, width: CGFloat)? {
         guard let markInSeconds, let markOutSeconds, let selected = segments.first(where: { $0.id == selectedSegmentID }) else { return nil }
-        var cursor = 0.0
+        var cursor = trimHeadroom.leading
         for segment in segments {
             if segment.id == selected.id {
+                // The marks are source times inside the selected clip; the track is cumulative.
                 let start = min(max(selected.startSeconds, min(markInSeconds, markOutSeconds)), selected.endSeconds) - selected.startSeconds
                 let end = min(max(selected.startSeconds, max(markInSeconds, markOutSeconds)), selected.endSeconds) - selected.startSeconds
-                return (CGFloat((cursor + start) / totalDuration) * width, CGFloat(max(0, end - start) / totalDuration) * width)
+                let startX = layout.x(forSeconds: cursor + start)
+                let endX = layout.x(forSeconds: cursor + end)
+                return layout.displayFrame(x: startX, width: endX - startX)
             }
             cursor += segment.durationSeconds
         }
         return nil
     }
 
-    private func activeSelectionFrame(in width: CGFloat) -> (x: CGFloat, width: CGFloat)? {
+    private func activeSelectionFrame(layout: RecordingTimelineGeometry) -> (x: CGFloat, width: CGFloat)? {
         guard let dragStartSeconds, let dragEndSeconds, abs(dragStartSeconds - dragEndSeconds) > 0.03 else { return nil }
-        let start = CGFloat(min(dragStartSeconds, dragEndSeconds) / totalDuration) * width
-        let end = CGFloat(max(dragStartSeconds, dragEndSeconds) / totalDuration) * width
-        return (start, end - start)
+        let start = layout.x(forSeconds: min(dragStartSeconds, dragEndSeconds))
+        let end = layout.x(forSeconds: max(dragStartSeconds, dragEndSeconds))
+        return layout.displayFrame(x: start, width: end - start)
     }
+}
+
+struct TimelineClipFrame {
+    let segment: RecordingEditorSegment
+    let x: CGFloat
+    let width: CGFloat
+}
+
+/// Tenths, because trimming is done against a readout and whole seconds hide the frame you are
+/// actually parked on.
+func recordingEditorPreciseTimeText(_ seconds: Double) -> String {
+    let value = max(0, seconds.isFinite ? seconds : 0)
+    // Rounded off the total tenths rather than truncating the remainder: 3661.2 lands at
+    // 3661.19999... in binary, and truncating printed it as .1.
+    let totalTenths = Int((value * 10).rounded())
+    let whole = totalTenths / 10
+    let tenths = totalTenths % 10
+    if whole >= 3600 { return String(format: "%d:%02d:%02d.%d", whole / 3600, (whole / 60) % 60, whole % 60, tenths) }
+    return String(format: "%d:%02d.%d", whole / 60, whole % 60, tenths)
 }
 
 func recordingEditorDurationText(_ seconds: Double) -> String {
@@ -265,7 +437,7 @@ func recordingEditorDurationText(_ seconds: Double) -> String {
 }
 
 private struct RecordingTimelineDropDelegate: DropDelegate {
-    let width: CGFloat
+    let layout: RecordingTimelineGeometry
     let segments: [RecordingEditorSegment]
     @Binding var proposedInsertionIndex: Int?
     let onPayloadDropped: (String, Int) -> Bool
@@ -300,14 +472,14 @@ private struct RecordingTimelineDropDelegate: DropDelegate {
         return true
     }
 
+    /// Which gap the drop lands in, decided in timeline seconds so it stays right when zoomed.
     private func insertionIndex(for x: CGFloat) -> Int {
         guard !segments.isEmpty else { return 0 }
-        var cursor = CGFloat.zero
-        let totalDuration = max(segments.reduce(0) { $0 + $1.durationSeconds }, 0.01)
+        let dropSeconds = layout.seconds(forX: x)
+        var cursor = 0.0
         for (index, segment) in segments.enumerated() {
-            let segmentWidth = CGFloat(segment.durationSeconds / totalDuration) * width
-            if x < cursor + segmentWidth / 2 { return index }
-            cursor += segmentWidth
+            if dropSeconds < cursor + segment.durationSeconds / 2 { return index }
+            cursor += segment.durationSeconds
         }
         return segments.count
     }

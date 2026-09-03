@@ -68,18 +68,33 @@ enum RecordingEditorCropPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var crop: WebRTCStreamRecordingCrop? {
+    /// The aspect ratio this preset is asking for, or nil for the ones that are not about a
+    /// target shape.
+    var targetAspect: Double? {
+        switch self {
+        case .full, .center: return nil
+        case .square: return 1
+        case .wide: return 16.0 / 9.0
+        case .vertical: return 9.0 / 16.0
+        }
+    }
+
+    /// Crop fractions are relative to the source frame, so the same numbers mean a different shape
+    /// on a 16:9 capture than on the 21:9 ones this app records. They used to be hardcoded - "1:1"
+    /// produced a 4:3 crop and "16:9" a 1.39:1 one - so the ratio is solved from the source instead.
+    func crop(sourceAspect: Double) -> WebRTCStreamRecordingCrop? {
+        let aspect = sourceAspect.isFinite && sourceAspect > 0 ? sourceAspect : 16.0 / 9.0
         switch self {
         case .full:
             return nil
-        case .square:
-            return WebRTCStreamRecordingCrop(x: 0.125, y: 0, width: 0.75, height: 1)
-        case .wide:
-            return WebRTCStreamRecordingCrop(x: 0, y: 0.1094, width: 1, height: 0.7812)
-        case .vertical:
-            return WebRTCStreamRecordingCrop(x: 0.3418, y: 0, width: 0.3164, height: 1)
         case .center:
             return WebRTCStreamRecordingCrop(x: 0.10, y: 0.10, width: 0.80, height: 0.80)
+        case .square, .wide, .vertical:
+            guard let target = targetAspect else { return nil }
+            // width * aspect / height == target, holding whichever axis fits at full extent.
+            let width = min(1, target / aspect)
+            let height = min(1, aspect / target)
+            return WebRTCStreamRecordingCrop(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
         }
     }
 }
@@ -117,6 +132,7 @@ struct RecordingEditorSnapshot {
     var cropWidth: Double
     var cropHeight: Double
     var cropEnabled: Bool
+    var isAdjustingCrop: Bool
     var rotation: WebRTCStreamRecordingRotation
     var isFlippedHorizontally: Bool
     var isFlippedVertically: Bool
@@ -153,12 +169,34 @@ final class RecordingEditorViewModel: ObservableObject {
     @Published var fadeInSeconds = 0.0
     @Published var fadeOutSeconds = 0.0
     @Published var exportQuality: RecordingEditorExportQuality = .highest
+    /// Owned here rather than by the view: the drawer changes how tall the editor needs to be, and
+    /// the recordings page is what applies that height.
+    @Published var showsAdvanced = false
+    /// Which Advanced tab is open. On the view model because the drawer and the button that opens
+    /// it now live in different views.
+    @Published var advancedSection: RecordingAdvancedEditorSection = .arrange
+    /// Set by the title field. A bare Backspace has to keep deleting characters while the name is
+    /// being typed, so the Remove Selection shortcut stands down while it has focus.
+    @Published var isTitleFieldFocused = false
+    /// How much of the timeline the track shows: 1 is the whole thing. View state, deliberately
+    /// not part of `previewSignature` - zooming does not change the video.
+    @Published var timelineZoom = 1.0
+    /// While true the preview shows the untouched source frame so the crop rectangle has something
+    /// to be drawn against. See RecordingCropOverlay.
+    @Published var isAdjustingCrop = false
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress = 0.0
     @Published var errorMessage: String?
+    /// What the last structural edit did, in the terms the timeline now shows. Removing a range
+    /// from the middle of a clip necessarily leaves two sections, which reads as an unwanted split
+    /// unless something says otherwise.
+    @Published var hint: String?
 
     var undoStack: [RecordingEditorSnapshot] = []
     var redoStack: [RecordingEditorSnapshot] = []
+    /// Set by `recordCoalescedUndo` so a run of edits from the same control - typing a title - adds
+    /// one undo step rather than one per keystroke.
+    var coalescedUndoToken: String?
 
     init(recording: WebRTCStreamRecording, library: [WebRTCStreamRecording]) {
         primaryRecording = recording
@@ -187,11 +225,125 @@ final class RecordingEditorViewModel: ObservableObject {
         totalSourceDurationSeconds / max(0.25, playbackRate)
     }
 
+    /// The engine renders against the first clip's frame, so the crop presets have to solve against
+    /// the same one.
+    var sourceAspect: Double {
+        let recording = segments.first?.recording ?? primaryRecording
+        guard recording.width > 0, recording.height > 0 else { return 16.0 / 9.0 }
+        return Double(recording.width) / Double(recording.height)
+    }
+
+    /// Mirrors the passthrough conditions the exporter applies, so the Export panel can say whether
+    /// Highest will copy the source through or re-encode it.
+    var isTrimOnlyEdit: Bool {
+        guard !cropEnabled, rotation == .degrees0, !isFlippedHorizontally, !isFlippedVertically else { return false }
+        guard abs(playbackRate - 1) <= 0.0001, !isMuted else { return false }
+        guard abs(volume - 1) <= 0.0001, fadeInSeconds <= 0, fadeOutSeconds <= 0 else { return false }
+        // Matches the exporter's passthrough rule exactly: one segment starting at the head of the
+        // source. Anything else re-encodes, and claiming otherwise in the Export tab would be a lie.
+        guard segments.count == 1, let only = segments.first else { return false }
+        return only.startSeconds <= 0.0001
+    }
+
+    /// What the marked range covers, so Remove Selection says what it is about to remove.
+    var markedRangeDescription: String? {
+        guard hasMarkedRange, let markInSeconds, let markOutSeconds else { return nil }
+        return String(format: "Selection %.1fs", abs(markOutSeconds - markInSeconds))
+    }
+
+    /// The pixel size the current crop produces, which is what a crop is really being chosen by.
+    var croppedOutputDescription: String {
+        let recording = segments.first?.recording ?? primaryRecording
+        guard cropEnabled, recording.width > 0, recording.height > 0 else {
+            return "\(recording.width)x\(recording.height)"
+        }
+        let width = max(2, Int((Double(recording.width) * cropWidth).rounded()))
+        let height = max(2, Int((Double(recording.height) * cropHeight).rounded()))
+        return "\(width)x\(height)"
+    }
+
+    var hasMarkedRange: Bool {
+        guard let markInSeconds, let markOutSeconds else { return false }
+        return abs(markOutSeconds - markInSeconds) > 0.05
+    }
+
+    var canRemoveSelectedSegment: Bool { segments.count > 1 && selectedSegmentIndex != nil }
+
+    func canMoveSelectedSegment(offset: Int) -> Bool {
+        guard let index = selectedSegmentIndex else { return false }
+        return segments.indices.contains(index + offset)
+    }
+
+    /// Whether the current crop is the one this preset produces, so the row can show it selected.
+    func isCropPresetActive(_ preset: RecordingEditorCropPreset) -> Bool {
+        guard let crop = preset.crop(sourceAspect: sourceAspect) else { return !cropEnabled }
+        guard cropEnabled else { return false }
+        return abs(crop.x - cropX) < 0.005 && abs(crop.y - cropY) < 0.005
+            && abs(crop.width - cropWidth) < 0.005 && abs(crop.height - cropHeight) < 0.005
+    }
+
+    func setAdjustingCrop(_ isAdjusting: Bool) {
+        if isAdjusting, !cropEnabled {
+            recordUndo()
+            cropEnabled = true
+        }
+        isAdjustingCrop = isAdjusting
+    }
+
+    /// What the preview should show, which is not always what the export will produce: while the
+    /// crop rectangle is up, the preview drops the crop and the orientation so the rectangle can be
+    /// drawn over the original frame.
+    func previewRequest() -> WebRTCStreamRecordingEditRequest {
+        var previewRequest = request()
+        guard isAdjustingCrop else { return previewRequest }
+        previewRequest.crop = nil
+        previewRequest.rotation = .degrees0
+        previewRequest.isFlippedHorizontally = false
+        previewRequest.isFlippedVertically = false
+        return previewRequest
+    }
+
+    var canZoomTimelineIn: Bool { timelineZoom < RecordingTimelineGeometry.maximumZoom - 0.0001 }
+
+    var canZoomTimelineOut: Bool { timelineZoom > RecordingTimelineGeometry.minimumZoom + 0.0001 }
+
+    func zoomTimelineIn() {
+        timelineZoom = min(RecordingTimelineGeometry.maximumZoom, timelineZoom * 2)
+    }
+
+    func zoomTimelineOut() {
+        timelineZoom = max(RecordingTimelineGeometry.minimumZoom, timelineZoom / 2)
+    }
+
+    /// Continuous, for the scroll wheel. The buttons step in whole doublings; a wheel should not.
+    func zoomTimeline(byFactor factor: Double) {
+        guard factor.isFinite, factor > 0 else { return }
+        timelineZoom = min(RecordingTimelineGeometry.maximumZoom, max(RecordingTimelineGeometry.minimumZoom, timelineZoom * factor))
+    }
+
+    func fitTimeline() {
+        timelineZoom = RecordingTimelineGeometry.minimumZoom
+    }
+
+    /// What the track is showing, for the header. Says nothing at all when the whole timeline fits,
+    /// because then the ruler already says it.
+    var timelineWindowDescription: String? {
+        guard timelineZoom > RecordingTimelineGeometry.minimumZoom + 0.0001 else { return nil }
+        let visible = totalSourceDurationSeconds / timelineZoom
+        return "showing \(String(format: "%.0f", visible))s of \(String(format: "%.0f", totalSourceDurationSeconds))s"
+    }
+
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     var canExport: Bool { !isExporting && !segments.isEmpty && outputDurationSeconds > 0.05 }
     var canJoinSelectedSection: Bool { joinablePairContainingSelectedSegment() != nil }
-    var previewSignature: String {
+    /// Three signatures, not one, because they cost wildly different amounts to apply. Only a
+    /// timeline change needs the composition rebuilt; the other two are a property on the player
+    /// item. Rebuilding for a volume slider reloaded every source asset and restarted playback.
+    ///
+    /// Playback rate lives in the timeline group: it is applied with `scaleTimeRange` on the
+    /// composition's own tracks, not at render time.
+    var timelineSignature: String {
         let segmentSignature = segments
             .map { segment in
                 [
@@ -202,23 +354,39 @@ final class RecordingEditorViewModel: ObservableObject {
                 ].joined(separator: ":")
             }
             .joined(separator: "|")
-        let cropSignature = [
+        return [segmentSignature, String(format: "%.4f", playbackRate)].joined(separator: "@")
+    }
+
+    var frameSignature: String {
+        [
+            isAdjustingCrop ? "adjusting" : "applied",
             cropEnabled ? "1" : "0",
             String(format: "%.4f", cropX),
             String(format: "%.4f", cropY),
             String(format: "%.4f", cropWidth),
             String(format: "%.4f", cropHeight),
+            String(rotation.rawValue),
+            isFlippedHorizontally ? "1" : "0",
+            isFlippedVertically ? "1" : "0",
         ].joined(separator: ":")
-        let transformSignature = [String(rotation.rawValue), isFlippedHorizontally ? "1" : "0", isFlippedVertically ? "1" : "0"].joined(separator: ":")
-        let audioSignature = [
-            String(format: "%.4f", playbackRate),
+    }
+
+    var audioSignature: String {
+        [
             isMuted ? "1" : "0",
             String(format: "%.4f", volume),
             String(format: "%.4f", fadeInSeconds),
             String(format: "%.4f", fadeOutSeconds),
         ].joined(separator: ":")
-        return [segmentSignature, cropSignature, transformSignature, audioSignature].joined(separator: "#")
     }
+
+    var previewSignature: String {
+        [timelineSignature, frameSignature, audioSignature].joined(separator: "#")
+    }
+
+    /// Anything worth warning about before the edit is thrown away. Every mutating path records an
+    /// undo step, so an empty stack means nothing has been changed yet.
+    var hasUnsavedEdits: Bool { !undoStack.isEmpty }
 
     func sourceTime(forTimelineSeconds timelineSeconds: Double) -> (segment: RecordingEditorSegment, seconds: Double)? {
         var cursor = 0.0
@@ -235,6 +403,16 @@ final class RecordingEditorViewModel: ObservableObject {
 
     func selectSegment(_ segment: RecordingEditorSegment) {
         selectedSegmentID = segment.id
+        markInSeconds = nil
+        markOutSeconds = nil
+    }
+
+    /// Walks the timeline a clip at a time, for the pad: there is no cursor to click a clip with.
+    func selectAdjacentSegment(offset: Int) {
+        guard let index = selectedSegmentIndex else { return }
+        let next = min(max(0, index + offset), max(0, segments.count - 1))
+        guard next != index, segments.indices.contains(next) else { return }
+        selectedSegmentID = segments[next].id
         markInSeconds = nil
         markOutSeconds = nil
     }
@@ -301,9 +479,14 @@ final class RecordingEditorViewModel: ObservableObject {
 
     func cutMarkedRange() {
         guard let markInSeconds, let markOutSeconds else { return }
+        let removed = abs(markOutSeconds - markInSeconds)
+        let sectionsBefore = segments.count
         cutRange(startSeconds: min(markInSeconds, markOutSeconds), endSeconds: max(markInSeconds, markOutSeconds))
         self.markInSeconds = nil
         self.markOutSeconds = nil
+        hint = segments.count > sectionsBefore
+            ? String(format: "Removed %.1fs from the middle. The two sections play back to back - the export has no gap.", removed)
+            : String(format: "Removed %.1fs.", removed)
     }
 
     func splitAtPlayhead(_ playheadSeconds: Double) {
@@ -316,6 +499,7 @@ final class RecordingEditorViewModel: ObservableObject {
         let right = RecordingEditorSegment(recording: segment.recording, startSeconds: split, endSeconds: segment.endSeconds)
         segments.replaceSubrange(index...index, with: [left, right])
         selectedSegmentID = right.id
+        hint = "Split into two sections. Join puts them back together."
     }
 
     func cutRange(startSeconds: Double, endSeconds: Double) {
@@ -389,7 +573,7 @@ final class RecordingEditorViewModel: ObservableObject {
         let left = segments[pair.leftIndex]
         let right = segments[pair.rightIndex]
         let selectedID = segments[pair.selectedIndex].id
-        let insertionIndex = pair.selectedIndex - [pair.leftIndex, pair.rightIndex].filter { $0 < pair.selectedIndex }.count
+        let insertionIndex = pair.leftIndex
         recordUndo()
         let joined = RecordingEditorSegment(id: selectedID, recording: left.recording, startSeconds: left.startSeconds, endSeconds: right.endSeconds)
         for index in [pair.leftIndex, pair.rightIndex].sorted(by: >) {
@@ -399,6 +583,7 @@ final class RecordingEditorViewModel: ObservableObject {
         selectedSegmentID = joined.id
         markInSeconds = nil
         markOutSeconds = nil
+        hint = "Merged back into one section."
     }
 
     func duplicateSelectedSegment() {
@@ -433,7 +618,12 @@ final class RecordingEditorViewModel: ObservableObject {
         do {
             let request = request()
             let recording = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request) { [weak self] progress in
-                self?.exportProgress = progress
+                // Published only when the number on screen would actually change. Every publish
+                // re-evaluates the editor's whole body - timeline, filmstrips, waveform canvas - and
+                // at the raw update rate that competed with the encoder for the machine.
+                guard let self else { return }
+                guard Int(progress * 100) != Int(self.exportProgress * 100) else { return }
+                self.exportProgress = progress
             }
             isExporting = false
             exportProgress = 1

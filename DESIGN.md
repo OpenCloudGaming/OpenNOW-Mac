@@ -202,6 +202,32 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   (15pt, height 40 — hero and game-detail primary actions, optional `minimumWidth`).
   Call sites pass `uiScale` and never override font or frame on the label.
 
+### Control Heights (recordings editor)
+
+One row, one height. Mixed heights on a single line read as a broken layout however good the
+spacing is, and the eye catches a two-point difference. Three tiers, in
+`RecordingEditorMetrics`; everything on a line uses its line's tier.
+
+- **Header row** (36, `RecordingEditorMetrics.headerControlHeight`): the page header above the
+  video — the recording's actions and the editor's. `RecordingActionButtonStyle.height` is this
+  value, and the editor's title field matches it rather than picking its own.
+- **Timeline control row** (40, `.controlHeight`): transport buttons, the timecode readout, the
+  edit actions. Taller than the header tier on purpose — this row runs to the window's bottom
+  edge with no padding beneath it, so the height is the hit target.
+- **Advanced panel** (28, `.compactControlHeight`): small buttons, dropdown triggers, chip
+  pickers.
+
+### Borders on Filled Controls
+
+Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a
+background.
+
+A stroke is centred on the path, so it spills half a point outside the frame. Where the border is
+low-contrast that spill is invisible and the control measures its stated height. Where the border
+matches the fill — an accent-filled primary button with an accent stroke — the spill paints as
+more control, and the button measures a point taller than the identically-sized ones beside it.
+`strokeBorder` insets the line, so every tone paints exactly its frame.
+
 ### Stream HUD Action Row (`StreamHUDActionRow`)
 
 Icon-only square button: 42×38, 15pt bold SF Symbol, Row Fill background (0.14 hover),

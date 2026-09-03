@@ -62,7 +62,7 @@ let vendorVariantMetadataResponder: SessionManagerURLProtocol.Handler = { reques
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("catalog-vendor-metadata-user")
-        SessionManagerURLProtocol.install(host: host, handler: vendorVariantMetadataResponder)
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"], handler: vendorVariantMetadataResponder)
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
@@ -136,7 +136,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("panel-see-more-user")
-        SessionManagerURLProtocol.install(host: host, handler: seeMoreParametersResponder)
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"], handler: seeMoreParametersResponder)
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         // Panels are delivered twice (parsed, then metadata-enriched). Await the
@@ -171,7 +171,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         let host = "*"
         OPNGameService.shared.setAccessToken("library-patch-token-\(UUID().uuidString)")
         OPNGameService.shared.setUserId("library-patch-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"]) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
@@ -210,7 +210,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         let host = "*"
         OPNGameService.shared.setAccessToken("cms-metadata-token-\(UUID().uuidString)")
         OPNGameService.shared.setUserId("cms-metadata-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"]) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
@@ -248,7 +248,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         let host = "*"
         OPNGameService.shared.setAccessToken("subscription-definitions-token-\(UUID().uuidString)")
         OPNGameService.shared.setUserId("subscription-definitions-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql"]) { request in
             let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
             let query = body["query"] as? String ?? ""
             let variables = body["variables"] as? [String: Any] ?? [:]
@@ -291,7 +291,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         let host = "*"
         OPNGameService.shared.setAccessToken("remove-mutation-404-token-\(UUID().uuidString)")
         OPNGameService.shared.setUserId("remove-mutation-404-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql"]) { request in
             #expect(request.url?.host == "games.geforce.com")
             #expect(request.httpMethod == "POST")
             return SessionManagerURLProtocol.response(json: ["errors": [["message": "not found"]]], status: 404)
@@ -326,7 +326,7 @@ let seeMoreParametersResponder: SessionManagerURLProtocol.Handler = { request in
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("catalog-collections-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"]) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }
@@ -407,7 +407,7 @@ let fortyItemPageResponder: SessionManagerURLProtocol.Handler = { request in
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("catalog-pagination-user")
-        SessionManagerURLProtocol.install(host: host, handler: fortyItemPageResponder)
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"], handler: fortyItemPageResponder)
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         // Browse fetches a single page; the caller drives further pages via endCursor.
@@ -479,7 +479,7 @@ let libraryPaginationResponder: SessionManagerURLProtocol.Handler = { request in
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("library-pagination-user")
-        SessionManagerURLProtocol.install(host: host, handler: libraryPaginationResponder)
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"], handler: libraryPaginationResponder)
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
@@ -521,7 +521,7 @@ let libraryPaginationResponder: SessionManagerURLProtocol.Handler = { request in
         _ = OPNGameDataCache.shared.clearAllCaches()
         OPNGameService.shared.setAccessToken(token)
         OPNGameService.shared.setUserId("library-direct-gfn-user")
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/graphql", "/v2/serverInfo"]) { request in
             if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
                 return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
             }

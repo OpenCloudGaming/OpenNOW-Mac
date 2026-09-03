@@ -14,6 +14,13 @@ import AVFoundation
 import Combine
 import Foundation
 
+/// Where a controller's input goes while the recordings page is open. The list and the editor both
+/// want the stick and the face buttons, and there is no cursor to disambiguate them with.
+enum RecordingsControllerFocus {
+    case library
+    case editor
+}
+
 @MainActor
 final class RecordingsViewModel: ObservableObject {
     @Published var recordings: [WebRTCStreamRecording] = []
@@ -27,10 +34,31 @@ final class RecordingsViewModel: ObservableObject {
     @Published var copiedPathRecordingID: UUID?
     @Published var editorViewModel: RecordingEditorViewModel?
     @Published var playerTimeSeconds = 0.0
+    /// Drives the editor's transport button. Tracked from the player rather than from whoever
+    /// pressed play, because the preview pipeline pauses and resumes it too.
+    @Published private(set) var isPlaying = false
 
-    private var playerTimeObserver: Any?
-    private var editorPreviewTask: Task<Void, Never>?
-    private var editorPreviewDurationSeconds = 0.0
+    /// Set when switching away from an edited recording, or closing the editor, would throw the
+    /// edit away. The page turns it into a confirmation rather than doing it silently.
+    @Published var pendingEditorDiscardSelection: WebRTCStreamRecording?
+    @Published var isPendingEditorClose = false
+    /// Settable across the file split rather than `private(set)`: the editor session owns when
+    /// focus moves, and it lives in RecordingsEditorSession.swift.
+    @Published var controllerFocus: RecordingsControllerFocus = .library
+
+    var playerTimeObserver: Any?
+    private var playbackStatusObserver: AnyCancellable?
+    var editorPreviewTask: Task<Void, Never>?
+    var editorFramePreviewTask: Task<Void, Never>?
+    var editorAudioPreviewTask: Task<Void, Never>?
+    var editorExportTask: Task<Void, Never>?
+    var editorPreviewDurationSeconds = 0.0
+    /// What the live preview already reflects, per group. A refresh only does the work whose
+    /// signature actually moved.
+    var appliedTimelineSignature: String?
+    var appliedFrameSignature: String?
+    var appliedAudioSignature: String?
+    var previewRequiresVideoComposition = false
 
     let systemIntegration: any SystemIntegrationServing
 
@@ -81,7 +109,12 @@ final class RecordingsViewModel: ObservableObject {
         recordings = WebRTCStreamRecordingLibrary.loadRecordings()
         if let selectedRecording, let refreshed = recordings.first(where: { $0.id == selectedRecording.id }) {
             self.selectedRecording = refreshed
-            if player == nil { select(refreshed, autoplay: false) }
+            // Not just `player == nil`: leaving the page removes the time observer and the
+            // playback-status sink but leaves the player, so returning found a player with nothing
+            // watching it. The playhead then froze at its last value while the preview played on,
+            // and every playhead-relative edit - Split, Trim Start, Set In - cut at a stale time and
+            // wrote that into the export.
+            if player == nil || playerTimeObserver == nil { select(refreshed, autoplay: false) }
         } else {
             select(visibleRecordings.first, autoplay: false)
         }
@@ -97,6 +130,15 @@ final class RecordingsViewModel: ObservableObject {
     /// old shape read it three times per press. Nothing is highlighted until something is selected,
     /// so the first press only takes the selection rather than also acting on it.
     func applyControllerCommand(_ command: ControllerInputCommand, in recordings: [WebRTCStreamRecording]) {
+        if editorViewModel != nil, controllerFocus == .editor {
+            applyEditorControllerCommand(command)
+            return
+        }
+        if case .actions = command, editorViewModel != nil {
+            controllerFocus = .editor
+            message = "Editor focused. Back returns to the recording list."
+            return
+        }
         guard !recordings.isEmpty else { return }
         guard let selectedRecording, recordings.contains(where: { $0.id == selectedRecording.id }) else {
             select(recordings.first, autoplay: command == .confirm)
@@ -108,7 +150,7 @@ final class RecordingsViewModel: ObservableObject {
         case .move(.down), .move(.right):
             moveSelection(delta: 1, from: selectedRecording, in: recordings)
         case .confirm:
-            select(selectedRecording, autoplay: true)
+            requestSelect(selectedRecording, autoplay: true)
         default:
             break
         }
@@ -135,12 +177,14 @@ final class RecordingsViewModel: ObservableObject {
             player?.pause()
             player = nil
             playerTimeSeconds = 0
+            isPlaying = false
             return
         }
         player?.pause()
         let nextPlayer = AVPlayer(url: recording.videoURL)
         player = nextPlayer
         playerTimeSeconds = 0
+        observePlaybackStatus(of: nextPlayer)
         playerTimeObserver = nextPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { [weak self] time in
             let seconds = max(0, time.seconds.isFinite ? time.seconds : 0)
             MainActor.assumeIsolated {
@@ -173,126 +217,34 @@ final class RecordingsViewModel: ObservableObject {
         playerTimeSeconds = max(0, time.seconds)
     }
 
-    func seekEditorPreview(seconds: Double) {
-        guard editorViewModel != nil else {
-            if let selectedRecording { seek(selectedRecording, seconds: seconds) }
-            return
+    private func observePlaybackStatus(of player: AVPlayer) {
+        isPlaying = player.timeControlStatus == .playing
+        playbackStatusObserver = player.publisher(for: \.timeControlStatus)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] status in
+                MainActor.assumeIsolated {
+                    self?.isPlaying = status == .playing
+                }
+            }
+    }
+
+    func togglePlayback() {
+        guard let player else { return }
+        if player.timeControlStatus == .playing {
+            player.pause()
+        } else {
+            player.play()
         }
-        let duration = editorPreviewDurationSeconds > 0 ? editorPreviewDurationSeconds : max(0, editorViewModel?.outputDurationSeconds ?? seconds)
-        let boundedSeconds = min(max(0, seconds), duration)
-        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
-        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        playerTimeSeconds = boundedSeconds
-        syncEditorSelectionForPreviewTime(boundedSeconds)
     }
 
     /// The one place the periodic time observer is torn down. Called before every player swap and
     /// on disappear; leaving it out leaks one observer per selection change.
     func removePlayerTimeObserver() {
+        playbackStatusObserver?.cancel()
+        playbackStatusObserver = nil
         guard let playerTimeObserver else { return }
         player?.removeTimeObserver(playerTimeObserver)
         self.playerTimeObserver = nil
-    }
-
-    // MARK: - Editor
-
-    func startEditing(_ recording: WebRTCStreamRecording, editorEarlyBetaEnabled: Bool) {
-        guard editorEarlyBetaEnabled else {
-            showRecordingEditorBetaSettingsMessage()
-            return
-        }
-        if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
-        player?.pause()
-        editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
-        refreshEditedPreview(debounce: false, preservePlaybackTime: false)
-        message = "Editing \(recording.title). Export saves a new video."
-    }
-
-    func closeEditor() {
-        cancelEditorPreview()
-        editorViewModel = nil
-        if let selectedRecording { select(selectedRecording, autoplay: false) }
-        message = "Editor closed."
-    }
-
-    func showRecordingEditorBetaSettingsMessage() {
-        message = "Enable Recording Editor Early Beta in Settings > Experimental Features."
-    }
-
-    func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
-        cancelEditorPreview()
-        editorViewModel = nil
-        reload(showMessage: false)
-        if let refreshed = recordings.first(where: { $0.id == recording.id }) {
-            select(refreshed, autoplay: true)
-        }
-        message = "Saved \(recording.title) as a new video."
-    }
-
-    func refreshEditedPreview(debounce: Bool, preservePlaybackTime: Bool = true) {
-        guard let editorViewModel else { return }
-        let request = editorViewModel.request()
-        let signature = editorViewModel.previewSignature
-        let targetSeconds = preservePlaybackTime ? playerTimeSeconds : 0
-        let shouldResumePlayback = player?.timeControlStatus == .playing
-        editorPreviewTask?.cancel()
-        editorPreviewTask = Task { [weak self] in
-            if debounce {
-                try? await Task.sleep(for: .milliseconds(150))
-                if Task.isCancelled { return }
-            }
-            do {
-                let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    guard let self, self.editorViewModel?.previewSignature == signature else { return }
-                    self.applyEditedPreview(preview, targetSeconds: targetSeconds, shouldResumePlayback: shouldResumePlayback)
-                }
-            } catch {
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    self?.message = error.localizedDescription
-                }
-            }
-        }
-    }
-
-    private func applyEditedPreview(_ preview: WebRTCStreamRecordingPreview, targetSeconds: Double, shouldResumePlayback: Bool) {
-        guard let player else { return }
-        let item = AVPlayerItem(asset: preview.asset)
-        item.audioMix = preview.audioMix
-        item.videoComposition = preview.videoComposition
-        editorPreviewDurationSeconds = preview.durationSeconds
-        player.replaceCurrentItem(with: item)
-        let boundedSeconds = min(max(0, targetSeconds), max(0, preview.durationSeconds))
-        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        playerTimeSeconds = boundedSeconds
-        syncEditorSelectionForPreviewTime(boundedSeconds)
-        if shouldResumePlayback {
-            player.play()
-        } else {
-            player.pause()
-        }
-    }
-
-    private func syncEditorSelectionForPreviewTime(_ outputSeconds: Double) {
-        guard let editorViewModel else { return }
-        let sourceTimelineSeconds = outputSeconds * max(0.25, editorViewModel.playbackRate)
-        guard let target = editorViewModel.sourceTime(forTimelineSeconds: sourceTimelineSeconds) else { return }
-        editorViewModel.selectPreviewSegment(target.segment)
-    }
-
-    func cancelEditorPreview() {
-        editorPreviewTask?.cancel()
-        editorPreviewTask = nil
-        editorPreviewDurationSeconds = 0
-    }
-
-    /// Called when the early-beta preference is switched off while the editor is open.
-    func closeEditorForDisabledBeta() {
-        closeEditor()
-        message = "Recording editor early beta disabled. Editing tools are locked."
     }
 
     // MARK: - Desktop integration
@@ -330,6 +282,13 @@ final class RecordingsViewModel: ObservableObject {
 
     func deletePendingRecording() {
         guard let recording = pendingDelete else { return }
+        // The exporter is reading this file. Deleting it mid-encode produces a truncated output
+        // and an error nobody can act on.
+        guard !isExportingEditor else {
+            pendingDelete = nil
+            message = "Finish or cancel the export before deleting a recording."
+            return
+        }
         do {
             try WebRTCStreamRecordingLibrary.delete(recording)
             pendingDelete = nil
@@ -342,8 +301,13 @@ final class RecordingsViewModel: ObservableObject {
     }
 
     /// Drops the selection when the recording it pointed at is no longer visible.
+    ///
+    /// Not while the editor is open: this runs off the search field and the filter chips, and
+    /// typing a query that hid the edited recording used to silently destroy the edit.
     func reconcileSelection(withVisibleIDs ids: [UUID]) {
+        guard editorViewModel == nil else { return }
         guard let selectedRecording, !ids.contains(selectedRecording.id) else { return }
         select(visibleRecordings.first, autoplay: false)
     }
+
 }

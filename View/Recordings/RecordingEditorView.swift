@@ -1,107 +1,72 @@
+//
+//  RecordingEditorView.swift
+//  OpenNOW
+//
+//  The editor drawer under the recordings player: header, timeline, transport, quick actions and
+//  the export bar. The Advanced drawer and the shared chrome live in RecordingEditorPanels.swift.
+//
+
 import SwiftUI
-
-private enum RecordingAdvancedEditorSection: String, CaseIterable, Identifiable {
-    case arrange
-    case frame
-    case audio
-    case export
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .arrange: return "Arrange"
-        case .frame: return "Frame"
-        case .audio: return "Audio"
-        case .export: return "Export"
-        }
-    }
-}
 
 struct RecordingEditorView: View {
     @ObservedObject var viewModel: RecordingEditorViewModel
     let playheadSeconds: Double
+    let previewDurationSeconds: Double
+    let isPlaying: Bool
     let onSeek: (Double) -> Void
-    let onCancel: () -> Void
-    let onSaved: (WebRTCStreamRecording) -> Void
+    let onStep: (Double) -> Void
+    let onTogglePlayback: () -> Void
+    let onSkipToEnd: () -> Void
     let onPreviewChanged: () -> Void
+    /// True while a controller is driving the editor rather than the recording list. There is no
+    /// cursor to show which half of the page has input, so the page has to say.
+    var isControllerFocused = false
 
-    @State private var exportTask: Task<Void, Never>?
-    @State private var showsAdvanced = false
-    @State private var advancedSection: RecordingAdvancedEditorSection = .arrange
+    /// Every control in the row is this tall. See `RecordingEditorMetrics`.
+    private static let controlHeight = RecordingEditorMetrics.controlHeight
+
+    @Environment(\.opnUIScale) private var uiScale
+    /// The height the recordings page has to leave for the editor. The advanced drawer roughly
+    /// doubles the content, and a single fixed cap clipped its bottom row outright.
+    static func preferredHeight(uiScale: CGFloat) -> CGFloat {
+        340 * uiScale
+    }
 
     var body: some View {
-        VStack(spacing: 10) {
-            header
+        VStack(spacing: 14 * uiScale) {
             timelineCard
-            quickActions
-            if showsAdvanced { advancedDrawer }
-            exportBar
+            controlRow
         }
-        .padding(14)
-        .background(Color(red: 14 / 255, green: 15 / 255, blue: 15 / 255))
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1) }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14 * uiScale)
+        .padding(.top, 12 * uiScale)
+        // None: the control row runs to the window's bottom edge. The buttons are tall enough to
+        // stay easy to hit there, which is what the padding was really for.
+        .padding(.bottom, 0)
+        // The fill runs past the content into the window's bottom inset. Without this the drawer
+        // stopped short of the frame and the page backdrop showed through in the corners.
+        .background(OpenNOWDesign.Surface.deep.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(isControllerFocused ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+                .frame(height: isControllerFocused ? 2 : 1)
+        }
         .onChange(of: viewModel.previewSignature) { _, _ in onPreviewChanged() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Recording editor, beta")
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 7) {
-                    Text("QUICK EDIT")
-                        .font(.recordingsNvidia(size: 10, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(OpenNOWDesign.accent)
-                    Text("EARLY BETA")
-                        .font(.recordingsNvidia(size: 8, weight: .bold))
-                        .tracking(0.8)
-                        .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, 6)
-                        .frame(height: 16)
-                        .background(OpenNOWDesign.accent)
-                }
-                Text("Drag the green handles to trim. Drag across the timeline to select a cut.")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1)
-            }
-            TextField("New clip title", text: $viewModel.outputTitle)
-                .textFieldStyle(.plain)
-                .font(.recordingsNvidia(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.95))
-                .padding(.horizontal, 10)
-                .frame(height: 34)
-                .background(Color.white.opacity(0.065))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-            Button("Undo") { viewModel.undo() }
-                .disabled(!viewModel.canUndo || viewModel.isExporting)
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-            Button("Redo") { viewModel.redo() }
-                .disabled(!viewModel.canRedo || viewModel.isExporting)
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-            Button(showsAdvanced ? "Hide Advanced" : "Advanced") { showsAdvanced.toggle() }
-                .disabled(viewModel.isExporting)
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-            Button("Cancel", action: onCancel)
-                .disabled(viewModel.isExporting)
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-        }
-    }
+    // MARK: - Header
 
+    // MARK: - Timeline
+
+    /// Nothing but the track. The label, the output duration and the clip summary all repeated what
+    /// the status line and the timeline itself already say, and they cost the track its height.
     private var timelineCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Text("Timeline")
-                    .font(.recordingsNvidia(size: 10, weight: .bold))
-                    .tracking(1.2)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
-                Text("\(recordingEditorDurationText(viewModel.outputDurationSeconds)) output")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                Text("\(viewModel.segments.count) clip\(viewModel.segments.count == 1 ? "" : "s")")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.46))
+                zoomControls
             }
             RecordingTimelineView(
                 segments: viewModel.segments,
@@ -109,6 +74,8 @@ struct RecordingEditorView: View {
                 playheadSeconds: sourceTimelinePlayheadSeconds,
                 markInSeconds: viewModel.markInSeconds,
                 markOutSeconds: viewModel.markOutSeconds,
+                zoom: viewModel.timelineZoom,
+                uiScale: uiScale,
                 onSelect: viewModel.selectSegment,
                 onSeek: seekTimeline,
                 onRangeSelected: selectTimelineRange,
@@ -117,175 +84,194 @@ struct RecordingEditorView: View {
                 onSegmentTrimStart: viewModel.updateSegmentStart,
                 onSegmentTrimEnd: viewModel.updateSegmentEnd
             )
+            .background(RecordingTimelineScrollZoom { factor in viewModel.zoomTimeline(byFactor: factor) })
         }
-        .padding(10)
-        .background(Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .padding(.horizontal, 8 * uiScale)
+        .padding(.bottom, 8 * uiScale)
+        .padding(.top, 2 * uiScale)
     }
 
-    private var quickActions: some View {
-        HStack(spacing: 8) {
-            quickButton("Trim Start", systemImage: "arrow.left.to.line") { applyAtSourcePlayhead(viewModel.trimStartToPlayhead) }
-            quickButton("Trim End", systemImage: "arrow.right.to.line") { applyAtSourcePlayhead(viewModel.trimEndToPlayhead) }
-            quickButton("Split", systemImage: "scissors") { applyAtSourcePlayhead(viewModel.splitAtPlayhead) }
-            quickButton("Join", systemImage: "link", isDisabled: !viewModel.canJoinSelectedSection) { viewModel.joinSelectedSection() }
-            quickButton("Set In", systemImage: "bracket.left") { applyAtSourcePlayhead(viewModel.markIn) }
-            quickButton("Set Out", systemImage: "bracket.right") { applyAtSourcePlayhead(viewModel.markOut) }
-            quickButton("Remove Selection", systemImage: "trash") { viewModel.cutMarkedRange() }
-            Spacer(minLength: 0)
-            Button("Reset") { viewModel.resetEdits() }
-                .disabled(viewModel.isExporting)
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-        }
-    }
-
-    private var advancedDrawer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Advanced section", selection: $advancedSection) {
-                ForEach(RecordingAdvancedEditorSection.allCases) { section in
-                    Text(section.title).tag(section)
-                }
+    /// A forty-minute recording is otherwise nine hundred pixels wide, and trimming to the second
+    /// is a pixel hunt. Zoom follows the playhead rather than adding a pan gesture to a track that
+    /// already owns click-to-seek and drag-to-select.
+    private var zoomControls: some View {
+        HStack(spacing: 2 * uiScale) {
+            if let window = viewModel.timelineWindowDescription {
+                Text(window)
+                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.80))
+                    .fixedSize()
+                    .padding(.trailing, 2 * uiScale)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            switch advancedSection {
-            case .arrange:
-                arrangePanel
-            case .frame:
-                framePanel
-            case .audio:
-                audioPanel
-            case .export:
-                exportSettingsPanel
-            }
-        }
-        .padding(10)
-        .background(Color.white.opacity(0.035))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-    }
-
-    private var arrangePanel: some View {
-        HStack(alignment: .top, spacing: 10) {
-            editorPanel(title: "Selected Clip") {
-                HStack(spacing: 7) {
-                    smallButton("Duplicate") { viewModel.duplicateSelectedSegment() }
-                    smallButton("Remove") { viewModel.removeSelectedSegment() }
-                    smallButton("Join", isDisabled: !viewModel.canJoinSelectedSection) { viewModel.joinSelectedSection() }
-                    smallButton("Move Left") { viewModel.moveSelectedSegment(offset: -1) }
-                    smallButton("Move Right") { viewModel.moveSelectedSegment(offset: 1) }
-                }
-            }
-            editorPanel(title: "Add Clip") {
-                Menu {
-                    ForEach(viewModel.library) { recording in
-                        Button("\(recording.title) · \(recordingEditorDurationText(recording.durationSeconds))") {
-                            viewModel.appendRecording(recording)
-                        }
-                    }
-                } label: {
-                    menuLabel("Append Recording", systemImage: "plus.rectangle.on.rectangle")
-                }
-                .buttonStyle(.plain)
-            }
+            zoomButton("minus.magnifyingglass", help: "Zoom the timeline out (⌘−, or scroll on the track)", isDisabled: !viewModel.canZoomTimelineOut) { viewModel.zoomTimelineOut() }
+                .keyboardShortcut("-", modifiers: .command)
+            zoomButton("plus.magnifyingglass", help: "Zoom the timeline in (⌘+, or scroll on the track)", isDisabled: !viewModel.canZoomTimelineIn) { viewModel.zoomTimelineIn() }
+                .keyboardShortcut("=", modifiers: .command)
+            zoomButton("arrow.left.and.right", help: "Fit the whole timeline (⌘0)", isDisabled: !viewModel.canZoomTimelineOut) { viewModel.fitTimeline() }
+                .keyboardShortcut("0", modifiers: .command)
         }
     }
 
-    private var framePanel: some View {
-        HStack(alignment: .top, spacing: 10) {
-            editorPanel(title: "Crop") {
-                HStack(spacing: 7) {
-                    ForEach(RecordingEditorCropPreset.allCases) { preset in
-                        smallButton(preset.title) { viewModel.applyCropPreset(preset) }
-                    }
-                }
-                Toggle("Custom crop", isOn: $viewModel.cropEnabled)
-                    .toggleStyle(.checkbox)
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                if viewModel.cropEnabled {
-                    compactSlider("X", value: $viewModel.cropX, range: 0...max(0, 1 - viewModel.cropWidth))
-                    compactSlider("Y", value: $viewModel.cropY, range: 0...max(0, 1 - viewModel.cropHeight))
-                    compactSlider("W", value: $viewModel.cropWidth, range: 0.1...max(0.1, 1 - viewModel.cropX))
-                    compactSlider("H", value: $viewModel.cropHeight, range: 0.1...max(0.1, 1 - viewModel.cropY))
-                }
+    /// Borderless: these sit above the track as a quiet affordance, not as three more buttons in a
+    /// row of buttons.
+    private func zoomButton(_ systemImage: String, help: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
+        RecordingEditorControl(
+            systemImage: systemImage, tone: .borderless, height: 22, width: 26,
+            help: help, isDisabled: viewModel.isExporting || isDisabled, action: action
+        )
+    }
+
+    // MARK: - Transport
+
+    /// Trimming means parking the playhead on an exact moment, and the player's own floating
+    /// controls scrub the whole clip rather than the edited timeline. These drive the preview.
+    /// Five controls, not seven. The two ±0.2 s chevrons and the two ±5 s stopwatch glyphs read as
+    /// four near-identical dark squares; the fine step is on the arrow keys instead, where a frame
+    /// hunt belongs, and the coarse one says "5s" in words.
+    private var transportGroup: some View {
+        HStack(spacing: 4 * uiScale) {
+            transportButton("backward.end.fill", help: "Go to start") { onSeek(0) }
+            transportStepButton("5s", systemImage: "chevron.left", help: "Back 5 seconds") { onStep(-5) }
+            transportButton(isPlaying ? "pause.fill" : "play.fill", help: isPlaying ? "Pause" : "Play", isProminent: true, action: onTogglePlayback)
+            transportStepButton("5s", systemImage: "chevron.right", trailingIcon: true, help: "Forward 5 seconds") { onStep(5) }
+            transportButton("forward.end.fill", help: "Go to end", action: onSkipToEnd)
+        }
+    }
+
+    /// No fill and no border: given the same box as its neighbours it read as a button that would
+    /// not press. The current time is the bright half, the total is context.
+    private var timecodeReadout: some View {
+        HStack(spacing: 4 * uiScale) {
+            Text(recordingEditorPreciseTimeText(playheadSeconds))
+                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
+                .foregroundStyle(.white.opacity(0.92))
+            Text("/")
+                .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                .foregroundStyle(.white.opacity(0.30))
+            Text(recordingEditorPreciseTimeText(previewDurationSeconds))
+                .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(.white.opacity(0.48))
+        }
+        .monospacedDigit()
+        .fixedSize()
+        .padding(.horizontal, 4 * uiScale)
+        .frame(height: Self.controlHeight * uiScale)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playhead")
+        .accessibilityValue("\(recordingEditorPreciseTimeText(playheadSeconds)) of \(recordingEditorPreciseTimeText(previewDurationSeconds))")
+    }
+
+    /// Transport and edit actions on one wrapping line. They were two fixed rows, which cost a
+    /// third of the drawer's height and pushed everything below it into the window's bottom edge.
+    /// Two jobs, two edges: moving the playhead on the left, changing the timeline on the right.
+    /// Interleaved on one evenly-spaced line they read as one undifferentiated strip of buttons.
+    ///
+    /// `ViewThatFits` keeps that split for as long as the pane is wide enough and drops to a
+    /// stacked pair of rows when it is not, rather than squeezing thirteen controls into a line
+    /// that cannot hold them.
+    private var controlRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 7 * uiScale) {
+                playbackControls
+                Spacer(minLength: 28 * uiScale)
+                HStack(spacing: 7 * uiScale) { editActionButtons }
             }
-            editorPanel(title: "Orientation") {
-                HStack(spacing: 7) {
-                    smallButton("Rotate Left") { viewModel.rotateLeft() }
-                    smallButton("Rotate Right") { viewModel.rotateRight() }
-                    smallButton(viewModel.isFlippedHorizontally ? "Unflip H" : "Flip H") { viewModel.toggleHorizontalFlip() }
-                    smallButton(viewModel.isFlippedVertically ? "Unflip V" : "Flip V") { viewModel.toggleVerticalFlip() }
+            VStack(alignment: .leading, spacing: 8 * uiScale) {
+                HStack(spacing: 7 * uiScale) {
+                    playbackControls
+                    Spacer(minLength: 0)
                 }
+                SettingsFlowLayout(spacing: 7 * uiScale) { editActionButtons }
+            }
+        }
+        .overlay(alignment: .topLeading) { keyboardNudges }
+    }
+
+    private var playbackControls: some View {
+        HStack(spacing: 10 * uiScale) {
+            transportGroup
+            timecodeReadout
+        }
+    }
+
+    /// The fine step the ±0.2 s buttons used to be. Zero-sized rather than absent: a keyboard
+    /// shortcut needs a control in the hierarchy to hang off, and a frame hunt wants a key repeat,
+    /// not a click repeat.
+    private var keyboardNudges: some View {
+        Group {
+            Button("Nudge back") { onStep(-0.2) }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+            Button("Nudge forward") { onStep(0.2) }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+            // Bare Backspace, but only while the name field does not have it: there it has to keep
+            // deleting characters.
+            if !viewModel.isTitleFieldFocused {
+                Button("Remove marked range") { viewModel.cutMarkedRange() }
+                    .keyboardShortcut(.delete, modifiers: [])
+                    .disabled(!viewModel.hasMarkedRange)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .disabled(viewModel.isExporting)
+        .accessibilityHidden(true)
+    }
+
+    private func transportButton(_ systemImage: String, help: String, isProminent: Bool = false, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
+        RecordingEditorControl(
+            systemImage: systemImage, tone: isProminent ? .prominent : .standard, width: 34,
+            help: help, isDisabled: viewModel.isExporting || isDisabled, action: action
+        )
+    }
+
+    // MARK: - Quick actions
+
+    @ViewBuilder
+    private var editActionButtons: some View {
+        Group {
+            quickButton("Trim Start", systemImage: "arrow.left.to.line", help: "Cut everything before the playhead (⌘[)", shortcut: KeyEquivalent("["))
+                { applyAtSourcePlayhead(viewModel.trimStartToPlayhead) }
+            quickButton("Trim End", systemImage: "arrow.right.to.line", help: "Cut everything after the playhead (⌘])", shortcut: KeyEquivalent("]"))
+                { applyAtSourcePlayhead(viewModel.trimEndToPlayhead) }
+            // ⌘B, not ⌘K: the Stream menu binds ⌘K to Toggle Anti-AFK with no enablement guard, and
+            // a main-menu key equivalent is dispatched before any view-level shortcut, so Split
+            // never fired. ⌘B is also what a blade tool is bound to elsewhere.
+            quickButton("Split", systemImage: "scissors", help: "Split the clip at the playhead (⌘B)", shortcut: "b")
+                { applyAtSourcePlayhead(viewModel.splitAtPlayhead) }
+            quickButton("Join", systemImage: "link", help: viewModel.canJoinSelectedSection ? "Merge the two sections back into one (⌘J)" : "Only neighbouring sections that were split apart can merge. A removed range cannot be put back.", isDisabled: !viewModel.canJoinSelectedSection, shortcut: "j")
+                { viewModel.joinSelectedSection() }
+            quickButton("Set In", systemImage: "bracket.left", help: "Start a selection at the playhead (⌘I)", shortcut: "i")
+                { applyAtSourcePlayhead(viewModel.markIn) }
+            quickButton("Set Out", systemImage: "bracket.right", help: "End the selection at the playhead (⌘O)", shortcut: "o")
+                { applyAtSourcePlayhead(viewModel.markOut) }
+            quickButton("Remove Selection", systemImage: "trash", help: "Cut the marked range out of the clip (⌫). Drag across the timeline, or shift-click it, to mark a range.", isDisabled: !viewModel.hasMarkedRange, shortcut: .delete)
+                { viewModel.cutMarkedRange() }
+        }
+    }
+
+    // MARK: - Export
+
+    /// What just happened, what the export will produce, or how the export is going. It sat on the
+    /// bottom edge of the window, which is the last place anyone looks and the first thing to be
+    /// clipped; it belongs next to the thing it is describing.
+    /// Labelled coarse step: "5s" with a direction, rather than a glyph that has to be decoded.
+    private func transportStepButton(_ title: String, systemImage: String, trailingIcon: Bool = false, help: String, action: @escaping () -> Void) -> some View {
+        RecordingEditorControl(
+            horizontalPadding: 8, help: help,
+            isDisabled: viewModel.isExporting, action: action
+        ) {
+            HStack(spacing: 3 * uiScale) {
+                if !trailingIcon { Image(systemName: systemImage) }
+                Text(title)
+                if trailingIcon { Image(systemName: systemImage) }
             }
         }
     }
 
-    private var audioPanel: some View {
-        HStack(alignment: .top, spacing: 10) {
-            editorPanel(title: "Playback") {
-                compactSlider("Speed \(String(format: "%.2fx", viewModel.playbackRate))", value: $viewModel.playbackRate, range: 0.25...4)
-            }
-            editorPanel(title: "Audio") {
-                Toggle("Mute audio", isOn: $viewModel.isMuted)
-                    .toggleStyle(.checkbox)
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                compactSlider("Volume \(Int(viewModel.volume * 100))%", value: $viewModel.volume, range: 0...2)
-                    .disabled(viewModel.isMuted)
-                compactSlider("Fade In", value: $viewModel.fadeInSeconds, range: 0...10)
-                    .disabled(viewModel.isMuted)
-                compactSlider("Fade Out", value: $viewModel.fadeOutSeconds, range: 0...10)
-                    .disabled(viewModel.isMuted)
-            }
-        }
-    }
-
-    private var exportSettingsPanel: some View {
-        editorPanel(title: "Output") {
-            HStack(spacing: 10) {
-                Text("Quality")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
-                Picker("Quality", selection: $viewModel.exportQuality) {
-                    ForEach(RecordingEditorExportQuality.allCases) { quality in
-                        Text(quality.title).tag(quality)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-        }
-    }
-
-    private var exportBar: some View {
-        HStack(spacing: 10) {
-            if viewModel.isExporting {
-                ProgressView(value: viewModel.exportProgress)
-                    .progressViewStyle(.linear)
-                    .frame(width: 180)
-                Text("Exporting \(Int(viewModel.exportProgress * 100))%")
-                    .font(.recordingsNvidia(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.68))
-                Button("Cancel Export") {
-                    exportTask?.cancel()
-                    exportTask = nil
-                }
-                .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
-            } else if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.red.opacity(0.88))
-                    .lineLimit(1)
-            } else {
-                Text("Edits are non-destructive. Export creates a new recording.")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.52))
-            }
-            Spacer(minLength: 0)
-            Button("Save as New Video") { startExport() }
-                .disabled(!viewModel.canExport)
-                .buttonStyle(RecordingActionButtonStyle(tone: .primary))
-        }
-    }
+    /// What the export is actually about to produce, rather than a standing reassurance. The
+    /// original is never touched either way, which is the part worth repeating.
+    // MARK: - Playhead plumbing
 
     private var sourceTimelinePlayheadSeconds: Double {
         playheadSeconds * max(0.25, viewModel.playbackRate)
@@ -318,83 +304,16 @@ struct RecordingEditorView: View {
         }
     }
 
-    private func startExport() {
-        exportTask = Task {
-            do {
-                let recording = try await viewModel.export()
-                exportTask = nil
-                onSaved(recording)
-            } catch {
-                exportTask = nil
-                viewModel.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func editorPanel<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.recordingsNvidia(size: 9, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(10)
-        .background(Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-    }
-
-    private func compactSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.recordingsNvidia(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
-                .frame(width: 82, alignment: .leading)
-            Slider(value: value, in: range)
-                .tint(OpenNOWDesign.accent)
-        }
-    }
-
-    private func quickButton(_ title: String, systemImage: String, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
+    /// Continuous text: one undo step for the whole run of typing rather than one per keystroke.
+    private func quickButton(_ title: String, systemImage: String, help: String, isDisabled: Bool = false, shortcut: KeyEquivalent? = nil, action: @escaping () -> Void) -> some View {
+        RecordingEditorControl(
+            help: help, accessibilityTitle: title,
+            isDisabled: viewModel.isExporting || isDisabled, shortcut: shortcut, action: action
+        ) {
+            HStack(spacing: 6 * uiScale) {
                 Image(systemName: systemImage)
                 Text(title)
             }
-            .font(.recordingsNvidia(size: 11, weight: .bold))
-            .foregroundStyle(.white.opacity(0.88))
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background(Color.white.opacity(0.065))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
         }
-        .buttonStyle(.plain)
-        .disabled(viewModel.isExporting || isDisabled)
-    }
-
-    private func smallButton(_ title: String, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .font(.recordingsNvidia(size: 10, weight: .bold))
-            .foregroundStyle(.white.opacity(0.86))
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(Color.white.opacity(0.07))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.11), lineWidth: 1) }
-            .buttonStyle(.plain)
-            .disabled(viewModel.isExporting || isDisabled)
-    }
-
-    private func menuLabel(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: systemImage)
-            Text(title)
-        }
-        .font(.recordingsNvidia(size: 11, weight: .bold))
-        .foregroundStyle(.white.opacity(0.88))
-        .frame(maxWidth: .infinity)
-        .frame(height: 30)
-        .background(Color.white.opacity(0.075))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
     }
 }

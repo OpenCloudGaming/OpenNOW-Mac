@@ -166,7 +166,7 @@ import Foundation
 @Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/v1/uds/session/reports", "/v2/session/session-report", "/v2/session"]) { request in
             if request.url?.host == "uds.geforcenow.com" {
                 #expect(request.url?.path == "/v1/uds/session/reports")
                 #expect(request.httpMethod == "POST")
@@ -207,7 +207,7 @@ import Foundation
 @Test func streamCoordinatorFinishSessionIgnoresUDSFailure() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"
-        SessionManagerURLProtocol.install(host: host) { request in
+        SessionManagerURLProtocol.install(host: host, paths: ["/v1/uds/session/reports", "/v2/session/session-report", "/v2/session"]) { request in
             if request.url?.host == "uds.geforcenow.com" {
                 return SessionManagerURLProtocol.response(json: ["error": "auth"], status: 401)
             }
@@ -229,7 +229,7 @@ import Foundation
 @Test func streamCoordinatorFinishSessionSkipsUDSWithoutAccessToken() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "*"
-        SessionManagerURLProtocol.install(host: host) { _ in
+        SessionManagerURLProtocol.install(host: host, paths: ["/v1/uds/session/reports", "/v2/session/session-report", "/v2/session"]) { _ in
             SessionManagerURLProtocol.response(json: [:])
         }
         defer { SessionManagerURLProtocol.uninstall(host: host) }
@@ -310,7 +310,7 @@ import Foundation
 @Test func gameLaunchBridgePromptsBeforeReusingMatchingActiveSession() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "*"
-    SessionManagerURLProtocol.install(host: host) { request in
+    SessionManagerURLProtocol.install(host: host, paths: ["/v2/session"]) { request in
         #expect(request.httpMethod == "GET")
         #expect(request.url?.path == "/v2/session")
         return SessionManagerURLProtocol.response(json: [
@@ -366,7 +366,7 @@ import Foundation
 @Test func gameLaunchBridgeDoesNotOfferResumeForInitializingSession() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "*"
-    SessionManagerURLProtocol.install(host: host) { request in
+    SessionManagerURLProtocol.install(host: host, paths: ["/v2/session"]) { request in
         #expect(request.httpMethod == "GET")
         #expect(request.url?.path == "/v2/session")
         return SessionManagerURLProtocol.response(json: [

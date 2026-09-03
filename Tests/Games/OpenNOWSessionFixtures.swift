@@ -160,18 +160,27 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
     /// next. That handler then answers it with the wrong body and, if it asserts, records the failure
     /// against no test at all, because a `URLProtocol` runs outside any test's scope.
     nonisolated(unsafe) private static var wildcardPaths: [String] = []
+    /// Requests a wildcard handler claimed but was not asked to serve. Kept so a test can prove
+    /// nothing foreign reached it, and so this failure mode is visible instead of silent.
+    nonisolated(unsafe) private static var strayRequests: [URLRequest] = []
     nonisolated(unsafe) private static var requestsByHost: [String: [URLRequest]] = [:]
     nonisolated(unsafe) private static var bodiesByHost: [String: [Data]] = [:]
     nonisolated(unsafe) private static var installed = false
 
-    /// `paths` narrows a wildcard handler to the requests its test actually expects. Ignored for a
-    /// named host, which is already scoped by the host itself.
+    /// `paths` narrows a wildcard handler to the requests its test actually expects, and is
+    /// **required** for one: a `"*"` handler that claims every path answers other tests' traffic
+    /// with its own body and runs its own `#expect`s against it. Ignored for a named host, which is
+    /// already scoped by the host itself.
     static func install(host: String, paths: [String] = [], handler: @escaping Handler) {
+        precondition(host != "*" || !paths.isEmpty, "A wildcard handler must declare the paths it serves; see the note on wildcardPaths.")
         lock.withLock {
             handlers[host] = handler
             if host == "*" { wildcardPaths = paths }
             requestsByHost[host] = []
             bodiesByHost[host] = []
+            // Only the wildcard owns this log. Clearing it on every install let a named-host
+            // install from a suite that does not take the isolation lock wipe it mid-assertion.
+            if host == "*" { strayRequests = [] }
             if !installed {
                 URLProtocol.registerClass(Self.self)
                 installed = true
@@ -182,7 +191,10 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
     static func uninstall(host: String) {
         lock.withLock {
             handlers[host] = nil
-            if host == "*" { wildcardPaths = [] }
+            if host == "*" {
+                wildcardPaths = []
+                strayRequests = []
+            }
             requestsByHost[host] = nil
             bodiesByHost[host] = nil
             if handlers.isEmpty, installed {
@@ -196,6 +208,13 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
         lock.withLock { requestsByHost[host] ?? [] }
     }
 
+    /// Requests a wildcard claimed and refused to serve, since the last install.
+    static func strayRequestSummaries() -> [String] {
+        lock.withLock { strayRequests }.map { request in
+            "\(request.httpMethod ?? "?") \(request.url?.host ?? "?")\(request.url?.path ?? "")"
+        }
+    }
+
     static func recordedJSONBodies(host: String) -> [[String: Any]] {
         lock.withLock { bodiesByHost[host] ?? [] }
             .compactMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
@@ -206,14 +225,12 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
         return (status, data)
     }
 
+    /// Claims everything a wildcard is installed for, including paths it will not serve. Leaving
+    /// those unclaimed sent a test's stray traffic to the real vendor: slow, and dependent on the
+    /// machine having a network. `startLoading` decides what to do with them.
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
-        let path = request.url?.path ?? ""
-        return lock.withLock {
-            if handlers[host] != nil { return true }
-            guard handlers["*"] != nil else { return false }
-            return wildcardPaths.isEmpty || wildcardPaths.contains(path)
-        }
+        return lock.withLock { handlers[host] != nil || handlers["*"] != nil }
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -228,7 +245,12 @@ final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
         let body = Self.bodyData(from: request)
         let handler = Self.lock.withLock { () -> Handler? in
             let key = Self.handlers[host] == nil && Self.handlers["*"] != nil ? "*" : host
-            guard key != "*" || Self.wildcardPaths.isEmpty || Self.wildcardPaths.contains(url.path) else { return nil }
+            // A wildcard serves only the paths its test declared. Anything else is another test's
+            // request arriving late, and must not be recorded or answered as if it were this one's.
+            guard key != "*" || Self.wildcardPaths.contains(url.path) else {
+                Self.strayRequests.append(request)
+                return nil
+            }
             Self.requestsByHost[key, default: []].append(request)
             if let body { Self.bodiesByHost[key, default: []].append(body) }
             return Self.handlers[key]

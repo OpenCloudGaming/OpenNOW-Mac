@@ -70,17 +70,33 @@ public struct WebRTCStreamRecordingAudioEdit: Equatable, Sendable {
     public static let original = WebRTCStreamRecordingAudioEdit()
 }
 
+/// Hands a built composition back to the editing helpers from another isolation domain. Reading
+/// tracks and metadata off an `AVAsset` is safe concurrently; the type just is not `Sendable`, the
+/// same reason `WebRTCStreamRecordingPreview` below is unchecked.
+public struct WebRTCStreamRecordingLoadedAsset: @unchecked Sendable {
+    public let asset: AVAsset
+
+    public init(_ asset: AVAsset) {
+        self.asset = asset
+    }
+}
+
 public struct WebRTCStreamRecordingPreview: @unchecked Sendable {
     public let asset: AVAsset
     public let audioMix: AVAudioMix?
     public let videoComposition: AVVideoComposition?
     public let durationSeconds: Double
+    /// True when the clips are different sizes, which needs a video composition to letterbox them
+    /// into one frame whatever the crop and rotation say. An in-place frame update has to keep one
+    /// in that case even when the transforms go back to identity.
+    public let requiresVideoComposition: Bool
 
-    public init(asset: AVAsset, audioMix: AVAudioMix?, videoComposition: AVVideoComposition?, durationSeconds: Double) {
+    public init(asset: AVAsset, audioMix: AVAudioMix?, videoComposition: AVVideoComposition?, durationSeconds: Double, requiresVideoComposition: Bool = false) {
         self.asset = asset
         self.audioMix = audioMix
         self.videoComposition = videoComposition
         self.durationSeconds = durationSeconds
+        self.requiresVideoComposition = requiresVideoComposition
     }
 }
 
@@ -160,6 +176,7 @@ private struct WebRTCStreamRecordingLoadedSegment {
     let audioTrack: AVAssetTrack?
     let displaySize: CGSize
     let preferredTransform: CGAffineTransform
+    let nominalFrameRate: Float
 }
 
 private struct WebRTCStreamRecordingTimelineBuildResult {
@@ -167,6 +184,7 @@ private struct WebRTCStreamRecordingTimelineBuildResult {
     let duration: CMTime
     let firstRecording: WebRTCStreamRecording
     let renderSize: CGSize
+    let frameRate: Double
 }
 
 private final class WebRTCStreamRecordingExportSessionBox: @unchecked Sendable {
@@ -182,15 +200,53 @@ public extension WebRTCStreamRecordingLibrary {
         let normalizedRequest = try validate(request)
         let loadedSegments = try await loadSegments(normalizedRequest.segments)
         let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
-        let previewAudioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
+        let previewAudioMix = audioMix(track: build.composition.tracks(withMediaType: .audio).first, request: normalizedRequest, duration: build.duration)
         let previewVideoComposition = needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments)
-            ? try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
+            ? try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize, frameRate: build.frameRate)
             : nil
         return WebRTCStreamRecordingPreview(
             asset: build.composition,
             audioMix: previewAudioMix,
             videoComposition: previewVideoComposition,
-            durationSeconds: max(0, build.duration.seconds)
+            durationSeconds: max(0, build.duration.seconds),
+            requiresVideoComposition: hasMixedSourceSizes(loadedSegments)
+        )
+    }
+
+    /// Recomputes only the audio mix for a preview that is already playing. Changing a volume
+    /// slider does not change the timeline, and rebuilding the whole composition to hear it meant
+    /// reloading every source asset and restarting playback on each drag.
+    static func previewAudioMix(for loaded: WebRTCStreamRecordingLoadedAsset, request: WebRTCStreamRecordingEditRequest) async throws -> AVAudioMix? {
+        let asset = loaded.asset
+        let normalizedRequest = try validate(request)
+        let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
+        let duration = try await asset.load(.duration)
+        return audioMix(track: audioTrack, request: normalizedRequest, duration: duration)
+    }
+
+    /// The same idea for crop, rotation and flips: the composition is unchanged, only how its
+    /// frames are rendered. `requiresVideoComposition` comes from the preview that built the
+    /// composition - clips of different sizes need one even at identity transforms.
+    static func previewVideoComposition(
+        for loaded: WebRTCStreamRecordingLoadedAsset,
+        request: WebRTCStreamRecordingEditRequest,
+        requiresVideoComposition: Bool
+    ) async throws -> AVVideoComposition? {
+        let asset = loaded.asset
+        let normalizedRequest = try validate(request)
+        guard hasFrameTransform(normalizedRequest) || requiresVideoComposition else { return nil }
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else { return nil }
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+        let sourceSize = displaySize(naturalSize: naturalSize, preferredTransform: preferredTransform)
+        let frameRate = Double(nominalFrameRate).isFinite && nominalFrameRate >= 1 ? min(Double(nominalFrameRate), 240) : 60
+        return try await videoComposition(
+            for: asset,
+            request: normalizedRequest,
+            renderSize: renderSize(for: sourceSize, request: normalizedRequest),
+            frameRate: frameRate
         )
     }
 
@@ -205,14 +261,20 @@ public extension WebRTCStreamRecordingLibrary {
         do {
             let loadedSegments = try await loadSegments(normalizedRequest.segments)
             let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
-            let presetName = await compatiblePreset(for: normalizedRequest.exportPreset, asset: build.composition)
+            let usePassthrough = canPassthrough(normalizedRequest, loadedSegments: loadedSegments)
+                ? await isPresetCompatible(AVAssetExportPresetPassthrough, asset: build.composition)
+                : false
+            let presetName = usePassthrough
+                ? AVAssetExportPresetPassthrough
+                : await compatiblePreset(for: normalizedRequest.exportPreset, asset: build.composition)
             guard let exportSession = AVAssetExportSession(asset: build.composition, presetName: presetName) else { throw WebRTCStreamRecordingEditorError.unableToCreateExportSession }
             let outputFileType = try compatibleMP4FileType(for: exportSession)
             exportSession.shouldOptimizeForNetworkUse = false
+            exportSession.audioTimePitchAlgorithm = .spectral
             exportSession.timeRange = CMTimeRange(start: .zero, duration: build.duration)
-            exportSession.audioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
+            exportSession.audioMix = audioMix(track: build.composition.tracks(withMediaType: .audio).first, request: normalizedRequest, duration: build.duration)
             if needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments) {
-                exportSession.videoComposition = try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
+                exportSession.videoComposition = try await videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize, frameRate: build.frameRate)
             }
             await progressHandler?(0)
             try await runExportSession(exportSession, outputURL: outputURL, outputFileType: outputFileType, progressHandler: progressHandler)
@@ -278,10 +340,11 @@ public extension WebRTCStreamRecordingLibrary {
             let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
             let naturalSize = try await videoTrack.load(.naturalSize)
             let preferredTransform = try await videoTrack.load(.preferredTransform)
+            let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
             let displaySize = displaySize(naturalSize: naturalSize, preferredTransform: preferredTransform)
             guard segment.startSeconds.isFinite, segment.endSeconds.isFinite, segment.startSeconds >= 0, segment.endSeconds > segment.startSeconds else { throw WebRTCStreamRecordingEditorError.invalidTimeRange(url.lastPathComponent) }
             guard segment.endSeconds <= duration.seconds + 0.05 else { throw WebRTCStreamRecordingEditorError.invalidTimeRange(url.lastPathComponent) }
-            loadedSegments.append(WebRTCStreamRecordingLoadedSegment(segment: segment, asset: asset, duration: duration, videoTrack: videoTrack, audioTrack: audioTrack, displaySize: displaySize, preferredTransform: preferredTransform))
+            loadedSegments.append(WebRTCStreamRecordingLoadedSegment(segment: segment, asset: asset, duration: duration, videoTrack: videoTrack, audioTrack: audioTrack, displaySize: displaySize, preferredTransform: preferredTransform, nominalFrameRate: nominalFrameRate))
         }
         return loadedSegments
     }
@@ -311,10 +374,10 @@ public extension WebRTCStreamRecordingLibrary {
             cursor = CMTimeAdd(cursor, scaledDuration)
         }
         let renderSize = renderSize(for: firstSegment.displaySize, request: request)
-        return WebRTCStreamRecordingTimelineBuildResult(composition: composition, duration: cursor, firstRecording: firstSegment.segment.recording, renderSize: renderSize)
+        return WebRTCStreamRecordingTimelineBuildResult(composition: composition, duration: cursor, firstRecording: firstSegment.segment.recording, renderSize: renderSize, frameRate: renderFrameRate(for: loadedSegments))
     }
 
-    private static func videoComposition(for composition: AVMutableComposition, request: WebRTCStreamRecordingEditRequest, renderSize: CGSize) async throws -> AVMutableVideoComposition {
+    private static func videoComposition(for composition: AVAsset, request: WebRTCStreamRecordingEditRequest, renderSize: CGSize, frameRate: Double) async throws -> AVMutableVideoComposition {
         let videoComposition = try await AVMutableVideoComposition.videoComposition(
             with: composition,
             applyingCIFiltersWithHandler: { filterRequest in
@@ -341,12 +404,12 @@ public extension WebRTCStreamRecordingLibrary {
             }
         )
         videoComposition.renderSize = normalizedRenderSize(renderSize)
-        videoComposition.frameDuration = CMTime(value: 1, timescale: 60)
+        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(frameRate.rounded()))
         return videoComposition
     }
 
-    private static func audioMix(for composition: AVMutableComposition, request: WebRTCStreamRecordingEditRequest, duration: CMTime) -> AVAudioMix? {
-        guard let audioTrack = composition.tracks(withMediaType: .audio).first else { return nil }
+    private static func audioMix(track: AVAssetTrack?, request: WebRTCStreamRecordingEditRequest, duration: CMTime) -> AVAudioMix? {
+        guard let audioTrack = track else { return nil }
         let parameters = AVMutableAudioMixInputParameters(track: audioTrack)
         let volume = Float(request.audio.isMuted ? 0 : request.audio.volume)
         parameters.setVolume(volume, at: .zero)
@@ -368,7 +431,9 @@ public extension WebRTCStreamRecordingLibrary {
     private static func runExportSession(_ exportSession: AVAssetExportSession, outputURL: URL, outputFileType: AVFileType, progressHandler: (@MainActor @Sendable (Double) -> Void)?) async throws {
         let box = WebRTCStreamRecordingExportSessionBox(session: exportSession)
         let progressTask = Task.detached(priority: .utility) {
-            for await state in box.session.states(updateInterval: 0.15) {
+            // Half a second: the bar reads the same and each tick costs a main-actor hop plus a
+            // SwiftUI invalidation of the editor.
+            for await state in box.session.states(updateInterval: 0.5) {
                 switch state {
                 case .waiting, .exporting:
                     await progressHandler?(Double(box.session.progress))
@@ -392,9 +457,54 @@ public extension WebRTCStreamRecordingLibrary {
         }
     }
 
+    /// The fastest source rate in the timeline, so a 120fps capture is not silently halved and a
+    /// 30fps one is not padded with duplicates. `nominalFrameRate` is 0 on tracks that do not
+    /// declare one, which is why the fallback exists at all.
+    private static func renderFrameRate(for loadedSegments: [WebRTCStreamRecordingLoadedSegment]) -> Double {
+        let rates = loadedSegments.map { Double($0.nominalFrameRate) }.filter { $0.isFinite && $0 >= 1 }
+        guard let fastest = rates.max() else { return 60 }
+        return min(fastest, 240)
+    }
+
+    /// A trim-only edit does not need a re-encode: the same source, no frame transform, no speed
+    /// change and untouched audio can be copied through. Only at Highest, because the other two
+    /// presets exist precisely to re-encode smaller.
+    static func canPassthrough(_ request: WebRTCStreamRecordingEditRequest, segmentCount: Int, firstSegmentStartSeconds: Double) -> Bool {
+        guard request.exportPreset == .highestQuality else { return false }
+        guard request.crop == nil || request.crop?.isFullFrame == true else { return false }
+        guard request.rotation == .degrees0, !request.isFlippedHorizontally, !request.isFlippedVertically else { return false }
+        guard abs(request.playbackRate - 1) <= 0.0001 else { return false }
+        guard request.audio == .original else { return false }
+        // One segment, starting at the beginning of the source.
+        //
+        // A passthrough copy cannot begin on a non-sync sample: it starts at the preceding
+        // keyframe. The recorder writes one every two seconds, so trimming the head to 17.4s
+        // silently kept from 16s - a longer file than asked for, or an mp4 edit list that ffmpeg and
+        // most upload pipelines ignore. A mid-timeline cut was worse: the second section began
+        // mid-GOP and smeared. Trimming only the tail is the case that is genuinely a copy, and it
+        // is the common one.
+        guard segmentCount == 1 else { return false }
+        return firstSegmentStartSeconds <= 0.0001
+    }
+
+    private static func canPassthrough(_ request: WebRTCStreamRecordingEditRequest, loadedSegments: [WebRTCStreamRecordingLoadedSegment]) -> Bool {
+        canPassthrough(
+            request,
+            segmentCount: loadedSegments.count,
+            firstSegmentStartSeconds: loadedSegments.first?.segment.startSeconds ?? .greatestFiniteMagnitude
+        )
+    }
+
     private static func needsVideoComposition(_ request: WebRTCStreamRecordingEditRequest, loadedSegments: [WebRTCStreamRecordingLoadedSegment]) -> Bool {
+        hasFrameTransform(request) || hasMixedSourceSizes(loadedSegments)
+    }
+
+    private static func hasFrameTransform(_ request: WebRTCStreamRecordingEditRequest) -> Bool {
         if let crop = request.crop, !crop.isFullFrame { return true }
-        if request.rotation != .degrees0 || request.isFlippedHorizontally || request.isFlippedVertically { return true }
+        return request.rotation != .degrees0 || request.isFlippedHorizontally || request.isFlippedVertically
+    }
+
+    private static func hasMixedSourceSizes(_ loadedSegments: [WebRTCStreamRecordingLoadedSegment]) -> Bool {
         let firstSize = loadedSegments.first?.displaySize ?? .zero
         return loadedSegments.contains { abs($0.displaySize.width - firstSize.width) > 1 || abs($0.displaySize.height - firstSize.height) > 1 }
     }

@@ -302,6 +302,16 @@ struct SettingsContent: View {
     var focusedID: String?
 
     var body: some View {
+        if viewModel.selectedSettingsGroup.isEmptyStatePage {
+            page
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(SettingsSurfaceBackground())
+        } else {
+            scrollingPage
+        }
+    }
+
+    private var scrollingPage: some View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 22 * uiScale) {
@@ -351,7 +361,7 @@ struct SettingsContent: View {
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .experimental:
-            ExperimentalFeaturesSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            ExperimentalFeaturesSettingsPage(uiScale: uiScale)
         case .about:
             AboutSettingsGroup(viewModel: viewModel, uiScale: uiScale)
         }

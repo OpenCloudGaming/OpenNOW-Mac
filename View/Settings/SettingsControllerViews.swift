@@ -7,28 +7,67 @@ import AppKit
 import CryptoKit
 import SwiftUI
 
+/// Nothing is gated here at the moment. The recording editor was the last opt-in on this page and
+/// ships to everyone as a beta now; the page stays because this is where the next one lands, and
+/// because Steam Controller support still points people at it.
 struct ExperimentalFeaturesSettingsPage: View {
-    let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Recording", uiScale: uiScale) {
-                SettingsToggleRow(
-                    title: "Recording Editor Early Beta",
-                    subtitle: recordingEditorEarlyBetaEnabled ? "Trim, arrange, crop, audio, and export tools are unlocked in Recordings." : "Opt in before recording editor controls appear in Recordings.",
-                    isOn: recordingEditorEarlyBetaEnabled,
-                    uiScale: uiScale,
-                    action: setRecordingEditorEarlyBetaEnabled
-                )
+        VStack(spacing: 20 * uiScale) {
+            illustration
+            VStack(spacing: 10 * uiScale) {
+                Text("Nothing in flight")
+                    .font(.settingsNvidia(size: 22 * uiScale, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.94))
+                Text("New experimental features land here first, behind a switch, before they ship to everyone. Look in now and then to try one early.")
+                    .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.60))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420 * uiScale)
             }
+        }
+        // Centred in the whole pane. The page carries no header while it is empty, so this is the
+        // only thing on it and it should sit in the middle of what is there.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The tab's own flask, resting in the accent, with the bubbles that would be there if
+    /// something were brewing.
+    private var illustration: some View {
+        ZStack {
+            Circle()
+                .fill(OpenNOWDesign.accent.opacity(0.10))
+                .frame(width: 132 * uiScale, height: 132 * uiScale)
+            Circle()
+                .stroke(OpenNOWDesign.accent.opacity(0.22), lineWidth: 1)
+                .frame(width: 132 * uiScale, height: 132 * uiScale)
+            Image(systemName: "flask.fill")
+                .font(.settingsNvidia(size: 48 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+            bubbles
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var bubbles: some View {
+        ForEach(Array(Self.bubbleLayout.enumerated()), id: \.offset) { _, bubble in
+            Circle()
+                .fill(OpenNOWDesign.accent.opacity(bubble.opacity))
+                .frame(width: bubble.size * uiScale, height: bubble.size * uiScale)
+                .offset(x: bubble.x * uiScale, y: bubble.y * uiScale)
         }
     }
 
-    private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
-        recordingEditorEarlyBetaEnabled = enabled
-    }
+    /// Hugging the neck. The glyph is 48pt, so its top edge is about 24 points above centre;
+    /// anything much beyond that reads as three dots near a flask rather than as bubbles leaving it.
+    private static let bubbleLayout: [(x: CGFloat, y: CGFloat, size: CGFloat, opacity: Double)] = [
+        (10, -24, 7, 0.55),
+        (17, -32, 5, 0.38),
+        (7, -38, 3.5, 0.26),
+    ]
 }
 
 struct SteamControllerSettingsPage: View {

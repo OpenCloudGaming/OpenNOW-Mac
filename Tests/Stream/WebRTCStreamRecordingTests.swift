@@ -4,18 +4,6 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-private actor StreamRecordingStatusRecorder {
-    private(set) var values: [WebRTCStreamRecordingStatus] = []
-
-    func append(_ status: WebRTCStreamRecordingStatus) {
-        values.append(status)
-    }
-
-    func terminalStatus() -> WebRTCStreamRecordingStatus? {
-        values.first { $0.isTerminal }
-    }
-}
-
 /// Serialized: every test here drives a real `AVAssetWriter`. Run in parallel they put five
 /// concurrent video encoders on a CI runner with three cores and no hardware encoder, and the
 /// writer inputs then report not-ready for long enough to trip the first-frame watchdog.
@@ -46,7 +34,7 @@ struct WebRTCStreamRecordingTests {
         let feedDeadline = ContinuousClock.now + .seconds(15)
         while ContinuousClock.now < feedDeadline {
             if await statuses.terminalStatus() != nil { break }
-            guard let pixelBuffer = Self.makeBGRAFrame(width: 64, height: 64, frameIndex: frameIndex) else {
+            guard let pixelBuffer = RecordingTestFixtures.makeBGRAFrame(width: 64, height: 64, frameIndex: frameIndex) else {
                 Issue.record("Unable to create test pixel buffer")
                 return
             }
@@ -120,7 +108,7 @@ struct WebRTCStreamRecordingTests {
 
     @Test("exports a trimmed recording as a new clip")
     func exportsTrimmedRecordingAsNewClip() async throws {
-        let recording = try await Self.makeRecording(title: "Trim Source Regression", width: 96, height: 64, frames: 18)
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Trim Source Regression", width: 96, height: 64, frames: 18)
         defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
         let endSeconds = max(0.12, recording.durationSeconds * 0.55)
         let request = WebRTCStreamRecordingEditRequest(
@@ -140,9 +128,99 @@ struct WebRTCStreamRecordingTests {
         #expect(edited.durationSeconds < recording.durationSeconds)
     }
 
+    /// Highest on a trim-only edit takes the passthrough path - no re-encode - so this is the guard
+    /// that the copy still lands as a valid, shorter clip at the source resolution.
+    @Test("exports a trim-only edit without re-encoding it")
+    func exportsTrimOnlyEditWithoutReEncoding() async throws {
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Passthrough Source Regression", width: 96, height: 64, frames: 18)
+        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        let endSeconds = max(0.12, recording.durationSeconds * 0.6)
+        let request = WebRTCStreamRecordingEditRequest(
+            title: "Passthrough Export Regression",
+            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: endSeconds)],
+            exportPreset: .highestQuality
+        )
+
+        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+
+        #expect(edited.width == recording.width)
+        #expect(edited.height == recording.height)
+        #expect(edited.durationSeconds > 0)
+        #expect(edited.durationSeconds < recording.durationSeconds)
+        #expect(edited.fileSizeBytes > 0)
+        #expect(edited.videoBitrateMbps == recording.videoBitrateMbps)
+    }
+
+    /// The rule itself, not its effect. The exported file cannot distinguish the two paths -
+    /// `.highestQuality` renders at source resolution either way, and the recorded bitrate comes
+    /// from the preset, not from how the export ran - so the branch that protects against a copy
+    /// starting on the wrong keyframe is pinned here directly.
+    @Test("passthrough is allowed only for a single segment starting at the head")
+    func passthroughRuleRefusesAnythingThatCannotBeACopy() {
+        let recording = WebRTCStreamRecording(
+            id: UUID(), title: "Rule", applicationID: "com.example.game", createdAt: Date(),
+            durationSeconds: 30, width: 1920, height: 1080, videoBitrateMbps: 40, audioBitrateKbps: 160,
+            enhancedVideo: false, fileName: "clip.mp4", fileSizeBytes: 1, storageDirectoryPath: NSTemporaryDirectory()
+        )
+        func request(
+            crop: WebRTCStreamRecordingCrop? = nil,
+            rotation: WebRTCStreamRecordingRotation = .degrees0,
+            rate: Double = 1,
+            audio: WebRTCStreamRecordingAudioEdit = .original,
+            preset: WebRTCStreamRecordingExportPreset = .highestQuality
+        ) -> WebRTCStreamRecordingEditRequest {
+            WebRTCStreamRecordingEditRequest(
+                title: "Rule",
+                segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: 30)],
+                crop: crop, rotation: rotation, playbackRate: rate, audio: audio, exportPreset: preset
+            )
+        }
+        func allowed(_ request: WebRTCStreamRecordingEditRequest, segments: Int = 1, start: Double = 0) -> Bool {
+            WebRTCStreamRecordingLibrary.canPassthrough(request, segmentCount: segments, firstSegmentStartSeconds: start)
+        }
+
+        #expect(allowed(request()), "a tail trim of one segment is a genuine copy")
+
+        // The keyframe rule: a copy cannot begin on a non-sync sample, and the recorder writes one
+        // every two seconds, so a head trim would silently keep from the preceding keyframe.
+        #expect(allowed(request(), start: 17.4) == false)
+        #expect(allowed(request(), segments: 2) == false, "a second section would begin mid-GOP")
+
+        // Anything that changes the pixels or the samples has to be re-encoded.
+        #expect(allowed(request(crop: WebRTCStreamRecordingCrop(x: 0.1, y: 0.1, width: 0.5, height: 0.5))) == false)
+        #expect(allowed(request(rotation: .degrees90)) == false)
+        #expect(allowed(request(rate: 1.5)) == false)
+        #expect(allowed(request(audio: WebRTCStreamRecordingAudioEdit(volume: 0.5))) == false)
+        #expect(allowed(request(audio: WebRTCStreamRecordingAudioEdit(isMuted: true))) == false)
+        #expect(allowed(request(preset: .balanced)) == false, "the smaller presets exist to re-encode")
+        #expect(allowed(request(preset: .compact)) == false)
+    }
+
+    /// A passthrough copy starts at the preceding keyframe, so a head trim would land up to a GOP
+    /// early. The exporter must re-encode instead of quietly returning different footage.
+    @Test("a head trim is re-encoded rather than copied to the wrong keyframe")
+    func headTrimIsReEncodedNotSnappedToAKeyframe() async throws {
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Head Trim Regression", width: 96, height: 64, frames: 24)
+        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        let start = recording.durationSeconds * 0.4
+        let request = WebRTCStreamRecordingEditRequest(
+            title: "Head Trim Export Regression",
+            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: start, endSeconds: recording.durationSeconds)],
+            exportPreset: .highestQuality
+        )
+
+        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+
+        let expected = recording.durationSeconds - start
+        #expect(edited.durationSeconds > 0)
+        #expect(abs(edited.durationSeconds - expected) < 0.25, "asked for \(expected)s, got \(edited.durationSeconds)s")
+    }
+
     @Test("exports a recording with a middle cut removed")
     func exportsRecordingWithMiddleCutRemoved() async throws {
-        let recording = try await Self.makeRecording(title: "Cut Source Regression", width: 96, height: 64, frames: 24)
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Cut Source Regression", width: 96, height: 64, frames: 24)
         defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
         let firstEnd = max(0.1, recording.durationSeconds * 0.28)
         let secondStart = min(recording.durationSeconds - 0.08, recording.durationSeconds * 0.62)
@@ -165,8 +243,8 @@ struct WebRTCStreamRecordingTests {
 
     @Test("exports joined recordings")
     func exportsJoinedRecordings() async throws {
-        let first = try await Self.makeRecording(title: "Join Source A Regression", width: 80, height: 64, frames: 12)
-        let second = try await Self.makeRecording(title: "Join Source B Regression", width: 80, height: 64, frames: 12)
+        let first = try await RecordingTestFixtures.makeRecording(title: "Join Source A Regression", width: 80, height: 64, frames: 12)
+        let second = try await RecordingTestFixtures.makeRecording(title: "Join Source B Regression", width: 80, height: 64, frames: 12)
         defer {
             try? WebRTCStreamRecordingLibrary.delete(first)
             try? WebRTCStreamRecordingLibrary.delete(second)
@@ -190,7 +268,7 @@ struct WebRTCStreamRecordingTests {
 
     @Test("builds an edited preview composition")
     func buildsEditedPreviewComposition() async throws {
-        let recording = try await Self.makeRecording(title: "Preview Source Regression", width: 80, height: 64, frames: 18)
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Preview Source Regression", width: 80, height: 64, frames: 18)
         defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
         let split = max(0.08, recording.durationSeconds * 0.45)
         let request = WebRTCStreamRecordingEditRequest(
@@ -212,7 +290,7 @@ struct WebRTCStreamRecordingTests {
 
     @Test("exports crop rotate flip speed and audio edits")
     func exportsTransformAndAudioEdits() async throws {
-        let recording = try await Self.makeRecording(title: "Transform Source Regression", width: 128, height: 80, frames: 20)
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Transform Source Regression", width: 128, height: 80, frames: 20)
         defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
         let request = WebRTCStreamRecordingEditRequest(
             title: "Transform Export Regression",
@@ -237,7 +315,7 @@ struct WebRTCStreamRecordingTests {
 
     @Test("failed exports clean partial files")
     func failedExportsCleanPartialFiles() async throws {
-        let recording = try await Self.makeRecording(title: "Cleanup Source Regression", width: 64, height: 64, frames: 10)
+        let recording = try await RecordingTestFixtures.makeRecording(title: "Cleanup Source Regression", width: 64, height: 64, frames: 10)
         defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
         let title = "Cleanup Export Regression"
         let directory = WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: title)
@@ -283,14 +361,14 @@ struct WebRTCStreamRecordingTests {
         let feedDeadline = ContinuousClock.now + .seconds(15)
         while ContinuousClock.now < feedDeadline {
             if await statuses.terminalStatus() != nil { break }
-            guard let pixelBuffer = Self.makeNV12Frame(width: 64, height: 64, frameIndex: frameIndex) else {
+            guard let pixelBuffer = RecordingTestFixtures.makeNV12Frame(width: 64, height: 64, frameIndex: frameIndex) else {
                 Issue.record("Unable to create test NV12 pixel buffer")
                 return
             }
             recorder.appendNativePixelBuffer(pixelBuffer)
             // Interleaved stereo float, the shape the NVST Opus decoder produces when audio runs on
             // its own socket rather than through libwebrtc's audio device.
-            recorder.appendGameAudioSamples(Self.makeSineSamples(frameCount: 480, frameIndex: frameIndex), sampleRate: 48_000, channels: 2)
+            recorder.appendGameAudioSamples(RecordingTestFixtures.makeSineSamples(frameCount: 480, frameIndex: frameIndex), sampleRate: 48_000, channels: 2)
             frameIndex += 1
             if sawRecording { framesAfterStart += 1 }
             if !sawRecording {
@@ -330,143 +408,4 @@ struct WebRTCStreamRecordingTests {
         #expect(try await asset.loadTracks(withMediaType: .audio).first != nil)
     }
 
-    private static func makeSineSamples(frameCount: Int, frameIndex: Int) -> [Float] {
-        var samples = [Float]()
-        samples.reserveCapacity(frameCount * 2)
-        for frame in 0..<frameCount {
-            let phase = Float(frameIndex * frameCount + frame) * 0.01
-            let value = sin(phase) * 0.25
-            samples.append(value)
-            samples.append(value)
-        }
-        return samples
-    }
-
-    private static func makeNV12Frame(width: Int, height: Int, frameIndex: Int) -> CVPixelBuffer? {
-        let attributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-        ]
-        var pixelBuffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
-        guard let luma = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0),
-              let chroma = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1) else { return nil }
-        let lumaRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
-        let chromaRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
-        let lumaPixels = luma.assumingMemoryBound(to: UInt8.self)
-        let chromaPixels = chroma.assumingMemoryBound(to: UInt8.self)
-        for y in 0..<height {
-            for x in 0..<width {
-                lumaPixels[y * lumaRow + x] = UInt8((x + y + frameIndex * 13) % 256)
-            }
-        }
-        for y in 0..<(height / 2) {
-            for x in 0..<(width / 2) {
-                chromaPixels[y * chromaRow + x * 2] = UInt8((x + frameIndex * 7) % 256)
-                chromaPixels[y * chromaRow + x * 2 + 1] = UInt8((y + frameIndex * 5) % 256)
-            }
-        }
-        return pixelBuffer
-    }
-
-    private static func makeBGRAFrame(width: Int, height: Int, frameIndex: Int) -> CVPixelBuffer? {
-        let attributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
-        ]
-        var pixelBuffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let pixels = baseAddress.assumingMemoryBound(to: UInt8.self)
-        for y in 0..<height {
-            for x in 0..<width {
-                let offset = y * bytesPerRow + x * 4
-                pixels[offset] = UInt8((x + frameIndex * 11) % 256)
-                pixels[offset + 1] = UInt8((y + frameIndex * 17) % 256)
-                pixels[offset + 2] = UInt8((x + y + frameIndex * 23) % 256)
-                pixels[offset + 3] = 255
-            }
-        }
-        return pixelBuffer
-    }
-
-    private static func makeRecording(title: String, width: Int, height: Int, frames: Int) async throws -> WebRTCStreamRecording {
-        let recorder = WebRTCStreamRecorder()
-        let statuses = StreamRecordingStatusRecorder()
-        recorder.onStatusChanged = { status in
-            Task { await statuses.append(status) }
-        }
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
-            title: title,
-            applicationID: "100",
-            width: width,
-            height: height,
-            fps: 30,
-            videoBitrateMbps: 1,
-            audioBitrateKbps: 128,
-            enhancedVideoEnabled: true
-        ))
-
-        // Feed frames until the writer accepts one; on loaded CI runners the asset
-        // writer input reports not-ready during spin-up and a fixed burst would all
-        // be dropped, tripping the first-frame timeout despite frames flowing.
-        var frameIndex = 0
-        var sawRecording = false
-        var framesAfterStart = 0
-        let feedDeadline = ContinuousClock.now + .seconds(15)
-        while ContinuousClock.now < feedDeadline {
-            if await statuses.terminalStatus() != nil { break }
-            if let pixelBuffer = makeBGRAFrame(width: width, height: height, frameIndex: frameIndex) {
-                recorder.appendEnhancedPixelBuffer(pixelBuffer)
-                frameIndex += 1
-                if sawRecording { framesAfterStart += 1 }
-            } else {
-                throw WebRTCStreamRecordingTestError.unableToCreatePixelBuffer
-            }
-            if !sawRecording {
-                sawRecording = await statuses.values.contains { status in
-                    if case .recording = status { return true }
-                    return false
-                }
-            }
-            if sawRecording && framesAfterStart >= frames { break }
-            try await Task.sleep(for: .milliseconds(34))
-        }
-        recorder.stop()
-        var terminalStatus: WebRTCStreamRecordingStatus?
-        for _ in 0..<60 {
-            terminalStatus = await statuses.terminalStatus()
-            if terminalStatus != nil { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        guard case .finished(let recording) = terminalStatus else { throw WebRTCStreamRecordingTestError.recordingFailed(String(describing: terminalStatus)) }
-        return recording
-    }
-}
-
-private enum WebRTCStreamRecordingTestError: LocalizedError {
-    case unableToCreatePixelBuffer
-    case recordingFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .unableToCreatePixelBuffer:
-            return "Unable to create test pixel buffer."
-        case .recordingFailed(let status):
-            return "Recording failed with status \(status)."
-        }
-    }
 }

@@ -130,6 +130,13 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         }
     }
 
+    /// True for a page that is nothing but an empty state. It names itself, so the standard
+    /// page header above it would be a second, competing title, and there is nothing to scroll.
+    /// Remove the case from here the moment the page has content again.
+    var isEmptyStatePage: Bool {
+        self == .experimental
+    }
+
     var icon: String {
         switch self {
         case .account: return "person.crop.circle.fill"
