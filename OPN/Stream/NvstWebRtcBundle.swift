@@ -28,6 +28,18 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         public let usesOfficialIceCredentials: Bool
     }
 
+    /// What the microphone send section needs at `prepare()` time. NVST has no renegotiation, so
+    /// the decision to carry mic audio is made once, before the answer is created.
+    public struct MicrophoneSetup: Equatable, Sendable {
+        public let volume: Double
+        public let initiallyEnabled: Bool
+
+        public init(volume: Double, initiallyEnabled: Bool) {
+            self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
+            self.initiallyEnabled = initiallyEnabled
+        }
+    }
+
     public enum BundleError: LocalizedError, Equatable, Sendable {
         case factoryUnavailable
         case missingRemoteFingerprint
@@ -36,6 +48,7 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         case localDescriptionFailed(String)
         case noHostCandidate
         case missingLocalFingerprint
+        case microphoneNotArmed
 
         public var errorDescription: String? {
             switch self {
@@ -46,6 +59,7 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
             case .localDescriptionFailed(let reason): "The NVST bundle could not apply its answer: \(reason)"
             case .noHostCandidate: "The NVST bundle gathered no host candidate, so no port can be announced."
             case .missingLocalFingerprint: "The NVST bundle answer carried no local DTLS fingerprint."
+            case .microphoneNotArmed: "The NVST bundle could not arm the microphone sender before the answer."
             }
         }
     }
@@ -229,18 +243,93 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     /// Fires when `control_channel_partially_reliable` opens, so QoS feedback can start.
     public var onPartiallyReliableControlOpen: (@Sendable () -> Void)?
 
+    // MARK: - Microphone
+
+    /// The mic sender chain, created at `prepare()` time when a `MicrophoneSetup` is supplied so
+    /// the answer carries the sendonly mid-2 section. All guarded by `lock`.
+    var microphoneSource: RTCAudioSource?
+    var microphoneTrack: RTCAudioTrack?
+    var microphoneSender: RTCRtpSender?
+    var microphoneNegotiated = false
+    /// The SSRC libwebrtc assigned to the mic sender; ANNOUNCE advertises it as
+    /// `x-nv-mic.micSsrcConfig.senderSsrc` since NVST has no SDP transport to the seat.
+    var microphoneSenderSsrc: UInt32?
+    /// The CoreAudio device gate: while false the device hands libwebrtc silence, so the mic
+    /// hardware stays idle even though the negotiated track exists.
+    var microphoneCaptureEnabled = false
+    /// Mic chat bytes sent, sampled from libwebrtc's `outbound-rtp` audio counters; feeds the
+    /// `0x208` report's `micChatTotalSentDataBytes` field.
+    var microphoneSentDataBytes: UInt64 = 0
+    /// RTP packets the *seat* reports receiving on the mic stream, from its RTCP Receiver
+    /// Reports (`remote-inbound-rtp`). Separates "we send but the seat never binds a receiver"
+    /// from "the seat receives and the guest-side routing is the problem".
+    var microphoneSeatReportedPackets: UInt64 = 0
+    /// What libwebrtc actually packetizes on the mic sender (`outbound-rtp.codecId` resolved to
+    /// its `codec` entry), e.g. `audio/red:63` or `audio/opus:111`. Proves the RED A/B took.
+    var microphoneOutboundCodec: String?
+
+    /// Captured mic level (RMS, 0…1) on the CoreAudio capture thread, throttled by the device.
+    public var onMicrophoneLevel: (@Sendable (Double) -> Void)?
+    /// Raw captured mic PCM (Int16 interleaved) on the CoreAudio capture thread, mirroring
+    /// `onGameAudioFrame`. Optional tees only — the send path is libwebrtc's own.
+    public var onMicrophoneAudioFrame: (@Sendable (UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
+
+    /// What the transport needs to report up the negotiation chain: whether the answer really
+    /// carries the mic send section, and the SSRC that RTP will arrive with.
+    public var microphoneNegotiation: (negotiated: Bool, senderSsrc: UInt32?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (microphoneNegotiated, microphoneSenderSsrc)
+    }
+
+    /// Mic chat bytes uploaded so far, for the `0x208` RTP statistics report.
+    public var microphoneSentBytes: UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return microphoneSentDataBytes
+    }
+
+    /// Flips both halves of the mic path: the device gate (real PCM vs silence into libwebrtc)
+    /// and the track itself. Push-to-talk and voice-activity drive this per key press; the HUD
+    /// toggle drives it per click.
+    public func setMicrophoneCaptureEnabled(_ enabled: Bool) {
+        lock.lock()
+        microphoneCaptureEnabled = enabled
+        microphoneTrack?.isEnabled = enabled
+        lock.unlock()
+    }
+
+    /// Gain on the mic source, 0…1. Applied by libwebrtc ahead of encoding, the same lever the
+    /// WebRTC transport uses.
+    public func setMicrophoneVolume(_ volume: Double) {
+        lock.lock()
+        let source = microphoneSource
+        lock.unlock()
+        source?.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
+    }
+
 }
 
 /// The bundle owns the CoreAudio RTC device so decoded game audio crosses into our code, which is
-/// what a recording needs. Microphone capture is not implemented on this transport
-/// (`NvstBifrostFreeTransport.setMicrophoneEnabled`), so the capture side stays inert and libwebrtc
-/// keeps receiving the silence the device already hands it.
+/// what a recording needs. The capture side is the microphone send path: while
+/// `microphoneCaptureEnabled` is false the device hands libwebrtc silence, and flipping it lets
+/// real PCM flow to the negotiated mic sender.
 extension NvstWebRtcBundle: OPNCoreAudioRTCDeviceOwner {
     func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
         onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels)
     }
 
-    func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {}
-    func handleCapturedMicrophoneLevel(_ level: Double) {}
-    func isMicrophoneCaptureEnabled() -> Bool { false }
+    func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
+        onMicrophoneAudioFrame?(audioBufferList, frameCount, sampleRate, channels)
+    }
+
+    func handleCapturedMicrophoneLevel(_ level: Double) {
+        onMicrophoneLevel?(level)
+    }
+
+    func isMicrophoneCaptureEnabled() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return microphoneCaptureEnabled
+    }
 }

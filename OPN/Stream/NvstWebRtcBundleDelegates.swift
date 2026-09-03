@@ -216,6 +216,8 @@ extension NvstWebRtcBundle {
     /// being produced.
     public struct AudioReception: Sendable {
         public var packets: UInt64 = 0
+        /// The remote SSRC libwebrtc bound the audio receiver to, once a packet arrived.
+        public var ssrc: UInt32?
         public var bytes: UInt64 = 0
         public var samples: UInt64 = 0
         public var concealed: UInt64 = 0
@@ -243,6 +245,7 @@ extension NvstWebRtcBundle {
             reception.samples += number("totalSamplesReceived")
             reception.concealed += number("concealedSamples")
             reception.discarded += number("packetsDiscarded")
+            if let ssrc = statistics.values["ssrc"] as? NSNumber { reception.ssrc = ssrc.uint32Value }
         }
         return sawAudio ? reception : nil
     }

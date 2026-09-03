@@ -20,19 +20,31 @@ public struct NvstBundleReservation: Equatable, Sendable {
     public let iceCredentials: NvstRtspIceCredentials?
     /// SHA-256 colon hex of the local DTLS certificate that owns the bundle socket.
     public let dtlsFingerprint: String?
+    /// True only when the bundle's answer really carries the microphone send section. ANNOUNCE's
+    /// `rtcMicOnNativeBundle` must mirror this — announcing mic on a bundle that does not send it
+    /// repeats the SCTP-reset lesson of the audio flag.
+    public var microphoneNegotiated: Bool
+    /// The SSRC libwebrtc assigned to the mic sender, announced as
+    /// `x-nv-mic.micSsrcConfig.senderSsrc` so the seat can map the arriving RTP to the mic stream
+    /// without ever seeing the SDP that names it.
+    public var microphoneSenderSsrc: UInt32?
 
     public init(bundlePort: UInt16,
                 mjolnirPort: UInt16,
                 audioPort: UInt16? = nil,
                 localAddress: String? = nil,
                 iceCredentials: NvstRtspIceCredentials? = nil,
-                dtlsFingerprint: String? = nil) {
+                dtlsFingerprint: String? = nil,
+                microphoneNegotiated: Bool = false,
+                microphoneSenderSsrc: UInt32? = nil) {
         self.bundlePort = bundlePort
         self.mjolnirPort = mjolnirPort
         self.audioPort = audioPort
         self.localAddress = localAddress
         self.iceCredentials = iceCredentials
         self.dtlsFingerprint = dtlsFingerprint
+        self.microphoneNegotiated = microphoneNegotiated
+        self.microphoneSenderSsrc = microphoneSenderSsrc
     }
 }
 
@@ -44,11 +56,15 @@ public protocol NvstBundleReserving: Sendable {
     /// bundle that needs the seat's fingerprint and ping-derived ufrag to come up (the real
     /// ICE/DTLS bundle does) reports its actual port and fingerprint here; returning nil keeps
     /// the values from `reserveBundle()`.
-    func bundleIdentity(for handoff: NVSTVideoHandoff) async -> NvstBundleReservation?
+    ///
+    /// `microphoneOfferedOnBundle` is the seat's DESCRIBE verdict on bundle mic carriage: the
+    /// bundle builds its mic send section only under that offer, because announcing bundle mic
+    /// to a legacy seat makes it withhold the game audio.
+    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation?
 }
 
 public extension NvstBundleReserving {
-    func bundleIdentity(for handoff: NVSTVideoHandoff) async -> NvstBundleReservation? { nil }
+    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? { nil }
 }
 
 public enum NvstRtspNegotiationError: LocalizedError, Equatable, Sendable {

@@ -251,6 +251,12 @@ final class CatalogViewModel {
     var unavailableSettingsRegionUrl = ""
     var isRefreshingSettingsRegions = false
     var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
+    /// Live state of the Settings microphone test; the probe itself is the CoreAudio tap.
+    var microphoneTestActive = false
+    var microphoneTestLevel = 0.0
+    var microphoneTestMessage: String?
+    var microphoneLevelProbe: OPNMicrophoneLevelProbe?
+    var microphoneTestAutoStop: Task<Void, Never>?
     var previousGameSession = CatalogPreviousGameSession.load()
     var playtimeStatistics = CatalogPlaytimeStatistics.empty
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable

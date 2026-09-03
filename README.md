@@ -97,7 +97,8 @@ WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - 
 - **OpenNOW's own implementation, no vendor runtime** - an RTSPS-over-WSS control channel (OPTIONS → DESCRIBE → SETUP → ANNOUNCE → PLAY), a client-generated SRTP master key, and a video handoff derived from the seat's answers the same way the native client derives it.
 - **Native video and input** - Mjolnir video access units (H.264, HEVC, and AV1) decode through VideoToolbox, while keyboard, mouse, text, and gamepad input plus audio ride the SCTP data channels of the seat's ICE/DTLS bundle.
 - **Live native telemetry** - latency, jitter, bitrate, packet and frame loss in the in-stream stats HUD, plus a network governor that adapts bitrate to path conditions.
-- **Scope limits** - microphone capture is accepted but not yet enabled on this path, and session recording is not yet available - use WebRTC if you want ⌘R captures.
+- **Microphone on NVST** - when the seat offers bundle mic in DESCRIBE (every current seat does), the bundle carries a send-only Opus mic section exactly like the official client, driven by push-to-talk / voice-activity / mute / the volume slider. Verified live on 2026-09-03: game audio and voice chat together on a fresh session. Seats on NVST's legacy RTSP mic transport are not supported yet and report that when the mic is enabled. Settings → Audio has a local microphone test either way.
+- **Session recording** - ⌘R captures decode frames and game audio straight off the native pipeline.
 
 Enable it in **Settings → Stream Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
 

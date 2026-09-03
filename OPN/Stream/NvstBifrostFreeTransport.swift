@@ -18,9 +18,12 @@ import Foundation
 /// Input, audio and the RTCP feedback plane ride the ICE/DTLS bundle's SCTP data channels, which
 /// this transport brings up through `NvstWebRtcBundle` when the seat negotiates the official
 /// cloud path; the bare Mjolnir socket keeps carrying video and its own SRTCP reports on the
-/// legacy shape. Microphone capture is the remaining scope limit: its configuration is accepted
-/// (the host applies it before `start`, so throwing there would kill every launch) but enabling
-/// capture is not implemented.
+/// legacy shape. Microphone carriage is server-driven: when the seat offers
+/// `general.rtcMicOnNativeBundle:1` in DESCRIBE, the bundle gains a sendonly `m=audio` mic
+/// section (the vendor's own mic-on-bundle shape) negotiated at bring-up from the configuration
+/// the host applies before `start`, announced by echoing the offer plus the sender SSRC
+/// (`x-nv-mic.micSsrcConfig.senderSsrc`) since NVST has no SDP transport for the seat to learn
+/// it from. Production seats run the legacy RTSP mic transport instead — not yet recovered.
 /// This is the only transport. `OPN_NVST_BIFROST_FREE` and the
 /// `OPNNVSTBifrostFreeTransportEnabled` default selected it back when the vendored NVIDIA
 /// frameworks still shipped alongside it; `vendor/gfn-runtime/` is gone, so there is nothing left to
@@ -106,6 +109,18 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         return UInt32(1_000_000 / fps)
     }
     var remoteAudioTrackCount = 0
+    /// The microphone configuration the host applies *before* `start`. `bringUpBundle` reads it
+    /// to decide whether the bundle negotiates the mic send section; it must never throw (the
+    /// launch dies right after "Launch plan ready" if it does).
+    var microphoneConfiguration: NativeNVSTMicrophoneConfiguration?
+    /// Whether the bundle's answer really carries the mic send section. `setMicrophoneEnabled`
+    /// and the teardown path key off this rather than the preference, so the runtime state can
+    /// never claim a channel the negotiation did not create.
+    var microphoneNegotiated = false
+    var microphoneSenderSsrc: UInt32?
+    /// The seat's DESCRIBE verdict on bundle mic carriage, stored by `bringUpBundle`. Drives
+    /// the honest failure text of `setMicrophoneEnabled` on legacy seats.
+    var microphoneOfferedOnBundle = false
     /// The frame rate the seat agreed to, read out of the allocation's negotiated profile. The
     /// profile is configurable end to end — the session request carries `framesPerSecond` — so
     /// nothing here may assume 60.
@@ -149,6 +164,25 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// without a negotiated bundle to send real state through.
     func seedGamepadSequenceForTesting(pad: UInt16, sequence: UInt16) {
         gamepadSequences[pad] = sequence
+    }
+
+    /// Test seam: puts the mic toggle in the "bundle is up" state without a real negotiation.
+    /// The bundle is never prepared — it only exists so enable/disable reach the
+    /// `microphoneNegotiated` gate instead of the earlier `notRunning` one.
+    func seedMicrophoneBundleForTesting(negotiated: Bool) {
+        if bundle == nil {
+            bundle = NvstWebRtcBundle(
+                handoff: NVSTVideoHandoff(
+                    clientUDPPort: 0, videoPeerIP: "10.20.30.40", videoPeerPort: 5004,
+                    srtpProfile: .aeadAes256Gcm8,
+                    srtpAESKey: Data(repeating: 0xab, count: 32), srtpSalt: Data(repeating: 0x9e, count: 12),
+                    codec: .h264, rtpPayloadType: 96, rtpSSRC: 0,
+                    reorderWindowPackets: 32, maxAccessUnitBytes: 1024, timeoutMilliseconds: 5000,
+                    pingVersion: 6, pingPayload: "PING", mjolnirUDPPort: 0,
+                    iceCredentials: nil),
+                preferredLocalAddress: nil)
+        }
+        microphoneNegotiated = negotiated
     }
     var didActivateInput = false
     var qosReportsSent = 0
@@ -256,8 +290,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         terminationStream = stream.stream
         terminationContinuation = stream.continuation
 
-        let reserver = NvstLocalBundleReserver(bundleProvider: { [weak self] handoff in
-            await self?.bringUpBundle(handoff: handoff)
+        let reserver = NvstLocalBundleReserver(bundleProvider: { [weak self] handoff, microphoneOfferedOnBundle in
+            await self?.bringUpBundle(handoff: handoff, microphoneOfferedOnBundle: microphoneOfferedOnBundle)
         })
         self.reserver = reserver
         let logger = self.logger
@@ -284,31 +318,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         let established = NativeNVSTTransportConnection(session: allocation.session, runtimeStatus: status)
         connection = established
         return established
-    }
-
-    /// What the RTSP negotiator is asked for: the resolved profile plus the client-side switches.
-    func negotiationInput(sessionID: String, endpoints: [String], profile: StreamProfile) -> NvstRtspNegotiationInput {
-        NvstRtspNegotiationInput(
-            sessionID: sessionID,
-            rtspsEndpoints: endpoints,
-            resolution: profile.resolution,
-            fps: profile.fps,
-            codec: profile.codec,
-            bitrateKbps: profile.bitrateKbps,
-            maximumBitrateKbps: profile.maximumBitrateKbps,
-            prefilterMode: configuredPrefilterMode,
-            prefilterSharpness: configuredPrefilterSharpness,
-            prefilterDenoise: configuredPrefilterDenoise,
-            prefilterModel: configuredPrefilterModel,
-            timeout: controlTimeout,
-            // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
-            // keeps feedback as SRTCP on the Mjolnir socket.
-            rtcpOnSctp: false,
-            forcesLegacyPath: Self.forcesLegacyPath,
-            disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
-            announcesExtendedSettings: Self.announcesExtendedSettings,
-            echoesOfferedAttributes: Self.echoesOfferedAttributes
-        )
     }
 
     /// Receive/decode counters are otherwise only reported in the end-of-stream report, which is
@@ -353,7 +362,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                        peakIntervalMbps > 24 ? ">" : "<="))
         let audio = await bundle?.audioReception()
         logger?("NVST audio tracks=\(bundle?.remoteAudioTrackCount ?? 0) pktIn=\(audio?.packets ?? 0) bytesIn=\(audio?.bytes ?? 0)"
-                + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0)")
+                + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0) ssrc=\(audio?.ssrc.map(String.init) ?? "-")")
         let video = videoPipeline?.snapshot ?? NvstVideoPipeline.Counters()
         logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
         // Which pipeline stage a latency spike lives in. `peak*` are per-stage session maxima, so a
@@ -556,6 +565,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         videoPipeline = nil
         bundle?.close()
         bundle = nil
+        microphoneNegotiated = false
+        microphoneSenderSsrc = nil
+        microphoneOfferedOnBundle = false
         bundleProbe?.stop()
         bundleProbe = nil
         mediaFrameContinuation?.finish()
@@ -576,4 +588,33 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         terminationStream = nil
     }
 
+}
+
+// Split out so the actor's body stays under the type-body budget; same file, so the actor's
+// `private` configuration members stay reachable.
+extension NvstBifrostFreeTransport {
+    /// What the RTSP negotiator is asked for: the resolved profile plus the client-side switches.
+    func negotiationInput(sessionID: String, endpoints: [String], profile: StreamProfile) -> NvstRtspNegotiationInput {
+        NvstRtspNegotiationInput(
+            sessionID: sessionID,
+            rtspsEndpoints: endpoints,
+            resolution: profile.resolution,
+            fps: profile.fps,
+            codec: profile.codec,
+            bitrateKbps: profile.bitrateKbps,
+            maximumBitrateKbps: profile.maximumBitrateKbps,
+            prefilterMode: configuredPrefilterMode,
+            prefilterSharpness: configuredPrefilterSharpness,
+            prefilterDenoise: configuredPrefilterDenoise,
+            prefilterModel: configuredPrefilterModel,
+            timeout: controlTimeout,
+            // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
+            // keeps feedback as SRTCP on the Mjolnir socket.
+            rtcpOnSctp: false,
+            forcesLegacyPath: Self.forcesLegacyPath,
+            disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
+            announcesExtendedSettings: Self.announcesExtendedSettings,
+            echoesOfferedAttributes: Self.echoesOfferedAttributes
+        )
+    }
 }

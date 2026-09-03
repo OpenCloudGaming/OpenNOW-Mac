@@ -41,6 +41,9 @@ public struct NvstRtpStatsReport: Equatable, Sendable {
     /// The deepest the reorder buffer has been, in packets.
     public let maxWaitingQueueDepth: UInt32
     public let duplicatePackets: UInt32
+    /// Mic chat bytes uploaded so far, telemetry blob 54's `rm_mic_chat_total_sent_data_bytes`.
+    /// Zero until the bundle carries a microphone send section.
+    public let micChatSentDataBytes: UInt64
 
     public init(streamIndex: UInt16 = 0,
                 frameNumber: UInt32,
@@ -52,7 +55,8 @@ public struct NvstRtpStatsReport: Equatable, Sendable {
                 recoveredPackets: UInt32 = 0,
                 maxDropBurstLength: UInt32 = 0,
                 maxWaitingQueueDepth: UInt32 = 0,
-                duplicatePackets: UInt32 = 0) {
+                duplicatePackets: UInt32 = 0,
+                micChatSentDataBytes: UInt64 = 0) {
         self.streamIndex = streamIndex
         self.frameNumber = frameNumber
         self.totalReceivedPackets = totalReceivedPackets
@@ -64,11 +68,11 @@ public struct NvstRtpStatsReport: Equatable, Sendable {
         self.maxDropBurstLength = maxDropBurstLength
         self.maxWaitingQueueDepth = maxWaitingQueueDepth
         self.duplicatePackets = duplicatePackets
+        self.micChatSentDataBytes = micChatSentDataBytes
     }
 
     /// The 72-byte payload. Fields this pipeline has no queue analog for (waiting-queue-full /
-    /// timed-out / frame-complete drops, mic chat bytes) are the zero the absence of those
-    /// queues implies.
+    /// timed-out / frame-complete drops) are the zero the absence of those queues implies.
     public var payload: Data {
         var writer = NvstByteWriter(capacity: Self.payloadLength)
         writer.u16LE(Self.version)            // +0x00
@@ -85,7 +89,7 @@ public struct NvstRtpStatsReport: Equatable, Sendable {
         writer.u32LE(maxDropBurstLength)      // +0x2c
         writer.u32LE(maxWaitingQueueDepth)    // +0x30
         writer.u32LE(0)                       // +0x34 droppedFrameComplete
-        writer.u64LE(0)                       // +0x38 micChatTotalSentDataBytes
+        writer.u64LE(micChatSentDataBytes)    // +0x38 micChatTotalSentDataBytes
         writer.u32LE(0)                       // +0x40 droppedWaitingFrameTimedOut
         writer.u32LE(duplicatePackets)        // +0x44
         return writer.data

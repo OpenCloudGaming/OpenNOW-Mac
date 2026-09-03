@@ -93,11 +93,11 @@ public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Send
 
     /// Brings up the ICE/DTLS bundle once the negotiated handoff is known. Set by the transport;
     /// nil keeps the pre-bundle behaviour.
-    private let bundleProvider: (@Sendable (NVSTVideoHandoff) async -> NvstBundleReservation?)?
+    private let bundleProvider: (@Sendable (NVSTVideoHandoff, Bool) async -> NvstBundleReservation?)?
 
     public init(iceCredentials: NvstRtspIceCredentials = NvstRtspSdp.generateIceCredentials(),
                 dtlsFingerprint: String? = nil,
-                bundleProvider: (@Sendable (NVSTVideoHandoff) async -> NvstBundleReservation?)? = nil) {
+                bundleProvider: (@Sendable (NVSTVideoHandoff, Bool) async -> NvstBundleReservation?)? = nil) {
         self.iceCredentials = iceCredentials
         self.dtlsFingerprint = dtlsFingerprint
         self.bundleProvider = bundleProvider
@@ -107,8 +107,8 @@ public final class NvstLocalBundleReserver: NvstBundleReserving, @unchecked Send
     /// authenticates with, which is what the official capture shows.
     public var localIceCredentials: NvstRtspIceCredentials { iceCredentials }
 
-    public func bundleIdentity(for handoff: NVSTVideoHandoff) async -> NvstBundleReservation? {
-        await bundleProvider?(handoff)
+    public func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? {
+        await bundleProvider?(handoff, microphoneOfferedOnBundle)
     }
 
     public func reserveBundle() async throws -> NvstBundleReservation {

@@ -258,7 +258,7 @@ private struct StubReserver: NvstBundleReserving {
     }
 
     func reserveBundle() async throws -> NvstBundleReservation { reservation }
-    func bundleIdentity(for handoff: NVSTVideoHandoff) async -> NvstBundleReservation? { lateIdentity }
+    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? { lateIdentity }
 }
 
 @Suite struct NvstRtspNegotiatorTests {
@@ -582,4 +582,32 @@ private struct StubReserver: NvstBundleReserving {
 private actor OrderRecorder {
     private(set) var events: [String] = []
     func record(_ event: String) { events.append(event) }
+
+    @Test func theAudioRelevantDescribeLinesCoverMicAqosAndCodecLines() {
+        let body = [
+            "v=0",
+            "a=x-nv-general.pingVersion:6",
+            "a=x-nv-general.rtcMicOnNativeBundle:1",
+            "a=x-nv-aqos.enableRedundancyForMic:1",
+            "a=x-nv-mic.frameSize:10",
+            "a=x-nv-audio.jbConfig.initialThreshold:80",
+            "a=x-nv-video.maxFPS:120",
+            "m=audio 0 RTP/AVP 96 97",
+            "a=rtpmap:96 opus/48000/2",
+            "a=rtpmap:97 opus/16000/2",
+            "a=fmtp:97 maxplaybackrate=16000",
+            "a=control:streamid=audio/0",
+        ].joined(separator: "\r\n")
+        let lines = NvstRtspNegotiator.audioRelevantDescribeLines(body)
+        #expect(lines == [
+            "a=x-nv-general.rtcMicOnNativeBundle:1",
+            "a=x-nv-aqos.enableRedundancyForMic:1",
+            "a=x-nv-mic.frameSize:10",
+            "a=x-nv-audio.jbConfig.initialThreshold:80",
+            "m=audio 0 RTP/AVP 96 97",
+            "a=rtpmap:96 opus/48000/2",
+            "a=rtpmap:97 opus/16000/2",
+            "a=fmtp:97 maxplaybackrate=16000",
+        ])
+    }
 }

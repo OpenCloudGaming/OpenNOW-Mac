@@ -490,8 +490,11 @@ import Testing
         // stream and closed DTLS when we announced audio on a data-channel-only bundle.
         // Audio rides the bundle, and the bundle's answer really offers an audio section.
         #expect(lines.contains("a=x-nv-general.rtcAudioOnNativeBundle:1"))
-        // The microphone does not: there is no send section for it yet.
+        // The microphone flag mirrors the bundle's answer the same way: no mic setup was
+        // supplied, so the answer carries no send section and the flag stays 0.
         #expect(lines.contains("a=x-nv-general.rtcMicOnNativeBundle:0"))
+        // No mic sender SSRC without a negotiated mic section.
+        #expect(!sdp.contains("x-nv-mic.micSsrcConfig.senderSsrc"))
         #expect(lines.contains("a=x-nv-general.rtcDataChannelOnNativeBundle:1"))
         // RTCP-over-SCTP must be advertised or the seat stops sending video.
         #expect(lines.contains("a=x-nv-general.rtcpOnSctp:1"))
@@ -510,6 +513,22 @@ import Testing
         #expect(lines.contains("i=DeviceString, DeviceName"))
     }
 
+    /// Announcing mic without a negotiated section is the SCTP-reset lesson of the audio flag,
+    /// so the SSRC attribute is gated on the flag rather than on the value alone.
+    @Test func announceOmitsTheMicSenderSsrcWithoutAMicrophoneChannel() {
+        let options = NvstRtspSdp.AnnounceOptions(
+            iceCredentials: NvstRtspIceCredentials(usernameFragment: "abcd", password: String(repeating: "p", count: 22)),
+            videoPort: 48_322,
+            clientBundlePort: 49_005,
+            officialCloudPath: true,
+            carriesMicrophoneOnBundle: false,
+            microphoneSenderSsrc: 0x1234_5678
+        )
+        let sdp = NvstRtspSdp.buildAnnounceSdp(options)
+        #expect(sdp.contains("a=x-nv-general.rtcMicOnNativeBundle:0"))
+        #expect(!sdp.contains("x-nv-mic.micSsrcConfig.senderSsrc"))
+    }
+
     @Test func announceFallsBackToTheLegacyPortShapeOffTheCloudPath() {
         let options = NvstRtspSdp.AnnounceOptions(
             iceCredentials: NvstRtspIceCredentials(usernameFragment: "abcd", password: "pw"),
@@ -525,5 +544,33 @@ import Testing
         // Default 1080p when the launch profile has no resolution; frame rate stays the seat's.
         #expect(lines.contains("a=x-nv-video[0].clientViewportWd:1920"))
         #expect(!lines.contains("a=x-nv-video[0].maxFPS:60"))
+    }
+}
+
+/// The microphone announce A/B knob lives in shared `UserDefaults`, and Swift Testing runs
+/// tests in parallel: these four must run serialized, or one test's knob value leaks into
+/// another test's announce.
+@Suite(.serialized) struct NvstRtspMicrophoneAnnounceKnobTests {
+    /// The mic flag and the sender-SSRC attribute describe the same fact — the bundle's answer
+    /// really carries the send section — and only go out together. NVST has no SDP transport, so
+    /// the SSRC attribute is the seat's only way to learn which SSRC the mic RTP will use.
+    @Test func announceCarriesTheMicrophoneFlagAndSenderSsrcWhenTheBundleCarriesMic() {
+        let options = NvstRtspSdp.AnnounceOptions(
+            iceCredentials: NvstRtspIceCredentials(usernameFragment: "abcd", password: String(repeating: "p", count: 22)),
+            videoPort: 48_322,
+            clientBundlePort: 49_005,
+            localAddress: "192.168.1.20",
+            dtlsFingerprint: "AA:BB",
+            officialCloudPath: true,
+            carriesMicrophoneOnBundle: true,
+            microphoneSenderSsrc: 0x1234_5678
+        )
+        let sdp = NvstRtspSdp.buildAnnounceSdp(options)
+        let lines = sdp.components(separatedBy: "\r\n")
+        #expect(lines.contains("a=x-nv-general.rtcMicOnNativeBundle:1"))
+        #expect(lines.contains("a=x-nv-mic.micSsrcConfig.senderSsrc:305419896"))
+        // The captured baseline mic parameters still go out alongside it.
+        #expect(lines.contains("a=x-nv-mic.bitrate:16000"))
+        #expect(lines.contains("a=x-nv-mic.enablePacketizer:1"))
     }
 }

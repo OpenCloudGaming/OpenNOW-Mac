@@ -49,7 +49,26 @@ extension NvstWebRtcBundle {
     /// Creates the peer connection, applies the synthesized remote offer, answers, and returns the
     /// identity ANNOUNCE has to carry. ICE cannot succeed until ANNOUNCE lands, so this waits only
     /// for local gathering.
-    public func prepare() async throws -> Identity {
+    ///
+    /// Supplying `microphone` adds the mic send section to the synthesized offer and attaches the
+    /// local sender before the answer is created: NVST has no renegotiation, so a mic m-line that
+    /// is not in this first answer can never appear for this session.
+    public func prepare(microphone: MicrophoneSetup? = nil) async throws -> Identity {
+        guard let microphone else { return try await bringUp(includesMicrophone: false, microphone: nil) }
+        do {
+            return try await bringUp(includesMicrophone: true, microphone: microphone)
+        } catch BundleError.microphoneNotArmed {
+            logger?("NVST bundle rebuilding without the mic section: an answered mic m-line with no usable sender makes the seat withhold game audio")
+            return try await bringUp(includesMicrophone: false, microphone: nil)
+        }
+    }
+
+    /// One bring-up pass. `includesMicrophone` decides whether the synthesized offer carries the
+    /// mid-2 section; when it does but the mic sender cannot be armed before the answer, the
+    /// pass throws `microphoneNotArmed` and the caller rebuilds without the section — live
+    /// sessions showed a 3-m-line answer with a dead mid-2 (even `inactive`, nothing sent)
+    /// makes the seat withhold game audio, whatever the ANNOUNCE says.
+    private func bringUp(includesMicrophone: Bool, microphone: MicrophoneSetup?) async throws -> Identity {
         guard let credentials = handoff.iceCredentials else { throw BundleError.missingRemoteCredentials }
         guard let remoteFingerprint = credentials.remoteDTLSFingerprint, !remoteFingerprint.isEmpty else {
             throw BundleError.missingRemoteFingerprint
@@ -69,7 +88,8 @@ extension NvstWebRtcBundle {
             remotePassword: credentials.remotePassword,
             remoteFingerprint: remoteFingerprint,
             peerIP: handoff.videoPeerIP,
-            peerPort: handoff.videoPeerPort
+            peerPort: handoff.videoPeerPort,
+            includesMicrophone: includesMicrophone
         )
         try await setRemoteDescription(connection, RTCSessionDescription(type: .offer, sdp: offer))
 
@@ -77,15 +97,33 @@ extension NvstWebRtcBundle {
         // section at all and the bundle has nothing to negotiate.
         _ = createFeedbackChannels(on: connection, minimum: 1)
 
+        // The mic sender must exist before the answer is created, or the sendonly mid-2 section
+        // the seat's recvonly mic m-line asks for never makes it into the answer.
+        if let microphone {
+            attachMicrophone(to: connection, factory: factory, setup: microphone)
+            guard microphoneNegotiation.negotiated else {
+                connection.close()
+                throw BundleError.microphoneNotArmed
+            }
+        }
+
         let answer = try await createAnswer(connection, constraints: constraints)
         // Bifrost length-checks ICE credentials, so force the official 4/22 pair libwebrtc gives no
         // API for. If it refuses the munged answer, fall back to its own credentials and say so —
         // the seat's behaviour then tells us whether that check is real.
-        let forced = Self.replacingIceCredentials(
+        var forced = Self.replacingIceCredentials(
             in: answer.sdp,
             usernameFragment: credentials.localUsernameFragment,
             password: credentials.localPassword
         )
+        if microphoneNegotiation.negotiated {
+            // The seat binds the bundle mic by the vendor's deterministic SSRC; libwebrtc takes the
+            // sender SSRC from the `a=ssrc` lines of the local description, so rewrite them here,
+            // before `setLocalDescription` builds the send stream.
+            let generated = Self.microphoneSenderSsrc(inSdp: forced)
+            forced = Self.replacingMicrophoneSenderSsrc(in: forced, with: Self.nvstMicrophoneSenderSsrc)
+            logger?("NVST bundle mic answer SSRC rewritten \(generated.map(String.init) ?? "none") -> \(Self.nvstMicrophoneSenderSsrc)")
+        }
         var usesOfficialCredentials = true
         do {
             try await setLocalDescription(connection, RTCSessionDescription(type: .answer, sdp: forced))
@@ -104,17 +142,160 @@ extension NvstWebRtcBundle {
         if host.address != preferredLocalAddress {
             logger?("NVST bundle announcing \(host.address):\(host.port), which is not the routed address \(preferredLocalAddress ?? "unknown")")
         }
-        let localDescription = connection.localDescription?.sdp ?? forced
+        return try preparedIdentity(
+            connection: connection,
+            fallbackSdp: forced,
+            host: host,
+            usesOfficialCredentials: usesOfficialCredentials)
+    }
+
+    /// Reads what the answer actually negotiated — the fingerprint ANNOUNCE carries, a per-m-line
+    /// summary that proves each section's direction, and the mic sender SSRC — and packages the
+    /// identity ANNOUNCE has to carry.
+    func preparedIdentity(connection: RTCPeerConnection,
+                          fallbackSdp: String,
+                          host: (address: String, port: UInt16),
+                          usesOfficialCredentials: Bool) throws -> Identity {
+        let localDescription = connection.localDescription?.sdp ?? fallbackSdp
         guard let fingerprint = Self.fingerprint(inSdp: localDescription) else {
             throw BundleError.missingLocalFingerprint
         }
-        logger?("NVST bundle prepared (port=\(host.port), localAddress=\(host.address), fingerprintBytes=\(fingerprint.count), officialIce=\(usesOfficialCredentials), setup=\(Self.setupRole(inSdp: localDescription) ?? "absent"))")
+        logger?("NVST bundle answer media: \(Self.mediaLineSummary(inSdp: localDescription))")
+        readMicrophoneSenderSsrc(inSdp: localDescription)
+        if let sender = lock.withLock({ microphoneSender }) {
+            let encodings = sender.parameters.encodings
+            logger?("NVST bundle mic sender post-answer: encodings=\(encodings.count) ssrc=\(encodings.first?.ssrc.map(String.init) ?? "none")")
+        }
+        if microphoneNegotiation.negotiated {
+            // Both readbacks must agree on the deterministic SSRC: the local description libwebrtc
+            // kept, and the encoding the sender reports now that negotiation populated it. A mic
+            // stream under any other SSRC makes the seat withhold game audio, and so does a
+            // 3-m-line answer with a dead mid 2 — so the whole bundle is rebuilt without the mic
+            // section rather than retracting the flag on this connection.
+            let announced = microphoneNegotiation.senderSsrc
+            let encodingSsrc = lock.withLock { microphoneSender }?.parameters.encodings.first?.ssrc?.uint32Value
+            guard announced == Self.nvstMicrophoneSenderSsrc, encodingSsrc == Self.nvstMicrophoneSenderSsrc else {
+                logger?("NVST bundle mic SSRC readback answer=\(announced.map(String.init) ?? "none") encoding=\(encodingSsrc.map(String.init) ?? "none"), expected \(Self.nvstMicrophoneSenderSsrc); rebuilding without the mic section")
+                lock.withLock { microphoneNegotiated = false }
+                connection.close()
+                throw BundleError.microphoneNotArmed
+            }
+        }
+        let microphoneState = microphoneNegotiation
+        logger?("NVST bundle prepared (port=\(host.port), localAddress=\(host.address), fingerprintBytes=\(fingerprint.count), officialIce=\(usesOfficialCredentials), setup=\(Self.setupRole(inSdp: localDescription) ?? "absent"), microphone=\(microphoneState.negotiated), micSsrc=\(microphoneState.senderSsrc.map(String.init) ?? "pending"))")
         return Identity(
             bundlePort: host.port,
             localAddress: host.address,
             dtlsFingerprint: fingerprint,
             usesOfficialIceCredentials: usesOfficialCredentials
         )
+    }
+
+    /// Creates the local mic source and track and attaches them to the transceiver the
+    /// synthesized offer's recvonly mic m-line already reserved at mid 2 when it was applied as
+    /// the remote description. Attaching to *that* transceiver is what makes the answer sendonly
+    /// with the sender SSRC ANNOUNCE advertises; `connection.add` instead creates an orphan
+    /// transceiver that cannot appear in this first answer, and mid 2 is answered `inactive` —
+    /// which is exactly the shape a live seat then refused to arm any media for (no video, no
+    /// audio, `tx=0`). `streamIds: ["mic"]` matches the msid the seat's own SDP history
+    /// recognizes. A failed attach leaves `microphoneNegotiated` false, which keeps ANNOUNCE at
+    /// `rtcMicOnNativeBundle:0` — the flag always describes the answer that really exists.
+    func attachMicrophone(to connection: RTCPeerConnection, factory: RTCPeerConnectionFactory, setup: MicrophoneSetup) {
+        // The synthesized offer carries the mic m-line at mid 2 whenever this runs; two audio
+        // transceivers (downlink + mic) is the shape that makes a fallback unambiguous — grabbing
+        // the only audio transceiver would corrupt the game-audio downlink instead.
+        let audioTransceivers = connection.transceivers.filter { $0.mediaType == .audio }
+        guard let transceiver = connection.transceivers.first(where: { $0.mid == "2" })
+            ?? (audioTransceivers.count >= 2 ? audioTransceivers.last : nil) else {
+            logger?("NVST bundle found no microphone transceiver; the session will run without mic")
+            return
+        }
+        let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
+        source.volume = setup.volume
+        let track = factory.audioTrack(with: source, trackId: "opennow-nvst-microphone")
+        track.isEnabled = setup.initiallyEnabled
+        transceiver.sender.track = track
+        transceiver.sender.streamIds = ["mic"]
+        // The SSRC is forced later, by rewriting the answer's `a=ssrc` lines before
+        // `setLocalDescription` (`replacingMicrophoneSenderSsrc`); `preparedIdentity` then reads
+        // it back and rebuilds without the mic section if libwebrtc kept its own value.
+        // Void-returning ObjC signature: no Swift `throws` conversion, the error comes back
+        // through the pointer. The sendonly answer only needs the attached track, so a refused
+        // direction update is logged, not fatal.
+        var directionError: NSError?
+        transceiver.setDirection(.sendOnly, error: &directionError)
+        if let directionError {
+            logger?("NVST bundle microphone transceiver kept its negotiated direction: \(directionError.localizedDescription)")
+        }
+        lock.withLock {
+            microphoneSource = source
+            microphoneTrack = track
+            microphoneSender = transceiver.sender
+            microphoneNegotiated = true
+            microphoneCaptureEnabled = setup.initiallyEnabled
+        }
+    }
+
+    /// NVST seats bind the bundle mic by SSRC, and the vendor's own transport uses the
+    /// deterministic SSRC 1 (`WebRtcTransport::GetSenderBySsrc(1)` in libBifrost2); live seats
+    /// withheld game audio under every mic stream sent with any other SSRC. libwebrtc assigns
+    /// sender SSRCs itself and `setParameters` refuses to change them (a transceiver sender has
+    /// no encodings before negotiation, and a seeded encoding is rejected), so the value is
+    /// forced through the one seam libwebrtc honours: the `a=ssrc` lines of the local answer,
+    /// rewritten before `setLocalDescription`. `preparedIdentity` reads it back from both the
+    /// kept local description and the sender's encoding; if either disagrees, the mic section
+    /// stays out of the session.
+    static let nvstMicrophoneSenderSsrc: UInt32 = 1
+
+    /// One entry per m-line: kind, mid, direction and the ssrc values it names. The answer is
+    /// never transported to the seat, so this summary in the diagnostic log is the only proof of
+    /// what libwebrtc actually negotiated for each section — in particular that the mic m-line
+    /// came back sendonly with the sender SSRC ANNOUNCE advertises.
+    static func mediaLineSummary(inSdp sdp: String) -> String {
+        struct Entry {
+            var media = ""
+            var mid = "-"
+            var direction = "-"
+            var ssrcs: [String] = []
+        }
+        var entries: [Entry] = []
+        for raw in sdp.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("m=") {
+                entries.append(Entry(media: line))
+                continue
+            }
+            guard !entries.isEmpty else { continue }
+            if line.hasPrefix("a=mid:") {
+                entries[entries.count - 1].mid = String(line.dropFirst("a=mid:".count))
+            } else if line == "a=sendonly" || line == "a=recvonly" || line == "a=sendrecv" || line == "a=inactive" {
+                entries[entries.count - 1].direction = String(line.dropFirst(2))
+            } else if line.hasPrefix("a=ssrc:") {
+                let rest = line.dropFirst("a=ssrc:".count)
+                let ssrc = String(rest.split(separator: " ", maxSplits: 1).first ?? rest)
+                if !entries[entries.count - 1].ssrcs.contains(ssrc) {
+                    entries[entries.count - 1].ssrcs.append(ssrc)
+                }
+            }
+        }
+        return entries.enumerated()
+            .map { index, entry in
+                "[\(index) \(entry.media) mid=\(entry.mid) dir=\(entry.direction) ssrcs=\(entry.ssrcs.isEmpty ? "-" : entry.ssrcs.joined(separator: "+"))]"
+            }
+            .joined(separator: " ")
+    }
+
+    /// libwebrtc assigns the sender SSRC when the transceiver is created; ANNOUNCE advertises it
+    /// (`x-nv-mic.micSsrcConfig.senderSsrc`) because NVST has no SDP transport to the seat. The
+    /// `RTCRtpSender` wrapper exposes no `ssrc`, so it is read from the answer, scoped to the
+    /// mid-2 send section (the downlink section can carry ssrc lines too). A missing SSRC means
+    /// the announce omits the attribute rather than names the wrong one.
+    func readMicrophoneSenderSsrc(inSdp sdp: String) {
+        lock.lock()
+        let negotiated = microphoneNegotiated
+        lock.unlock()
+        guard negotiated, let ssrc = Self.microphoneSenderSsrc(inSdp: sdp), ssrc != 0 else { return }
+        lock.withLock { microphoneSenderSsrc = ssrc }
     }
 
     /// libwebrtc's logging is enormous, so only transport-relevant lines are forwarded and the
@@ -164,9 +345,15 @@ extension NvstWebRtcBundle {
         connection.statistics { [weak self] report in
             guard let self else { return }
             let sample = Self.roundTripMilliseconds(in: report)
+            let micBytes = Self.outboundAudioSentBytes(in: report)
+            let micSeatPackets = Self.remoteInboundAudioPacketsReceived(in: report)
+            let micCodec = Self.outboundAudioCodec(in: report)
             lock.lock()
             statisticsRequestInFlight = false
             if let sample { lastRoundTripMilliseconds = sample }
+            if let micBytes { microphoneSentDataBytes = micBytes }
+            if let micSeatPackets { microphoneSeatReportedPackets = micSeatPackets }
+            if let micCodec { microphoneOutboundCodec = micCodec }
             let shouldDescribe = sample == nil && !didDescribeStatistics
             if shouldDescribe { didDescribeStatistics = true }
             lock.unlock()
@@ -193,6 +380,47 @@ extension NvstWebRtcBundle {
             let roundTrip = (statistic.values["currentRoundTripTime"] as? NSNumber)
                 ?? (statistic.values["roundTripTime"] as? NSNumber)
             if let roundTrip { return roundTrip.doubleValue * 1000 }
+        }
+        return nil
+    }
+
+    /// Bytes libwebrtc has sent on the audio outbound RTP stream — the mic sender is the only
+    /// audio sender a bundle ever has, so this is the mic chat upload counter the `0x208` report
+    /// wants. `nil` while no audio sender exists, so an un-negotiated mic keeps reporting zero.
+    static func outboundAudioSentBytes(in report: RTCStatisticsReport) -> UInt64? {
+        for statistic in report.statistics.values where statistic.type == "outbound-rtp" {
+            let kind = (statistic.values["kind"] as? String) ?? (statistic.values["mediaType"] as? String)
+            guard kind == "audio" else { continue }
+            if let bytes = statistic.values["bytesSent"] as? NSNumber { return bytes.uint64Value }
+            return 0
+        }
+        return nil
+    }
+
+    /// The codec libwebrtc reports on the audio outbound stream, as `mimeType:payloadType`, so a
+    /// RED-wrapped mic reads `audio/red:63` and plain Opus `audio/opus:111`.
+    static func outboundAudioCodec(in report: RTCStatisticsReport) -> String? {
+        for statistic in report.statistics.values where statistic.type == "outbound-rtp" {
+            let kind = (statistic.values["kind"] as? String) ?? (statistic.values["mediaType"] as? String)
+            guard kind == "audio", let codecId = statistic.values["codecId"] as? String,
+                  let codec = report.statistics[codecId] else { continue }
+            let mime = (codec.values["mimeType"] as? String) ?? "?"
+            let payloadType = (codec.values["payloadType"] as? NSNumber).map { String($0.intValue) } ?? "?"
+            return "\(mime):\(payloadType)"
+        }
+        return nil
+    }
+
+    /// What the seat's RTCP says about the mic stream: `remote-inbound-rtp` only exists once the
+    /// remote sends Receiver Reports for one of our send streams, so its `packetsReceived` counts
+    /// RTP packets the seat itself reports receiving. A mic with climbing `tx` but a zero here is
+    /// a stream the seat never bound a receive pipeline to.
+    static func remoteInboundAudioPacketsReceived(in report: RTCStatisticsReport) -> UInt64? {
+        for statistic in report.statistics.values where statistic.type == "remote-inbound-rtp" {
+            let kind = (statistic.values["kind"] as? String) ?? (statistic.values["mediaType"] as? String)
+            guard kind == "audio" else { continue }
+            if let packets = statistic.values["packetsReceived"] as? NSNumber { return packets.uint64Value }
+            return 0
         }
         return nil
     }
@@ -233,6 +461,15 @@ extension NvstWebRtcBundle {
         openReliableInputChannel = nil
         openPartiallyReliableControlChannel = nil
         remoteAudioTracks.removeAll()
+        microphoneSource = nil
+        microphoneTrack = nil
+        microphoneSender = nil
+        microphoneNegotiated = false
+        microphoneSenderSsrc = nil
+        microphoneCaptureEnabled = false
+        microphoneSentDataBytes = 0
+        microphoneSeatReportedPackets = 0
+        microphoneOutboundCodec = nil
         negotiatedInputProtocolVersion = nil
         openCustomChannels = [:]
         peerConnection = nil
@@ -416,7 +653,10 @@ extension NvstWebRtcBundle {
         lock.lock()
         defer { lock.unlock() }
         let perLabel = inboundMessagesByLabel.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-        return "ice=\(iceStateDescription) channels=\(createdChannels.count) feedbackOpen=\(openFeedbackChannel?.readyState == .open) inboundBytes=\(inboundFeedbackBytes) inbound=[\(perLabel)] sendFailures=\(feedbackSendFailures) controlOut=\(controlMessagesSent) controlFailed=\(controlSendFailures) inputOut=\(inputMessagesSent) inputFailed=\(inputSendFailures)"
+        let microphone = microphoneNegotiated
+            ? "on(ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),gate=\(microphoneCaptureEnabled),tx=\(microphoneSentDataBytes),rr=\(microphoneSeatReportedPackets),codec=\(microphoneOutboundCodec ?? "?"),rec=\(audioDevice?.isRecording == true),track=\(microphoneTrack?.isEnabled == true))"
+            : "off"
+        return "ice=\(iceStateDescription) channels=\(createdChannels.count) feedbackOpen=\(openFeedbackChannel?.readyState == .open) inboundBytes=\(inboundFeedbackBytes) inbound=[\(perLabel)] sendFailures=\(feedbackSendFailures) controlOut=\(controlMessagesSent) controlFailed=\(controlSendFailures) inputOut=\(inputMessagesSent) inputFailed=\(inputSendFailures) mic=\(microphone)"
     }
 
     /// Creates the official channel set in order so each label lands on the stream id the seat

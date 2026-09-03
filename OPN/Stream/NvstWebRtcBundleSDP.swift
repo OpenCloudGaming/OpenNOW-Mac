@@ -30,7 +30,8 @@ extension NvstWebRtcBundle {
                                        remotePassword: String,
                                        remoteFingerprint: String,
                                        peerIP: String,
-                                       peerPort: UInt16) -> String {
+                                       peerPort: UInt16,
+                                       includesMicrophone: Bool = false) -> String {
         let transport = [
             "c=IN IP4 0.0.0.0",
             "a=ice-ufrag:\(remoteUsernameFragment)",
@@ -44,7 +45,7 @@ extension NvstWebRtcBundle {
             "o=- 0 2 IN IP4 127.0.0.1",
             "s=-",
             "t=0 0",
-            "a=group:BUNDLE 0 1",
+            "a=group:BUNDLE \(includesMicrophone ? "0 1 2" : "0 1")",
             "a=msid-semantic: WMS",
             // Offered as sendonly by the seat, so our answer is recvonly.
             "m=audio 9 UDP/TLS/RTP/SAVPF \(Self.audioPayloadFormatLine)",
@@ -56,6 +57,21 @@ extension NvstWebRtcBundle {
             "a=sendonly",
         ]
         lines += Self.audioCodecLines
+        if includesMicrophone {
+            // With the mic section in the bundle, Opus pt 111 appears in two audio m-sections and
+            // libwebrtc turns payload-type demuxing OFF for every audio section of the bundle
+            // (SdpOfferAnswerHandler::UpdatePayloadTypeDemuxingState, webrtc issue 11477 — the
+            // codec-collision warning it logs at sdp_offer_answer.cc:570 is the tell). The seat sets
+            // no MID extension and this section had no signaled SSRC, so every downlink audio packet
+            // became undemuxable and was dropped before `inbound-rtp` counted it: the "seat withholds
+            // game audio whenever a mic section exists, even inactive" finding was our own demuxer.
+            // Signal the seat's audio SSRC — the vendor's transport uses the deterministic 1 (captured
+            // on the wire, `ssrc=0x00000001`) — so the receiver binds by SSRC instead. Only under the
+            // mic section: without it payload-type demuxing works and no assumption is needed.
+            lines += [
+                "a=ssrc:\(seatAudioSsrc) cname:nvst-seat-audio",
+            ]
+        }
         lines += [
             "a=ptime:5",
             "a=maxptime:20",
@@ -67,9 +83,39 @@ extension NvstWebRtcBundle {
             "a=mid:1",
             "a=sctp-port:5000",
             "a=max-message-size:262144",
-            "",
         ]
+        if includesMicrophone {
+            lines += Self.microphoneSectionLines(transport: transport, peerIP: peerIP, peerPort: peerPort)
+        }
+        lines.append("")
         return lines.joined(separator: "\r\n")
+    }
+
+    /// The seat's side of the microphone send section. Shaped from `libBifrost2`'s own RTC SDP
+    /// builder: the vendor serializes its mic stream for the native bundle as a plain **audio**
+    /// m-section (`getRtcSdpFromConfig` converts `MicStreamConfig` into an `AudioStreamConfig`
+    /// and delegates) — Opus at 48 kHz with `a=ptime:10`, rtcp-mux and the mid the mic section
+    /// carries. Offered **recvonly** by the seat so our answer is sendonly and libwebrtc builds
+    /// the sender into the first answer — NVST has no renegotiation, so the section must exist
+    /// from `prepare()` time. Plain Opus, no RED: the seat's DESCRIBE asks for mic redundancy
+    /// (`x-nv-aqos.enableRedundancyForMic:1`) but decodes plain pt-111 Opus fine — verified live
+    /// with `codec=audio/opus:111` and the seat's virtual mic meter following speech.
+    static func microphoneSectionLines(transport: [String], peerIP: String, peerPort: UInt16) -> [String] {
+        var lines: [String] = [
+            "m=audio 9 UDP/TLS/RTP/SAVPF \(opusPayloadType)",
+        ]
+        lines += transport
+        lines += [
+            "a=mid:2",
+            "a=rtcp-mux",
+            "a=recvonly",
+            "a=rtpmap:\(opusPayloadType) opus/48000/2",
+            "a=fmtp:\(opusPayloadType) minptime=5;stereo=1;sprop-stereo=1;useinbandfec=1",
+            "a=ptime:10",
+            "a=maxptime:120",
+            "a=candidate:1 1 udp 2122260223 \(peerIP) \(peerPort) typ host",
+        ]
+        return lines
     }
 
     /// The wire carries bundle audio on payload type **63** — captured from the native stack's
@@ -83,6 +129,11 @@ extension NvstWebRtcBundle {
     /// absence of content (audioLevel ~0) look identical to a decode that produced nothing. On real
     /// audio, declaring RED payloads as plain Opus mis-frames them and yields garbage — which is the
     /// symptom reported from a live session.
+    /// The SSRC the seat's bundle game audio arrives with. Captured from the native stack's bundle
+    /// socket (`pt=63, ssrc=0x00000001`) and consistent with the vendor transport's deterministic
+    /// SSRC scheme (the mic sender is SSRC 1 as well). Signaled in the synthesized offer only when
+    /// the mic section makes payload-type demuxing unavailable.
+    static let seatAudioSsrc: UInt32 = 1
     static let redPayloadType = 63
     static let opusPayloadType = 111
 
@@ -122,6 +173,24 @@ extension NvstWebRtcBundle {
         }.joined(separator: "\r\n")
     }
 
+    /// Rewrites every `a=ssrc:` line of the mid-2 mic send section to `ssrc`, leaving the other
+    /// sections untouched. libwebrtc allocates sender SSRCs while creating the answer and exposes
+    /// no API to choose them (`setParameters` refuses an encoding it did not create), but it
+    /// *does* honour the `a=ssrc` lines of the local description it is handed: `setLocalDescription`
+    /// builds the send stream from those lines, the same seam legacy simulcast munging used for
+    /// years. This is how the mic sender ends up on the vendor's deterministic SSRC 1.
+    static func replacingMicrophoneSenderSsrc(in sdp: String, with ssrc: UInt32) -> String {
+        var inMicrophoneSection = false
+        return sdp.components(separatedBy: "\r\n").map { line -> String in
+            if line.hasPrefix("m=") { inMicrophoneSection = false; return line }
+            if line == "a=mid:2" { inMicrophoneSection = true; return line }
+            guard inMicrophoneSection, line.hasPrefix("a=ssrc:") else { return line }
+            let rest = line.dropFirst("a=ssrc:".count)
+            guard let space = rest.firstIndex(of: " ") else { return "a=ssrc:\(ssrc)" }
+            return "a=ssrc:\(ssrc)\(rest[space...])"
+        }.joined(separator: "\r\n")
+    }
+
     static func fingerprint(inSdp sdp: String) -> String? {
         for line in sdp.components(separatedBy: .newlines) where line.hasPrefix("a=fingerprint:") {
             let parts = line.dropFirst("a=fingerprint:".count).split(separator: " ", maxSplits: 1)
@@ -134,6 +203,24 @@ extension NvstWebRtcBundle {
     static func setupRole(inSdp sdp: String) -> String? {
         for line in sdp.components(separatedBy: .newlines) where line.hasPrefix("a=setup:") {
             return String(line.dropFirst("a=setup:".count)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// The SSRC the mic send section (mid 2) names in the answer. The read is scoped to that
+    /// section because a live session proved the recvonly downlink section can carry `a=ssrc`
+    /// lines too — an unscoped "first ssrc" read advertised the seat's downlink SSRC as the mic
+    /// sender. This SSRC is what ANNOUNCE advertises as `x-nv-mic.micSsrcConfig.senderSsrc`.
+    static func microphoneSenderSsrc(inSdp sdp: String) -> UInt32? {
+        var inMicrophoneSection = false
+        for raw in sdp.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("m=") { inMicrophoneSection = false; continue }
+            if line == "a=mid:2" { inMicrophoneSection = true; continue }
+            guard inMicrophoneSection, line.hasPrefix("a=ssrc:") else { continue }
+            let rest = line.dropFirst("a=ssrc:".count)
+            let ssrcText = rest.split(separator: " ", maxSplits: 1).first ?? rest
+            if let ssrc = UInt32(ssrcText.trimmingCharacters(in: .whitespaces)) { return ssrc }
         }
         return nil
     }

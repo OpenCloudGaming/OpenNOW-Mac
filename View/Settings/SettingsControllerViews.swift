@@ -356,6 +356,8 @@ struct GameplaySettingsPage: View {
                 SettingsOptionRow(title: "Microphone Mode", subtitle: "Controls how voice input is sent to the stream.", options: OPNStreamPreferences.microphoneModeOptions.map(\.label), selectedIndex: selectedMicrophoneModeIndex, uiScale: uiScale, action: { viewModel.setMicrophoneMode(OPNStreamPreferences.microphoneModeOptions[$0].value) })
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for OpenNOW streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, uiScale: uiScale, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
+                SettingsDivider(uiScale: uiScale)
+                SettingsMicrophoneTestRow(active: viewModel.microphoneTestActive, level: viewModel.microphoneTestLevel, message: viewModel.microphoneTestMessage, uiScale: uiScale, action: viewModel.toggleMicrophoneTest)
             }
 
             SettingsCard(title: "Profile Maintenance", uiScale: uiScale) {

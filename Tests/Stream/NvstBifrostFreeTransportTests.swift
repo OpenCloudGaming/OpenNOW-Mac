@@ -128,6 +128,21 @@ import Testing
         }
     }
 
+    /// The configuration is stored for the bundle bring-up to read when the session negotiates;
+    /// what it holds is what the mic decision is made from.
+    @Test func theStoredMicrophoneConfigurationIsWhatTheBundleBringUpReads() async throws {
+        let transport = NvstBifrostFreeTransport()
+        try await transport.setMicrophoneConfiguration(
+            NativeNVSTMicrophoneConfiguration(volume: 0.5,
+                                              voiceActivityEnabled: false,
+                                              captureRequested: true,
+                                              initiallyEnabled: false))
+        let stored = await transport.microphoneConfiguration
+        #expect(stored?.captureRequested == true)
+        #expect(stored?.initiallyEnabled == false)
+        #expect(stored?.volume == 0.5)
+    }
+
     @Test func diagnosticsNameTheTransportEvenBeforeConnecting() async {
         let transport = NvstBifrostFreeTransport()
         let metadata = await transport.diagnosticMetadata()

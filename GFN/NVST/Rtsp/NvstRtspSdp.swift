@@ -240,6 +240,11 @@ public enum NvstRtspSdp {
         public var carriesAudioOnBundle: Bool
         public var carriesMicrophoneOnBundle: Bool
         public var carriesDataChannelOnBundle: Bool
+        /// The mic sender SSRC the bundle's answer assigned, announced as
+        /// `x-nv-mic.micSsrcConfig.senderSsrc` when `carriesMicrophoneOnBundle`. NVST has no
+        /// WebRTC signaling, so this attribute is the seat's only way to learn which SSRC the
+        /// mic RTP will use — the vendor client parses the mic sender SSRC for exactly this.
+        public var microphoneSenderSsrc: UInt32?
         /// The seat's own `a=x-nv-*` offer, echoed back so the answer never contradicts it.
         public var offeredAttributes: [(String, String)]
         /// Drives `maxCodecProfile`/`maxCodecLevel`; the seat cannot init an encoder without them.
@@ -278,6 +283,7 @@ public enum NvstRtspSdp {
                     carriesAudioOnBundle: Bool = true,
                     carriesMicrophoneOnBundle: Bool = false,
                     carriesDataChannelOnBundle: Bool = true,
+                    microphoneSenderSsrc: UInt32? = nil,
                     offeredAttributes: [(String, String)] = [],
                     codec: NVSTVideoCodec? = nil,
                     bitrateKbps: Int? = nil,
@@ -311,6 +317,7 @@ public enum NvstRtspSdp {
             self.carriesAudioOnBundle = carriesAudioOnBundle
             self.carriesMicrophoneOnBundle = carriesMicrophoneOnBundle
             self.carriesDataChannelOnBundle = carriesDataChannelOnBundle
+            self.microphoneSenderSsrc = microphoneSenderSsrc
         }
     }
 

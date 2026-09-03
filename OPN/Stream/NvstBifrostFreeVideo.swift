@@ -140,18 +140,35 @@ extension NvstBifrostFreeTransport {
     ///
     /// On failure the STUN-only probe takes over: it cannot unlock media, but it keeps the NAT
     /// mapping alive and reports what the seat sends back.
-    func bringUpBundle(handoff: NVSTVideoHandoff) async -> NvstBundleReservation? {
+    /// The mic send section decision at bundle bring-up. The host applies the microphone
+    /// configuration before `start`, so it is already stored by this point. Four gates stand in
+    /// front of the section: capture requested and the seat's DESCRIBE offer. A suppressed shape
+    /// logs why.
+    private func resolvedMicrophoneSetup(microphoneOfferedOnBundle: Bool) -> NvstWebRtcBundle.MicrophoneSetup? {
         let logger = self.logger
+        guard let configuration = microphoneConfiguration, configuration.captureRequested else { return nil }
+        if !microphoneOfferedOnBundle {
+            logger?("NVST seat did not offer bundle microphone carriage; the mic stays on its (not yet recovered) legacy transport")
+            return nil
+        }
+        return NvstWebRtcBundle.MicrophoneSetup(volume: configuration.volume,
+                                                initiallyEnabled: configuration.initiallyEnabled)
+    }
+
+    func bringUpBundle(handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? {
+        let logger = self.logger
+        self.microphoneOfferedOnBundle = microphoneOfferedOnBundle
         guard Self.usesWebRtcBundle else {
             logger?("NVST bundle disabled; punching the bundle socket with bare STUN only")
             startBundleProbe(handoff: handoff)
             scheduleVideoHolePunch()
             return nil
         }
+        let microphoneSetup = resolvedMicrophoneSetup(microphoneOfferedOnBundle: microphoneOfferedOnBundle)
         let bundle = NvstWebRtcBundle(handoff: handoff, logger: logger)
         let sender = NvstFeedbackSender()
         do {
-            let identity = try await bundle.prepare()
+            let identity = try await bundle.prepare(microphone: microphoneSetup)
             scheduleVideoHolePunch()
             sender.configure(
                 channelWriter: { payload in _ = bundle.sendFeedback(payload) },
@@ -166,6 +183,9 @@ extension NvstBifrostFreeTransport {
             clock.start()
             installBundleHandlers(bundle, sender: sender, logger: logger)
             self.bundle = bundle
+            let microphone = bundle.microphoneNegotiation
+            microphoneNegotiated = microphone.negotiated
+            microphoneSenderSsrc = microphone.senderSsrc
             // The video receiver was armed at SETUP, before this channel existed; hand it over now
             // so frame acks can go out.
             videoPipeline?.attach(bundle: bundle)
@@ -180,7 +200,9 @@ extension NvstBifrostFreeTransport {
                 iceCredentials: handoff.iceCredentials.map {
                     NvstRtspIceCredentials(usernameFragment: $0.localUsernameFragment, password: $0.localPassword)
                 },
-                dtlsFingerprint: identity.dtlsFingerprint
+                dtlsFingerprint: identity.dtlsFingerprint,
+                microphoneNegotiated: microphoneNegotiated,
+                microphoneSenderSsrc: microphoneSenderSsrc
             )
         } catch {
             logger?("NVST bundle bring-up failed: \(error.localizedDescription); falling back to the STUN-only probe")
@@ -383,7 +405,10 @@ extension NvstBifrostFreeTransport {
             recoveredPackets: UInt32(clamping: stats.recoveredPackets),
             maxDropBurstLength: stats.maxLossBurst,
             maxWaitingQueueDepth: stats.maxReorderDepth,
-            duplicatePackets: UInt32(clamping: stats.duplicatePackets))
+            duplicatePackets: UInt32(clamping: stats.duplicatePackets),
+            // Zero until the bundle carries the mic send section; the sample is refreshed by the
+            // transport heartbeat's `refreshTransportStatistics`.
+            micChatSentDataBytes: bundle.microphoneSentBytes)
         let nackStats = NvstRtpNackStatsReport(frameNumber: frameNumber)
         if bundle.sendPartiallyReliableControl(report.command),
            bundle.sendPartiallyReliableControl(nackStats.command) {

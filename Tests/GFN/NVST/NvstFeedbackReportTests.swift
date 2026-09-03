@@ -644,7 +644,7 @@ struct NvstTransportLifecycleTests {
     /// The host applies the microphone configuration *before* `start`, in the same `do` block, so a
     /// transport that throws there prevents the stream from ever starting — the launch dies right
     /// after "Launch plan ready" and never requests a session. This is a regression guard, not a
-    /// feature test: the protocol's own default is a no-op for exactly this reason.
+    /// feature test: the configuration is stored for the bundle bring-up and never throws.
     @Test func applyingAMicrophoneConfigurationNeverThrows() async throws {
         let transport = NvstBifrostFreeTransport(logger: nil)
         try await transport.setMicrophoneConfiguration(
@@ -654,10 +654,24 @@ struct NvstTransportLifecycleTests {
                                               initiallyEnabled: true))
     }
 
-    /// Disabling an absent microphone is already true, so it succeeds. Enabling it is a request this
-    /// path cannot honour, and that has to surface rather than pretend.
-    @Test func disablingTheMicrophoneSucceedsAndEnablingItReports() async throws {
+    /// The mic send section is negotiated with the bundle, so before the bundle is up both
+    /// directions report rather than pretend — the HUD surfaces the failure instead of showing
+    /// a mic that is not there.
+    @Test func microphoneEnableAndDisableBothReportBeforeTheBundleIsUp() async throws {
         let transport = NvstBifrostFreeTransport(logger: nil)
+        await #expect(throws: (any Error).self) {
+            try await transport.setMicrophoneEnabled(false)
+        }
+        await #expect(throws: (any Error).self) {
+            try await transport.setMicrophoneEnabled(true)
+        }
+    }
+
+    /// Once the bundle reports the mic section missing (no configuration asked for capture, or
+    /// the STUN-only fallback), disabling stays a no-op while enabling names the real reason.
+    @Test func enablingAMicrophoneTheBundleDidNotNegotiateReports() async throws {
+        let transport = NvstBifrostFreeTransport(logger: nil)
+        await transport.seedMicrophoneBundleForTesting(negotiated: false)
         try await transport.setMicrophoneEnabled(false)
         await #expect(throws: (any Error).self) {
             try await transport.setMicrophoneEnabled(true)

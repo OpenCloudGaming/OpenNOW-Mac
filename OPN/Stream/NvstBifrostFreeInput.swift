@@ -297,14 +297,15 @@ extension NvstBifrostFreeTransport {
         logger?("NVST gamepad registration bitmap=0x\(String(bitmap, radix: 16)) reason=\(reason) sent=\(registered) inputReady=\(bundle.isInputReady) inputChannelOpen=\(bundle.isInputChannelOpen)")
     }
 
-    /// Accepts the configuration and does nothing with it, which is what the protocol's own default
-    /// did. Throwing here broke every stream: the host applies the microphone configuration
-    /// *before* `start`, in the same `do` block, so a thrown error meant `start` was never reached
-    /// and no session was ever requested — a launch that died right after "Launch plan ready".
-    ///
-    /// There is nothing to configure on a path with no microphone, so this is genuinely satisfied
-    /// rather than silently swallowed. Actually *enabling* capture is what fails, below.
-    public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
+    /// Stores the configuration `bringUpBundle` reads to decide whether the bundle negotiates the
+    /// mic send section. Throwing here broke every stream: the host applies the microphone
+    /// configuration *before* `start`, in the same `do` block, so a thrown error meant `start`
+    /// was never reached and no session was ever requested — a launch that died right after
+    /// "Launch plan ready". Storing is the whole job; the bundle picks the section up when it is
+    /// brought up during negotiation.
+    public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
+        microphoneConfiguration = configuration
+    }
 
     /// There is no seat-side pause primitive on this path — RTSP TEARDOWN always ends the local
     /// media session, same as `disconnect()`. What makes this a "pause" instead of a full end is
@@ -427,12 +428,26 @@ extension NvstBifrostFreeTransport {
         }
     }
 
-    /// Turning the microphone *off* is already true, so it succeeds; turning it on is a request this
-    /// path cannot honour and has to be reported.
+    /// Flips the negotiated mic send path. The section is created when the bundle comes up (from
+    /// the configuration stored above), so enabling only succeeds once the bundle exists and
+    /// really carries it; disabling a mic that was never negotiated is already true. Both halves
+    /// flip together — the device gate decides whether the CoreAudio input delivers real PCM or
+    /// silence, and the track decides whether libwebrtc sends it.
     public func setMicrophoneEnabled(_ enabled: Bool) async throws {
-        guard enabled else { return }
-        throw NativeNVSTError.transportFailed(
-            "Microphone capture is not implemented on the Bifrost-free path yet.")
+        guard let bundle else { throw NativeNVSTError.notRunning }
+        guard microphoneNegotiated else {
+            guard enabled else { return }
+            // Two distinct failure shapes for the HUD: a bundle-mode seat that failed to create
+            // the section, and a legacy seat whose mic transport (RTSP `SETUP` + UDP RTP sink)
+            // OpenNOW has not recovered yet.
+            if microphoneOfferedOnBundle {
+                throw NativeNVSTError.transportFailed("The NVST bundle negotiated no microphone channel, so capture cannot start.")
+            }
+            throw NativeNVSTError.transportFailed(
+                "This seat streams the microphone over its legacy transport, which OpenNOW has not recovered yet. Voice chat needs the WebRTC transport for now.")
+        }
+        bundle.setMicrophoneCaptureEnabled(enabled)
+        logger?("NVST microphone \(enabled ? "enabled" : "disabled")")
     }
 
     public func togglePerformanceOverlay() async throws {

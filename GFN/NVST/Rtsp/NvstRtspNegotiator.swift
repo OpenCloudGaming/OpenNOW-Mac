@@ -67,6 +67,11 @@ public struct NvstRtspNegotiator: Sendable {
         var pingVersion: String?
         var disablePlay: String?
         var officialCloudPath: Bool
+        /// Whether the seat offered microphone carriage on the native WebRTC bundle
+        /// (`x-nv-general.rtcMicOnNativeBundle:1` in DESCRIBE). Server-driven: the official
+        /// client only ever echoes this flag, and production seats offer legacy mic transport
+        /// instead, so a bundle mic m-section is built only under this offer.
+        var microphoneOfferedOnBundle = false
     }
 
     /// The accepted video SETUP, and the request forms that got it accepted.
@@ -228,12 +233,21 @@ extension NvstRtspNegotiator {
                                reservation: NvstBundleReservation,
                                input: NvstRtspNegotiationInput,
                                steps: inout [String]) async throws {
-        let bundleIdentity = await reserver.bundleIdentity(for: resolved.handoff)
+        let bundleIdentity = await reserver.bundleIdentity(for: resolved.handoff,
+                                                           microphoneOfferedOnBundle: described.microphoneOfferedOnBundle)
         let bundlePort = bundleIdentity?.bundlePort ?? reservation.bundlePort
         let fingerprint = bundleIdentity?.dtlsFingerprint ?? reservation.dtlsFingerprint
         let localAddress = bundleIdentity?.localAddress ?? reservation.localAddress
         if bundleIdentity != nil {
-            logger?("NVST bundle identity ready for ANNOUNCE (port=\(bundlePort), fingerprintBytes=\(fingerprint?.count ?? 0))")
+            logger?("NVST bundle identity ready for ANNOUNCE (port=\(bundlePort), fingerprintBytes=\(fingerprint?.count ?? 0), microphone=\(bundleIdentity?.microphoneNegotiated == true))")
+        }
+        // The microphone identity only exists once the bundle is up: `reserveBundle()` runs
+        // before the seat's identity is known, so the mic fields arrive with the bundle identity
+        // and are folded into the reservation ANNOUNCE reads.
+        var reservation = reservation
+        if let bundleIdentity {
+            reservation.microphoneNegotiated = bundleIdentity.microphoneNegotiated
+            reservation.microphoneSenderSsrc = bundleIdentity.microphoneSenderSsrc
         }
 
         let options = announceOptions(input: input,
@@ -322,6 +336,7 @@ extension NvstRtspNegotiator {
         let describedPingVersion = NvstRtspSdp.attribute(body, "general.pingVersion")
         let advertisesCloudPath = NvstRtspSdp.attribute(body, "general.nativeRtcOnBundlePort") == "1"
         let officialCloudPath = advertisesCloudPath && !input.forcesLegacyPath
+        let microphoneOfferedOnBundle = NvstRtspSdp.attribute(body, "general.rtcMicOnNativeBundle") == "1"
         // Official Bifrost ALWAYS client-generates `runtime.encryptionKey` and sends it in
         // ANNOUNCE, even when a DTLS fingerprint is present: the video SRTP socket is keyed
         // by this runtime key, not by DTLS-SRTP. Skipping it means the seat never keys video.
@@ -337,9 +352,16 @@ extension NvstRtspNegotiator {
                 ?? NvstRtspSdp.attribute(body, "general.dtlsFingerprint"),
             pingVersion: describedPingVersion,
             disablePlay: NvstRtspSdp.attribute(body, "general.disablePlay"),
-            officialCloudPath: officialCloudPath
+            officialCloudPath: officialCloudPath,
+            microphoneOfferedOnBundle: microphoneOfferedOnBundle
         )
-        logger?("NVST DESCRIBE ok (session=\(sessionIdentifier), videoControl=\(videoControl), hmac=\(described.hmacSeed != nil), describedKey=\(describedKey != nil), official=\(officialCloudPath)\(advertisesCloudPath && input.forcesLegacyPath ? " (cloud path advertised, legacy forced)" : ""), pingVersion=\(describedPingVersion ?? "absent"), remoteFingerprintBytes=\(described.remoteFingerprint?.count ?? 0))")
+        logger?("NVST DESCRIBE ok (session=\(sessionIdentifier), videoControl=\(videoControl), hmac=\(described.hmacSeed != nil), describedKey=\(describedKey != nil), official=\(officialCloudPath)\(advertisesCloudPath && input.forcesLegacyPath ? " (cloud path advertised, legacy forced)" : ""), pingVersion=\(describedPingVersion ?? "absent"), micOnBundleOffered=\(microphoneOfferedOnBundle), remoteFingerprintBytes=\(described.remoteFingerprint?.count ?? 0))")
+        // The seat's audio/mic configuration is otherwise invisible after the fact: the bundle mic
+        // work needs to know what the seat says about redundancy, payload types and mic framing,
+        // so the audio-relevant DESCRIBE attributes go to the diagnostic log verbatim.
+        for line in Self.audioRelevantDescribeLines(body) {
+            logger?("NVST DESCRIBE sdp \(line)")
+        }
         return described
     }
 
@@ -513,6 +535,11 @@ extension NvstRtspNegotiator {
             rtcpOnSctp: input.rtcpOnSctp,
             // Audio leaves the bundle exactly when a socket has been reserved for it.
             carriesAudioOnBundle: reservation.audioPort == nil,
+            // The mic rides the bundle exactly when the bundle's answer really carries the send
+            // section — the same invariant the audio flag has, enforced the same way: the flag
+            // mirrors what the bundle reported rather than what the preferences asked for.
+            carriesMicrophoneOnBundle: reservation.microphoneNegotiated,
+            microphoneSenderSsrc: reservation.microphoneNegotiated ? reservation.microphoneSenderSsrc : nil,
             // The seat states its own encoder preferences in DESCRIBE; the answer echoes them
             // rather than contradicting them with a hardcoded default.
             offeredAttributes: NvstRtspSdp.offeredAttributes(described.body),
@@ -596,5 +623,20 @@ extension NvstRtspNegotiator {
         guard response.statusCode == 200 else {
             throw NvstRtspNegotiationError.requestFailed(method, response.statusCode, response.statusText)
         }
+    }
+}
+
+extension NvstRtspNegotiator {
+    /// The DESCRIBE lines that describe the seat's audio and microphone planes: the `x-nv-mic`,
+    /// `x-nv-aqos` and `x-nv-audio` namespaces, the bundle/RTC flags, the client-port table and
+    /// every codec line (`m=audio`, `rtpmap`, `fmtp`). Capped so a hostile body cannot flood the log.
+    static func audioRelevantDescribeLines(_ body: String) -> [String] {
+        let markers = ["x-nv-mic.", "x-nv-aqos.", "x-nv-audio.", "x-nv-general.rtc", "x-nv-general.clientPorts",
+                       "x-nv-runtime.mic", "x-nv-general.nativeRtcOnBundlePort", "m=audio", "a=rtpmap", "a=fmtp",
+                       "x-nv-general.separateMicStream"]
+        let lines: [String] = body.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { line in !line.isEmpty && markers.contains(where: line.contains) }
+        return Array(lines.prefix(160))
     }
 }

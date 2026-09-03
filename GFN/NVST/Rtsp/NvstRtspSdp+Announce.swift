@@ -113,6 +113,11 @@ extension NvstRtspSdp {
 
         func contains(_ name: String) -> Bool { values[name] != nil }
 
+        mutating func remove(_ name: String) {
+            guard values.removeValue(forKey: name) != nil else { return }
+            order.removeAll { $0 == name }
+        }
+
         var lines: [String] { order.map { "a=\($0):\(values[$0] ?? "")" } }
     }
 
@@ -122,7 +127,18 @@ extension NvstRtspSdp {
         applyOfferedAttributes(&attributes, options: options)
         applyVideoAttributes(&attributes, options: options)
         applyBitrateAttributes(&attributes, options: options)
+        applyMicrophoneAttributes(&attributes, options: options)
         return attributes
+    }
+
+    /// The mic sender SSRC is only knowable by the client — NVST has no WebRTC signaling, so the
+    /// bundle's answer never reaches the seat, and this attribute is the seat's only source for
+    /// the SSRC the mic RTP arrives with (the vendor stack keeps `micSsrcConfig.senderSsrc` for
+    /// exactly this). Emitted only when the bundle actually carries the mic send section, keeping
+    /// the announce flag / answer invariant.
+    static func applyMicrophoneAttributes(_ attributes: inout AnnounceAttributes, options: AnnounceOptions) {
+        guard options.carriesMicrophoneOnBundle, let ssrc = options.microphoneSenderSsrc else { return }
+        attributes.set("x-nv-mic.micSsrcConfig.senderSsrc", "\(ssrc)")
     }
 
     /// Layer one: the captured official baseline plus the client-side packet pacing it needs.
@@ -403,6 +419,7 @@ extension NvstRtspSdp {
             "x-nv-general.rtcVideoOnNativeBundle",
             "x-nv-general.rtcAudioOnNativeBundle",
             "x-nv-general.rtcMicOnNativeBundle",
+            "x-nv-mic.micSsrcConfig.senderSsrc",
             "x-nv-general.rtcDataChannelOnNativeBundle",
             "x-nv-general.enableUnifiedSocket",
             "x-nv-general.rtcpOnSctp",

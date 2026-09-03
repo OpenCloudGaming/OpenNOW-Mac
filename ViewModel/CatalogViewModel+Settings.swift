@@ -475,7 +475,76 @@ extension CatalogViewModel {
 
     func setMicrophoneDeviceId(_ deviceId: String) {
         OPNStreamPreferences.saveMicrophoneDeviceId(deviceId)
+        let restartRunningTest = microphoneTestActive
         loadSettingsPreferences()
+        // A running test is bound to the old device; retarget it instead of leaving it measuring
+        // a microphone the host just stopped asking about.
+        if restartRunningTest { startMicrophoneTest() }
+    }
+
+    // MARK: - Microphone test
+
+    func toggleMicrophoneTest() {
+        if microphoneTestActive { stopMicrophoneTest() } else { startMicrophoneTest() }
+    }
+
+    /// Opens the selected input device without a streaming session and reports its live level.
+    /// macOS shows its microphone permission prompt here the first time, which is exactly when a
+    /// host expects it - not mid-game. The test ends itself after half a minute so a probe that
+    /// is forgotten on screen does not hold the microphone open.
+    func startMicrophoneTest() {
+        stopMicrophoneTest()
+        let probe = OPNMicrophoneLevelProbe()
+        probe.onLevel = { [weak self] level in
+            Task { @MainActor [weak self] in
+                guard let self, self.microphoneTestActive else { return }
+                self.microphoneTestLevel = level
+            }
+        }
+        do {
+            let deviceId = streamProfile.microphoneDeviceId
+            try probe.start(deviceUniqueId: deviceId.isEmpty ? nil : deviceId)
+        } catch {
+            microphoneLevelProbe = nil
+            microphoneTestActive = false
+            microphoneTestLevel = 0
+            microphoneTestMessage = microphoneTestFailureMessage(for: error)
+            return
+        }
+        microphoneLevelProbe = probe
+        microphoneTestActive = true
+        microphoneTestLevel = 0
+        microphoneTestMessage = "Speak now - the meter shows what OpenNOW hears."
+        microphoneTestAutoStop = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled else { return }
+            self?.stopMicrophoneTest()
+        }
+    }
+
+    func stopMicrophoneTest() {
+        microphoneTestAutoStop?.cancel()
+        microphoneTestAutoStop = nil
+        microphoneLevelProbe?.stop()
+        microphoneLevelProbe = nil
+        microphoneTestActive = false
+        microphoneTestLevel = 0
+        microphoneTestMessage = nil
+    }
+
+    private func microphoneTestFailureMessage(for error: any Error) -> String {
+        switch error {
+        case OPNMicrophoneLevelProbe.ProbeFailure.noInputDevice:
+            return "No input device was found. Plug in a microphone or choose a different device."
+        case OPNMicrophoneLevelProbe.ProbeFailure.unitCreationFailed:
+            return "macOS refused to create the audio input unit."
+        case OPNMicrophoneLevelProbe.ProbeFailure.unitConfigurationFailed(let status):
+            return "The microphone could not be configured (error \(status))."
+        case OPNMicrophoneLevelProbe.ProbeFailure.unitStartFailed(let status):
+            return "The microphone refused to start (error \(status)). If macOS privacy blocks it, allow OpenNOW in System Settings \u{2192} Privacy & Security \u{2192} Microphone."
+        default:
+            return "The microphone test failed: \(error.localizedDescription)"
+        }
     }
 
     func restoreStreamingProfileDefaults() {
