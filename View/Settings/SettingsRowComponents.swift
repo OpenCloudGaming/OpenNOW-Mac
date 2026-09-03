@@ -236,6 +236,7 @@ struct SettingsToggleRow: View {
             Spacer()
             Toggle("", isOn: Binding(get: { isOn }, set: { action($0) }))
                 .toggleStyle(.switch)
+                .tint(OpenNOWDesign.accent)
                 .labelsHidden()
                 .disabled(isLocked)
                 .opacity(isLocked ? 0.45 : 1)

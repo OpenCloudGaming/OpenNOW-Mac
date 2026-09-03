@@ -150,6 +150,7 @@ extension SteamControllerMappingView {
                     Spacer()
                     Toggle("", isOn: binding.invertY)
                         .toggleStyle(.switch)
+                        .tint(OpenNOWDesign.accent)
                         .labelsHidden()
                 }
             }
