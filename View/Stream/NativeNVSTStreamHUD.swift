@@ -101,6 +101,7 @@ extension NativeNVSTMediaStreamSurface {
             VStack(alignment: .leading, spacing: 14) {
                 nativeHUDStatusPanel
                 nativeHUDControlsPanel
+                nativeHUDInputPanel
                 nativeHUDNetworkPanel
                 if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isEnabled {
                     nativeHUDRemoteCoOpPanel
@@ -168,6 +169,22 @@ extension NativeNVSTMediaStreamSurface {
                     action: model.toggleNativeRecording
                 )
                 StreamHUDActionRow(
+                    title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
+                    subtitle: "Detailed overlay",
+                    systemName: "chart.line.uptrend.xyaxis",
+                    isActive: model.nativeStatsVisible,
+                    isDisabled: !model.sidebarCapabilities.supports(.floatingStats),
+                    isFocused: model.hudFocusID == "floating-stats",
+                    action: model.toggleNativeStatsHUD
+                )
+            }
+        }
+    }
+
+    var nativeHUDInputPanel: some View {
+        StreamHUDSection(label: "INPUT", spacing: 8) {
+            LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
+                StreamHUDActionRow(
                     title: model.pointerLocked ? "Release Mouse" : "Capture Mouse",
                     subtitle: model.pointerLocked ? "Pointer locked" : "Click stream also captures",
                     systemName: model.pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
@@ -184,15 +201,6 @@ extension NativeNVSTMediaStreamSurface {
                     isDisabled: !model.sidebarCapabilities.supports(.antiAFK) || !model.isConnected,
                     isFocused: model.hudFocusID == "anti-afk",
                     action: model.toggleNativeAntiAFKMouseMovement
-                )
-                StreamHUDActionRow(
-                    title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                    subtitle: "Detailed overlay",
-                    systemName: "chart.line.uptrend.xyaxis",
-                    isActive: model.nativeStatsVisible,
-                    isDisabled: !model.sidebarCapabilities.supports(.floatingStats),
-                    isFocused: model.hudFocusID == "floating-stats",
-                    action: model.toggleNativeStatsHUD
                 )
                 StreamHUDActionRow(
                     title: "Controller Mapping",
