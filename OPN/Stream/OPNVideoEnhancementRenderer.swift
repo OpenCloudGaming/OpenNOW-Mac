@@ -65,6 +65,52 @@ final class OPNVideoTextureFrame: NSObject {
     @objc var cropRect: CGRect = .zero
     @objc var contentWidth: UInt = 0
     @objc var contentHeight: UInt = 0
+    /// `OPNVideoColorMatrix` raw value: which YCbCr matrix the planes were encoded with.
+    @objc var colorMatrix = 0
+    /// `OPNVideoTransferFunction` raw value: SDR, PQ or HLG. The shaders pass the signal through
+    /// untouched either way; the layer's colour space is what tells the compositor how to read it.
+    @objc var transferFunction = 0
+    /// Whether luma/chroma use the full code range. Every surface this app's own decoder asks for
+    /// is full range; a video-range buffer is expanded in the shader.
+    @objc var isFullRange = true
+}
+
+/// YCbCr-to-RGB matrix families, as tagged on a decoded `CVPixelBuffer`.
+enum OPNVideoColorMatrix: Int {
+    case bt709 = 0
+    case bt2020 = 1
+    case bt601 = 2
+
+    /// (Cr→R, Cb→G, Cr→G, Cb→B) for full-range input, from Kr/Kb of each matrix.
+    var coefficients: SIMD4<Float> {
+        switch self {
+        case .bt709: SIMD4<Float>(1.5748, 0.1873, 0.4681, 1.8556)
+        case .bt2020: SIMD4<Float>(1.4746, 0.1646, 0.5714, 1.8814)
+        case .bt601: SIMD4<Float>(1.4020, 0.3441, 0.7141, 1.7720)
+        }
+    }
+
+    static func from(pixelBuffer: CVPixelBuffer) -> OPNVideoColorMatrix {
+        guard let value = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, nil) as? String else { return .bt709 }
+        if value == (kCVImageBufferYCbCrMatrix_ITU_R_2020 as String) { return .bt2020 }
+        if value == (kCVImageBufferYCbCrMatrix_ITU_R_601_4 as String) || value == (kCVImageBufferYCbCrMatrix_SMPTE_240M_1995 as String) { return .bt601 }
+        return .bt709
+    }
+}
+
+enum OPNVideoTransferFunction: Int {
+    case sdr = 0
+    case pq = 1
+    case hlg = 2
+
+    var isHDR: Bool { self != .sdr }
+
+    static func from(pixelBuffer: CVPixelBuffer) -> OPNVideoTransferFunction {
+        guard let value = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, nil) as? String else { return .sdr }
+        if value == (kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ as String) { return .pq }
+        if value == (kCVImageBufferTransferFunction_ITU_R_2100_HLG as String) { return .hlg }
+        return .sdr
+    }
 }
 
 
@@ -92,12 +138,12 @@ final class OPNVideoEnhancementRenderer: NSObject {
     let shaderLibrary: (any MTLLibrary)?
     private var metalFXIntermediateTexture: (any MTLTexture)?
     private var metalFXOutputTexture: (any MTLTexture)?
-    var spatialRGBPipeline: (any MTLRenderPipelineState)?
-    var spatialNV12Pipeline: (any MTLRenderPipelineState)?
-    var spatialI420Pipeline: (any MTLRenderPipelineState)?
-    var fastSpatialRGBPipeline: (any MTLRenderPipelineState)?
-    var fastSpatialNV12Pipeline: (any MTLRenderPipelineState)?
-    var fastSpatialI420Pipeline: (any MTLRenderPipelineState)?
+    /// Pipelines that render into the drawable, keyed by fragment function and destination pixel
+    /// format. The drawable is `bgra8Unorm` for 8-bit video, `bgr10a2Unorm` once a 10-bit frame
+    /// arrives and `rgba16Float` for HDR, so the same shader needs one state per format; each is
+    /// built on first use and a failure is remembered rather than retried every frame.
+    var outputPipelines: [String: any MTLRenderPipelineState] = [:]
+    var failedOutputPipelines: Set<String> = []
     let pillarboxDetector = OPNPillarboxDetector()
     var lastLoggedFillMode: OPNPillarboxFillMode?
     var lastLoggedContentRect: OPNPillarboxContentRect?
@@ -111,7 +157,6 @@ final class OPNVideoEnhancementRenderer: NSObject {
     var fillHistoryContentRect = OPNPillarboxContentRect.full
     var temporalMotionPipeline: (any MTLRenderPipelineState)?
     var temporalCompositePipeline: (any MTLRenderPipelineState)?
-    var temporalPresentPipeline: (any MTLRenderPipelineState)?
     private var temporalCurrentTexture: (any MTLTexture)?
     private var temporalHistoryTexture: (any MTLTexture)?
     private var temporalOutputTexture: (any MTLTexture)?
@@ -141,18 +186,29 @@ final class OPNVideoEnhancementRenderer: NSObject {
         self.textureSource = OPNVideoTextureSource(device: device)
         self.shaderLibrary = Self.makeShaderLibrary(device: device)
         super.init()
-        spatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_rgb")
-        spatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_nv12")
-        spatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_i420")
-        fastSpatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_rgb")
-        fastSpatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_nv12")
-        fastSpatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_i420")
+        // The 8-bit drawable states are built up front so the first frame does not pay for them;
+        // other output formats compile on first use.
+        for name in ["opn_video_spatial_rgb", "opn_video_spatial_nv12", "opn_video_spatial_i420",
+                     "opn_video_fast_rgb", "opn_video_fast_nv12", "opn_video_fast_i420", "opn_video_present_rgb"] {
+            _ = outputPipeline(name, format: Self.renderTargetPixelFormat)
+        }
         fillHistoryRGBPipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_rgb")
         fillHistoryNV12Pipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_nv12")
         fillHistoryI420Pipeline = newFillHistoryPipeline(fragmentFunctionName: "opn_video_fill_history_i420")
         temporalMotionPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_motion", pixelFormat: .rgba16Float)
         temporalCompositePipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_composite")
-        temporalPresentPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_present_rgb")
+    }
+
+    func outputPipeline(_ fragmentFunctionName: String, format: MTLPixelFormat) -> (any MTLRenderPipelineState)? {
+        let key = "\(fragmentFunctionName)#\(format.rawValue)"
+        if let existing = outputPipelines[key] { return existing }
+        guard !failedOutputPipelines.contains(key) else { return nil }
+        guard let pipeline = newSpatialPipeline(fragmentFunctionName: fragmentFunctionName, pixelFormat: format) else {
+            failedOutputPipelines.insert(key)
+            return nil
+        }
+        outputPipelines[key] = pipeline
+        return pipeline
     }
 
     @objc var isMetalFXAvailable: Bool {
@@ -160,7 +216,12 @@ final class OPNVideoEnhancementRenderer: NSObject {
     }
 
     @objc var isTemporalAvailable: Bool {
-        commandQueue != nil && spatialRGBPipeline != nil && spatialNV12Pipeline != nil && spatialI420Pipeline != nil && temporalMotionPipeline != nil && temporalCompositePipeline != nil && temporalPresentPipeline != nil
+        commandQueue != nil
+            && outputPipeline("opn_video_spatial_rgb", format: Self.renderTargetPixelFormat) != nil
+            && outputPipeline("opn_video_spatial_nv12", format: Self.renderTargetPixelFormat) != nil
+            && outputPipeline("opn_video_spatial_i420", format: Self.renderTargetPixelFormat) != nil
+            && temporalMotionPipeline != nil && temporalCompositePipeline != nil
+            && outputPipeline("opn_video_present_rgb", format: Self.renderTargetPixelFormat) != nil
     }
 
     @objc(renderFrame:toView:settings:result:)
@@ -325,7 +386,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         result: OPNVideoEnhancementResult,
         start: CFTimeInterval
     ) -> Bool {
-        guard isMetalFXAvailable, temporalPresentPipeline != nil else { return false }
+        guard isMetalFXAvailable, outputPipeline("opn_video_present_rgb", format: drawable.texture.pixelFormat) != nil else { return false }
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
         guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {

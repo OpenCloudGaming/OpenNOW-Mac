@@ -232,7 +232,13 @@ extension NvstBifrostFreeTransport {
             // The CloudMatch session's human server name ("np-tyo-01" style), the way the vendored
             // transport reported it; the video peer IP is only the fallback for a session that
             // carries no name.
-            serverLocation: sessionServerLocation ?? lastHandoff?.videoPeerIP ?? ""
+            serverLocation: sessionServerLocation ?? lastHandoff?.videoPeerIP ?? "",
+            negotiatedFramesPerSecond: negotiatedFps.map(Double.init) ?? -1,
+            decoderIsHardware: decoder?.isHardwareAccelerated ?? true,
+            bitstreamFormat: decoder?.bitstreamFormat?.summary ?? "",
+            decoderOutputFormat: decoder?.outputPixelFormatName ?? "",
+            targetBitrateMegabitsPerSecond: configuredMaxBitrateKbps.map { Double($0) / 1000 } ?? -1,
+            serverGPU: sessionGPUType ?? ""
         )
     }
     // Session-peak tracker for the NVST SESSION SUMMARY line (see logCounters).

@@ -88,7 +88,11 @@ extension NativeNVSTMediaStreamSurface {
         if (model.latestNativeStats?.packetLoss ?? 0) > 0 { return "Packet loss is active; image quality or input response may degrade." }
         if (model.latestNativeStats?.latencyMilliseconds ?? 0) >= 120 { return "Latency is high; input may feel delayed." }
         if (model.latestNativeStats?.jitterMilliseconds ?? 0) >= 35 { return "Network jitter is unstable; gameplay may stutter." }
-        if let bitrate = model.latestNativeStats?.bitrateMegabitsPerSecond, bitrate >= 0, bitrate < 5 { return "Inbound bitrate is low for cloud gaming quality." }
+        // Bitrate alone says nothing on NVST: the seat skips unchanged frames, so menus and pauses
+        // read as a few hundred kilobits with the link perfectly healthy. The model raises this
+        // only when low bitrate and a falling frame rate have persisted together.
+        if model.nativeBitrateStarved { return "Inbound bitrate is low and frames are arriving late; the link may be starved." }
+        if model.latestNativeStats?.decoderIsHardware == false { return "Video is decoding in software; this colour format has no hardware decoder here." }
         return ""
     }
 

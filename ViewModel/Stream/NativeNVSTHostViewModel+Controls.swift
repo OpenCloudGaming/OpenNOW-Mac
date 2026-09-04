@@ -532,6 +532,8 @@ extension NativeNVSTHostViewModel {
                 let snapshot = await path.performanceSnapshot()
                 if let snapshot, isConnected, !isEnding, !didEnd {
                     latestNativeStats = snapshot
+                    latestRenderDiagnostics = nativeView?.nvstBifrostFreeRenderer?.renderDiagnostics
+                    updateBitrateStarvation(snapshot)
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
@@ -549,6 +551,11 @@ extension NativeNVSTHostViewModel {
                 }
             }
         }
+    }
+
+    func updateBitrateStarvation(_ snapshot: NativeNVSTPerformanceSnapshot, now: Date = Date()) {
+        let starved = bitrateStarvation.update(snapshot, now: now)
+        if starved != nativeBitrateStarved { nativeBitrateStarved = starved }
     }
 
     func recordNativeNetworkTelemetry(_ snapshot: NativeNVSTPerformanceSnapshot) {

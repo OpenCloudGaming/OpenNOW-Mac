@@ -129,6 +129,9 @@ public struct NvstRtspNegotiationInput: Sendable {
     public let prefilterSharpness: Int?
     public let prefilterDenoise: Int?
     public let prefilterModel: Int?
+    /// The session's colour tier string (`10bit_420`, `10bit_444`, `8bit_420`...). Announced as
+    /// `video[0].bitDepth` and `video[0].chromaFormat`; nil leaves the captured values in place.
+    public let colorQuality: String?
     public let timeout: Duration
     /// `general.rtcpOnSctp`. True routes RTCP feedback onto the bundle's
     /// `rtcp_on_sctp_private` data channel; false keeps it as SRTCP on the Mjolnir socket,
@@ -158,6 +161,7 @@ public struct NvstRtspNegotiationInput: Sendable {
                 prefilterSharpness: Int? = nil,
                 prefilterDenoise: Int? = nil,
                 prefilterModel: Int? = nil,
+                colorQuality: String? = nil,
                 timeout: Duration = .seconds(20),
                 rtcpOnSctp: Bool = true,
                 forcesLegacyPath: Bool = false,
@@ -176,6 +180,7 @@ public struct NvstRtspNegotiationInput: Sendable {
         self.prefilterSharpness = prefilterSharpness
         self.prefilterDenoise = prefilterDenoise
         self.prefilterModel = prefilterModel
+        self.colorQuality = colorQuality
         self.fps = fps
         self.codec = codec
         self.timeout = timeout

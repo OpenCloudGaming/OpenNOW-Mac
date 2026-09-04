@@ -22,12 +22,23 @@ public final class NvstBifrostFreeVideoRenderer {
         let lock = NSLock()
         private var lastSize = CGSize.zero
         private var renderedFrames: UInt64 = 0
+        private var latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
 
         init(videoView: OPNMetalVideoView) {
             self.videoView = videoView
         }
 
         public var renderedFrameCount: UInt64 { lock.lock(); defer { lock.unlock() }; return renderedFrames }
+
+        /// The renderer's own account of the last second: decoded surface format, the drawable it
+        /// presented into, whether EDR is on, and how many frames it drew versus received.
+        var renderDiagnostics: OPNVideoRenderDiagnosticsSnapshot { lock.lock(); defer { lock.unlock() }; return latestRenderDiagnostics }
+
+        func noteRenderDiagnostics(_ snapshot: OPNVideoRenderDiagnosticsSnapshot) {
+            lock.lock()
+            latestRenderDiagnostics = snapshot
+            lock.unlock()
+        }
 
         public func render(pixelBuffer: CVPixelBuffer, presentationTime: CMTime, isKeyframe: Bool) {
             guard let videoView else { return }
@@ -56,8 +67,12 @@ public final class NvstBifrostFreeVideoRenderer {
         videoView.layer?.backgroundColor = NSColor.black.cgColor
         parentView.addSubview(videoView, positioned: .below, relativeTo: nil)
         self.videoView = videoView
-        self.sink = NvstBifrostFreeVideoSink(videoView: videoView)
+        let sink = NvstBifrostFreeVideoSink(videoView: videoView)
+        self.sink = sink
+        videoView.renderDiagnosticsHandler = { [weak sink] snapshot in sink?.noteRenderDiagnostics(snapshot) }
     }
+
+    var renderDiagnostics: OPNVideoRenderDiagnosticsSnapshot { sink.renderDiagnostics }
 
     public var frameSink: NvstBifrostFreeVideoSink { sink }
 

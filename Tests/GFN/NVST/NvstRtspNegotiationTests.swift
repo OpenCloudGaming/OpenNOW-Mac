@@ -436,9 +436,9 @@ import Testing
         #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
     }
 
-    /// The official client pings its RTSPS WebSocket every couple of seconds for the life of the
-    /// session — captured from its own `SSL_write`. Nothing else travels on that connection after
-    /// PLAY, so an idle one is how the seat sees a client that has gone away.
+    /// Client control frames are masked, as RFC 6455 requires. The keepalive itself is an RTSP
+    /// OPTIONS, not a ping: a live seat closes the connection within milliseconds of a client ping
+    /// (measured 2026-09-04). The encoder stays for answering the seat's own pings.
     @Test func theWebSocketPingIsAMaskedClientFrame() {
         let ping = NvstWebSocketFrame.encodePing()
         #expect(ping.count == 6)                 // 2-byte header + 4-byte mask, empty payload
@@ -572,5 +572,34 @@ import Testing
         // The captured baseline mic parameters still go out alongside it.
         #expect(lines.contains("a=x-nv-mic.bitrate:16000"))
         #expect(lines.contains("a=x-nv-mic.enablePacketizer:1"))
+    }
+}
+
+// MARK: - Colour tier on the announce
+
+extension NvstRtspSdpTests {
+    @Test func colourTierMapsToDepthAndChromaFormatIdc() {
+        #expect(NvstRtspSdp.colorFormat(forColorQuality: "8bit_420") == (8, 1))
+        #expect(NvstRtspSdp.colorFormat(forColorQuality: "10bit_420") == (10, 1))
+        #expect(NvstRtspSdp.colorFormat(forColorQuality: "8bit_444") == (8, 3))
+        #expect(NvstRtspSdp.colorFormat(forColorQuality: "10bit_444") == (10, 3))
+        #expect(NvstRtspSdp.colorFormat(forColorQuality: "10BIT_422") == (10, 2))
+    }
+
+    @Test func announceCarriesTheSessionsColourTier() {
+        // No tier: the captured 10-bit 4:2:0 baseline stands.
+        let baseline = NvstRtspSdp.buildAnnounceSdp(.init(resolution: "1920x1080", fps: 60))
+        #expect(baseline.contains("a=x-nv-video[0].bitDepth:10"))
+        #expect(baseline.contains("a=x-nv-video[0].chromaFormat:1"))
+
+        // An 8-bit session must not keep announcing 10.
+        let eight = NvstRtspSdp.buildAnnounceSdp(.init(resolution: "1920x1080", fps: 60, bitDepth: 8, chromaFormat: 1))
+        #expect(eight.contains("a=x-nv-video[0].bitDepth:8"))
+        #expect(!eight.contains("a=x-nv-video[0].bitDepth:10"))
+
+        let ten444 = NvstRtspSdp.buildAnnounceSdp(.init(resolution: "1920x1080", fps: 60, bitDepth: 10, chromaFormat: 3))
+        #expect(ten444.contains("a=x-nv-video[0].bitDepth:10"))
+        #expect(ten444.contains("a=x-nv-video[0].chromaFormat:3"))
+        #expect(!ten444.contains("a=x-nv-video[0].chromaFormat:1"))
     }
 }

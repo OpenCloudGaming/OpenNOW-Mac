@@ -219,6 +219,13 @@ public enum NvstRtspSdp {
         public var prefilterSharpness: Int?
         public var prefilterDenoise: Int?
         public var prefilterModel: Int?
+        /// Sample depth (8 or 10) and chroma layout announced as `video[0].bitDepth` /
+        /// `video[0].chromaFormat`. `chromaFormat` follows `chroma_format_idc` (1 = 4:2:0,
+        /// 2 = 4:2:2, 3 = 4:4:4): the vendor capture of a `10bit_420` session carries
+        /// `bitDepth:10 chromaFormat:1`, which is the only value observed on the wire; 4:4:4
+        /// as 3 is inferred from that convention, not captured. nil leaves the captured values.
+        public var bitDepth: Int?
+        public var chromaFormat: Int?
         public var encryptionKey: NvstRuntimeEncryptionKey?
         public var iceCredentials: NvstRtspIceCredentials?
         public var videoPort: UInt16
@@ -270,6 +277,8 @@ public enum NvstRtspSdp {
                     prefilterSharpness: Int? = nil,
                     prefilterDenoise: Int? = nil,
                     prefilterModel: Int? = nil,
+                    bitDepth: Int? = nil,
+                    chromaFormat: Int? = nil,
                     encryptionKey: NvstRuntimeEncryptionKey? = nil,
                     iceCredentials: NvstRtspIceCredentials? = nil,
                     videoPort: UInt16 = 0,
@@ -304,6 +313,8 @@ public enum NvstRtspSdp {
             self.prefilterSharpness = prefilterSharpness
             self.prefilterDenoise = prefilterDenoise
             self.prefilterModel = prefilterModel
+            self.bitDepth = bitDepth
+            self.chromaFormat = chromaFormat
             self.encryptionKey = encryptionKey
             self.iceCredentials = iceCredentials
             self.videoPort = videoPort

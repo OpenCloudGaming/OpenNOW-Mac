@@ -34,7 +34,7 @@ fragment float4 opn_video_fill_history_rgb(VertexOut in [[stage_in]], texture2d<
     float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);
     return float4(opn_fill_history_box_rgb(sourceTexture, s, uv, boxStep), emaAlpha);
 }
-fragment float4 opn_video_fill_history_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]]) {
+fragment float4 opn_video_fill_history_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]], constant float4 &cm [[buffer(3)]], constant float4 &cr [[buffer(4)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 t = clamp(in.texCoord, float2(0.0), float2(1.0));
     float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);
@@ -47,7 +47,7 @@ fragment float4 opn_video_fill_history_nv12(VertexOut in [[stage_in]], texture2d
     }
     return float4(acc / 16.0, emaAlpha);
 }
-fragment float4 opn_video_fill_history_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]]) {
+fragment float4 opn_video_fill_history_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float4 &fill [[buffer(0)]], constant float2 &boxStep [[buffer(1)]], constant float &emaAlpha [[buffer(2)]], constant float4 &cm [[buffer(3)]], constant float4 &cr [[buffer(4)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 t = clamp(in.texCoord, float2(0.0), float2(1.0));
     float2 uv = float2(mix(fill.x, fill.y, t.x), t.y);

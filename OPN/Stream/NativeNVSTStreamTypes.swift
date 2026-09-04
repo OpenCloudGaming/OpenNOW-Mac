@@ -37,6 +37,19 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let resolution: String
     public let codec: String
     public let serverLocation: String
+    /// The frame rate the session negotiated; -1 when unknown. Lets the HUD tell a quiet scene
+    /// (low bitrate, full frame rate) from a starved one (low bitrate, frame rate collapsing).
+    public let negotiatedFramesPerSecond: Double
+    /// Whether VideoToolbox is actually decoding in hardware. False is the software fallback,
+    /// which a 4:4:4 request can land on.
+    public let decoderIsHardware: Bool
+    /// What the bitstream declares (`10-bit 4:2:0`) and the surface the decoder emits (`xf20`).
+    public let bitstreamFormat: String
+    public let decoderOutputFormat: String
+    /// The ceiling the user configured, so the HUD can show used bitrate against it; -1 if unset.
+    public let targetBitrateMegabitsPerSecond: Double
+    /// The seat's GPU as named by the session response ("NVIDIA GeForce RTX 4080"); the rig.
+    public let serverGPU: String
 
     public init(available: Bool,
                 gameFramesPerSecond: Double,
@@ -53,7 +66,19 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 bandwidthUtilizationPercent: Double,
                 resolution: String,
                 codec: String,
-                serverLocation: String) {
+                serverLocation: String,
+                negotiatedFramesPerSecond: Double = -1,
+                decoderIsHardware: Bool = true,
+                bitstreamFormat: String = "",
+                decoderOutputFormat: String = "",
+                targetBitrateMegabitsPerSecond: Double = -1,
+                serverGPU: String = "") {
+        self.serverGPU = serverGPU
+        self.targetBitrateMegabitsPerSecond = targetBitrateMegabitsPerSecond
+        self.negotiatedFramesPerSecond = negotiatedFramesPerSecond
+        self.decoderIsHardware = decoderIsHardware
+        self.bitstreamFormat = bitstreamFormat
+        self.decoderOutputFormat = decoderOutputFormat
         self.available = available
         self.gameFramesPerSecond = gameFramesPerSecond
         self.streamFramesPerSecond = streamFramesPerSecond

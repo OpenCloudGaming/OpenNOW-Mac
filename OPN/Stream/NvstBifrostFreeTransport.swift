@@ -124,9 +124,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The frame rate the seat agreed to, read out of the allocation's negotiated profile. The
     /// profile is configurable end to end — the session request carries `framesPerSecond` — so
     /// nothing here may assume 60.
-    private var negotiatedFps: Int?
+    var negotiatedFps: Int?
     /// Human server name from the CloudMatch allocation ("np-tyo-01" style), for the stats HUD.
     var sessionServerLocation: String?
+    /// The seat's GPU name from the session response; the "rig" in the HUD.
+    var sessionGPUType: String?
     /// The seat's latest `0x0101` statistics: the HUD's GAME FPS and MS come from here.
     var latestSeatStats: NvstSeatStats?
     private var seatStatsReceived = 0
@@ -223,6 +225,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     private let configuredPrefilterSharpness: Int?
     private let configuredPrefilterDenoise: Int?
     private let configuredPrefilterModel: Int?
+    /// The session's colour tier (`8bit_420`, `10bit_420`, `10bit_444`, ...), announced as
+    /// `video[0].bitDepth` / `chromaFormat` so the ANNOUNCE agrees with what the session PUT asked for.
+    private let configuredColorQuality: String?
 
     public init(pixelBufferSink: PixelBufferSink? = nil,
                 configuredFps: Int? = nil,
@@ -231,6 +236,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterSharpness: Int? = nil,
                 configuredPrefilterDenoise: Int? = nil,
                 configuredPrefilterModel: Int? = nil,
+                configuredColorQuality: String? = nil,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
                 remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
@@ -244,6 +250,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterSharpness = configuredPrefilterSharpness
         self.configuredPrefilterDenoise = configuredPrefilterDenoise
         self.configuredPrefilterModel = configuredPrefilterModel
+        self.configuredColorQuality = configuredColorQuality
         self.logger = logger
         self.controlTimeout = controlTimeout
     }
@@ -274,6 +281,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 : "This session provided no RTSPS control endpoint, so NVST cannot be negotiated.")
         }
         sessionServerLocation = Self.sessionServerLocation(for: allocation)
+        sessionGPUType = Self.sessionGPUType(for: allocation)
         let profile = Self.resolvedStreamProfile(allocation: allocation,
                                                  configuredFps: configuredFps,
                                                  configuredMaxBitrateKbps: configuredMaxBitrateKbps)
@@ -355,6 +363,15 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             let mbps = Double(maxBucket) * 8 / 1_000_000
             if mbps > peakIntervalMbps { peakIntervalMbps = mbps }
         }
+        // Mean bytes per frame over the whole session next to the configured ceiling: the number
+        // an encoder-knob A/B (preset, AQ, relaxMaxBitrate thresholds) has to move, measured on
+        // the same title and scene, before any such knob is worth keeping.
+        let meanFrameBytes = stats.framesEmitted > 0 ? Double(stats.bytesReceived) / Double(stats.framesEmitted) : 0
+        logger?(String(format: "NVST BITRATE meanFrameBytes=%.0f frames=%llu targetMbps=%@ decoderOutput=%@ bitstream=%@",
+                       meanFrameBytes, stats.framesEmitted,
+                       configuredMaxBitrateKbps.map { String(format: "%.0f", Double($0) / 1000) } ?? "-",
+                       decoder?.outputPixelFormatName ?? "-",
+                       decoder?.bitstreamFormat?.summary ?? "-"))
         logger?(String(format: "NVST SESSION SUMMARY peakStreamFps=%.1f peakStreamMbps=%.1f negFps=%@ | verdict fps%@60 bitrate%@24Mbps (fps cap lifted via announce maxFPS; bitrate bounded by initialBitrateKbps since the seat never ramps up — low-complexity scenes read low, that is content not a cap)",
                        peakIntervalFps, peakIntervalMbps,
                        negotiatedFps.map(String.init) ?? "nil",
@@ -607,6 +624,7 @@ extension NvstBifrostFreeTransport {
             prefilterSharpness: configuredPrefilterSharpness,
             prefilterDenoise: configuredPrefilterDenoise,
             prefilterModel: configuredPrefilterModel,
+            colorQuality: configuredColorQuality,
             timeout: controlTimeout,
             // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
             // keeps feedback as SRTCP on the Mjolnir socket.

@@ -101,6 +101,47 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     }
     private var decodedWidth = 0
     private var decodedHeight = 0
+
+    /// What the bitstream's parameter sets declare about sample depth and chroma layout. Read from
+    /// the `hvcC` record VideoToolbox builds out of the SPS, so it is the decoder's own view of the
+    /// stream rather than what the session negotiation asked for.
+    public struct BitstreamFormat: Equatable, Sendable {
+        public enum Chroma: Int, Sendable {
+            case monochrome = 0
+            case yuv420 = 1
+            case yuv422 = 2
+            case yuv444 = 3
+        }
+        public var bitDepth = 8
+        public var chroma = Chroma.yuv420
+
+        public var isTenBit: Bool { bitDepth > 8 }
+        public var summary: String {
+            let layout: String = switch chroma {
+            case .monochrome: "4:0:0"
+            case .yuv420: "4:2:0"
+            case .yuv422: "4:2:2"
+            case .yuv444: "4:4:4"
+            }
+            return "\(bitDepth)-bit \(layout)"
+        }
+    }
+
+    /// The last format description's declared depth and chroma layout, or nil before the first
+    /// keyframe.
+    public var bitstreamFormat: BitstreamFormat? {
+        statsLock.lock()
+        defer { statsLock.unlock() }
+        return currentBitstreamFormat
+    }
+    private var currentBitstreamFormat: BitstreamFormat?
+    /// Four-character name of the `CVPixelBuffer` format the session was created to emit.
+    public var outputPixelFormatName: String {
+        statsLock.lock()
+        defer { statsLock.unlock() }
+        return Self.pixelFormatName(outputPixelFormat)
+    }
+    private var outputPixelFormat: OSType = 0
     public var failedFrameCount: UInt64 { statsLock.lock(); defer { statsLock.unlock() }; return failedFrames }
     /// `first/last` OSStatus of the asynchronous decode failures, or "-" when there were none.
     public var failureStatusSummary: String {
@@ -383,28 +424,78 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
             }
         }
         guard status == noErr, let description else { throw DecoderError.formatDescriptionFailed(status) }
+        let format = Self.bitstreamFormat(from: description, codec: codec)
+        statsLock.lock()
+        currentBitstreamFormat = format
+        statsLock.unlock()
         return description
     }
 
+    /// Reads depth and chroma layout out of the HEVC decoder configuration record (`hvcC`, ISO
+    /// 14496-15 §8.3.3.1): byte 16 carries `chromaFormat` in its low two bits and byte 17
+    /// `bitDepthLumaMinus8` in its low three. H.264 sessions on this service are 8-bit 4:2:0 —
+    /// the 10-bit and 4:4:4 tiers are only offered on HEVC and AV1 — so `avcC` is not parsed.
+    static func bitstreamFormat(from description: CMFormatDescription, codec: NVSTVideoCodec) -> BitstreamFormat {
+        guard codec == .hevc,
+              let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any],
+              let record = atoms["hvcC"] as? Data else {
+            return BitstreamFormat()
+        }
+        return bitstreamFormat(hvcC: record)
+    }
+
+    static func bitstreamFormat(hvcC record: Data) -> BitstreamFormat {
+        guard record.count >= 19 else { return BitstreamFormat() }
+        let bytes = [UInt8](record)
+        var format = BitstreamFormat()
+        format.chroma = BitstreamFormat.Chroma(rawValue: Int(bytes[16] & 0x3)) ?? .yuv420
+        format.bitDepth = 8 + Int(bytes[17] & 0x7)
+        return format
+    }
+
+    /// The `CVPixelBuffer` formats to ask VideoToolbox for, best first. Every entry is full range
+    /// and bi-planar: the Metal path samples luma and interleaved chroma as two textures with the
+    /// same normalised coordinates, so 4:2:2 and 4:4:4 chroma planes of any size bind unchanged,
+    /// and full range is what the YCbCr shaders assume. A 10-bit stream asks for the matching
+    /// 10-bit surface so the decoder no longer truncates every frame to 8 bits before the renderer
+    /// sees it. The 8-bit 4:2:0 surface is always the last resort, because VideoToolbox will
+    /// convert down to it from anything.
+    static func preferredOutputPixelFormats(for format: BitstreamFormat) -> [OSType] {
+        let fallback = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        var preferred: [OSType] = []
+        switch (format.chroma, format.isTenBit) {
+        case (.yuv444, true): preferred = [kCVPixelFormatType_444YpCbCr10BiPlanarFullRange, kCVPixelFormatType_420YpCbCr10BiPlanarFullRange]
+        case (.yuv444, false): preferred = [kCVPixelFormatType_444YpCbCr8BiPlanarFullRange]
+        case (.yuv422, true): preferred = [kCVPixelFormatType_422YpCbCr10BiPlanarFullRange, kCVPixelFormatType_420YpCbCr10BiPlanarFullRange]
+        case (.yuv422, false): preferred = [kCVPixelFormatType_422YpCbCr8BiPlanarFullRange]
+        case (_, true): preferred = [kCVPixelFormatType_420YpCbCr10BiPlanarFullRange]
+        default: preferred = []
+        }
+        return preferred + [fallback]
+    }
+
+    static func pixelFormatName(_ format: OSType) -> String {
+        guard format != 0 else { return "-" }
+        let bytes = [UInt8((format >> 24) & 0xff), UInt8((format >> 16) & 0xff), UInt8((format >> 8) & 0xff), UInt8(format & 0xff)]
+        return String(bytes: bytes, encoding: .ascii) ?? String(format: "0x%08x", format)
+    }
+
     private func makeSession(formatDescription: CMVideoFormatDescription) throws -> VTDecompressionSession {
-        // Ask for a full-range 4:2:0 biplanar surface backed by an IOSurface so the Metal
-        // renderer can bind it without a copy.
+        // Ask for a full-range bi-planar surface backed by an IOSurface so the Metal renderer can
+        // bind it without a copy. The depth and chroma layout follow the bitstream: this used to
+        // hardcode 8-bit 4:2:0, so every 10-bit-negotiated frame (`color=10bit_420`, confirmed in
+        // `OPNSessionManager` logs) was truncated by VideoToolbox before the renderer saw it and
+        // the 10-bit tier bought nothing but banding-free encode. (A 2026-08-28 attempt at 10-bit
+        // output was reverted for lack of a decode-time win; decode cost was never the point —
+        // the renderer draws P010 through its own path and the layer can present 10 bits.)
         //
-        // Tried requesting 10-bit output directly (2026-08-28) on the theory that VideoToolbox
-        // truncating every 10-bit-negotiated frame (`color=10bit_420`, confirmed in
-        // `OPNSessionManager` logs) down to 8-bit here was adding real per-frame cost — measured
-        // decode mean was unchanged (7.74-7.75ms, identical to the 8-bit baseline), so the
-        // truncation isn't the cost. Reverted rather than carry the downstream rendering risk
-        // (this codebase's Metal path assumes 8-bit NV12 semantics) for no benefit.
         // Tried a pixel-buffer-pool-depth hint (`kCVPixelBufferPoolMinimumBufferCountKey`, 6
         // buffers) on 2026-08-28 to rule out decode completion stalling on a buffer the renderer
         // was still holding — measured decode mean unchanged (7.72ms, identical to no hint), so
         // pool starvation isn't the cost either. Reverted.
-        let attributes: [CFString: Any] = [
-            kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange),
-            kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
-            kCVPixelBufferMetalCompatibilityKey: true,
-        ]
+        statsLock.lock()
+        let bitstream = currentBitstreamFormat ?? BitstreamFormat()
+        statsLock.unlock()
         // Ask for hardware explicitly rather than taking the default. VideoToolbox will fall back to
         // a software decoder without saying so, and a software HEVC decode at 5120x2160 cannot hold
         // 120 fps — which is indistinguishable, from the outside, from "decode is slow".
@@ -412,15 +503,34 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
             kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: true,
         ]
         var created: VTDecompressionSession?
-        let status = VTDecompressionSessionCreate(
-            allocator: kCFAllocatorDefault,
-            formatDescription: formatDescription,
-            decoderSpecification: specification as CFDictionary,
-            imageBufferAttributes: attributes as CFDictionary,
-            outputCallback: nil,
-            decompressionSessionOut: &created
-        )
+        var status: OSStatus = noErr
+        var chosenFormat: OSType = 0
+        for candidate in Self.preferredOutputPixelFormats(for: bitstream) {
+            let attributes: [CFString: Any] = [
+                kCVPixelBufferPixelFormatTypeKey: NSNumber(value: candidate),
+                kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+                kCVPixelBufferMetalCompatibilityKey: true,
+            ]
+            var attempt: VTDecompressionSession?
+            status = VTDecompressionSessionCreate(
+                allocator: kCFAllocatorDefault,
+                formatDescription: formatDescription,
+                decoderSpecification: specification as CFDictionary,
+                imageBufferAttributes: attributes as CFDictionary,
+                outputCallback: nil,
+                decompressionSessionOut: &attempt
+            )
+            if status == noErr, let attempt {
+                created = attempt
+                chosenFormat = candidate
+                break
+            }
+            onDecodeFailure?(0, "NVST decoder declined output \(Self.pixelFormatName(candidate)) for \(bitstream.summary) (OSStatus \(status)); trying the next format")
+        }
         guard status == noErr, let created else { throw DecoderError.sessionCreationFailed(status) }
+        statsLock.lock()
+        outputPixelFormat = chosenFormat
+        statsLock.unlock()
         VTSessionSetProperty(created, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         // And then verify it, because asking is not getting.
         var usingHardware: Unmanaged<CFTypeRef>?
@@ -432,7 +542,7 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         statsLock.lock()
         usesHardwareDecoder = isHardware
         statsLock.unlock()
-        onDecodeFailure?(0, "NVST decoder session created codec=\(codec.rawValue) hardware=\(isHardware)")
+        onDecodeFailure?(0, "NVST decoder session created codec=\(codec.rawValue) hardware=\(isHardware) bitstream=\(bitstream.summary) output=\(Self.pixelFormatName(chosenFormat))")
         // Creating a hardware decompression session costs hundreds of milliseconds, and it happens
         // on the frame path — so a rebuild storm reads as random latency spikes. Counted so a spike
         // can be attributed to it instead of guessed at.

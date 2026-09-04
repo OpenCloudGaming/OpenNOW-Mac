@@ -216,3 +216,165 @@ struct NvstVideoToolboxDecoderTests {
         }
     }
 }
+
+// MARK: - Output format selection
+
+extension NvstVideoToolboxDecoderTests {
+    /// A minimal `hvcC` (ISO 14496-15 §8.3.3.1): 22 header bytes, no arrays. Byte 16 is
+    /// `chromaFormat`, byte 17 `bitDepthLumaMinus8`, byte 18 `bitDepthChromaMinus8`, each with
+    /// the reserved high bits set the way encoders write them.
+    private func hvcC(chroma: UInt8, lumaDepthMinus8: UInt8) -> Data {
+        var bytes = [UInt8](repeating: 0, count: 23)
+        bytes[0] = 1
+        bytes[1] = 0x02 // Main10 profile idc
+        bytes[16] = 0xfc | chroma
+        bytes[17] = 0xf8 | lumaDepthMinus8
+        bytes[18] = 0xf8 | lumaDepthMinus8
+        return Data(bytes)
+    }
+
+    @Test func hvcCRecordDeclaresDepthAndChroma() {
+        let ten420 = NvstVideoToolboxDecoder.bitstreamFormat(hvcC: hvcC(chroma: 1, lumaDepthMinus8: 2))
+        #expect(ten420.bitDepth == 10)
+        #expect(ten420.chroma == .yuv420)
+        #expect(ten420.isTenBit)
+        #expect(ten420.summary == "10-bit 4:2:0")
+
+        let eight444 = NvstVideoToolboxDecoder.bitstreamFormat(hvcC: hvcC(chroma: 3, lumaDepthMinus8: 0))
+        #expect(eight444.bitDepth == 8)
+        #expect(eight444.chroma == .yuv444)
+        #expect(eight444.summary == "8-bit 4:4:4")
+
+        // Too short to carry the depth bytes: the 8-bit 4:2:0 default, never a crash.
+        let short = NvstVideoToolboxDecoder.bitstreamFormat(hvcC: Data([1, 2, 3]))
+        #expect(short == NvstVideoToolboxDecoder.BitstreamFormat())
+    }
+
+    @Test func outputFormatFollowsTheBitstreamAndAlwaysEndsInEightBit420() {
+        typealias Format = NvstVideoToolboxDecoder.BitstreamFormat
+        let fallback = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+
+        let eight = NvstVideoToolboxDecoder.preferredOutputPixelFormats(for: Format())
+        #expect(eight == [fallback])
+
+        let ten = NvstVideoToolboxDecoder.preferredOutputPixelFormats(for: Format(bitDepth: 10, chroma: .yuv420))
+        #expect(ten.first == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange)
+        #expect(ten.last == fallback)
+
+        let ten444 = NvstVideoToolboxDecoder.preferredOutputPixelFormats(for: Format(bitDepth: 10, chroma: .yuv444))
+        #expect(ten444.first == kCVPixelFormatType_444YpCbCr10BiPlanarFullRange)
+        // A 4:4:4 surface the decoder cannot produce still keeps the 10 bits before giving them up.
+        #expect(ten444.contains(kCVPixelFormatType_420YpCbCr10BiPlanarFullRange))
+        #expect(ten444.last == fallback)
+
+        let eight444 = NvstVideoToolboxDecoder.preferredOutputPixelFormats(for: Format(bitDepth: 8, chroma: .yuv444))
+        #expect(eight444 == [kCVPixelFormatType_444YpCbCr8BiPlanarFullRange, fallback])
+    }
+
+    @Test func pixelFormatNamesAreTheFourCharacterCodes() {
+        #expect(NvstVideoToolboxDecoder.pixelFormatName(kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) == "xf20")
+        #expect(NvstVideoToolboxDecoder.pixelFormatName(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) == "420f")
+        #expect(NvstVideoToolboxDecoder.pixelFormatName(0) == "-")
+    }
+
+    /// Encodes real 10-bit HEVC and checks the decoder both reads the depth off the parameter sets
+    /// and hands back a 10-bit surface — the truncation to NV12 this path used to do is exactly
+    /// what this guards against.
+    @Test func tenBitHevcDecodesToATenBitSurface() throws {
+        guard VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) else { return }
+        let units = encodeTenBitHevcAnnexB(frameCount: 2)
+        // Every Apple silicon encoder produces Main10; an empty result is a broken test, not a skip.
+        try #require(!units.isEmpty)
+
+        final class FormatCollector: @unchecked Sendable {
+            private let lock = NSLock()
+            private var formats: [OSType] = []
+            func append(_ pixelBuffer: CVPixelBuffer) { lock.lock(); formats.append(CVPixelBufferGetPixelFormatType(pixelBuffer)); lock.unlock() }
+            var snapshot: [OSType] { lock.lock(); defer { lock.unlock() }; return formats }
+        }
+        let collector = FormatCollector()
+        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        decoder.onPixelBuffer = { pixelBuffer, _, _ in collector.append(pixelBuffer) }
+        for (index, bytes) in units.enumerated() {
+            try decoder.decode(accessUnit(bytes, index: UInt32(index), codec: .hevc))
+        }
+        decoder.drain()
+
+        #expect(decoder.bitstreamFormat?.bitDepth == 10)
+        #expect(decoder.bitstreamFormat?.chroma == .yuv420)
+        #expect(decoder.outputPixelFormatName == "xf20")
+        let formats = collector.snapshot
+        #expect(formats.count == units.count)
+        #expect(formats.allSatisfy { $0 == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange })
+    }
+
+    /// Main10 HEVC from a P010 source. Returns nothing when the encoder declines 10-bit.
+    private func encodeTenBitHevcAnnexB(frameCount: Int) -> [Data] {
+        var session: VTCompressionSession?
+        let created = VTCompressionSessionCreate(
+            allocator: kCFAllocatorDefault,
+            width: Int32(Self.width),
+            height: Int32(Self.height),
+            codecType: kCMVideoCodecType_HEVC,
+            encoderSpecification: nil,
+            imageBufferAttributes: nil,
+            compressedDataAllocator: nil,
+            outputCallback: nil,
+            refcon: nil,
+            compressionSessionOut: &session
+        )
+        guard created == noErr, let session else { return [] }
+        defer { VTCompressionSessionInvalidate(session) }
+        guard VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_HEVC_Main10_AutoLevel) == noErr else { return [] }
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
+
+        final class Sink: @unchecked Sendable {
+            private let lock = NSLock()
+            private var units: [Data] = []
+            func append(_ unit: Data) { lock.lock(); units.append(unit); lock.unlock() }
+            var snapshot: [Data] { lock.lock(); defer { lock.unlock() }; return units }
+        }
+        let sink = Sink()
+        for index in 0..<frameCount {
+            guard let pixelBuffer = makeTenBitPixelBuffer(fill: UInt16(200 + index * 40)) else { return [] }
+            let time = CMTime(value: CMTimeValue(index * 3000), timescale: 90_000)
+            let status = VTCompressionSessionEncodeFrame(
+                session,
+                imageBuffer: pixelBuffer,
+                presentationTimeStamp: time,
+                duration: CMTime(value: 3000, timescale: 90_000),
+                frameProperties: nil,
+                infoFlagsOut: nil,
+                outputHandler: { status, _, sampleBuffer in
+                    guard status == noErr, let sampleBuffer, let unit = Self.annexB(from: sampleBuffer) else { return }
+                    sink.append(unit)
+                }
+            )
+            guard status == noErr else { return [] }
+        }
+        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+        return sink.snapshot
+    }
+
+    private func makeTenBitPixelBuffer(fill: UInt16) -> CVPixelBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, Self.width, Self.height,
+                                  kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+                                  attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+              let buffer = pixelBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        for plane in 0..<CVPixelBufferGetPlaneCount(buffer) {
+            guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, plane) else { continue }
+            let count = CVPixelBufferGetBytesPerRowOfPlane(buffer, plane) * CVPixelBufferGetHeightOfPlane(buffer, plane) / 2
+            // P010 keeps its 10 bits in the high bits of each 16-bit sample.
+            let value: UInt16 = (plane == 0 ? fill : 512) << 6
+            base.withMemoryRebound(to: UInt16.self, capacity: count) { pointer in
+                for index in 0..<count { pointer[index] = value }
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        return buffer
+    }
+}

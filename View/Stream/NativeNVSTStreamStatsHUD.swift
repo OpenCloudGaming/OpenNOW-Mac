@@ -30,14 +30,19 @@ extension NativeNVSTMediaStreamSurface {
                 // Percent over the last interval, matching what the WebRTC HUD shows; the running
                 // count stays alongside it as the detail.
                 nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
-                nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
                 // Client-side decode cost. It used to occupy the MS box, where it read as network
                 // latency and was not one.
                 nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
                 nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Codec", value: codec, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Codec", value: codec, detail: nativeStatsDecoderDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from
+                // the HUD rather than from the diagnostic log.
+                nativeStatsStandardRow(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor)
+                nativeStatsStandardRow(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Rig", value: nativeStatsRigName, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
             }
         }
@@ -104,6 +109,63 @@ extension NativeNVSTMediaStreamSurface {
                     .lineLimit(1)
             }
         }
+    }
+
+    /// The seat's GPU, trimmed of the vendor prefix so it fits the row: "RTX 4080" not
+    /// "NVIDIA GeForce RTX 4080".
+    var nativeStatsRigName: String {
+        guard let gpu = model.latestNativeStats?.serverGPU, !gpu.isEmpty else { return "--" }
+        var name = gpu
+        for prefix in ["NVIDIA ", "GeForce "] where name.hasPrefix(prefix) {
+            name = String(name.dropFirst(prefix.count))
+        }
+        return name
+    }
+
+    /// `Mbps of 100`: the used rate against the configured ceiling, so a low reading can be judged
+    /// against what was asked for rather than against an absolute threshold.
+    var nativeStatsBandwidthDetail: String {
+        guard let target = model.latestNativeStats?.targetBitrateMegabitsPerSecond, target > 0 else { return "Mbps" }
+        return String(format: "Mbps of %.0f", target)
+    }
+
+    /// "hw" / "sw" beside the codec, from the decoder's own report.
+    var nativeStatsDecoderDetail: String? {
+        guard let stats = model.latestNativeStats, stats.available else { return nil }
+        return stats.decoderIsHardware ? "hw" : "software"
+    }
+
+    /// The bitstream's declared depth and chroma layout, e.g. `10-bit 4:2:0`.
+    var nativeStatsColourValue: String {
+        nonEmptyNativeStat(model.latestNativeStats?.bitstreamFormat, fallback: "--")
+    }
+
+    /// `xf20 -> bgr10a2 HDR`: the decoded surface, the drawable, and whether EDR is on.
+    var nativeStatsColourDetail: String? {
+        guard let stats = model.latestNativeStats, stats.available, !stats.decoderOutputFormat.isEmpty else { return nil }
+        var detail = stats.decoderOutputFormat
+        if let render = model.latestRenderDiagnostics, !render.outputFormat.isEmpty {
+            detail += " → " + render.outputFormat
+            if render.isHDR { detail += " HDR" }
+        }
+        return detail
+    }
+
+    var nativeStatsColourColor: Color {
+        guard let render = model.latestRenderDiagnostics else { return WebRTCMediaStreamTheme.textPrimary }
+        return render.isHDR || render.outputFormat == "bgr10a2" ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.textPrimary
+    }
+
+    /// The active render tier and how many frames the display loop skipped.
+    var nativeStatsRenderValue: String {
+        guard let render = model.latestRenderDiagnostics, !render.activeTier.isEmpty else { return "--" }
+        return render.activeTier
+    }
+
+    var nativeStatsRenderDetail: String? {
+        guard let render = model.latestRenderDiagnostics, render.framesReceived > 0 else { return nil }
+        let skipped = render.framesReceived > render.framesDrawn ? render.framesReceived - render.framesDrawn : 0
+        return "skipped \(skipped)"
     }
 
     func nativeGameFPSColor(target: Double) -> Color {

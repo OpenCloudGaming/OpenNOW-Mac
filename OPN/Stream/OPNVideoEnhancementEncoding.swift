@@ -21,25 +21,22 @@ extension OPNVideoEnhancementRenderer {
         result: OPNVideoEnhancementResult,
         jitter suppliedJitter: SIMD2<Float> = SIMD2<Float>(0, 0)
     ) -> Bool {
-        guard destinationTexture.pixelFormat == Self.renderTargetPixelFormat else {
-            result.fallbackReason = "spatial scaler drawable format unsupported"
-            return false
-        }
+        let format = destinationTexture.pixelFormat
         let primaryTexture: (any MTLTexture)?
         let pipeline: (any MTLRenderPipelineState)?
         switch textureFrame.kind {
         case 1:
             primaryTexture = textureFrame.lumaTexture
-            pipeline = settings.lowCostSpatial ? (fastSpatialNV12Pipeline ?? spatialNV12Pipeline) : spatialNV12Pipeline
+            pipeline = (settings.lowCostSpatial ? outputPipeline("opn_video_fast_nv12", format: format) : nil) ?? outputPipeline("opn_video_spatial_nv12", format: format)
         case 2:
             primaryTexture = textureFrame.lumaTexture
-            pipeline = settings.lowCostSpatial ? (fastSpatialI420Pipeline ?? spatialI420Pipeline) : spatialI420Pipeline
+            pipeline = (settings.lowCostSpatial ? outputPipeline("opn_video_fast_i420", format: format) : nil) ?? outputPipeline("opn_video_spatial_i420", format: format)
         default:
             primaryTexture = textureFrame.rgbTexture
-            pipeline = settings.lowCostSpatial ? (fastSpatialRGBPipeline ?? spatialRGBPipeline) : spatialRGBPipeline
+            pipeline = (settings.lowCostSpatial ? outputPipeline("opn_video_fast_rgb", format: format) : nil) ?? outputPipeline("opn_video_spatial_rgb", format: format)
         }
         guard let primaryTexture, let pipeline else {
-            result.fallbackReason = "spatial scaler missing texture or pipeline"
+            result.fallbackReason = "spatial scaler missing texture or pipeline for \(format.rawValue)"
             return false
         }
 
@@ -83,9 +80,29 @@ extension OPNVideoEnhancementRenderer {
         encoder.setFragmentBytes(&uniforms.fill, length: MemoryLayout<SIMD4<Float>>.size, index: 5)
         encoder.setFragmentBytes(&uniforms.fillGeometry, length: MemoryLayout<SIMD4<Float>>.size, index: 6)
         encoder.setFragmentBytes(&uniforms.fillColor, length: MemoryLayout<SIMD4<Float>>.size, index: 7)
+        var colorMatrix = Self.colorMatrixCoefficients(textureFrame)
+        var colorRange = Self.colorRangeCoefficients(textureFrame)
+        encoder.setFragmentBytes(&colorMatrix, length: MemoryLayout<SIMD4<Float>>.size, index: 8)
+        encoder.setFragmentBytes(&colorRange, length: MemoryLayout<SIMD4<Float>>.size, index: 9)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return true
+    }
+
+    /// The YCbCr→RGB coefficients for this frame's tagged matrix. BT.709 unless the buffer says
+    /// otherwise — an HDR stream arrives tagged BT.2020 and would render with visibly wrong hues
+    /// through the 709 numbers the shaders used to hardcode.
+    static func colorMatrixCoefficients(_ textureFrame: OPNVideoTextureFrame) -> SIMD4<Float> {
+        (OPNVideoColorMatrix(rawValue: textureFrame.colorMatrix) ?? .bt709).coefficients
+    }
+
+    /// (luma offset, luma scale, chroma scale, 0). Identity for full-range planes; the standard
+    /// 16-235 / 16-240 expansion for video range. The 10-bit surfaces store their samples in the
+    /// high bits of 16, so the normalised offsets are the same fractions as for 8 bits.
+    static func colorRangeCoefficients(_ textureFrame: OPNVideoTextureFrame) -> SIMD4<Float> {
+        textureFrame.isFullRange
+            ? SIMD4<Float>(0, 1, 1, 0)
+            : SIMD4<Float>(16.0 / 255.0, 255.0 / 219.0, 255.0 / 224.0, 0)
     }
 
     /// Everything the spatial fragment shader is fed for one frame.
@@ -228,12 +245,8 @@ extension OPNVideoEnhancementRenderer {
         commandBuffer: any MTLCommandBuffer,
         result: OPNVideoEnhancementResult
     ) -> Bool {
-        guard destinationTexture.pixelFormat == Self.renderTargetPixelFormat else {
-            result.fallbackReason = "present drawable format unsupported"
-            return false
-        }
-        guard let temporalPresentPipeline else {
-            result.fallbackReason = "temporal upscaler missing present target"
+        guard let presentPipeline = outputPipeline("opn_video_present_rgb", format: destinationTexture.pixelFormat) else {
+            result.fallbackReason = "present pipeline unavailable for drawable format \(destinationTexture.pixelFormat.rawValue)"
             return false
         }
         let pass = MTLRenderPassDescriptor()
@@ -245,7 +258,7 @@ extension OPNVideoEnhancementRenderer {
             result.fallbackReason = "temporal upscaler could not create present encoder"
             return false
         }
-        encoder.setRenderPipelineState(temporalPresentPipeline)
+        encoder.setRenderPipelineState(presentPipeline)
         encoder.setFragmentTexture(sourceTexture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
@@ -378,6 +391,10 @@ extension OPNVideoEnhancementRenderer {
         encoder.setFragmentBytes(&fill, length: MemoryLayout<SIMD4<Float>>.size, index: 0)
         encoder.setFragmentBytes(&boxStep, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
         encoder.setFragmentBytes(&alpha, length: MemoryLayout<Float>.size, index: 2)
+        var colorMatrix = Self.colorMatrixCoefficients(textureFrame)
+        var colorRange = Self.colorRangeCoefficients(textureFrame)
+        encoder.setFragmentBytes(&colorMatrix, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
+        encoder.setFragmentBytes(&colorRange, length: MemoryLayout<SIMD4<Float>>.size, index: 4)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return true

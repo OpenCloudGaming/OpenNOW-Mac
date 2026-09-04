@@ -58,6 +58,12 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var streamControlsVisible = false
     @Published var nativeStatsVisible = false
     @Published var latestNativeStats: NativeNVSTPerformanceSnapshot?
+    /// The renderer's view of the same second: surface format, drawable format, EDR, drawn/received.
+    @Published var latestRenderDiagnostics: OPNVideoRenderDiagnosticsSnapshot?
+    /// True once the inbound bitrate has been low AND the stream frame rate has been falling short
+    /// of the negotiated rate for a sustained period. See `NativeNVSTBitrateStarvationTracker`.
+    @Published var nativeBitrateStarved = false
+    var bitrateStarvation = NativeNVSTBitrateStarvationTracker()
     var nativeStatsTask: Task<Void, Never>?
     var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
     /// Held in a lock-guarded holder rather than directly, so Remote Co-Op guest input can reach the
@@ -263,6 +269,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
             configuredPrefilterSharpness: resolvedStreamSettings.prefilterSharpness,
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
             configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
+            configuredColorQuality: resolvedStreamSettings.colorQuality,
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)

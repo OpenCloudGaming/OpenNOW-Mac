@@ -36,17 +36,26 @@ static float2 opn_crop_uv(float2 texCoord, float4 crop) {
 static float2 opn_clamp_crop(float2 uv, float4 crop) {
     return clamp(uv, crop.xy, crop.zw);
 }
-static float3 opn_nv12_rgb(texture2d<float> yTexture, texture2d<float> uvTexture, sampler s, float2 uv) {
-    float y = yTexture.sample(s, uv).r;
-    float2 cbcr = uvTexture.sample(s, uv).rg - float2(0.5, 0.5);
-    return saturate(float3(y + 1.5748 * cbcr.y, y - 0.1873 * cbcr.x - 0.4681 * cbcr.y, y + 1.8556 * cbcr.x));
+// YCbCr to RGB. `cm` carries the matrix (Cr->R, Cb->G, Cr->G, Cb->B) for the frame's tagged
+// colour matrix (BT.709 / BT.2020 / BT.601), `cr` the code range as (luma offset, luma scale,
+// chroma scale, 0) — identity for full range. The transfer function is left alone: for SDR the
+// result is display-referred as before, for PQ/HLG the layer's colour space tells the
+// compositor how to read the same numbers, so an HDR frame needs no shader-side tone map.
+static float3 opn_ycbcr_rgb(float y, float2 cbcr, float4 cm, float4 cr) {
+    y = (y - cr.x) * cr.y;
+    cbcr = (cbcr - float2(0.5, 0.5)) * cr.z;
+    return saturate(float3(y + cm.x * cbcr.y, y - cm.y * cbcr.x - cm.z * cbcr.y, y + cm.w * cbcr.x));
 }
-static float3 opn_i420_rgb(texture2d<float> yTexture, texture2d<float> uTexture, texture2d<float> vTexture, sampler s, float2 uv) {
-    float y = yTexture.sample(s, uv).r;
-    float cb = uTexture.sample(s, uv).r - 0.5;
-    float cr = vTexture.sample(s, uv).r - 0.5;
-    return saturate(float3(y + 1.5748 * cr, y - 0.1873 * cb - 0.4681 * cr, y + 1.8556 * cb));
+static float3 opn_nv12_rgb_cm(texture2d<float> yTexture, texture2d<float> uvTexture, sampler s, float2 uv, float4 cm, float4 cr) {
+    return opn_ycbcr_rgb(yTexture.sample(s, uv).r, uvTexture.sample(s, uv).rg, cm, cr);
 }
+static float3 opn_i420_rgb_cm(texture2d<float> yTexture, texture2d<float> uTexture, texture2d<float> vTexture, sampler s, float2 uv, float4 cm, float4 cr) {
+    return opn_ycbcr_rgb(yTexture.sample(s, uv).r, float2(uTexture.sample(s, uv).r, vTexture.sample(s, uv).r), cm, cr);
+}
+// Every fragment that samples YCbCr declares `cm` and `cr` as constant buffers; the macros bind
+// those by name so the many sampling sites below stay as they were.
+#define opn_nv12_rgb(Y, UV, S, COORD) opn_nv12_rgb_cm(Y, UV, S, COORD, cm, cr)
+#define opn_i420_rgb(Y, U, V, S, COORD) opn_i420_rgb_cm(Y, U, V, S, COORD, cm, cr)
 // Pillarbox fill. `fill` carries (contentLeft, contentRight, dim, mode) where the
 // edges are fractions of frame width and mode is an OPNPillarboxFillMode raw value.
 // The server bakes black side bars into 16:9-only titles, so these columns hold
@@ -284,7 +293,7 @@ fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
     uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
@@ -339,7 +348,7 @@ fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<floa
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
     uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
@@ -445,7 +454,7 @@ fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> s
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
     float2 texel = max(scale, float2(1.0 / 8192.0));
@@ -496,7 +505,7 @@ fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> 
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
     float2 texel = max(scale, float2(1.0 / 8192.0));

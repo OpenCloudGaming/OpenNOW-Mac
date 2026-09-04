@@ -144,9 +144,9 @@ public struct NvstRtspNegotiator: Sendable {
                        common: common,
                        steps: &steps)
 
-            // The control connection stays up for the whole session, and the official client pings
-            // it every couple of seconds. Start that now that the handshake is done.
-            await connection.startKeepAlive()
+            // The control connection stays up for the whole session. Keep it alive with RTSP
+            // OPTIONS now that the handshake is done (a WebSocket ping makes the seat close it).
+            await connection.startKeepAlive(uri: requestURI, headers: common + [("Session", described.sessionIdentifier)])
 
             return session(endpoint: endpoint,
                            connection: connection,
@@ -286,6 +286,7 @@ extension NvstRtspNegotiator {
             hmacSeedPresent: described.hmacSeed != nil,
             steps: steps,
             release: { reason in
+                await connection.stopKeepAlive()
                 _ = try? await connection.request(method: "TEARDOWN", uri: requestURI, headers: common + [("Session", releaseIdentifier)])
                 await connection.close()
                 logger?("NVST RTSPS control session released (\(reason))")
@@ -518,6 +519,8 @@ extension NvstRtspNegotiator {
             prefilterSharpness: input.prefilterSharpness,
             prefilterDenoise: input.prefilterDenoise,
             prefilterModel: input.prefilterModel,
+            bitDepth: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).bitDepth },
+            chromaFormat: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).chromaFormat },
             encryptionKey: described.encryptionKey,
             iceCredentials: resolved.localIce,
             videoPort: resolved.handoff.videoPeerPort,

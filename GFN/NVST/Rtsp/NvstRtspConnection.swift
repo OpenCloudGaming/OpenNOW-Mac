@@ -7,9 +7,11 @@ public protocol NvstRtspControlChannel: Sendable {
     func connect(sessionID: String?) async throws
     @discardableResult
     func request(method: String, uri: String, headers: [(String, String)], body: String) async throws -> NvstRtspResponse
-    /// Keeps the control connection alive for the life of the session. A transport that has no such
-    /// notion can ignore it.
-    func startKeepAlive() async
+    /// Keeps the control connection alive for the life of the session with periodic RTSP OPTIONS
+    /// requests to `uri`, timing each one. A transport that has no such notion can ignore it.
+    func startKeepAlive(uri: String, headers: [(String, String)]) async
+    /// Stops the keepalive so a TEARDOWN never collides with an in-flight OPTIONS.
+    func stopKeepAlive() async
     /// Latest keepalive round trip in milliseconds; -1 when the channel cannot measure one.
     /// A protocol requirement, not just an extension default: the callers hold existentials, and
     /// an extension-only method dispatches statically to the default, silently shadowing the
@@ -21,7 +23,8 @@ public protocol NvstRtspControlChannel: Sendable {
 }
 
 public extension NvstRtspControlChannel {
-    func startKeepAlive() async {}
+    func startKeepAlive(uri: String, headers: [(String, String)]) async {}
+    func stopKeepAlive() async {}
     /// Latest keepalive round trip in milliseconds; -1 when the channel cannot measure one.
     func measuredRoundTripMilliseconds() async -> Double { -1 }
     func keepAliveSummary() async -> String { "" }
@@ -71,7 +74,9 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
     private var failure: Error?
     private var cseq = 0
     private var keepAliveTask: Task<Void, Never>?
-    private var pingsSent = 0
+    private var keepAlivesSent = 0
+    private var keepAlivesAnswered = 0
+    private var lastKeepAliveStatus = 0
 
     public init(target: NvstRtspEndpoints.Target,
                 timeout: Duration = .seconds(20),
@@ -146,72 +151,110 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
         guard responseWaiter == nil else { throw ConnectionError.overlappingRequest }
         cseq += 1
         let message = NvstRtspMessage.buildRequest(method: method, uri: uri, headers: headers, body: body, cseq: cseq)
+        let sentAt = DispatchTime.now().uptimeNanoseconds
         try await send(connection: connection, data: NvstWebSocketFrame.encodeText(Data(message.utf8)))
-        return try await nextResponse(method: method)
+        let response = try await nextResponse(method: method)
+        noteRequestRoundTrip(method: method, sentAt: sentAt)
+        return response
     }
 
-    /// Starts the WebSocket ping keepalive the official client runs for the life of the session.
-    /// Nothing else travels on this connection between PLAY and teardown, so without it the seat
-    /// sees an idle control session while video continues on its own socket.
-    /// The exact-arity witness for the protocol requirement: the `(interval:)` overload with a
-    /// defaulted parameter does NOT witness `startKeepAlive()`, so an existential caller was
-    /// silently getting the protocol extension's empty default — no keepalive ping was ever sent.
-    public func startKeepAlive() {
-        startKeepAlive(interval: Self.keepAliveInterval)
+    /// Keeps the RTSPS control connection alive with an RTSP request every `interval`, and times it.
+    ///
+    /// What the seat tolerates after PLAY, measured live 2026-09-04, one run each:
+    /// - a client WebSocket ping: TCP close within 7 ms (`ping #1 sent` 14:52:32.555, FIN .562);
+    /// - `OPTIONS` on the handshake URI, no Session header: `400`, then TCP close 7 s later;
+    /// - `GET_PARAMETER` with the Session header: answered `551 Option Not Supported` every 2 s for
+    ///   the whole session, socket never closed, 4.6–5.3 ms turnaround. That is a keepalive: the
+    ///   seat parses it as a well-formed request for this session and declines the method, and
+    ///   the connection is what we needed, not the parameter.
+    /// An RTSP request is what this channel exists to carry, and its turnaround is a real round trip
+    /// on the control path, which nothing else on this transport measures — the seat answers
+    /// neither STUN on the video socket nor ICE checks on the bundle. Any RTSP answer counts as
+    /// the seat alive; only a dead socket ends the loop.
+    public static let keepAliveMethod = "GET_PARAMETER"
+
+    public func startKeepAlive(uri: String, headers: [(String, String)]) {
+        startKeepAlive(uri: uri, headers: headers, interval: Self.keepAliveInterval)
     }
 
-    public func startKeepAlive(interval: TimeInterval) {
+    public func startKeepAlive(uri: String, headers: [(String, String)], interval: TimeInterval) {
         guard keepAliveTask == nil else { return }
         keepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
-                guard let self, await self.sendPing() else { return }
+                guard !Task.isCancelled, let self else { return }
+                // A non-200 is logged and the cadence continues; only a dead socket ends the loop.
+                _ = await self.sendKeepAlive(uri: uri, headers: headers)
+                if await self.failure != nil { return }
             }
         }
     }
 
-    /// Captured cadence: 23 pings across a ~45 s session.
+    public func stopKeepAlive() {
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
+    }
+
+    /// The vendor's control-channel cadence: a message every couple of seconds.
     public static let keepAliveInterval: TimeInterval = 2
 
     @discardableResult
-    func sendPing() async -> Bool {
-        guard let connection, failure == nil else { return false }
+    func sendKeepAlive(uri: String, headers: [(String, String)]) async -> Bool {
+        guard connection != nil, failure == nil, responseWaiter == nil else { return false }
+        keepAlivesSent += 1
+        let sentAt = DispatchTime.now().uptimeNanoseconds
         do {
-            try await send(connection: connection, data: NvstWebSocketFrame.encodePing())
-            pingsSent += 1
-            lastPingSentAt = DispatchTime.now().uptimeNanoseconds
+            let response = try await request(method: Self.keepAliveMethod, uri: uri, headers: headers)
+            let now = DispatchTime.now().uptimeNanoseconds
+            // Any RTSP answer is a round trip and proof the seat still holds the session; the live
+            // seat says 551 to this method and keeps the socket, which is all the keepalive needs.
+            if now > sentAt { lastRoundTripMilliseconds = Double(now - sentAt) / 1_000_000 }
+            keepAlivesAnswered += 1
+            // The first few are logged so a socket the seat closes can be timed against them, and
+            // any change in the seat's answer after that.
+            if keepAlivesSent <= 3 || response.statusCode != lastKeepAliveStatus {
+                logger?("NVST RTSPS keepalive \(Self.keepAliveMethod) #\(keepAlivesSent) -> \(response.statusCode) rtt=\(String(format: "%.1f", lastRoundTripMilliseconds))ms")
+            }
+            lastKeepAliveStatus = response.statusCode
             return true
         } catch {
+            logger?("NVST RTSPS keepalive \(Self.keepAliveMethod) #\(keepAlivesSent) failed: \(error.localizedDescription)")
             return false
         }
     }
 
-    public var keepAlivePingsSent: Int { pingsSent }
+    public var keepAliveRequestsSent: Int { keepAlivesSent }
 
-    /// Round trip of the most recent keepalive ping/pong on this control connection, in
-    /// milliseconds, or -1 before the first pong. The seat's WebSocket layer answers pings
-    /// mandatorily, so this measures the network path without adding any traffic — the pings
-    /// were already being sent every `keepAliveInterval`.
+    /// Round trip of the most recent keepalive OPTIONS on this control connection, in
+    /// milliseconds, or -1 before the first answer.
     public var roundTripMilliseconds: Double { lastRoundTripMilliseconds }
-    public func measuredRoundTripMilliseconds() -> Double { lastRoundTripMilliseconds }
+    /// The live keepalive round trip when the socket survives, else the handshake's fastest turnaround.
+    public func measuredRoundTripMilliseconds() -> Double {
+        lastRoundTripMilliseconds >= 0 ? lastRoundTripMilliseconds : handshakeRoundTripMilliseconds
+    }
     /// Keepalive health for the diagnostic log: whether pings go out and pongs come back at all.
     public func keepAliveSummary() -> String {
-        "pings=\(pingsSent) pongs=\(frameReader.pongsSeen) answered=\(pongsAnswered)"
+        "keepalives=\(keepAlivesSent)/\(keepAlivesAnswered) seatPingsAnswered=\(pongsAnswered) pongsSeen=\(frameReader.pongsSeen)"
             + " failed=\(failure.map { _ in 1 } ?? 0) rtt=\(String(format: "%.1f", lastRoundTripMilliseconds))"
+            + " handshakeRtt=\(String(format: "%.1f", handshakeRoundTripMilliseconds))"
+            + (failure.map { " failure=\($0.localizedDescription)" } ?? "")
     }
-    private var lastPingSentAt: UInt64?
     var lastRoundTripMilliseconds: Double = -1
-    private var pongsAccounted = 0
+    /// Fastest RTSP request/response turnaround seen during the handshake, in milliseconds, or -1.
+    ///
+    /// The keepalive OPTIONS above measures the same thing live; this is the value from before the
+    /// first one answers, and the fallback should the seat ever stop answering.
+    var handshakeRoundTripMilliseconds: Double = -1
 
-    private func notePongs() {
-        let seen = frameReader.pongsSeen
-        guard seen > pongsAccounted else { return }
-        pongsAccounted = seen
-        guard let sentAt = lastPingSentAt else { return }
-        lastPingSentAt = nil
+    private func noteRequestRoundTrip(method: String, sentAt: UInt64) {
+        // TEARDOWN happens during teardown; its timing describes nothing the HUD should show.
+        guard method != "TEARDOWN" else { return }
         let now = DispatchTime.now().uptimeNanoseconds
         guard now > sentAt else { return }
-        lastRoundTripMilliseconds = Double(now - sentAt) / 1_000_000
+        let milliseconds = Double(now - sentAt) / 1_000_000
+        if handshakeRoundTripMilliseconds < 0 || milliseconds < handshakeRoundTripMilliseconds {
+            handshakeRoundTripMilliseconds = milliseconds
+        }
     }
 
     private func nextResponse(method: String) async throws -> NvstRtspResponse {
@@ -327,7 +370,6 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
                     deliver(response)
                 }
             }
-            notePongs()
             // The seat pings this connection and closes it when no pong comes back — Poco's
             // client answered these automatically, so never answering was invisible until the
             // keepalive tried to use the socket the seat had already abandoned.
@@ -354,6 +396,11 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
     }
 
     private func fail(_ error: Error) {
+        // Logged because the HUD's latency fallback chain depends on knowing whether this socket
+        // is alive; a silent failure here read as "no RTT source at all" for weeks.
+        if failure == nil {
+            logger?("NVST RTSPS control connection failed after \(cseq) requests, \(keepAlivesSent) keepalives: \(error.localizedDescription)")
+        }
         failure = error
         if let responseWaiter {
             self.responseWaiter = nil

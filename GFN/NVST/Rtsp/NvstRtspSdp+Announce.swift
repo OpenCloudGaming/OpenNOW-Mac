@@ -67,6 +67,15 @@ extension NvstRtspSdp {
         return "\(line[line.startIndex..<colon]):[redacted-secret]"
     }
 
+    /// `(bitDepth, chromaFormat)` for a session colour tier string. `chromaFormat` uses the
+    /// `chroma_format_idc` convention (1 = 4:2:0, 2 = 4:2:2, 3 = 4:4:4); see `AnnounceOptions`.
+    public static func colorFormat(forColorQuality colorQuality: String) -> (bitDepth: Int, chromaFormat: Int) {
+        let normalized = colorQuality.lowercased()
+        let bitDepth = normalized.hasPrefix("10bit") ? 10 : 8
+        let chromaFormat = normalized.hasSuffix("444") ? 3 : (normalized.hasSuffix("422") ? 2 : 1)
+        return (bitDepth, chromaFormat)
+    }
+
     public static func buildAnnounceSdp(_ options: AnnounceOptions) -> String {
         var lines: [String] = [
             "v=0",
@@ -208,6 +217,15 @@ extension NvstRtspSdp {
         }
         attributes.set("x-nv-video[0].clientViewportWd", String(width))
         attributes.set("x-nv-video[0].clientViewportHt", String(height))
+        // The captured baseline is a 10-bit 4:2:0 session and says so on every announce; an 8-bit
+        // or 4:4:4 session has to say what it actually negotiated or the announce contradicts the
+        // session request.
+        if let bitDepth = options.bitDepth {
+            attributes.set("x-nv-video[0].bitDepth", String(bitDepth))
+        }
+        if let chromaFormat = options.chromaFormat {
+            attributes.set("x-nv-video[0].chromaFormat", String(chromaFormat))
+        }
         // The seat's DESCRIBE is a 720p60 BASELINE (captured live: it offers clientViewport 1280x720
         // and video[0].maxFPS:60 even for a session we provisioned at 5120x2160@120). The client's
         // announce overrides that baseline — and we were overriding only the viewport (720->5K) while

@@ -114,6 +114,9 @@ final class OPNVideoTextureSource: NSObject {
         let textureFrame = OPNVideoTextureFrame()
         textureFrame.kind = isBiPlanar ? 1 : 0
         applyCropRect(cvBuffer, width: width, height: height, to: textureFrame)
+        textureFrame.colorMatrix = OPNVideoColorMatrix.from(pixelBuffer: pixelBuffer).rawValue
+        textureFrame.transferFunction = OPNVideoTransferFunction.from(pixelBuffer: pixelBuffer).rawValue
+        textureFrame.isFullRange = !isBiPlanar || Self.isFullRangeBiPlanarFormat(format)
 
         var metalTexture: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(
@@ -206,25 +209,60 @@ final class OPNVideoTextureSource: NSObject {
         return existing
     }
 
-    private static func pixelFormatName(_ format: OSType) -> String {
-        if format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange { return "420v/NV12" }
-        if format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange { return "420f/NV12" }
-        if format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange { return "x420/P010" }
-        if format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange { return "xf20/P010" }
-        if format == kCVPixelFormatType_32BGRA { return "BGRA" }
-        if format == kCVPixelFormatType_32ARGB { return "ARGB" }
-        return String(format: "0x%08x", format)
+    static func pixelFormatName(_ format: OSType) -> String {
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
+        case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: return "x420/P010"
+        case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: return "xf20/P010"
+        case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange: return "422v/NV16"
+        case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange: return "422f/NV16"
+        case kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange: return "x422/P210"
+        case kCVPixelFormatType_422YpCbCr10BiPlanarFullRange: return "xf22/P210"
+        case kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange: return "444v/NV24"
+        case kCVPixelFormatType_444YpCbCr8BiPlanarFullRange: return "444f/NV24"
+        case kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange: return "x444/P410"
+        case kCVPixelFormatType_444YpCbCr10BiPlanarFullRange: return "xf44/P410"
+        case kCVPixelFormatType_32BGRA: return "BGRA"
+        case kCVPixelFormatType_32ARGB: return "ARGB"
+        default: return String(format: "0x%08x", format)
+        }
     }
 
-    private static func isSupportedBiPlanarFormat(_ format: OSType) -> Bool {
-        format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
-            format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
-            isTenBitBiPlanarFormat(format)
+    /// Luma plane plus one interleaved CbCr plane, at any chroma subsampling and either depth.
+    /// The shaders sample both planes at the same normalised coordinate, so 4:2:2 and 4:4:4
+    /// chroma planes bind exactly like 4:2:0 ones — only the texture dimensions differ.
+    static func isSupportedBiPlanarFormat(_ format: OSType) -> Bool {
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_422YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_444YpCbCr8BiPlanarFullRange:
+            return true
+        default:
+            return isTenBitBiPlanarFormat(format)
+        }
     }
 
-    private static func isTenBitBiPlanarFormat(_ format: OSType) -> Bool {
-        format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
-            format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+    static func isTenBitBiPlanarFormat(_ format: OSType) -> Bool {
+        switch format {
+        case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_444YpCbCr10BiPlanarFullRange:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func isFullRangeBiPlanarFormat(_ format: OSType) -> Bool {
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarFullRange, kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr8BiPlanarFullRange, kCVPixelFormatType_444YpCbCr10BiPlanarFullRange:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {

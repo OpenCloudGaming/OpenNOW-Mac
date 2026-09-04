@@ -491,6 +491,21 @@ extension NvstBifrostFreeTransport {
         }
     }
 
+    /// The seat's GPU as the session response names it (`gpuType`, e.g. "NVIDIA GeForce RTX 4080"),
+    /// which is what the service's own UI calls the rig. Looked up in every JSON the allocation
+    /// carries, since the same field appears at the top level of the session info and the raw
+    /// session alike.
+    static func sessionGPUType(for allocation: NativeNVSTSessionAllocation) -> String? {
+        for json in [allocation.sessionInfoJSON, allocation.rawSessionJSON] {
+            guard let data = json.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            if let gpu = object["gpuType"] as? String, !gpu.trimmingCharacters(in: .whitespaces).isEmpty {
+                return gpu
+            }
+        }
+        return nil
+    }
+
     static func sessionServerLocation(fromRawSessionJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let rawSession = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }

@@ -41,6 +41,27 @@ private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
     }
 }
 
+/// What the renderer is actually doing, for a HUD with no libwebrtc session to ask. The
+/// Bifrost-free NVST path owns its own decoder, so `OPNLibWebRTCStreamSession`'s diagnostics
+/// never reach it; this is the owner-less equivalent.
+struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
+    /// The decoded surface (`xf20/P010`, `420f/NV12`, ...).
+    var pixelFormat = ""
+    /// The drawable the frame was presented into (`bgra8`, `bgr10a2`, `rgba16f`).
+    var outputFormat = ""
+    var renderPath = ""
+    var activeTier = ""
+    var fallback = ""
+    /// Whether the layer is presenting extended-dynamic-range content (PQ or HLG stream).
+    var isHDR = false
+    var frameIntervalMs = -1.0
+    var maxFrameIntervalMs = -1.0
+    /// Frames handed to the renderer and frames it actually drew. The difference is frames the
+    /// display loop never got to — decode running ahead of the refresh, or a stalled draw.
+    var framesReceived: UInt64 = 0
+    var framesDrawn: UInt64 = 0
+}
+
 @objc(OPNMetalVideoView)
 @MainActor
 final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
@@ -82,6 +103,17 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
     nonisolated(unsafe) private var cachedIsTenBitBiPlanar = false
     nonisolated(unsafe) private var pixelFormatCached = false
+    /// The drawable format and transfer function the latest frame wants. Re-read on every frame:
+    /// a stream can switch to 10-bit or HDR at a keyframe without changing size, which is the only
+    /// event the older per-size cache above keyed on.
+    nonisolated(unsafe) private var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
+    nonisolated(unsafe) private var desiredTransfer = OPNVideoTransferFunction.sdr
+    private var appliedTransfer = OPNVideoTransferFunction.sdr
+    nonisolated(unsafe) private var framesReceived: UInt64 = 0
+    private var framesDrawn: UInt64 = 0
+    /// Owner-less diagnostics sink (the NVST path). Called about once a second from the render
+    /// thread.
+    nonisolated(unsafe) var renderDiagnosticsHandler: (@Sendable (OPNVideoRenderDiagnosticsSnapshot) -> Void)?
 
     init(frame frameRect: NSRect, targetFps: Int32, owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
@@ -172,16 +204,84 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
+        var output: (MTLPixelFormat, OPNVideoTransferFunction)?
+        if let buffer = frame.buffer as? RTCCVPixelBuffer {
+            output = Self.desiredOutput(for: buffer.pixelBuffer)
+        }
         os_unfair_lock_lock(&frameLock)
         if !pixelFormatCached, let buffer = frame.buffer as? RTCCVPixelBuffer {
             let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
             cachedPixelFormat = format
-            cachedIsTenBitBiPlanar = format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            cachedIsTenBitBiPlanar = OPNVideoTextureSource.isTenBitBiPlanarFormat(format)
             pixelFormatCached = true
+        }
+        if let output {
+            desiredOutputFormat = output.0
+            desiredTransfer = output.1
         }
         videoFrame = frame
         frameSerial += 1
+        framesReceived &+= 1
         os_unfair_lock_unlock(&frameLock)
+    }
+
+    /// The drawable a decoded surface deserves. 8-bit video keeps the 8-bit drawable it always
+    /// had. A 10-bit surface gets a 10-bit drawable, so the extra two bits survive to the display
+    /// instead of being quantised away at present — the whole point of decoding to P010. An HDR
+    /// surface (PQ or HLG tagged) gets a half-float drawable with extended dynamic range on, so
+    /// the compositor tone-maps it for the panel.
+    nonisolated private static func desiredOutput(for pixelBuffer: CVPixelBuffer) -> (MTLPixelFormat, OPNVideoTransferFunction) {
+        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        let tenBit = OPNVideoTextureSource.isTenBitBiPlanarFormat(format)
+        let transfer = OPNVideoTransferFunction.from(pixelBuffer: pixelBuffer)
+        if tenBit, transfer.isHDR { return (.rgba16Float, transfer) }
+        return (tenBit ? .bgr10a2Unorm : .bgra8Unorm, .sdr)
+    }
+
+    /// Reconfigures the layer for a new output format. Returns true when it did, in which case the
+    /// current draw is skipped: the drawable already vended for this pass has the old format, and
+    /// the next display tick is a few milliseconds away.
+    private func applyOutputFormatIfNeeded(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
+        guard metalView.colorPixelFormat != format || appliedTransfer != transfer else { return false }
+        let previous = metalView.colorPixelFormat
+        metalView.colorPixelFormat = format
+        appliedTransfer = transfer
+        if let metalLayer = metalView.layer as? CAMetalLayer {
+            switch transfer {
+            case .pq:
+                metalLayer.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_PQ)
+                metalLayer.wantsExtendedDynamicRangeContent = true
+                // Static HDR10 metadata for a stream that carries none of its own. GeForce NOW
+                // asks the game for 1000-nit content (`desiredContentMaxLuminance` in the session
+                // request), and 1.0 in a PQ-encoded signal is 10 000 nits by definition, which is
+                // what the optical output scale describes for a PQ colour space.
+                metalLayer.edrMetadata = CAEDRMetadata.hdr10(minLuminance: 0.0001, maxLuminance: 1000, opticalOutputScale: 10_000)
+            case .hlg:
+                metalLayer.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
+                metalLayer.wantsExtendedDynamicRangeContent = true
+                metalLayer.edrMetadata = CAEDRMetadata.hlg
+            case .sdr:
+                metalLayer.colorspace = nil
+                metalLayer.wantsExtendedDynamicRangeContent = false
+                metalLayer.edrMetadata = nil
+            }
+        }
+        // libwebrtc's renderers compile their pipeline state against the view's format at attach
+        // time, so a format change invalidates them; they rebuild lazily on the next 8-bit frame.
+        rendererNV12 = nil
+        rendererRGB = nil
+        rendererI420 = nil
+        OpenNOWLog.info(.stream, "Video output format \(Self.outputFormatName(previous)) -> \(Self.outputFormatName(format)) transfer=\(transfer) edr=\(transfer.isHDR)")
+        return true
+    }
+
+    nonisolated static func outputFormatName(_ format: MTLPixelFormat) -> String {
+        switch format {
+        case .bgra8Unorm: "bgra8"
+        case .bgr10a2Unorm: "bgr10a2"
+        case .rgba16Float: "rgba16f"
+        default: "mtl\(format.rawValue)"
+        }
     }
 
     func draw(in view: MTKView) {
@@ -194,12 +294,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         os_unfair_lock_lock(&frameLock)
         let snapshot = (videoFrame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar)
+        let wantedOutput = (desiredOutputFormat, desiredTransfer)
         os_unfair_lock_unlock(&frameLock)
         guard let frame = snapshot.0,
               frame.width > 0,
               frame.height > 0,
               snapshot.1 > 0,
               snapshot.1 != lastDrawnFrameSerial else { return }
+        if applyOutputFormatIfNeeded(wantedOutput.0, transfer: wantedOutput.1) { return }
 
         let sourceSize = snapshot.2.width > 0 && snapshot.2.height > 0 ? snapshot.2 : CGSize(width: Int(frame.width), height: Int(frame.height))
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
@@ -486,6 +588,8 @@ private struct RenderDiagnostics {
     var enhancementFrameTimeMs = -1.0
     var frameIntervalMs = -1.0
     var maxFrameIntervalMs = -1.0
+    var outputFormat = ""
+    var isHDR = false
 }
 
 private func videoResolutionString(_ size: CGSize) -> String {
@@ -590,6 +694,25 @@ extension OPNMetalVideoView {
         lastDiagnosticsUpdateTime = now
         var diagnostics = diagnostics
         populateDrawCadenceDiagnostics(&diagnostics)
+        diagnostics.outputFormat = Self.outputFormatName(metalView.colorPixelFormat)
+        diagnostics.isHDR = appliedTransfer.isHDR
+        if let renderDiagnosticsHandler {
+            os_unfair_lock_lock(&frameLock)
+            let received = framesReceived
+            os_unfair_lock_unlock(&frameLock)
+            renderDiagnosticsHandler(OPNVideoRenderDiagnosticsSnapshot(
+                pixelFormat: diagnostics.pixelFormat,
+                outputFormat: diagnostics.outputFormat,
+                renderPath: diagnostics.renderPath,
+                activeTier: diagnostics.enhancementActiveTier,
+                fallback: diagnostics.fallback,
+                isHDR: diagnostics.isHDR,
+                frameIntervalMs: diagnostics.frameIntervalMs,
+                maxFrameIntervalMs: diagnostics.maxFrameIntervalMs,
+                framesReceived: received,
+                framesDrawn: framesDrawn
+            ))
+        }
         owner?.setVideoRenderDiagnostics(
             pixelFormat: diagnostics.pixelFormat,
             renderMode: diagnostics.renderMode,
@@ -641,6 +764,7 @@ extension OPNMetalVideoView {
     }
 
     private func recordDrawCadence() {
+        framesDrawn &+= 1
         let now = CACurrentMediaTime()
         if lastDrawCadenceTime > 0 {
             let intervalMs = max(0, (now - lastDrawCadenceTime) * 1000)
