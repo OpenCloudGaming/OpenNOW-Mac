@@ -93,7 +93,7 @@ struct CatalogRailView: View {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
-                        .frame(height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale))
+                        .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
                     }
@@ -267,7 +267,8 @@ struct CatalogSeeMoreTile: View {
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
+            .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -318,7 +319,8 @@ struct CatalogPanelActionTile: View {
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
+            .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }

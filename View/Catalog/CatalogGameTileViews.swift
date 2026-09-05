@@ -75,6 +75,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                 .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
+        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
                 .opacity(isHovering ? 1 : 0)
                 // Settles into place rather than materialising: the button is small and sits over
                 // busy artwork, where a pure fade is easy to miss.
@@ -197,7 +198,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
+        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
         .contentShape(Rectangle())
     }
 }

@@ -114,9 +114,11 @@ struct CatalogRailSkeletonView: View {
                         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
+                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
                 }
             }
-            .frame(height: CatalogVendorLayout.wideTileHeight(scale: uiScale) + CatalogVendorLayout.tileTopMargin(scale: uiScale), alignment: .top)
+            .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
             .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
             .padding(.bottom, 4 * uiScale)
         }
@@ -158,6 +160,7 @@ struct CatalogGridSkeletonView: View {
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                     .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                     .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
+                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
             }
         }
         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))

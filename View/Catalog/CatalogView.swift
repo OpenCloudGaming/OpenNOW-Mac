@@ -38,6 +38,14 @@ enum CatalogVendorLayout {
     static func carouselContainerMargin(scale: CGFloat) -> CGFloat { baseCarouselContainerMargin * scale }
     static func tileHorizontalMargin(scale: CGFloat) -> CGFloat { baseTileHorizontalMargin * scale }
     static func tileTopMargin(scale: CGFloat) -> CGFloat { baseTileTopMargin * scale }
+    /// Matches the top margin, and exists because hover scales the tile about its centre: with the
+    /// margin only above, a hovered tile grew ~13pt past the bottom of its own frame and closed the
+    /// gap to the row below to a few points, while the top still looked right.
+    static func tileBottomMargin(scale: CGFloat) -> CGFloat { baseTileTopMargin * scale }
+    /// Height one tile claims in a rail, both margins included.
+    static func tileRowHeight(scale: CGFloat) -> CGFloat {
+        wideTileHeight(scale: scale) + tileTopMargin(scale: scale) + tileBottomMargin(scale: scale)
+    }
     static func cardTrayHeight(scale: CGFloat) -> CGFloat { baseCardTrayHeight * scale }
     static func wideTileWidth(scale: CGFloat) -> CGFloat { baseWideTileWidth * scale }
     static func wideTileHeight(scale: CGFloat) -> CGFloat { baseWideTileHeight * scale }
