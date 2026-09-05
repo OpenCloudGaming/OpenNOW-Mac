@@ -413,45 +413,83 @@ struct StreamHUDMetricCard: View {
     }
 }
 
-struct StreamHUDBatteryCard: View {
+/// One connected controller: which slot it is, what it is, and its battery as a gauge with the
+/// number beside it. Replaces the per-device "battery square" cards, which read as anonymous
+/// metrics and multiplied whenever a receiver lit up another slot. Square geometry and theme
+/// tokens throughout, per DESIGN.md: the gauge is three `Rectangle`s, not a rounded battery glyph.
+struct StreamHUDControllerRow: View {
     let label: String
+    let name: String
     let level: Int
     let charging: Bool
 
+    private var isLow: Bool { level >= 0 && level <= 20 }
+    private var isCritical: Bool { level >= 0 && level <= 5 }
+    /// Charging reads as a positive state (accent soft); low and critical use the same warning and
+    /// danger tokens the rest of the HUD uses for those conditions.
+    private var gaugeColor: Color {
+        if charging { return WebRTCMediaStreamTheme.accentSoft }
+        if isCritical { return WebRTCMediaStreamTheme.danger }
+        if isLow { return WebRTCMediaStreamTheme.warning }
+        return WebRTCMediaStreamTheme.accent
+    }
+
     var body: some View {
-        let displayValue = level >= 0 ? "\(level)%" : "—"
-        let isLow = level >= 0 && level <= 20
-        let iconName = charging ? "bolt.fill" : Self.batteryIconName(for: level)
-        let iconColor = charging ? .yellow : (isLow ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: iconName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(iconColor)
+        HStack(spacing: 10) {
+            Image(systemName: "gamecontroller.fill")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(gaugeColor)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(label.uppercased())
                     .font(.streamNvidia(size: 9, weight: .bold))
                     .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.46))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                Text(name)
+                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            Text(displayValue)
-                .font(.streamNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            Spacer(minLength: 6)
+            batteryGauge
+            Text(level >= 0 ? "\(level)%" : "—")
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .frame(width: 34, alignment: .trailing)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) \(name), battery \(level >= 0 ? "\(level) percent" : "unknown")\(charging ? ", charging" : "")")
     }
 
-    private static func batteryIconName(for level: Int) -> String {
-        switch level {
-        case 90...: return "battery.100percent"
-        case 60..<90: return "battery.75percent"
-        case 30..<60: return "battery.50percent"
-        case 15..<30: return "battery.25percent"
-        default: return "battery.0percent"
+    /// Battery outline with proportional fill and a terminal nub, all square-cornered; the bolt sits
+    /// over the fill while charging.
+    private var batteryGauge: some View {
+        let fill = level >= 0 ? CGFloat(min(max(level, 0), 100)) / 100 : 0
+        return HStack(spacing: 1) {
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .stroke(WebRTCMediaStreamTheme.textTertiary, lineWidth: 1)
+                    .frame(width: 26, height: 11)
+                Rectangle()
+                    .fill(gaugeColor)
+                    .frame(width: max(0, 22 * fill), height: 7)
+                    .padding(.leading, 2)
+                if charging {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.panel)
+                        .frame(width: 26, height: 11)
+                }
+            }
+            Rectangle()
+                .fill(WebRTCMediaStreamTheme.textTertiary)
+                .frame(width: 2, height: 5)
         }
     }
 }

@@ -70,6 +70,7 @@ extension WebRTCMediaStreamSurface {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
                         hudStatusPanel
+                        hudControllersPanel
                         hudControlsPanel
                         hudInputPanel
                         hudNetworkPanel
@@ -208,8 +209,16 @@ extension WebRTCMediaStreamSurface {
             if remoteCoOpEnabled {
                 hudMetricCard(title: "Co-Op", value: "NVST Only", positive: false)
             }
-            ForEach(controllerBatteries.sorted { $0.label < $1.label }) { battery in
-                StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+        }
+    }
+
+    @ViewBuilder
+    var hudControllersPanel: some View {
+        if !controllerBatteries.isEmpty {
+            StreamHUDSection(label: "CONTROLLERS", spacing: 6) {
+                ForEach(controllerBatteries) { battery in
+                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, charging: battery.charging)
+                }
             }
         }
     }

@@ -103,6 +103,7 @@ extension NativeNVSTMediaStreamSurface {
                 nativeHUDStatusPanel
                 nativeHUDControlsPanel
                 nativeHUDInputPanel
+                nativeHUDControllersPanel
                 nativeHUDNetworkPanel
                 if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isEnabled {
                     nativeHUDRemoteCoOpPanel
@@ -125,8 +126,17 @@ extension NativeNVSTMediaStreamSurface {
             if model.remoteCoOpPreferences.isEnabled {
                 StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
             }
-            ForEach(model.controllerBatteries.sorted { $0.label < $1.label }) { battery in
-                StreamHUDBatteryCard(label: battery.label, level: battery.level, charging: battery.charging)
+        }
+    }
+
+    /// One row per physical controller with a battery gauge; absent when nothing is connected.
+    @ViewBuilder
+    var nativeHUDControllersPanel: some View {
+        if !model.controllerBatteries.isEmpty {
+            StreamHUDSection(label: "CONTROLLERS", spacing: 6) {
+                ForEach(model.controllerBatteries) { battery in
+                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, charging: battery.charging)
+                }
             }
         }
     }
@@ -222,6 +232,15 @@ extension NativeNVSTMediaStreamSurface {
                     action: { model.showStreamControls() }
                 )
             }
+            StreamHUDSliderRow(
+                label: "Mouse Sensitivity %",
+                value: model.mouseSensitivityPercent,
+                range: OPNStreamPreferences.mouseSensitivityRange,
+                step: OPNStreamPreferences.mouseSensitivityStep,
+                isDisabled: !model.isConnected,
+                isFocused: model.hudFocusID == "mouse-sensitivity",
+                action: { model.updateNativeMouseSensitivity(percent: $0) }
+            )
         }
     }
 
@@ -460,15 +479,6 @@ extension NativeNVSTMediaStreamSurface {
                 )
                 nativeHUDSliderRow("Clarity", value: model.upscalingSharpness, range: 0...15, isFocused: model.hudFocusID == "clarity") { model.updateNativeUpscalingClarity(sharpness: $0) }
                 nativeHUDSliderRow("Noise Reduction", value: model.upscalingDenoise, range: 0...20, isFocused: model.hudFocusID == "noise-reduction") { model.updateNativeUpscalingClarity(denoise: $0) }
-                StreamHUDSliderRow(
-                    label: "Mouse Sensitivity %",
-                    value: model.mouseSensitivityPercent,
-                    range: OPNStreamPreferences.mouseSensitivityRange,
-                    step: OPNStreamPreferences.mouseSensitivityStep,
-                    isDisabled: !model.isConnected,
-                    isFocused: model.hudFocusID == "mouse-sensitivity",
-                    action: { model.updateNativeMouseSensitivity(percent: $0) }
-                )
             }
         }
     }
