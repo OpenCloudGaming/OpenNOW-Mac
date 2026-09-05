@@ -21,6 +21,7 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, action: toggleNativeRecording),
             StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, action: toggleNativePointerLock),
+            StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
             StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), action: { [weak self] in
@@ -81,6 +82,23 @@ extension NativeNVSTHostViewModel {
         let count = OPNStreamPreferences.upscalingTargetOptions.count
         guard count > 0 else { return }
         updateNativeUpscalingTarget(targetIndex: (upscalingTargetIndex + 1) % count)
+    }
+
+    /// Relative mouse multiplier for the stream, applied live and saved as the global setting.
+    func updateNativeMouseSensitivity(percent: Int) {
+        let range = OPNStreamPreferences.mouseSensitivityRange
+        let clamped = min(max(percent, range.lowerBound), range.upperBound)
+        mouseSensitivityPercent = clamped
+        OPNStreamPreferences.saveMouseSensitivityPercent(clamped)
+        nativeView?.mouseSensitivity = Double(clamped) / 100
+        WebRTCMediaTelemetry.capture("nvst.ui.mouse.sensitivity", level: .info, message: "Native NVST mouse sensitivity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
+    }
+
+    /// Controller/keyboard step through the HUD row: +25% per press, wrapping to the minimum.
+    func cycleNativeMouseSensitivity() {
+        let range = OPNStreamPreferences.mouseSensitivityRange
+        let next = mouseSensitivityPercent + 25
+        updateNativeMouseSensitivity(percent: next > range.upperBound ? range.lowerBound : next)
     }
 
     func cycleNativeClarity() {

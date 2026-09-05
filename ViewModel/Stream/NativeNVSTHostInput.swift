@@ -20,6 +20,8 @@ extension NativeNVSTHostViewModel {
         }
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         view.directMouseInputEnabled = profile.directMouseInput
+        mouseSensitivityPercent = profile.mouseSensitivityPercent
+        view.mouseSensitivity = Double(profile.mouseSensitivityPercent) / 100
         view.locksPointerWhenRelativeModeSelected = true
         view.confinesCursorToWindowInAbsoluteMode = profile.directMouseInput
         view.hidesCursorWhilePointerLocked = true

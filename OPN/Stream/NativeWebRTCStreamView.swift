@@ -243,6 +243,10 @@ public final class NativeWebRTCStreamView: NSView {
     var pointerLockCursorHidden = false
     var cursorAssociationGeneration: UInt = 0
     var preciseScrollRemainder = 0.0
+    /// Multiplier on relative mouse deltas before they go to the seat. Fractions carry over between
+    /// events so slow movements are not lost to rounding at low settings.
+    public var mouseSensitivity = 1.0
+    var mouseDeltaRemainder = CGPoint.zero
     var pressedKeyboardEvents: [UInt16: KeyboardEvent] = [:]
     var textInputState = NativeNVSTTextInputState()
     var textInputKeyCodes: Set<UInt16> = []

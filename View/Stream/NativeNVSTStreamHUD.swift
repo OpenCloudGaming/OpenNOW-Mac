@@ -460,6 +460,15 @@ extension NativeNVSTMediaStreamSurface {
                 )
                 nativeHUDSliderRow("Clarity", value: model.upscalingSharpness, range: 0...15, isFocused: model.hudFocusID == "clarity") { model.updateNativeUpscalingClarity(sharpness: $0) }
                 nativeHUDSliderRow("Noise Reduction", value: model.upscalingDenoise, range: 0...20, isFocused: model.hudFocusID == "noise-reduction") { model.updateNativeUpscalingClarity(denoise: $0) }
+                StreamHUDSliderRow(
+                    label: "Mouse Sensitivity %",
+                    value: model.mouseSensitivityPercent,
+                    range: OPNStreamPreferences.mouseSensitivityRange,
+                    step: OPNStreamPreferences.mouseSensitivityStep,
+                    isDisabled: !model.isConnected,
+                    isFocused: model.hudFocusID == "mouse-sensitivity",
+                    action: { model.updateNativeMouseSensitivity(percent: $0) }
+                )
             }
         }
     }

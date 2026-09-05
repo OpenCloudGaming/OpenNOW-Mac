@@ -129,6 +129,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     var sessionServerLocation: String?
     /// Previous snapshot's cumulative audio jitter-buffer counters, for the per-interval mean.
     var lastAudioJitterSample: (delaySeconds: Double, emitted: UInt64)?
+    /// The last snapshot's mean audio jitter-buffer dwell, for the hud log line.
+    var lastAudioJitterBufferMilliseconds = -1.0
     /// The seat's GPU name from the session response; the "rig" in the HUD.
     var sessionGPUType: String?
     /// The seat's latest `0x0101` statistics: the HUD's GAME FPS and MS come from here.
@@ -405,14 +407,15 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // from the bundle's ICE candidate pair and the resolution from the decoded surface.
         bundle?.refreshTransportStatistics()
         let keepAlive = await session?.controlKeepAliveSummary() ?? ""
-        logger?(String(format: "NVST hud rtt=%.1fms mjolnirRtt=%.1fms ctrl[%@] jitter=%.1fms decodedRes=%@ negotiatedRes=%@ gameFps=%.1f",
+        logger?(String(format: "NVST hud rtt=%.1fms mjolnirRtt=%.1fms ctrl[%@] jitter=%.1fms decodedRes=%@ negotiatedRes=%@ gameFps=%.1f audioJb=%.1fms",
                        bundle?.roundTripMilliseconds ?? -1,
                        receiver.roundTripMilliseconds,
                        keepAlive,
                        Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),
                        decoder?.decodedResolution ?? "-",
                        negotiatedResolution ?? "-",
-                       latestSeatStats?.gameFramesPerSecond ?? -1))
+                       latestSeatStats?.gameFramesPerSecond ?? -1,
+                       lastAudioJitterBufferMilliseconds))
         // Datagram-class counts answer the prior question: is anything arriving at all?
         logger?("NVST mjolnir \(receiver.inbound.summary) rcvbuf=\(receiver.receiveBufferBytes)"
                 + " perPacket[\(receiver.processStageTimings.summary(packets: stats.authenticatedPackets + stats.droppedPackets))]"

@@ -47,7 +47,20 @@ extension NativeWebRTCStreamView {
             emitAbsoluteMousePosition(event)
             return
         }
-        emitMouseMove(deltaX: Self.clampedInt16(Int(event.deltaX.rounded())), deltaY: Self.clampedInt16(Int(event.deltaY.rounded())))
+        let scaled = Self.scaledMouseDelta(deltaX: event.deltaX, deltaY: event.deltaY, sensitivity: mouseSensitivity, remainder: &mouseDeltaRemainder)
+        emitMouseMove(deltaX: scaled.x, deltaY: scaled.y)
+    }
+
+    /// Applies the sensitivity multiplier to one motion event. Whole counts go out now; the
+    /// fractional rest is carried into the next event, so the sum over a movement equals the
+    /// scaled input exactly and a 25% setting still registers single-count nudges over time.
+    static func scaledMouseDelta(deltaX: CGFloat, deltaY: CGFloat, sensitivity: Double, remainder: inout CGPoint) -> (x: Int16, y: Int16) {
+        let scaledX = deltaX * CGFloat(sensitivity) + remainder.x
+        let scaledY = deltaY * CGFloat(sensitivity) + remainder.y
+        let wholeX = scaledX.rounded(.towardZero)
+        let wholeY = scaledY.rounded(.towardZero)
+        remainder = CGPoint(x: scaledX - wholeX, y: scaledY - wholeY)
+        return (clampedInt16(Int(wholeX)), clampedInt16(Int(wholeY)))
     }
 
     func emitMouseMove(deltaX: Int16, deltaY: Int16) {

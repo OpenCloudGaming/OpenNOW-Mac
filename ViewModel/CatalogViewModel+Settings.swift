@@ -165,6 +165,11 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setMouseSensitivityPercent(_ value: Double) {
+        OPNStreamPreferences.saveMouseSensitivityPercent(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
     func setDirectMouseInputEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveDirectMouseInputEnabled(enabled)
         loadSettingsPreferences()

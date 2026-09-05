@@ -344,8 +344,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         blit.copy(from: source, to: staging)
         blit.endEncoding()
         let formatName = Self.outputFormatName(source.pixelFormat)
+        // Read on the completion thread only, after the GPU has written it.
+        nonisolated(unsafe) let stagingTexture = staging
+        let width = source.width
+        let height = source.height
         commandBuffer.addCompletedHandler { _ in
-            guard let image = CIImage(mtlTexture: staging, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else {
+            guard let image = CIImage(mtlTexture: stagingTexture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else {
                 OpenNOWLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
                 return
             }
@@ -358,7 +362,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             }
             do {
                 try data.write(to: url, options: .atomic)
-                OpenNOWLog.info(.stream, "Render snapshot \(source.width)x\(source.height) \(formatName) -> \(url.path)")
+                OpenNOWLog.info(.stream, "Render snapshot \(width)x\(height) \(formatName) -> \(url.path)")
             } catch {
                 OpenNOWLog.warning(.stream, "Render snapshot: write failed \(error.localizedDescription)")
             }

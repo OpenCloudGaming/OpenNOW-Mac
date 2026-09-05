@@ -482,6 +482,7 @@ extension OPNStreamPreferences {
         static let decodeMeasurements = "OpenNOW.Stream.DecodeMeasurements"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
+        static let mouseSensitivityPercent = "OpenNOW.Stream.MouseSensitivityPercent"
         static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"
         static let preventDisplaySleepWhileStreaming = "OpenNOW.Stream.PreventDisplaySleepWhileStreaming"
         static let gameVolume = "OpenNOW.Stream.GameVolume"

@@ -315,6 +315,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var resolutionOverriddenForSixteenNine = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
+    public var mouseSensitivityPercent = 100
     public var antiAFKMouseMovementEnabled = false
     public var preventDisplaySleepWhileStreaming = true
     public var gameVolume = 1.0

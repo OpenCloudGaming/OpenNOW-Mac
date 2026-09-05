@@ -151,6 +151,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var pillarboxFillModeIndex = 0
     @Published var upscalingModeIndex = 0
     @Published var upscalingTargetIndex = 1
+    @Published var mouseSensitivityPercent = 100
     @Published var upscalingSharpness = 10
     @Published var upscalingDenoise = 0
     @Published var nativeStreamResolutionText = ""

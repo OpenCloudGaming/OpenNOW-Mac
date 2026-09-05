@@ -72,6 +72,10 @@ public enum OPNStreamPreferences {
         OPNStreamUpscalingModeOption(label: "Spatial", value: 2)
     ]
     /// How decoded frames meet the display. Values are `OPNVideoPresentationMode` raw values.
+    /// Relative mouse motion multiplier, in percent. 100 passes the Mac's deltas through as they
+    /// are; below slows the stream cursor, above speeds it, in 5% steps.
+    public static let mouseSensitivityRange = 25...300
+    public static let mouseSensitivityStep = 5
     public static let presentationModeOptions = [
         OPNStreamPresentationModeOption(label: "Balanced", value: 0),
         OPNStreamPresentationModeOption(label: "Smooth", value: 1),
@@ -143,6 +147,7 @@ public enum OPNStreamPreferences {
         Keys.streamSixteenNineTitlesAtSixteenNine,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
+        Keys.mouseSensitivityPercent,
         Keys.antiAFKMouseMovementEnabled,
         Keys.preventDisplaySleepWhileStreaming,
         Keys.gameVolume,

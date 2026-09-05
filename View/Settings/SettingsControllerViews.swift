@@ -305,6 +305,10 @@ struct GameplaySettingsPage: View {
                 SettingsOptionRow(title: "Color Precision", subtitle: qualityLocked ? lockedProfileSubtitle : "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setColorQualityIndex)
                 SettingsDivider(uiScale: uiScale)
                 SettingsInfoRow(label: "Decode on this Mac", value: OPNStreamPreferences.decodeAdvice(codec: viewModel.streamProfile.codec.value, resolution: viewModel.streamProfile.resolution.value, colorQualityLabel: viewModel.streamProfile.colorQuality.label, colorQuality: viewModel.streamProfile.colorQuality.value, fps: viewModel.streamProfile.fps), uiScale: uiScale)
+                if let recommendation = OPNStreamPreferences.decodeRecommendation(resolution: viewModel.streamProfile.resolution.value, codec: viewModel.streamProfile.codec.value, targetFps: viewModel.streamProfile.fps) {
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsInfoRow(label: "Recommended for this Mac", value: recommendation, uiScale: uiScale)
+                }
             }
 
             SettingsCard(title: "Stream Transport", uiScale: uiScale) {
@@ -333,6 +337,8 @@ struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Prevent Display Sleep", subtitle: "Keeps the monitor awake while a stream is active.", isOn: viewModel.streamProfile.preventDisplaySleepWhileStreaming, uiScale: uiScale, action: viewModel.setPreventDisplaySleepWhileStreaming)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Direct Mouse Input", subtitle: "Capture relative input and keep absolute game cursors inside the stream window. Use Command-G or Command-Q to release the pointer.", isOn: viewModel.streamProfile.directMouseInput, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
+                SettingsDivider(uiScale: uiScale)
+                SettingsSliderRow(title: "Mouse Sensitivity", valueText: "\(viewModel.streamProfile.mouseSensitivityPercent)%", value: Double(viewModel.streamProfile.mouseSensitivityPercent), range: Double(OPNStreamPreferences.mouseSensitivityRange.lowerBound)...Double(OPNStreamPreferences.mouseSensitivityRange.upperBound), step: Double(OPNStreamPreferences.mouseSensitivityStep), uiScale: uiScale, action: viewModel.setMouseSensitivityPercent)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
                 SettingsDivider(uiScale: uiScale)

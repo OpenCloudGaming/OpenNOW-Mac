@@ -34,6 +34,12 @@ extension NvstWebRtcBundle {
         // match what the seat expects to be buffered.
         configuration.audioJitterBufferMaxPackets = 200
         configuration.audioJitterBufferFastAccelerate = true
+        // Tried (2026-09-05): NetEq's delay-manager quantile through the
+        // `WebRTC-Audio-NetEqDelayManagerConfig` field trial, to shorten the ~50 ms audio sat in
+        // the jitter buffer on a 5 ms link. Four sessions: default 0.95 → 53 ms; 0.9 → 37 ms once,
+        // 55 ms with 123 concealed samples the next time; 0.8 → 60 ms. Dwell moves 36–61 ms from
+        // seat to seat on its own and the knob did not move it predictably, so it is not set. The
+        // HUD's A/V row and the `audioJb=` log field remain the measurement.
         let neverExpires = 24 * 60 * 60 * 1000
         configuration.iceConnectionReceivingTimeout = Int32(neverExpires)
         configuration.iceUnwritableTimeout = NSNumber(value: neverExpires)

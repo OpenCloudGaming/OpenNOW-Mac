@@ -173,6 +173,7 @@ extension NvstBifrostFreeTransport {
             }
             lastAudioJitterSample = (audio.jitterBufferDelaySeconds, audio.jitterBufferEmitted)
         }
+        lastAudioJitterBufferMilliseconds = audioJitterBufferMilliseconds
         let framesSinceLast = counters.framesEmitted &- lastSnapshotFrames
         let bytesSinceLast = counters.bytesReceived &- lastSnapshotBytes
         let instantFps = Double(framesSinceLast) / interval
