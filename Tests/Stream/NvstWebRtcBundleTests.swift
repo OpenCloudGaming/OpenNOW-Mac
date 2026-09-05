@@ -337,6 +337,39 @@ import os
         #expect(!log.contains("rebuilding without the mic section"), "\(log)")
     }
 
+    @Test func libwebrtcAcceptsTheSurroundMungedAnswer() async throws {
+        // The seat never sees the answer; what matters is that this WebRTC build parses the
+        // multiopus rewrite and builds the bundle from it. Live, a malformed rewrite surfaced as
+        // "SessionDescription is NULL" and took the whole bundle down.
+        let fingerprint = (0..<32).map { String(format: "%02X", ($0 * 5 + 1) & 0xff) }.joined(separator: ":")
+        let handoff = NVSTVideoHandoff(
+            clientUDPPort: 0, videoPeerIP: "10.20.30.40", videoPeerPort: 5004,
+            srtpProfile: .aeadAes256Gcm8,
+            srtpAESKey: Data(repeating: 0xab, count: 32), srtpSalt: Data(repeating: 0x9e, count: 12),
+            codec: .h264, rtpPayloadType: 96, rtpSSRC: 0,
+            reorderWindowPackets: 32, maxAccessUnitBytes: 1024, timeoutMilliseconds: 5000,
+            pingVersion: 6, pingPayload: "58d3b48a47998", mjolnirUDPPort: 0,
+            iceCredentials: NVSTHandoffIceCredentials(
+                localUsernameFragment: "OyEL", localPassword: String(repeating: "p", count: 22),
+                remoteUsernameFragment: "58d3b48a47999", remotePassword: String(repeating: "s", count: 22),
+                remoteDTLSFingerprint: fingerprint))
+        let lines = OSAllocatedUnfairLock(initialState: [String]())
+        let bundle = NvstWebRtcBundle(handoff: handoff, preferredLocalAddress: nil) { line in
+            lines.withLock { $0.append(line) }
+        }
+        defer { bundle.close() }
+        do {
+            _ = try await bundle.prepare(audioChannelCount: 6)
+        } catch {
+            Issue.record("prepare failed: \(error) log=\(lines.withLock { $0 }.joined(separator: "\n"))")
+        }
+        let log = lines.withLock { $0 }.joined(separator: "\n")
+        #expect(log.contains("answer audio munged to 6-channel multiopus"), "\(log)")
+        #expect(!log.contains("bring-up failed"), "\(log)")
+        #expect(!log.contains("rejected the official ICE credentials"), "\(log)")
+        #expect(log.contains("mid=0 dir=recvonly"), "\(log)")
+    }
+
     @Test func theBundleRefusesToStartWithoutTheSeatsIdentity() async {
         func handoff(fingerprint: String?, credentials: Bool) -> NVSTVideoHandoff {
             NVSTVideoHandoff(

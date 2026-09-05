@@ -503,6 +503,24 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setSurroundModeIndex(_ index: Int) {
+        OPNStreamPreferences.saveSurroundModeIndex(index)
+        loadSettingsPreferences()
+    }
+
+    /// What the next session will actually negotiate for the selected surround mode, given the
+    /// default output device and the membership's entitlement.
+    var surroundModeSubtitle: String {
+        let deviceChannels = streamCapabilities.audioOutputChannelCount
+        let entitled = OPNStreamPreferences.loadEntitledAudioChannelCount()
+        let negotiated = WebRTCMediaStreamSettingsResolver.audioChannelCount(surroundMode: streamProfile.surroundMode.value, deviceOutputChannels: deviceChannels, entitledChannels: entitled)
+        let layout = negotiated >= 8 ? "7.1" : (negotiated >= 6 ? "5.1" : "stereo")
+        var text = "Output device has \(deviceChannels) channel\(deviceChannels == 1 ? "" : "s"); next session streams \(layout)."
+        if entitled > 0, entitled < 6 { text += " Membership is limited to stereo." }
+        else if entitled == 6 { text += " Membership tops out at 5.1." }
+        return text
+    }
+
     func setMicrophoneDeviceId(_ deviceId: String) {
         OPNStreamPreferences.saveMicrophoneDeviceId(deviceId)
         let restartRunningTest = microphoneTestActive

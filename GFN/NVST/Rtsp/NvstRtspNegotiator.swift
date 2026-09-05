@@ -520,6 +520,7 @@ extension NvstRtspNegotiator {
             prefilterModel: input.prefilterModel,
             bitDepth: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).bitDepth },
             chromaFormat: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).chromaFormat },
+            audioChannelCount: input.audioChannelCount,
             encryptionKey: described.encryptionKey,
             iceCredentials: resolved.localIce,
             videoPort: resolved.handoff.videoPeerPort,
@@ -636,7 +637,7 @@ extension NvstRtspNegotiator {
     static func audioRelevantDescribeLines(_ body: String) -> [String] {
         let markers = ["x-nv-mic.", "x-nv-aqos.", "x-nv-audio.", "x-nv-general.rtc", "x-nv-general.clientPorts",
                        "x-nv-runtime.mic", "x-nv-general.nativeRtcOnBundlePort", "m=audio", "a=rtpmap", "a=fmtp",
-                       "x-nv-general.separateMicStream"]
+                       "x-nv-general.separateMicStream", "nv-audio-surround"]
         let lines: [String] = body.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { line in !line.isEmpty && markers.contains(where: line.contains) }

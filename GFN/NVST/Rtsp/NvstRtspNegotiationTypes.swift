@@ -131,6 +131,9 @@ public struct NvstRtspNegotiationInput: Sendable {
     /// The session's colour tier string (`10bit_420`, `10bit_444`, `8bit_420`...). Announced as
     /// `video[0].bitDepth` and `video[0].chromaFormat`; nil leaves the captured values in place.
     public let colorQuality: String?
+    /// Playback channels the bundle's audio section was built for (2, 6 or 8); announced as the
+    /// `x-nv-audio.surround` block when above 2.
+    public let audioChannelCount: Int
     public let timeout: Duration
     /// `general.rtcpOnSctp`. True routes RTCP feedback onto the bundle's
     /// `rtcp_on_sctp_private` data channel; false keeps it as SRTCP on the Mjolnir socket,
@@ -165,6 +168,7 @@ public struct NvstRtspNegotiationInput: Sendable {
                 prefilterDenoise: Int? = nil,
                 prefilterModel: Int? = nil,
                 colorQuality: String? = nil,
+                audioChannelCount: Int = 2,
                 timeout: Duration = .seconds(20),
                 rtcpOnSctp: Bool = true,
                 forcesLegacyPath: Bool = false,
@@ -172,6 +176,7 @@ public struct NvstRtspNegotiationInput: Sendable {
                 announcesExtendedSettings: Bool = false,
                 echoesOfferedAttributes: Bool = false,
                 announceOverrides: [(String, String)] = []) {
+        self.audioChannelCount = audioChannelCount
         self.disablesOwdCongestionControl = disablesOwdCongestionControl
         self.announcesExtendedSettings = announcesExtendedSettings
         self.echoesOfferedAttributes = echoesOfferedAttributes

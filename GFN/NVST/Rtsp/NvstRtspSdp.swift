@@ -226,6 +226,10 @@ public enum NvstRtspSdp {
         /// as 3 is inferred from that convention, not captured. nil leaves the captured values.
         public var bitDepth: Int?
         public var chromaFormat: Int?
+        /// Playback channels the bundle's audio section decodes (2, 6 or 8). Above 2 the announce
+        /// carries `x-nv-audio.surround.enable:1` with the channel count and speaker mask so the
+        /// seat encodes multi-channel Opus; the vendor stack names exactly these attributes.
+        public var audioChannelCount: Int
         public var encryptionKey: NvstRuntimeEncryptionKey?
         public var iceCredentials: NvstRtspIceCredentials?
         public var videoPort: UInt16
@@ -281,6 +285,7 @@ public enum NvstRtspSdp {
                     prefilterModel: Int? = nil,
                     bitDepth: Int? = nil,
                     chromaFormat: Int? = nil,
+                    audioChannelCount: Int = 2,
                     encryptionKey: NvstRuntimeEncryptionKey? = nil,
                     iceCredentials: NvstRtspIceCredentials? = nil,
                     videoPort: UInt16 = 0,
@@ -319,6 +324,7 @@ public enum NvstRtspSdp {
             self.prefilterModel = prefilterModel
             self.bitDepth = bitDepth
             self.chromaFormat = chromaFormat
+            self.audioChannelCount = audioChannelCount
             self.encryptionKey = encryptionKey
             self.iceCredentials = iceCredentials
             self.videoPort = videoPort

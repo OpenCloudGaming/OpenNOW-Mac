@@ -233,6 +233,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The session's colour tier (`8bit_420`, `10bit_420`, `10bit_444`, ...), announced as
     /// `video[0].bitDepth` / `chromaFormat` so the ANNOUNCE agrees with what the session PUT asked for.
     let configuredColorQuality: String?
+    /// Playback channels the resolver settled on (2, 6 or 8): what the bundle's audio section
+    /// decodes and what the ANNOUNCE asks the seat to encode.
+    let configuredAudioChannelCount: Int
 
     public init(pixelBufferSink: PixelBufferSink? = nil,
                 configuredFps: Int? = nil,
@@ -242,6 +245,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterDenoise: Int? = nil,
                 configuredPrefilterModel: Int? = nil,
                 configuredColorQuality: String? = nil,
+                configuredAudioChannelCount: Int = 2,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
                 remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
@@ -256,6 +260,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterDenoise = configuredPrefilterDenoise
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
+        self.configuredAudioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(configuredAudioChannelCount)
         self.logger = logger
         self.controlTimeout = controlTimeout
     }
@@ -595,6 +600,7 @@ extension NvstBifrostFreeTransport {
             prefilterDenoise: configuredPrefilterDenoise,
             prefilterModel: configuredPrefilterModel,
             colorQuality: configuredColorQuality,
+            audioChannelCount: configuredAudioChannelCount,
             timeout: controlTimeout,
             // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
             // keeps feedback as SRTCP on the Mjolnir socket.

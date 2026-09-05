@@ -43,6 +43,8 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
+| 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
+| 🔔 **Session ready alerts** | Queue in the background: a system notification fires the moment your seat is ready. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app - catalog, details, settings - from the pad. Never reach for the mouse. |
 | 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |
@@ -57,7 +59,7 @@ Requires macOS 15.6 or later and your own GeForce NOW account.
 
 ## Made for Ultrawide
 
-Pick your shape, then your resolution - 16:9, 16:10, 21:9, or 32:9. The wide end tops out at **5120×2160** on 21:9 and **5120×1440** on 32:9, all at 30/60/120/240 fps. HEVC carries true 5K streams where H.264 hardware decode runs out of headroom, and **AV1** leans in whenever bandwidth is the bottleneck, decoded in hardware on M3-and-later Apple silicon. 10-bit 4:2:0/4:4:4 colour is there when the codec supports it, and any codec your Mac can't decode greys itself out instead of failing mid-session.
+Pick your shape, then your resolution - 16:9, 16:10, 21:9, or 32:9. The wide end tops out at **5120×2160** on 21:9 and **5120×1440** on 32:9, all at 30/60/120/240 fps. HEVC carries true 5K streams where H.264 hardware decode runs out of headroom, and **AV1** leans in whenever bandwidth is the bottleneck, decoded in hardware on M3-and-later Apple silicon. 10-bit 4:2:0/4:4:4 colour is there when the codec supports it, HDR10 rides a 10-bit HEVC stream straight to an EDR drawable on both transports, and any codec your Mac can't decode greys itself out instead of failing mid-session.
 
 ![Streaming quality settings: aspect ratio, resolution, frame rate, codec, bitrate, and colour precision](docs/screenshots/streaming-quality.png)
 

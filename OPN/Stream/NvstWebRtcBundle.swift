@@ -226,6 +226,13 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
         super.init()
     }
 
+    /// Channels the audio section was synthesized for; fixed by `prepare` before the offer exists.
+    public private(set) var audioChannelCount = 2
+
+    func setAudioChannelCount(_ channels: Int) {
+        audioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(channels)
+    }
+
     var lastCursorNotification: String?
     var lastUnparsedCursorPayload: String?
     var cursorNotificationCount = 0

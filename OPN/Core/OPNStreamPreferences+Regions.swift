@@ -165,9 +165,12 @@ extension OPNStreamPreferences {
     }
 
     public static func loadCachedCloudVariables() -> OPNStreamCloudVariables {
-        guard let json = storage.string(forKey: k.cachedCloudVariablesJSON), !json.isEmpty else { return OPNStreamCloudVariables() }
-        var variables = cloudVariables(from: json)
-        variables.fetched = variables.fetched && variables.refreshIntervalSeconds > 0
+        var variables = OPNStreamCloudVariables()
+        if let json = storage.string(forKey: k.cachedCloudVariablesJSON), !json.isEmpty {
+            variables = cloudVariables(from: json)
+            variables.fetched = variables.fetched && variables.refreshIntervalSeconds > 0
+        }
+        variables.entitledAudioChannelCount = loadEntitledAudioChannelCount()
         return variables
     }
 

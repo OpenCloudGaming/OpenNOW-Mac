@@ -91,6 +91,12 @@ public enum OPNStreamPreferences {
         OPNStreamMicrophoneModeOption(label: "Push-to-Talk", value: "push-to-talk"),
         OPNStreamMicrophoneModeOption(label: "Open Mic", value: "voice-activity")
     ]
+    public static let surroundModeOptions = [
+        OPNStreamSurroundModeOption(label: "Auto", value: "auto"),
+        OPNStreamSurroundModeOption(label: "Stereo", value: "stereo"),
+        OPNStreamSurroundModeOption(label: "5.1 Surround", value: "5.1"),
+        OPNStreamSurroundModeOption(label: "7.1 Surround", value: "7.1")
+    ]
 
     static let nvClientId = GFNClientMetadata.clientId
     static let nvCloudVariablesClientVersion = GFNClientMetadata.appVersion
@@ -155,7 +161,8 @@ public enum OPNStreamPreferences {
         Keys.microphoneMode,
         Keys.microphoneDeviceId,
         Keys.microphonePushToTalkKeyCode,
-        Keys.microphonePushToTalkModifierMask
+        Keys.microphonePushToTalkModifierMask,
+        Keys.surroundModeIndex
     ]
 
     public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
@@ -202,6 +209,38 @@ public enum OPNStreamPreferences {
         return devices
     }
 
+    /// Output channels on the system default output device, summed over its output streams —
+    /// the same `maxChannelCount` the official client reads off its audio destination. 2 when
+    /// there is no default device or the query fails.
+    public static func defaultOutputDeviceChannelCount() -> Int {
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var defaultAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &defaultAddress, 0, nil, &size, &deviceID) == noErr,
+              deviceID != AudioDeviceID(kAudioObjectUnknown) else { return 2 }
+        var streamAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var listSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &listSize) == noErr,
+              listSize >= UInt32(MemoryLayout<AudioBufferList>.size) else { return 2 }
+        let storage = UnsafeMutableRawPointer.allocate(byteCount: Int(listSize), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { storage.deallocate() }
+        let bufferList = storage.bindMemory(to: AudioBufferList.self, capacity: 1)
+        guard AudioObjectGetPropertyData(deviceID, &streamAddress, 0, nil, &listSize, bufferList) == noErr else { return 2 }
+        var channels = 0
+        for buffer in UnsafeMutableAudioBufferListPointer(bufferList) {
+            channels += Int(buffer.mNumberChannels)
+        }
+        return channels > 0 ? channels : 2
+    }
+
     public static func loadDeviceCapabilities(screen: NSScreen? = nil) -> OPNStreamDeviceCapabilities {
         var capabilities = OPNStreamDeviceCapabilities()
         capabilities.h264HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
@@ -209,6 +248,7 @@ public enum OPNStreamPreferences {
         if #available(macOS 14.0, *) {
             capabilities.av1HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
         }
+        capabilities.audioOutputChannelCount = defaultOutputDeviceChannelCount()
 
         guard let snapshot = mainThreadScreenSnapshot(screen: screen) else { return capabilities }
         let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0

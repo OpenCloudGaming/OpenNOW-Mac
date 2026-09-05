@@ -23,6 +23,9 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
     public var totalHours = 0.0
     public var isUnlimited = false
     public var isGamePlayAllowed = true
+    /// Playback channels the membership streams: 2, 6 or 8 from `SUPPORTED_AUDIO_FORMATS`;
+    /// 0 when the subscription payload named none.
+    public var entitledAudioChannelCount = 0
 }
 
 public struct OPNGameVariant: Codable, Equatable, Sendable {

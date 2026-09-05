@@ -150,6 +150,11 @@ extension NvstWebRtcBundle {
 
     /// 48 kHz stereo Opus in 5 ms frames. libwebrtc decodes Opus as mono unless `stereo=1` is
     /// negotiated. Under RED, pt 63 carries generations of the pt-111 Opus payload.
+    ///
+    /// Always stereo, even for a surround session: libwebrtc never advertises `multiopus`, so a
+    /// remote offer naming it has its audio section rejected and the bundle's SCTP section fails
+    /// with it (seen live: "Failed to setup RTCP mux" on mid 1). Surround is applied to the local
+    /// answer instead, the way the official client munges its own answer.
     static var audioCodecLines: [String] {
         var lines: [String] = []
         if usesRedAudio {

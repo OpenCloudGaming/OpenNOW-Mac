@@ -170,7 +170,7 @@ extension NvstBifrostFreeTransport {
         let bundle = NvstWebRtcBundle(handoff: handoff, logger: logger)
         let sender = NvstFeedbackSender()
         do {
-            let identity = try await bundle.prepare(microphone: microphoneSetup)
+            let identity = try await bundle.prepare(microphone: microphoneSetup, audioChannelCount: configuredAudioChannelCount)
             scheduleVideoHolePunch()
             sender.configure(
                 channelWriter: { payload in _ = bundle.sendFeedback(payload) },

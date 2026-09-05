@@ -109,6 +109,23 @@ extension OPNSessionManager {
     return (max(640, parts.first ?? 1920), max(360, parts.count > 1 ? parts[1] : 1080))
     }
 
+    /// The negotiated playback channel count, 2 unless the resolver asked for surround.
+    func requestedAudioChannelCount(_ settings: [String: Any]) -> Int {
+        let channels = int(settings["audioChannelCount"], fallback: 2)
+        if channels >= 8 { return 8 }
+        if channels >= 6 { return 6 }
+        return 2
+    }
+
+    /// `requestedAudioFormat` as the official client serialises it: 1 stereo, 2 for 5.1, 3 for 7.1.
+    func requestedAudioFormat(_ settings: [String: Any]) -> Int {
+        switch requestedAudioChannelCount(settings) {
+        case 8: 3
+        case 6: 2
+        default: 1
+        }
+    }
+
     func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: Bool) -> [String: Any] {
     let colorQuality = string(settings["colorQuality"])
     let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0

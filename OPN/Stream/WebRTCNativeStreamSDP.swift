@@ -124,8 +124,11 @@ private func setParameter(_ parameters: [(key: String, value: String)], key: Str
     return result
 }
 
+/// One entry per SDP line. Splitting on `Character.isNewline` keeps CRLF as a single break;
+/// `components(separatedBy: .newlines)` splits it into two and leaves a blank line behind, which
+/// libwebrtc rejects when the rewritten text is set as a description.
 private func sdpLines(_ sdp: String) -> [String] {
-    sdp.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }
+    sdp.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }
 }
 
 private func joinSdpLinesLike(_ lines: [String], original: String) -> String {
@@ -273,6 +276,48 @@ enum WebRTCSdp {
         }
         return joinSdpLinesLike(lines.filter { !$0.isEmpty }, original: sdp)
     }
+    /// The multi-channel Opus `fmtp` the official client writes into its answer for 5.1 and 7.1:
+    /// four coupled-and-mono streams mapped to L R C LFE Ls Rs, or five streams for 7.1.
+    static func multiopusFmtp(channels: Int) -> String? {
+        switch channels {
+        case 6: "minptime=10;useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2"
+        case 8: "minptime=10;useinbandfec=1;channel_mapping=0,6,1,2,3,4,5,7;num_streams=5;coupled_streams=3"
+        default: nil
+        }
+    }
+
+    /// Turns the stereo Opus the seat offers into `multiopus/48000/<channels>` in our answer, the
+    /// way the official client munges its own answer: the seat encodes the surround stream once
+    /// the session request asked for it, and libwebrtc only builds the multi-channel decoder when
+    /// the negotiated codec says so. Only the Opus `rtpmap`/`fmtp` change — the official munge
+    /// leaves RED alone, and RED's payload splitter is codec-agnostic. Anything other than 6 or 8
+    /// leaves the answer untouched.
+    static func applyingSurroundAudio(_ sdp: String, channels: Int) -> String {
+        guard let fmtp = multiopusFmtp(channels: channels) else { return sdp }
+        var lines = sdpLines(sdp)
+        var inAudio = false
+        var opusPayloads = Set<Int>()
+        for index in lines.indices {
+            let line = lines[index]
+            if line.hasPrefix("m=") {
+                inAudio = line.hasPrefix("m=audio")
+                continue
+            }
+            guard inAudio, line.hasPrefix("a=rtpmap:"), let payload = payloadType(line, prefix: "a=rtpmap:") else { continue }
+            let codec = String(line.dropFirst("a=rtpmap:".count)).drop { $0 != " " }.trimmingCharacters(in: .whitespaces).lowercased()
+            if codec == "opus/48000/2" {
+                lines[index] = "a=rtpmap:\(payload) multiopus/48000/\(channels)"
+                opusPayloads.insert(payload)
+            }
+        }
+        guard !opusPayloads.isEmpty else { return sdp }
+        for index in lines.indices where lines[index].hasPrefix("a=fmtp:") {
+            guard let payload = payloadType(lines[index], prefix: "a=fmtp:"), opusPayloads.contains(payload) else { continue }
+            lines[index] = "a=fmtp:\(payload) \(fmtp)"
+        }
+        return joinSdpLinesLike(lines, original: sdp)
+    }
+
     static func mungeAnswerSdp(_ sdp: String, maxBitrateKbps: Int) -> String {
         let lines = sdpLines(sdp)
         var result: [String] = []

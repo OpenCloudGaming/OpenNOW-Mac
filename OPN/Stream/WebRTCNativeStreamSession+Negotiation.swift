@@ -17,8 +17,11 @@ extension OPNLibWebRTCStreamSession {
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         // Advertises H265 with real fmtp params so libwebrtc negotiates HEVC instead of dropping it
         // and falling back to AV1 (undecodable before Apple M3 → black screen). See OPNVideoDecoderFactory.
-        let decoderFactory = OPNVideoDecoderFactory()
-        let audioDevice = OPNCoreAudioRTCDevice(owner: self)
+        // A 10-bit or HDR session needs the bitstream's depth to survive decode; libwebrtc's own
+        // HEVC decoder always emits 8-bit NV12.
+        let wantsBitstreamDepth = WebRTCSdp.string(settings["colorQuality"]).lowercased().hasPrefix("10bit") || WebRTCSdp.bool(settings["enableHdr"])
+        let decoderFactory = OPNVideoDecoderFactory(decodesHEVCAtBitstreamDepth: wantsBitstreamDepth)
+        let audioDevice = OPNCoreAudioRTCDevice(owner: self, playoutChannelCount: WebRTCSdp.int(settings["audioChannelCount"], fallback: 2))
         impl.audioDevice = audioDevice
         impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
         if impl.factory == nil {
@@ -158,8 +161,12 @@ extension OPNLibWebRTCStreamSession {
                 return
             }
             let mungedAnswer = WebRTCSdp.envFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", defaultValue: false) ? WebRTCSdp.mungeAnswerSdp(answer.sdp, maxBitrateKbps: max(1000, WebRTCSdp.int(self.settings["maxBitrateMbps"], fallback: 50) * 1000)) : answer.sdp
-            let answerSdp = WebRTCSdp.alignH265AnswerFmtpToOffer(mungedAnswer, offerSdp: context.remoteOfferSdp)
+            let audioChannelCount = WebRTCSdp.int(self.settings["audioChannelCount"], fallback: 2)
+            let answerSdp = WebRTCSdp.applyingSurroundAudio(WebRTCSdp.alignH265AnswerFmtpToOffer(mungedAnswer, offerSdp: context.remoteOfferSdp), channels: audioChannelCount)
             WebRTCSdp.logVideoSdpSummary("answer-video", answerSdp)
+            if audioChannelCount > 2 {
+                OPNLogCapture.appendEvent("[LibWebRTC] answer requests \(audioChannelCount)-channel multiopus audio")
+            }
             guard WebRTCSdp.videoSdpHasMediaCodec(answerSdp) else {
                 if codecPreferenceApplied, !retriedWithoutCodecPreference, OPNWebRTCCodecSupport.resetVideoCodecPreferences(peerConnection: peerConnection) {
                     OPNLogCapture.appendEvent("[LibWebRTC] createAnswer rejected video after codec preference; retrying with default codec preferences")

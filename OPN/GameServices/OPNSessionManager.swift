@@ -119,7 +119,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             ["key": "networkLatencyMs", "value": networkLatencyValue(effectiveSettings)],
             ["key": "ClientImeSupport", "value": "0"],
             ["key": "clientPhysicalResolution", "value": clientPhysicalResolutionMetadata(settings: effectiveSettings, capabilities: capabilities)],
-            ["key": "surroundAudioInfo", "value": String(int(effectiveSettings["surroundAudioMetadata"], fallback: 2))],
+            ["key": "surroundAudioInfo", "value": String(requestedAudioChannelCount(effectiveSettings))],
             ["key": "store", "value": selectedStore],
         ]
         if transportMode == "webrtc" {
@@ -145,6 +145,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "sdrHdrMode": hdrEnabled ? 1 : 0,
             "clientDisplayHdrCapabilities": NSNull(),
             "surroundAudioInfo": int(effectiveSettings["surroundAudioInfo"], fallback: 0),
+            "requestedAudioFormat": requestedAudioFormat(effectiveSettings),
             "remoteControllersBitmap": int(effectiveSettings["remoteControllersBitmap"]),
             "clientTimezoneOffset": timezoneOffset,
             "enhancedStreamMode": int(effectiveSettings["enhancedStreamMode"], fallback: 1),

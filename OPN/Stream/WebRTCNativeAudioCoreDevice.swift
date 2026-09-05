@@ -33,6 +33,12 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var recordingScratch = [Int16]()
     let monitorsDefaultDeviceChanges: Bool
+    /// Channels the negotiated stream carries (2, 6 or 8). The playout format always follows it:
+    /// libwebrtc's mixer cannot fold a 6- or 8-channel decode down to fewer channels, so a device
+    /// with fewer outputs takes the first channels through the output unit's default map rather
+    /// than silence.
+    let requestedPlayoutChannels: Int
+    var stereoTeeScratch = [Int16]()
     /// Bumped by every default-output notification so a burst collapses into one rebind.
     var selfDeviceChangeGeneration: UInt64 = 0
     private weak var delegate: RTCAudioDeviceDelegate?
@@ -75,9 +81,10 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     /// bundle's playout unit stays pinned to whatever device was default when the stream started,
     /// and plugging in headphones mid-session leaves the game playing out the speakers. Off by
     /// default so the WebRTC path keeps its single driver and does not hot-swap twice per change.
-    init(owner: (any OPNCoreAudioRTCDeviceOwner)?, monitorsDefaultDeviceChanges: Bool = false) {
+    init(owner: (any OPNCoreAudioRTCDeviceOwner)?, monitorsDefaultDeviceChanges: Bool = false, playoutChannelCount: Int = 2) {
         self.owner = owner
         self.monitorsDefaultDeviceChanges = monitorsDefaultDeviceChanges
+        self.requestedPlayoutChannels = Self.supportedPlayoutChannelCount(playoutChannelCount)
         super.init()
         updateDeviceParameters()
         if monitorsDefaultDeviceChanges { startSelfDeviceMonitoring() }
@@ -169,7 +176,11 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         let status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, outputData)
         if status != noErr { clearAudioBufferList(outputData) }
         if status == noErr {
-            owner?.handleGameAudioFrame(UnsafeRawPointer(outputData), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+            if outputNumberOfChannels > 2 {
+                deliverStereoTee(outputData, frameCount: frameCount)
+            } else {
+                owner?.handleGameAudioFrame(UnsafeRawPointer(outputData), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+            }
             // After the tee, never before: a Remote Co-Op guest and a recording are fed from the
             // line above and must keep hearing the game while these speakers are silent.
             if isPlayoutMuted { clearAudioBufferList(outputData) }
@@ -379,7 +390,8 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         deviceInputSampleRate = nominalSampleRate(for: inputDevice, fallback: preferredInputSampleRate > 0 ? preferredInputSampleRate : 48_000)
         deviceOutputSampleRate = nominalSampleRate(for: outputDevice, fallback: preferredOutputSampleRate > 0 ? preferredOutputSampleRate : 48_000)
         inputNumberOfChannels = max(1, min(2, channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput, fallback: 1)))
-        outputNumberOfChannels = max(1, min(2, channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, fallback: 2)))
+        let deviceOutputChannels = channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, fallback: 2)
+        outputNumberOfChannels = requestedPlayoutChannels > 2 ? requestedPlayoutChannels : max(1, min(2, deviceOutputChannels))
         let preferredInputBufferDuration = delegate?.preferredInputIOBufferDuration ?? 0
         let preferredOutputBufferDuration = delegate?.preferredOutputIOBufferDuration ?? 0
         inputIOBufferDuration = preferredInputBufferDuration > 0 ? preferredInputBufferDuration : 0.01

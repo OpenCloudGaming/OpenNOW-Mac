@@ -229,7 +229,23 @@ extension OPNGameService {
         if let state = json["currentSubscriptionState"] as? NSDictionary {
             info.isGamePlayAllowed = state["isGamePlayAllowed"] as? Bool ?? true
         }
+        info.entitledAudioChannelCount = entitledAudioChannelCount(features: json["features"])
         return info
+    }
+
+    /// The `SUPPORTED_AUDIO_FORMATS` feature as a channel count, using the official client's own
+    /// mapping (`STEREO` 2, `UP_TO_5_1_SURROUND_PCM` 6, `UP_TO_7_1_SURROUND_PCM` 8). 0 when the
+    /// feature is absent, so callers can tell "not entitled" from "not reported".
+    func entitledAudioChannelCount(features: Any?) -> Int {
+        guard let features = features as? [Any] else { return 0 }
+        for case let feature as NSDictionary in features {
+            guard (safeString(feature["key"]) ?? "").uppercased() == "SUPPORTED_AUDIO_FORMATS" else { continue }
+            let value = (safeString(feature["textValue"]) ?? safeString(feature["value"]) ?? "").uppercased()
+            if value.contains("7_1") { return 8 }
+            if value.contains("5_1") { return 6 }
+            return 2
+        }
+        return 0
     }
 
     func safeMinutesAsHours(_ value: Any?) -> Double {

@@ -12,7 +12,8 @@ func webRTCMediaCapabilities(from capabilities: OPNStreamDeviceCapabilities) -> 
         maxDisplayHeight: capabilities.maxDisplayHeight,
         maxDisplayRefreshRate: capabilities.maxDisplayRefreshRate,
         displayDpi: capabilities.displayDpi,
-        connectedGamepadCount: min(4, connectedGamepads + reservedRemoteGamepads)
+        connectedGamepadCount: min(4, connectedGamepads + reservedRemoteGamepads),
+        audioOutputChannelCount: capabilities.audioOutputChannelCount
     )
 }
 
@@ -26,7 +27,8 @@ func webRTCMediaCloudVariables(from variables: OPNStreamCloudVariables) -> WebRT
         allowReflex: variables.allowReflex,
         allowPrefilter: variables.allowPrefilter,
         supportedPrefilterModes: variables.supportedPrefilterModes,
-        maxBitrateMbps: variables.maxBitrateMbps
+        maxBitrateMbps: variables.maxBitrateMbps,
+        entitledAudioChannelCount: variables.entitledAudioChannelCount
     )
 }
 
@@ -70,7 +72,8 @@ func webRTCMediaProfile(from profile: OPNStreamPreferenceProfile) -> WebRTCMedia
         preventDisplaySleepWhileStreaming: profile.preventDisplaySleepWhileStreaming,
         recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
         recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
-        recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled
+        recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
+        surroundMode: profile.surroundMode.value
     )
 }
 
@@ -115,7 +118,8 @@ func webRTCMediaProfile(from settings: [String: Any]) -> WebRTCMediaStreamProfil
         preventDisplaySleepWhileStreaming: bridgeBool(settings["preventDisplaySleepWhileStreaming"], fallback: true),
         recordingVideoBitrateMbps: bridgeInt(settings["recordingVideoBitrateMbps"]),
         recordingAudioBitrateKbps: bridgeInt(settings["recordingAudioBitrateKbps"], fallback: 160),
-        recordingEnhancedVideoEnabled: bridgeBool(settings["recordingEnhancedVideoEnabled"], fallback: true)
+        recordingEnhancedVideoEnabled: bridgeBool(settings["recordingEnhancedVideoEnabled"], fallback: true),
+        surroundMode: bridgeString(settings["surroundMode"], fallback: "auto")
     )
 }
 

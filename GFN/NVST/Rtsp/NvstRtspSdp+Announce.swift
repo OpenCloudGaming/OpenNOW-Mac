@@ -131,6 +131,7 @@ extension NvstRtspSdp {
         applyOfferedAttributes(&attributes, options: options)
         applyVideoAttributes(&attributes, options: options)
         applyBitrateAttributes(&attributes, options: options)
+        applyAudioAttributes(&attributes, options: options)
         applyMicrophoneAttributes(&attributes, options: options)
         // The A/B harness: whatever the run under test asks for wins over every layer above,
         // including the client-only ones, so a knob can be measured exactly as written.
@@ -148,6 +149,28 @@ extension NvstRtspSdp {
     static func applyMicrophoneAttributes(_ attributes: inout AnnounceAttributes, options: AnnounceOptions) {
         guard options.carriesMicrophoneOnBundle, let ssrc = options.microphoneSenderSsrc else { return }
         attributes.set("x-nv-mic.micSsrcConfig.senderSsrc", "\(ssrc)")
+    }
+
+    /// Windows `KSAUDIO_SPEAKER_5_1` / `KSAUDIO_SPEAKER_7_1_SURROUND` masks, the speaker layout
+    /// convention the seat's Windows audio stack already speaks.
+    static func surroundChannelMask(channels: Int) -> Int? {
+        switch channels {
+        case 6: 0x3F
+        case 8: 0x63F
+        default: nil
+        }
+    }
+
+    /// Layer three, part two: the surround request. The captured stereo baseline only carries
+    /// `surround.version:2`; a 5.1 or 7.1 session adds the enable flag, channel count and speaker
+    /// mask (`libBifrost2` strings `x-nv-audio.surround.enable` / `numChannels` / `channelMask`).
+    /// The bundle's answer must have been built for the same count, or the seat's multi-channel
+    /// Opus lands on a stereo decoder.
+    static func applyAudioAttributes(_ attributes: inout AnnounceAttributes, options: AnnounceOptions) {
+        guard let mask = surroundChannelMask(channels: options.audioChannelCount) else { return }
+        attributes.set("x-nv-audio.surround.enable", "1")
+        attributes.set("x-nv-audio.surround.numChannels", String(options.audioChannelCount))
+        attributes.set("x-nv-audio.surround.channelMask", String(mask))
     }
 
     /// Layer one: the captured official baseline plus the client-side packet pacing it needs.

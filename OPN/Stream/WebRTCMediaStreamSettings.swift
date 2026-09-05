@@ -22,6 +22,7 @@ public struct WebRTCMediaDeviceCapabilities: Equatable, Sendable {
     public var maxDisplayRefreshRate: Int
     public var displayDpi: Int
     public var connectedGamepadCount: Int
+    public var audioOutputChannelCount: Int
 
     public init(h264HardwareDecodeSupported: Bool = true,
                 h265HardwareDecodeSupported: Bool = false,
@@ -31,7 +32,9 @@ public struct WebRTCMediaDeviceCapabilities: Equatable, Sendable {
                 maxDisplayHeight: Int = 0,
                 maxDisplayRefreshRate: Int = 0,
                 displayDpi: Int = 100,
-                connectedGamepadCount: Int = 0) {
+                connectedGamepadCount: Int = 0,
+                audioOutputChannelCount: Int = 2) {
+        self.audioOutputChannelCount = max(1, audioOutputChannelCount)
         self.h264HardwareDecodeSupported = h264HardwareDecodeSupported
         self.h265HardwareDecodeSupported = h265HardwareDecodeSupported
         self.av1HardwareDecodeSupported = av1HardwareDecodeSupported
@@ -54,6 +57,8 @@ public struct WebRTCMediaCloudVariables: Equatable, Sendable {
     public var allowPrefilter: Bool
     public var supportedPrefilterModes: [Int]
     public var maxBitrateMbps: Int
+    /// Playback channels the membership streams; 0 when unknown, which places no cap.
+    public var entitledAudioChannelCount: Int
 
     public init(fetched: Bool = false,
                 allowH265: Bool = true,
@@ -63,7 +68,9 @@ public struct WebRTCMediaCloudVariables: Equatable, Sendable {
                 allowReflex: Bool = true,
                 allowPrefilter: Bool = true,
                 supportedPrefilterModes: [Int] = [],
-                maxBitrateMbps: Int = 0) {
+                maxBitrateMbps: Int = 0,
+                entitledAudioChannelCount: Int = 0) {
+        self.entitledAudioChannelCount = max(0, entitledAudioChannelCount)
         self.fetched = fetched
         self.allowH265 = allowH265
         self.allowAV1 = allowAV1
@@ -116,6 +123,8 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
+    /// `auto`, `stereo`, `5.1` or `7.1`; see `OPNStreamPreferences.surroundModeOptions`.
+    public var surroundMode: String
 
     public init(resolution: WebRTCMediaResolution = WebRTCMediaResolution(width: 1920, height: 1080),
                 fps: Int = 60,
@@ -155,7 +164,9 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 preventDisplaySleepWhileStreaming: Bool = true,
                 recordingVideoBitrateMbps: Int = 0,
                 recordingAudioBitrateKbps: Int = 160,
-                recordingEnhancedVideoEnabled: Bool = true) {
+                recordingEnhancedVideoEnabled: Bool = true,
+                surroundMode: String = "auto") {
+        self.surroundMode = surroundMode
         self.resolution = resolution
         self.fps = fps
         self.codec = codec
@@ -241,9 +252,14 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var remoteControllersBitmap: UInt32
     public var supportedHidDevices: UInt32
     public var availableSupportedControllers: [String]
+    /// Playback channels the session negotiates: 2, 6 or 8.
+    public var audioChannelCount: Int
+    public var surroundMode: String
 
     public func dictionary(gameLanguage: String, accountLinked: Bool, selectedStore: String) -> [String: Any] {
         [
+            "audioChannelCount": audioChannelCount,
+            "surroundMode": surroundMode,
             "resolution": resolution,
             "fps": fps,
             "codec": codec,
@@ -300,11 +316,19 @@ public enum WebRTCMediaStreamSettingsResolver {
         var codec = resolvedCodec(profile: profile, capabilities: capabilities)
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
-        let colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
+        // HDR is a 10-bit HEVC/AV1 stream by definition: an 8-bit request with HDR on would have
+        // the seat encode PQ into a bit depth the decoder then flattens, so the tier is lifted here
+        // and HDR is dropped where the codec cannot carry it at all.
+        let enableHdr = cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr && (codec == "H265" || codec == "AV1")
+        var colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
+        if enableHdr, !colorQuality.lowercased().hasPrefix("10bit") { colorQuality = "10bit_420" }
         let controllerCount = capabilities.connectedGamepadCount
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
         let upscalingMode = normalizedUpscalingMode(profile.upscalingMode)
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
+        let negotiatedAudioChannels = audioChannelCount(surroundMode: profile.surroundMode,
+                                                        deviceOutputChannels: capabilities.audioOutputChannelCount,
+                                                        entitledChannels: cloudVariables.entitledAudioChannelCount)
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
@@ -316,7 +340,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             prefilterDenoise: prefilterMode == 0 ? 0 : profile.prefilterDenoise,
             prefilterModel: prefilterMode == 0 ? 0 : profile.prefilterModel,
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
-            enableHdr: cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr,
+            enableHdr: enableHdr,
             enableReflex: cloudVariables.allowReflex,
             transportMode: normalizedTransportMode(profile.transportMode),
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
@@ -347,7 +371,9 @@ public enum WebRTCMediaStreamSettingsResolver {
             recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             remoteControllersBitmap: controllerBitmap(count: controllerCount),
             supportedHidDevices: 0,
-            availableSupportedControllers: []
+            availableSupportedControllers: [],
+            audioChannelCount: negotiatedAudioChannels,
+            surroundMode: profile.surroundMode
         )
     }
 
@@ -398,6 +424,24 @@ public enum WebRTCMediaStreamSettingsResolver {
     private static func normalizedCodec(_ codec: String) -> String {
         let requested = codec.isEmpty ? "H264" : codec.uppercased()
         return requested == "HEVC" ? "H265" : requested
+    }
+
+    /// The channel count a session asks for. Whatever the mode says, the result never exceeds
+    /// what the default output device can play — libwebrtc cannot fold a 6- or 8-channel decode
+    /// down to stereo, so a surround stream on a stereo device would be silence — nor what the
+    /// membership streams. Anything under 6 is stereo; there is no 4-channel format on the wire.
+    public static func audioChannelCount(surroundMode: String, deviceOutputChannels: Int, entitledChannels: Int) -> Int {
+        let requested: Int = switch surroundMode.lowercased() {
+        case "stereo": 2
+        case "5.1": 6
+        case "7.1": 8
+        default: deviceOutputChannels
+        }
+        var channels = min(requested, deviceOutputChannels)
+        if entitledChannels > 0 { channels = min(channels, entitledChannels) }
+        if channels >= 8 { return 8 }
+        if channels >= 6 { return 6 }
+        return 2
     }
 
     private static func resolvedColorQuality(_ colorQuality: String, codec: String) -> String {

@@ -172,6 +172,20 @@ public struct OPNStreamMicrophoneModeOption: Equatable, Sendable {
     }
 }
 
+/// How many playback channels a session asks the seat for. `auto` follows the default output
+/// device the way the official client does; the explicit modes are still capped by that device
+/// and by the membership's entitlement, so a stereo device never negotiates a stream libwebrtc
+/// cannot fold down.
+public struct OPNStreamSurroundModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
 public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
     public var label: String
     public var uniqueId: String
@@ -219,6 +233,9 @@ public struct OPNStreamCloudVariables: Equatable, Sendable {
     /// client shows (`GeForce RTX 5080`, `Basic Rig`). From the `enableGpuNameMappingV2` feature's
     /// `gpuNameMap` in the cloud-variables payload.
     public var gpuNameMap: [String: String] = [:]
+    /// The most playback channels the membership streams (`SUPPORTED_AUDIO_FORMATS` on the
+    /// subscription). 0 until a subscription has been read, which places no cap.
+    public var entitledAudioChannelCount = 0
 
     public init() {}
 }
@@ -228,6 +245,8 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public var h265HardwareDecodeSupported = false
     public var av1HardwareDecodeSupported = false
     public var hdrDisplaySupported = false
+    /// Playback channels on the default output device; what a surround request is capped by.
+    public var audioOutputChannelCount = 2
     public var maxDisplayWidth = 0
     public var maxDisplayHeight = 0
     public var maxDisplayRefreshRate = 0
@@ -317,6 +336,8 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
     public var microphoneDeviceId = ""
+    public var surroundModeIndex = 0
+    public var surroundMode = OPNStreamPreferences.surroundModeOptions[0]
     public var microphonePushToTalkKeyCode = 9
     public var microphonePushToTalkModifierMask = 0
     public var microphonePushToTalkKeyLabel = "V"

@@ -293,6 +293,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
             configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
             configuredColorQuality: resolvedStreamSettings.colorQuality,
+            configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)

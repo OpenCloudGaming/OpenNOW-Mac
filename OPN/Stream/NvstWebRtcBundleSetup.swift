@@ -55,7 +55,8 @@ extension NvstWebRtcBundle {
     /// Supplying `microphone` adds the mic send section to the synthesized offer and attaches the
     /// local sender before the answer is created: NVST has no renegotiation, so a mic m-line that
     /// is not in this first answer can never appear for this session.
-    public func prepare(microphone: MicrophoneSetup? = nil) async throws -> Identity {
+    public func prepare(microphone: MicrophoneSetup? = nil, audioChannelCount: Int = 2) async throws -> Identity {
+        setAudioChannelCount(audioChannelCount)
         guard let microphone else { return try await bringUp(includesMicrophone: false, microphone: nil) }
         do {
             return try await bringUp(includesMicrophone: true, microphone: microphone)
@@ -142,8 +143,15 @@ extension NvstWebRtcBundle {
         connection: RTCPeerConnection,
         credentials: NVSTHandoffIceCredentials
     ) async throws -> (sdp: String, usesOfficialCredentials: Bool) {
+        // Surround rides the local answer only: the seat never sees this SDP, but libwebrtc builds
+        // its receive codec from it, and `multiopus` is decodable while never being offered.
+        let surroundAnswer = WebRTCSdp.applyingSurroundAudio(answer.sdp, channels: audioChannelCount)
+        if surroundAnswer != answer.sdp {
+            let audioLines = surroundAnswer.components(separatedBy: "\r\n").filter { $0.hasPrefix("a=rtpmap:") || $0.hasPrefix("a=fmtp:") }
+            logger?("NVST bundle answer audio munged to \(audioChannelCount)-channel multiopus: \(audioLines.joined(separator: " | "))")
+        }
         var forced = Self.replacingIceCredentials(
-            in: answer.sdp,
+            in: surroundAnswer,
             usernameFragment: credentials.localUsernameFragment,
             password: credentials.localPassword
         )
@@ -161,7 +169,7 @@ extension NvstWebRtcBundle {
         } catch {
             logger?("NVST bundle rejected the official ICE credentials (\(error.localizedDescription)); keeping the generated pair")
             usesOfficialCredentials = false
-            try await setLocalDescription(connection, answer)
+            try await setLocalDescription(connection, RTCSessionDescription(type: .answer, sdp: surroundAnswer))
         }
         return (forced, usesOfficialCredentials)
     }
@@ -451,7 +459,7 @@ extension NvstWebRtcBundle {
     /// With no default output device there is nothing to bind to and playout would never start, so
     /// libwebrtc's own device takes over: audio still plays, recordings are silent.
     private func makePeerConnectionFactory() -> RTCPeerConnectionFactory {
-        let audioDevice = OPNCoreAudioRTCDevice(owner: self, monitorsDefaultDeviceChanges: true)
+        let audioDevice = OPNCoreAudioRTCDevice(owner: self, monitorsDefaultDeviceChanges: true, playoutChannelCount: audioChannelCount)
         guard audioDevice.hasUsableOutputDevice else {
             logger?("NVST bundle found no default output device; using libwebrtc's audio device (recording will have no audio)")
             return RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)

@@ -14,9 +14,22 @@ import WebRTC
 /// default factory's RTCVideoDecoderH265, which matches on codec name and ignores these fmtp params.
 final class OPNVideoDecoderFactory: NSObject, RTCVideoDecoderFactory {
     private let base = RTCDefaultVideoDecoderFactory()
+    /// Decode HEVC with the NVST path's VideoToolbox decoder instead of libwebrtc's, so a 10-bit
+    /// or HDR session reaches the renderer at its real depth with its colour tags. Off keeps the
+    /// framework decoder an 8-bit SDR session has always used.
+    let decodesHEVCAtBitstreamDepth: Bool
+
+    init(decodesHEVCAtBitstreamDepth: Bool = false) {
+        self.decodesHEVCAtBitstreamDepth = decodesHEVCAtBitstreamDepth
+        super.init()
+    }
 
     func createDecoder(_ info: RTCVideoCodecInfo) -> RTCVideoDecoder? {
-        base.createDecoder(info)
+        let name = info.name.uppercased()
+        if decodesHEVCAtBitstreamDepth, name == "H265" || name == "HEVC" {
+            return OPNVideoToolboxRTCDecoder(codec: .hevc)
+        }
+        return base.createDecoder(info)
     }
 
     func supportedCodecs() -> [RTCVideoCodecInfo] {

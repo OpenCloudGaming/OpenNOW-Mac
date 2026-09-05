@@ -138,6 +138,11 @@ extension OPNStreamPreferences {
     public static func savePillarboxFillDim(_ value: Int) { storage.set(clamp(value, 0, 100), forKey: k.pillarboxFillDim) }
     public static func saveRecordingVideoBitrateMbps(_ value: Int) { storage.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
     public static func saveRecordingAudioBitrateKbps(_ value: Int) { storage.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
+    public static func saveSurroundModeIndex(_ value: Int) { storage.set(clamp(value, 0, surroundModeOptions.count - 1), forKey: k.surroundModeIndex) }
+    /// The membership's playback-channel entitlement, remembered so a session request can be
+    /// capped by it without a subscription fetch on the launch path.
+    public static func saveEntitledAudioChannelCount(_ value: Int) { storage.set(clamp(value, 0, 8), forKey: k.entitledAudioChannelCount) }
+    public static func loadEntitledAudioChannelCount() -> Int { clamp((storage.object(forKey: k.entitledAudioChannelCount) as? NSNumber)?.intValue ?? 0, 0, 8) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
@@ -277,6 +282,8 @@ extension OPNStreamPreferences {
         profile.microphoneMode = string(value(dictionary, k.microphoneMode), "disabled")
         if !microphoneModeOptions.contains(where: { $0.value == profile.microphoneMode }) { profile.microphoneMode = "disabled" }
         profile.microphoneDeviceId = string(value(dictionary, k.microphoneDeviceId), "")
+        profile.surroundModeIndex = clampedInt(dictionary, k.surroundModeIndex, 0, surroundModeOptions.count)
+        profile.surroundMode = surroundModeOptions[profile.surroundModeIndex]
         profile.microphonePushToTalkKeyCode = clampedInt(dictionary, k.microphonePushToTalkKeyCode, 9, 128)
         profile.microphonePushToTalkModifierMask = normalizedPushToTalkModifierMask(keyCode: profile.microphonePushToTalkKeyCode, modifierMask: clampedInt(dictionary, k.microphonePushToTalkModifierMask, 0, 32))
         profile.microphonePushToTalkKeyLabel = microphonePushToTalkKeyLabel(profile.microphonePushToTalkKeyCode)
@@ -313,6 +320,7 @@ extension OPNStreamPreferences {
             k.presentationModeIndex: profile.presentationModeIndex,
             k.recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
+            k.surroundModeIndex: profile.surroundModeIndex,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             k.l4sEnabled: profile.enableL4S,
             k.hdrEnabled: profile.enableHdr,
