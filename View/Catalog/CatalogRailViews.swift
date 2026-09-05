@@ -15,6 +15,8 @@ struct CatalogRailView: View {
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
     @State private var isRailHovering = false
+    /// Which tile the pointer is on, so the row can raise it above the tiles drawn after it.
+    @State private var hoveredTileIdentity: String?
     @Environment(\.opnUIScale) private var uiScale
 
     private var games: [OPNCatalogGameObject] {
@@ -78,9 +80,13 @@ struct CatalogRailView: View {
                                         viewModel.selectGame(game, inSection: section.id)
                                         viewModel.handleUnownedSelectedVariantPrimaryAction()
                                     },
-                                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
+                                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                                    onHoverChanged: { hovering in
+                                        hoveredTileIdentity = hovering ? game.catalogIdentity : (hoveredTileIdentity == game.catalogIdentity ? nil : hoveredTileIdentity)
+                                    }
                                 ))
                                     .id(game.catalogIdentity)
+                                    .zIndex(hoveredTileIdentity == game.catalogIdentity ? 1 : 0)
                             }
                             ForEach(Array(section.tiles.enumerated()), id: \.offset) { _, tile in
                                 CatalogPanelActionTile(

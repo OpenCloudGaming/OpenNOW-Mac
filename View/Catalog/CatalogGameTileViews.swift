@@ -46,6 +46,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     let onPlay: () -> Void
     let onMarkOwned: () -> Void
     let onQueueForPatching: () -> Void
+    /// The row owns the stacking order. `zIndex` set inside this view orders nothing useful: the
+    /// rail wraps each tile in an `EquatableView`, which is its own single-child container, so the
+    /// hovered tile kept drawing under the tile after it however high it set its own index. The
+    /// tile reports hover; the row raises the wrapper it actually placed.
+    var onHoverChanged: ((Bool) -> Void)?
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
 
@@ -59,7 +64,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     }
 
     var body: some View {
-        CatalogHoverTracker(onHover: { isHovering = $0 }) {
+        CatalogHoverTracker(onHover: { isHovering = $0; onHoverChanged?($0) }) {
             ZStack(alignment: .topLeading) {
                 Button(action: onSelect) {
                     tileContent
@@ -87,10 +92,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
             .opnHoverScale(isHovering && !isSelectionActive, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         }
-        // On the tracker, not inside it: `zIndex` orders siblings within one container, and the
-        // container here is the rail's stack of tiles. Set on the inner ZStack it ordered that
-        // ZStack's own children, so the tiles drawn after this one still painted over the hovered
-        // tile's enlarged tray and title.
+        // Kept for the grid, where the tile is placed directly in the stack.
         .zIndex(isHovering ? 1 : 0)
     }
 
