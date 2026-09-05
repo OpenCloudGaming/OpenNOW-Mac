@@ -191,6 +191,24 @@ extension CatalogViewModel {
         errorMessage = ""
     }
 
+    /// The one place a failed launch is recorded. Writes the transient banner as well, so surfaces
+    /// that only read `errorMessage` are unchanged.
+    func reportLaunchFailure(_ message: String) {
+        errorMessage = message
+        launchErrorMessage = message
+    }
+
+    /// The message any catalog surface should show: the sticky launch failure outlives the
+    /// transient status line that a refetch clears.
+    var displayedErrorMessage: String {
+        errorMessage.isEmpty ? launchErrorMessage : errorMessage
+    }
+
+    func dismissLaunchError() {
+        launchErrorMessage = ""
+        if !errorMessage.isEmpty { errorMessage = "" }
+    }
+
     nonisolated static func titleGroupingKey(for game: OPNCatalogGameObject) -> String {
         let normalized = game.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.isEmpty ? identity(for: game) : normalized

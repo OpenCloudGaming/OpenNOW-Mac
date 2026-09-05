@@ -72,6 +72,7 @@ extension CatalogViewModel {
     }
 
     func closeShowAll() {
+        launchErrorMessage = ""
         selectedShowAllSection = nil
         selectedGame = nil
         selectedSectionId = ""

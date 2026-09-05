@@ -183,6 +183,11 @@ final class CatalogViewModel {
     var isLoadingFavorites = false { didSet { cachedCatalogSections = nil } }
     var catalogEndCursor = ""
     var errorMessage = ""
+    /// A launch that failed, kept until the next launch attempt or an explicit dismissal.
+    /// `errorMessage` doubles as the catalog's transient status line and is wiped by any browse,
+    /// panel load or action message — so the one message the user most needs (the seat refused the
+    /// title) vanished a moment after it appeared. This one only launch failures write.
+    var launchErrorMessage = ""
     var launchMessage = ""
     /// Support-diagnostics generation, driven from both the About settings card and the home
     /// error banner. See CatalogDiagnostics.swift.

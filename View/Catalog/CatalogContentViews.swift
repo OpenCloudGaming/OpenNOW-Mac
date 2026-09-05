@@ -85,14 +85,15 @@ struct CatalogContentView: View {
                                 }
                             }
 
-                            if !viewModel.errorMessage.isEmpty {
+                            if !viewModel.displayedErrorMessage.isEmpty {
                                 CatalogMessageView(
-                                    message: viewModel.errorMessage,
+                                    message: viewModel.displayedErrorMessage,
                                     systemImage: "exclamationmark.triangle.fill",
                                     diagnosticsState: viewModel.diagnosticsState,
                                     onGenerateDiagnostics: {
-                                        viewModel.presentDiagnosticsUploadConfirmation(context: viewModel.errorMessage)
-                                    }
+                                        viewModel.presentDiagnosticsUploadConfirmation(context: viewModel.displayedErrorMessage)
+                                    },
+                                    onDismiss: { viewModel.dismissLaunchError() }
                                 )
                                     .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
                             }

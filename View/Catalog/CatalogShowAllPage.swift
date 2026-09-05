@@ -26,6 +26,11 @@ struct CatalogShowAllPage: View {
 
     private var mainColumn: some View {
         VStack(spacing: 0) {
+            // Above the back button and the sort control, not between the header and the grid: a
+            // banner sitting over the tiles reads as part of the results, and the results are the
+            // one thing on this page that keeps moving. Show All replaces the whole home body,
+            // banner included, so without this a launch refused by the seat had nowhere to appear.
+            errorBanner
             header
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -66,6 +71,23 @@ struct CatalogShowAllPage: View {
                 .animation(.easeOut(duration: 0.2), value: viewModel.isRefetchingCatalog)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    @ViewBuilder private var errorBanner: some View {
+        let message = viewModel.displayedErrorMessage
+        if !message.isEmpty {
+            CatalogMessageView(
+                message: message,
+                systemImage: "exclamationmark.triangle.fill",
+                diagnosticsState: viewModel.diagnosticsState,
+                onGenerateDiagnostics: {
+                    viewModel.presentDiagnosticsUploadConfirmation(context: message)
+                },
+                onDismiss: { viewModel.dismissLaunchError() }
+            )
+            .padding(.horizontal, 22)
+            .padding(.top, 14)
         }
     }
 

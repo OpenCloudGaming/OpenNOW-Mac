@@ -79,14 +79,14 @@ extension CatalogViewModel {
             guard deliveryGate.claimFirstDelivery() else { return }
             guard success else {
                 OpenNOWLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
-                self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
+                self.reportLaunchFailure(error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error)
                 return
             }
             let games = result.games
             OpenNOWLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
             guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
                 OpenNOWLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
-                self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
+                self.reportLaunchFailure("No matching GeForce NOW catalog game was found for this shortcut.")
                 return
             }
             OpenNOWLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
@@ -125,6 +125,7 @@ extension CatalogViewModel {
         launchFlowError = ""
         launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
+        launchErrorMessage = ""
         launchFlowState = .checkingSession
         let presence = discordPresence(for: game)
         activeDiscordPresence = presence
@@ -182,7 +183,7 @@ extension CatalogViewModel {
             guard success, let plan else {
                 OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
                 self.clearLaunchFlow()
-                self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
+                self.reportLaunchFailure(message.isEmpty ? "Unable to prepare GeForce NOW launch." : message)
                 return
             }
             switch plan {
@@ -274,7 +275,7 @@ extension CatalogViewModel {
         ) { [weak self] success, message in
             guard let self else { return }
             if !success {
-                self.errorMessage = message.isEmpty ? "Unable to end the active session." : message
+                self.reportLaunchFailure(message.isEmpty ? "Unable to end the active session." : message)
             }
             self.checkActiveHomeSession()
         }
@@ -343,7 +344,7 @@ extension CatalogViewModel {
             }
         }
         if !success, !message.isEmpty {
-            errorMessage = message
+            reportLaunchFailure(message)
             return
         }
         if let report, !report.message.isEmpty {

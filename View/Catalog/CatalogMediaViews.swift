@@ -86,6 +86,9 @@ struct CatalogMessageView: View {
     /// leaves the banner as a plain message (controller mode has no pointer for it).
     var diagnosticsState: AboutDiagnosticsState?
     var onGenerateDiagnostics: (() -> Void)?
+    /// Present when the message outlives the action that produced it (a failed launch), so the
+    /// banner has a way off the screen that is not "wait for the next catalog refetch".
+    var onDismiss: (() -> Void)?
     @State private var copiedDetails = false
 
     var body: some View {
@@ -142,6 +145,18 @@ struct CatalogMessageView: View {
                 .disabled(diagnosticsState.isWorking)
                 .help(diagnosticsState.message)
             }
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .nvidiaFont(size: 11, weight: .bold)
+                        .foregroundStyle(.white.opacity(0.62))
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.065))
+                        .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss")
+            }
         }
         .padding(14)
         .background(Color.white.opacity(0.060))
@@ -173,6 +188,19 @@ struct CatalogErrorPresentation {
 
     init(rawMessage: String) {
         let message = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.looksLikeEntitlementFailure(message) {
+            // Entitlement is checked by the zone that owns the seat, not by the catalog query, so a
+            // title the store lists can still be refused by the region you are streaming from
+            // (measured 2026-09-05: an EU-only title, PLAYABLE in the catalog, refused by NP-TYO-01
+            // and NP-SJC6-06 and accepted in Amsterdam). "Try again in a moment" is the wrong
+            // advice for it — the launch will fail identically until the region changes.
+            let seat = Self.requestStatusServerID(from: message)
+            title = seat.map { "This game is not licensed on the \($0) seat." }
+                ?? "This game is not licensed in your streaming region."
+            hint = "GeForce NOW grants entitlement per server region. Pick a region that carries the title under Settings, Server Location. With the session proxy on, the Catalog Only scope still allocates the seat in your own region — switch it to Catalog + Sessions to stream from the proxy's region instead."
+            technicalDetails = message
+            return
+        }
         if Self.looksLikeAppPatching(message) {
             title = "GeForce NOW is preparing this game."
             hint = "The vendor is patching the app before launch. Try again after patching finishes."
@@ -198,6 +226,10 @@ struct CatalogErrorPresentation {
 
     private static func looksLikeClaimFailure(_ message: String) -> Bool {
         message.localizedCaseInsensitiveContains("Claim HTTP") || message.localizedCaseInsensitiveContains("Claim API error")
+    }
+
+    private static func looksLikeEntitlementFailure(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("ENTITLEMENT_FAILURE")
     }
 
     private static func looksLikeAppPatching(_ message: String) -> Bool {
@@ -231,6 +263,15 @@ struct CatalogErrorPresentation {
         guard let json = jsonPayload(from: message),
               let requestStatus = json["requestStatus"] as? [String: Any] else { return nil }
         return requestStatus["statusDescription"] as? String
+    }
+
+    /// The seat zone that answered ("NP-SJC6-06"), which names the region the refusal came from.
+    private static func requestStatusServerID(from message: String) -> String? {
+        guard let json = jsonPayload(from: message),
+              let requestStatus = json["requestStatus"] as? [String: Any],
+              let serverID = requestStatus["serverId"] as? String,
+              !serverID.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return serverID
     }
 
     private static func jsonPayload(from message: String) -> [String: Any]? {

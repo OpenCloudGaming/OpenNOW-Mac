@@ -444,8 +444,8 @@ private struct ControllerGamesPage: View {
                             .frame(width: layout.contentWidth)
                             .padding(.top, (layout.compactHeight ? 10 : 14) * uiScale)
 
-                        if !viewModel.errorMessage.isEmpty {
-                            CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        if !viewModel.displayedErrorMessage.isEmpty {
+                            CatalogMessageView(message: viewModel.displayedErrorMessage, systemImage: "exclamationmark.triangle.fill")
                                 .frame(width: layout.contentWidth)
                         }
 
