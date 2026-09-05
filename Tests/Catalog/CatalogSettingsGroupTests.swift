@@ -24,3 +24,11 @@ import Testing
         #expect(!group.icon.isEmpty, "\(group.rawValue) has no icon")
     }
 }
+
+/// The tab bar's beta list is data, not a chain of `==` in the view body, so a group cannot be
+/// tagged in one place and forgotten in another.
+@Test func networkAndRemoteCoOpCarryTheBetaTag() {
+    #expect(SettingsTabBar.betaGroups.contains(.network))
+    #expect(SettingsTabBar.betaGroups.contains(.remoteCoOp))
+    #expect(!SettingsTabBar.betaGroups.contains(.account))
+}

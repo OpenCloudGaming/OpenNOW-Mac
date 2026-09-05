@@ -229,7 +229,7 @@ struct SettingsTabBar: View {
                             icon: group.icon,
                             isSelected: selection == group,
                             uiScale: uiScale,
-                            showsBetaTag: group == .remoteCoOp
+                            showsBetaTag: Self.betaGroups.contains(group)
                         ) {
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 selection = group
@@ -249,6 +249,12 @@ struct SettingsTabBar: View {
                 .frame(height: 1)
         }
     }
+}
+
+extension SettingsTabBar {
+    /// Shipped but still settling. Network carries the session proxy, whose routing behaviour is
+    /// still changing (the catalog/session scope split landed 2026-09-05).
+    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp, .network]
 }
 
 struct SettingsTabItem: View {
