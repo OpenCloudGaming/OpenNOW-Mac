@@ -36,7 +36,15 @@ struct CatalogContentView: View {
                         // lazy stack loops: each per-item materialisation phase change re-dirties
                         // layout, which recomputes the phases, which animates again, inside
                         // `LazyLayoutViewCache.updateItemPhases`.
+                        // The panel already carried a transition, but nothing animated the state
+                        // change that removes it, so it opened with travel and vanished on close.
+                        // Driven from the anchor rather than the game so a selection moving from
+                        // one rail to another animates as one move.
                         VStack(alignment: .leading, spacing: 26) {
+                            if viewModel.showsLegacyTransportNotice {
+                                CatalogLegacyTransportNotice(viewModel: viewModel)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
+                            }
                             if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
                                 VendorActiveSessionHomeBanner(
                                     title: viewModel.activeHomeSessionTitle,
@@ -159,6 +167,7 @@ struct CatalogContentView: View {
                             }
                         }
                         .padding(.bottom, 44)
+                        .opnMotion(OpenNOWDesign.Motion.panel, value: detailAnimationKey)
                     }
                     .background(
                         OpenNOWDesign.Surface.app
@@ -213,6 +222,9 @@ struct CatalogContentView: View {
     private var heroIdentityList: [String] {
         heroGames.map { CatalogViewModel.identity(for: $0) }
     }
+
+    /// Identity of what the detail area is showing, for the animation driving its transition.
+    var detailAnimationKey: String { selectedDetailScrollAnchor ?? "none" }
 
     private var selectedDetailScrollAnchor: String? {
         guard let selectedGame = viewModel.selectedGame else { return nil }

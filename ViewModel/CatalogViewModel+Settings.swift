@@ -46,6 +46,30 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    /// WebRTC is the legacy path: it still streams, but every feature since the native transport
+    /// landed (Remote Co-Op hosting, HDR, 4:4:4, 120 fps, rumble, the cursor protocol) is
+    /// NVST-only. Home says so once, with the switch attached, rather than leaving a user to
+    /// discover it one missing feature at a time.
+    var usesLegacyWebRTCTransport: Bool {
+        streamProfile.transportModeIndex == 0
+    }
+
+    var showsLegacyTransportNotice: Bool {
+        usesLegacyWebRTCTransport && !OPNStreamPreferences.legacyTransportNoticeDismissed
+    }
+
+    func dismissLegacyTransportNotice() {
+        OPNStreamPreferences.saveLegacyTransportNoticeDismissed(true)
+        loadSettingsPreferences()
+    }
+
+    /// The notice's own button. Switches the transport and clears any earlier dismissal, so a user
+    /// who later goes back to WebRTC is told again.
+    func switchToNativeTransportFromNotice() {
+        OPNStreamPreferences.saveLegacyTransportNoticeDismissed(false)
+        setNVSTTransportEnabled(true)
+    }
+
     func setNVSTTransportEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
         actionMessage = enabled ? "Native/NVST stream transport selected." : "WebRTC stream transport selected."

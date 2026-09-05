@@ -97,6 +97,8 @@ extension OPNStreamPreferences {
     public static func saveBitrateIndex(_ value: Int) { storage.set(clamp(value, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex) }
     public static func saveColorQualityIndex(_ value: Int) { storage.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
     public static func saveTransportModeIndex(_ value: Int) { storage.set(clamp(value, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex) }
+    public static var legacyTransportNoticeDismissed: Bool { storage.bool(forKey: k.legacyTransportNoticeDismissed) }
+    public static func saveLegacyTransportNoticeDismissed(_ value: Bool) { storage.set(value, forKey: k.legacyTransportNoticeDismissed) }
     public static func saveNVSTTransportEnabled(_ value: Bool) { saveTransportModeIndex(value ? 1 : 0) }
     public static func saveStreamingQualityProfileIndex(_ value: Int) {
         let index = clamp(value, 0, streamingQualityProfileOptions.count - 1)
