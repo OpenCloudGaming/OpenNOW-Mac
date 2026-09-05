@@ -175,7 +175,9 @@ struct CatalogContentView: View {
                             .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                     )
                     .simultaneousGesture(TapGesture().onEnded {
-                        guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
+                        guard viewModel.selectedGame != nil,
+                              !isPointerInsideDetailPanel,
+                              !viewModel.isPointerInsideGameTile else { return }
                         viewModel.closeGameDetailsFromBackground()
                     })
                     .onChange(of: selectedRailScrollAnchor) { _, anchor in

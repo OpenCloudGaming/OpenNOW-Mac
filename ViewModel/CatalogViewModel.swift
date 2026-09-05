@@ -224,6 +224,10 @@ final class CatalogViewModel {
     var activeStreamConfiguration: StreamLaunchConfiguration?
     var activeStreamProgress: StreamProgress?
     var isActiveStreamLaunchOverlayVisible = false
+    /// True while the pointer is over a game tile. The page-wide "tap anywhere else to close the
+    /// details" gesture runs alongside the tile's own tap, so a click on the open tile closed the
+    /// panel and the tile's toggle then reopened it — the details never closed from the tile.
+    var isPointerInsideGameTile = false
     var launchFlowState = CatalogLaunchFlowState.idle
     /// The resolution swap the pending launch would make, while the prompt is on screen.
     var sixteenNineDowngrade: (from: OPNStreamResolutionOption, to: OPNStreamResolutionOption)?

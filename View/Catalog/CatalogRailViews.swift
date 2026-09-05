@@ -83,6 +83,7 @@ struct CatalogRailView: View {
                                     onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
                                     onHoverChanged: { hovering in
                                         hoveredTileIdentity = hovering ? game.catalogIdentity : (hoveredTileIdentity == game.catalogIdentity ? nil : hoveredTileIdentity)
+                                        viewModel.isPointerInsideGameTile = hovering
                                     }
                                 ))
                                     .id(game.catalogIdentity)
@@ -208,7 +209,8 @@ struct CatalogDestinationGridView: View {
                                 viewModel.selectGame(game, inSection: section.id)
                                 viewModel.handleUnownedSelectedVariantPrimaryAction()
                             },
-                            onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
+                            onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                            onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
                         )
                     }
                 }
