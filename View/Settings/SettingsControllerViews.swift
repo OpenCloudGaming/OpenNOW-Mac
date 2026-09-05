@@ -315,7 +315,7 @@ struct GameplaySettingsPage: View {
     let uiScale: CGFloat
     var body: some View {
         let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
-        VStack(alignment: .leading, spacing: 16 * uiScale) {
+        SettingsStack(spacing: 16 * uiScale) {
             SettingsCard(title: "Streaming Profile", uiScale: uiScale) {
                 GameplayProfileOverview(
                     mode: streamingProfileMode,

@@ -7,7 +7,7 @@ struct StreamingSettingsGroup: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16 * uiScale) {
+        SettingsStack(spacing: 16 * uiScale) {
             GameplaySettingsPage(viewModel: viewModel, uiScale: uiScale)
             ServerLocationSettingsPage(viewModel: viewModel, uiScale: uiScale)
             ResolutionUpscalingSettingsPage(viewModel: viewModel, uiScale: uiScale)

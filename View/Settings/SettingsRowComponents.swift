@@ -598,15 +598,28 @@ struct OpenNOWBetaTag: View {
     /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
     /// Settings wants the quieter treatment.
     var prominent = false
+    /// Rides along inside another control - a tab, a row title - where the tag is an annotation on
+    /// something else and must not outweigh it.
+    var compact = false
 
     var body: some View {
         Text("BETA")
-            .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+            .font(.settingsNvidia(size: (compact ? 8 : 9) * uiScale, weight: .bold))
             .tracking(0.7)
-            .foregroundStyle(prominent ? .black : OpenNOWDesign.accent)
-            .padding(.horizontal, 5 * uiScale)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, (compact ? 4 : 5) * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(prominent ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.16))
+            .background(background)
             .accessibilityLabel("Beta")
+    }
+
+    private var foreground: Color {
+        if prominent { return .black }
+        return compact ? OpenNOWDesign.accent.opacity(0.72) : OpenNOWDesign.accent
+    }
+
+    private var background: Color {
+        if prominent { return OpenNOWDesign.accent }
+        return OpenNOWDesign.accent.opacity(compact ? 0.12 : 0.16)
     }
 }

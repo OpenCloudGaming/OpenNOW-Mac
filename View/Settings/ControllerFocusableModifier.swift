@@ -142,3 +142,23 @@ struct ControllerFocusIdentity {
 
     init() { id = UUID().uuidString }
 }
+
+/// The vertical stack a settings page is built from.
+///
+/// Lazy by default: a page like Streaming is seven cards and roughly forty rows, and building all
+/// of them the instant its tab is picked is what makes the switch feel heavy - only the cards that
+/// are actually on screen need to exist. Pad control turns that off: traversal order is collected
+/// from the rows that rendered, so under a controller every row has to be present to be reachable.
+struct SettingsStack<Content: View>: View {
+    @Environment(\.controllerFocusActive) private var isPadActive
+    let spacing: CGFloat
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        if isPadActive {
+            VStack(alignment: .leading, spacing: spacing) { content }
+        } else {
+            LazyVStack(alignment: .leading, spacing: spacing) { content }
+        }
+    }
+}

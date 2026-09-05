@@ -90,7 +90,7 @@ struct ResolutionUpscalingSettingsPage: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16 * uiScale) {
+        SettingsStack(spacing: 16 * uiScale) {
             SettingsCard(title: "MetalFX Upscaling", uiScale: uiScale) {
                 SettingsToggleRow(title: "MetalFX Upscaling", subtitle: "Optimized for Apple Silicon. Falls back automatically when MetalFX is unavailable.", isOn: viewModel.streamProfile.upscalingMode == 3, uiScale: uiScale) { enabled in viewModel.setUpscalingModeIndex(enabled ? 1 : 0) }
                 SettingsDivider(uiScale: uiScale)

@@ -198,9 +198,7 @@ struct SettingsView: View {
         let current = groups.firstIndex(of: viewModel.selectedSettingsGroup) ?? 0
         let next = min(max(current + delta, 0), groups.count - 1)
         guard next != current else { return }
-        withAnimation(.easeInOut(duration: 0.15)) {
-            viewModel.selectedSettingsGroup = groups[next]
-        }
+        viewModel.selectedSettingsGroup = groups[next]
     }
 }
 
@@ -219,35 +217,119 @@ struct SettingsTabBar: View {
     let groups: [CatalogSettingsGroup]
     let uiScale: CGFloat
 
+    @Namespace private var pill
+    @State private var viewportWidth: CGFloat = 0
+    @State private var fades = SettingsTabEdgeFades()
+
+    private static let scrollSpace = "opn-settings-tabs-scroll"
+    private static let slide = Animation.easeInOut(duration: 0.18)
+
     var body: some View {
-        HStack(spacing: 0) {
+        ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 8 * uiScale) {
+                HStack(spacing: 4 * uiScale) {
                     ForEach(groups) { group in
                         SettingsTabItem(
                             title: group.title,
                             icon: group.icon,
                             isSelected: selection == group,
                             uiScale: uiScale,
-                            showsBetaTag: Self.betaGroups.contains(group)
+                            showsBetaTag: Self.betaGroups.contains(group),
+                            pill: pill
                         ) {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selection = group
-                            }
+                            selection = group
                         }
+                        .id(group)
                     }
                 }
                 .padding(.horizontal, 16 * uiScale)
+                // Scoped to the bar. Animating the selection itself would put the whole settings
+                // page - every row of the tab being left and the one being entered - inside the
+                // same transaction, which is what makes a tab switch feel heavy.
+                .animation(Self.slide, value: selection)
+                .background { scrollProbe }
             }
-            Spacer(minLength: 0)
+            .coordinateSpace(name: Self.scrollSpace)
+            .background {
+                GeometryReader { viewport in
+                    Color.clear.preference(key: SettingsTabViewportKey.self, value: viewport.size.width)
+                }
+            }
+            .onPreferenceChange(SettingsTabViewportKey.self) { viewportWidth = $0 }
+            .onPreferenceChange(SettingsTabEdgeFadesKey.self) { fades = $0 }
+            .mask { edgeMask }
+            .onChange(of: selection) { _, group in
+                withAnimation(Self.slide) { proxy.scrollTo(group, anchor: .center) }
+            }
         }
-        .frame(height: 52 * uiScale)
+        .frame(height: 48 * uiScale)
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.white.opacity(0.08))
                 .frame(height: 1)
         }
+    }
+
+    /// Publishes the two booleans the fades need rather than the raw offset. The offset changes on
+    /// every scroll frame; the booleans flip twice in the life of the bar, and SwiftUI drops a
+    /// preference update whose value is equal to the last one - so scrolling costs no state writes.
+    private var scrollProbe: some View {
+        GeometryReader { content in
+            Color.clear.preference(
+                key: SettingsTabEdgeFadesKey.self,
+                value: SettingsTabEdgeFades(
+                    offset: -content.frame(in: .named(Self.scrollSpace)).minX,
+                    contentWidth: content.size.width,
+                    viewportWidth: viewportWidth
+                )
+            )
+        }
+    }
+
+    /// Tabs scrolled past the edge fade out instead of being cut mid-glyph. Each side is present
+    /// only while there is something to scroll to on it, so a bar that fits shows no fade at all.
+    private var edgeMask: some View {
+        let fade = 26 * uiScale
+        return HStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: fades.leading ? fade : 0)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: fades.trailing ? fade : 0)
+        }
+    }
+}
+
+/// Which edges of the tab strip still have tabs hidden behind them.
+struct SettingsTabEdgeFades: Equatable {
+    var leading = false
+    var trailing = false
+
+    init() {}
+
+    init(offset: CGFloat, contentWidth: CGFloat, viewportWidth: CGFloat) {
+        // A pixel of slack: the offset lands fractionally off zero during a rubber-band bounce, and
+        // a bar that is not scrollable at all should never flash a fade.
+        let slack: CGFloat = 1
+        leading = offset > slack
+        trailing = contentWidth - viewportWidth - offset > slack
+    }
+}
+
+struct SettingsTabEdgeFadesKey: PreferenceKey {
+    static let defaultValue = SettingsTabEdgeFades()
+
+    static func reduce(value: inout SettingsTabEdgeFades, nextValue: () -> SettingsTabEdgeFades) {
+        value = nextValue()
+    }
+}
+
+struct SettingsTabViewportKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -263,41 +345,51 @@ struct SettingsTabItem: View {
     let isSelected: Bool
     let uiScale: CGFloat
     var showsBetaTag = false
+    /// Shared so the selected pill slides between tabs rather than blinking from one to the next.
+    let pill: Namespace.ID
     let action: () -> Void
 
-    /// Wider when a tag shares the row, or the title truncates - "Remote Co-Op" became "Remo…" at the
-    /// uniform width. The tab bar scrolls horizontally, so tabs need not all be the same width; the
-    /// selection underline follows this so it cannot disagree with the tab it sits under.
-    private var width: CGFloat {
-        (showsBetaTag ? 194 : 150) * uiScale
-    }
+    @State private var isHovering = false
+
+    /// Square, like every other selected control in Settings - the option chips, the cards and
+    /// the BETA tag all use hard corners, and a capsule here read as a different design language.
+    private var shape: Rectangle { Rectangle() }
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10 * uiScale) {
+            HStack(spacing: 8 * uiScale) {
                 Image(systemName: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(0.52))
-                    .frame(width: 18 * uiScale, height: 18 * uiScale)
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(isHovering ? 0.72 : 0.5))
+                    .frame(width: 15 * uiScale, height: 15 * uiScale)
                 Text(title)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(isSelected ? .white : .white.opacity(0.58))
+                    .font(.settingsNvidia(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.58))
                     .lineLimit(1)
-                if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale) }
-                Spacer(minLength: 0)
+                    .fixedSize()
+                if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
             }
-            .padding(.horizontal, 12 * uiScale)
-            .padding(.vertical, 10 * uiScale)
-            .frame(width: width, height: 44 * uiScale)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(isSelected ? OpenNOWDesign.accent : .clear)
-                    .frame(width: width, height: 3 * uiScale)
-            }
-            .contentShape(Rectangle())
+            .padding(.horizontal, 14 * uiScale)
+            .frame(height: 34 * uiScale)
+            .background { background }
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+        }
+    }
+
+    @ViewBuilder private var background: some View {
+        if isSelected {
+            shape
+                .fill(OpenNOWDesign.accent.opacity(0.14))
+                .overlay(shape.strokeBorder(OpenNOWDesign.accent.opacity(0.34), lineWidth: 1))
+                .matchedGeometryEffect(id: "settings-tab-pill", in: pill)
+        } else if isHovering {
+            shape.fill(Color.white.opacity(0.06))
+        }
     }
 }
 
@@ -320,7 +412,7 @@ struct SettingsContent: View {
     private var scrollingPage: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            VStack(alignment: .leading, spacing: 22 * uiScale) {
+            SettingsStack(spacing: 22 * uiScale) {
                 SettingsHeader(
                     title: viewModel.selectedSettingsGroup.title,
                     subtitle: viewModel.selectedSettingsGroup.subtitle,
