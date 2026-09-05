@@ -228,6 +228,14 @@ public final class NativeWebRTCGamepadMonitor {
             highFrequency: ControllerRumblePreference.scaled(seatCommand.highFrequency, percent: percent),
             durationMilliseconds: seatCommand.durationMilliseconds
         )
+        // "The intensity slider does nothing" has three possible causes that look identical from
+        // the couch: the ceiling never reaching this call, the seat sending amplitudes the ceiling
+        // barely moves, or the motor saturating so a lower speed feels the same. Only the third is
+        // a hardware fact, and separating them needs the numbers that actually left the app.
+        hapticCommandsSeen += 1
+        if hapticCommandsSeen <= 6 || hapticCommandsSeen % 300 == 0 {
+            OpenNOWLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
+        }
         // Steam Controllers hold the low slots (see `refreshControllerSlots`) and have no
         // GameController haptics; their motors are driven through the HID feature report.
         if let deviceID = pollState.steamControllerSlots.first(where: { $0.value == command.playerIndex })?.key {
@@ -246,6 +254,10 @@ public final class NativeWebRTCGamepadMonitor {
             hapticStates.removeValue(forKey: identifier)
         }
     }
+
+    /// Counts every seat rumble this session, so the ceiling log can sample the first few and then
+    /// one in every three hundred rather than flooding a log during a rumble-heavy fight.
+    private var hapticCommandsSeen = 0
 
     public func stopHaptics() {
         hapticStates.values.forEach { $0.stop() }
