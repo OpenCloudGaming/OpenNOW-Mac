@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import OpenNOW
 
 // The settings tab list, and which of its pages carry their own chrome.
@@ -31,4 +32,25 @@ import Testing
     #expect(SettingsTabBar.betaGroups.contains(.network))
     #expect(SettingsTabBar.betaGroups.contains(.remoteCoOp))
     #expect(!SettingsTabBar.betaGroups.contains(.account))
+}
+
+/// The 16:9 prompt is asked once per title: an answer, either way, has to stop the asking, and a
+/// declined title must keep the resolution the user picked.
+@Test @MainActor func sixteenNineChoiceIsRememberedPerTitle() {
+    let appId = "test-16-9-\(UUID().uuidString)"
+    defer { OPNStreamPreferences.forgetSixteenNineChoice(appId); OPNStreamPreferences.rememberTitleStreamsSixteenNineContent(appId, false) }
+    #expect(OPNStreamPreferences.sixteenNineChoice(appId) == nil)
+    OPNStreamPreferences.saveSixteenNineChoice(appId, streamsAtSixteenNine: false)
+    #expect(OPNStreamPreferences.sixteenNineChoice(appId) == false)
+    // Answered, so the launch must not ask again.
+    OPNStreamPreferences.rememberTitleStreamsSixteenNineContent(appId, true)
+    #expect(OPNStreamPreferences.sixteenNineDowngrade(forGame: appId) == nil)
+    OPNStreamPreferences.saveSixteenNineChoice(appId, streamsAtSixteenNine: true)
+    #expect(OPNStreamPreferences.sixteenNineChoice(appId) == true)
+    OPNStreamPreferences.forgetSixteenNineChoice(appId)
+    #expect(OPNStreamPreferences.sixteenNineChoice(appId) == nil)
+}
+
+@Test @MainActor func aTitleNeverSeenRenderingSixteenNineIsNeverAskedAbout() {
+    #expect(OPNStreamPreferences.sixteenNineDowngrade(forGame: "test-16-9-unseen-\(UUID().uuidString)") == nil)
 }

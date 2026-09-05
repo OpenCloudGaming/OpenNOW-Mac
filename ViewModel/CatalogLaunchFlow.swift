@@ -126,10 +126,33 @@ extension CatalogViewModel {
         launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
         launchErrorMessage = ""
-        launchFlowState = .checkingSession
         let presence = discordPresence(for: game)
         activeDiscordPresence = presence
         discordPresence.update(.launching(presence))
+        // Ask before allocating anything: the answer changes the resolution requested in the
+        // session, so it cannot be applied afterwards without a reconnect.
+        if let downgrade = OPNStreamPreferences.sixteenNineDowngrade(forGame: Self.launchApplicationID(for: game)) {
+            sixteenNineDowngrade = downgrade
+            launchFlowMessage = ""
+            launchFlowState = .sixteenNinePrompt
+            return
+        }
+        launchFlowState = .checkingSession
+        continueVendorLaunch()
+    }
+
+    /// The app id the launch and the preference store agree on.
+    static func launchApplicationID(for game: OPNCatalogGameObject) -> String {
+        game.launchAppId.isEmpty ? game.id : game.launchAppId
+    }
+
+    /// Answers the 16:9 prompt, remembers it for this title, and resumes the launch.
+    func resolveSixteenNinePrompt(streamsAtSixteenNine: Bool) {
+        guard let game = pendingLaunchGame else { cancelVendorLaunch(); return }
+        OPNStreamPreferences.saveSixteenNineChoice(Self.launchApplicationID(for: game), streamsAtSixteenNine: streamsAtSixteenNine)
+        sixteenNineDowngrade = nil
+        launchFlowMessage = "Checking for active GeForce NOW sessions..."
+        launchFlowState = .checkingSession
         continueVendorLaunch()
     }
 
@@ -299,6 +322,7 @@ extension CatalogViewModel {
     }
 
     func cancelVendorLaunch() {
+        sixteenNineDowngrade = nil
         clearLaunchFlow()
         launchMessage = ""
     }

@@ -39,6 +39,12 @@ extension ControllerCatalogViewModel {
             catalog.cancelVendorLaunch()
             return true
         case .confirm:
+            // A pad has no pointer for the prompt's three buttons, so confirm takes the
+            // recommendation and back cancels the launch, as it does everywhere else in this flow.
+            if catalog.launchFlowState == .sixteenNinePrompt {
+                catalog.resolveSixteenNinePrompt(streamsAtSixteenNine: true)
+                return true
+            }
             guard catalog.launchFlowState == .activeSessionPrompt else { return false }
             if catalog.canResumeActiveLaunchSession {
                 catalog.resumeActiveLaunchSession()
