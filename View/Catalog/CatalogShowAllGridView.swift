@@ -335,11 +335,9 @@ struct CatalogShowAllGridTile: View {
                     .accessibilityAddTraits(.isButton)
 
                 playButton
-                    .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                    .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .opacity(isHovering ? 1 : 0)
-                    .opnHoverScale(!isHovering, factor: 0.92, anchor: .topLeading)
+                    .opnHoverScale(!isHovering, factor: 0.92)
                     .allowsHitTesting(isHovering)
                     .accessibilityHidden(!isHovering)
                     .zIndex(2)
@@ -411,8 +409,8 @@ struct CatalogShowAllGridTile: View {
                             .nvidiaFont(size: 10, weight: .bold)
                             .foregroundStyle(.white.opacity(0.76))
                     }
-                    .padding(.horizontal, 16)
-                    .frame(height: CatalogShowAllLayout.cardTrayHeight)
+                    .padding(.horizontal, 16 * uiScale)
+                    .frame(height: CatalogShowAllLayout.cardTrayHeight * uiScale)
                     .background(CatalogShowAllLayout.tileTray.opacity(1))
                 }
             }
@@ -556,10 +554,9 @@ final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
 }
 
 enum CatalogShowAllLayout {
-    /// The same tray and hover travel as the home rails. Search results used a shorter tray and a
-    /// smaller scale, so the identical tile read as two different components either side of a
-    /// search.
-    static let cardTrayHeight: CGFloat = 40
-    static let tileScaleFactor: CGFloat = 1.12
-    static let tileTray = Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255)
+    static let cardTrayHeight: CGFloat = 28
+    static let tileScaleFactor: CGFloat = 1.04
+    /// The home rails' tray token, not a second near-black of its own: the two trays sat side by
+    /// side across a search and did not match.
+    static let tileTray = CatalogVendorLayout.tileTray
 }
