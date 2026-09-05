@@ -351,6 +351,8 @@ struct GameplaySettingsPage: View {
                 }
             }
 
+            SettingsSixteenNineTitlesCard(viewModel: viewModel)
+
             SettingsCard(title: "Stream Transport", uiScale: uiScale) {
                 SettingsToggleRow(title: "Native/NVST Transport", subtitle: "Off uses the default WebRTC session path. On requests native NVST secure RTSP transport with matching CloudMatch headers.", isOn: viewModel.streamProfile.transportMode.value == "nvst", uiScale: uiScale, action: viewModel.setNVSTTransportEnabled)
                 SettingsDivider(uiScale: uiScale)

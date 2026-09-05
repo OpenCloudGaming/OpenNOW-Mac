@@ -405,6 +405,22 @@ public enum OPNStreamPreferences {
         return (profile.resolution, narrower)
     }
 
+    /// Every title detection has flagged, with the answer the user gave for it (nil until asked).
+    /// Sorted by app id so the settings list does not reshuffle between reads.
+    public static func knownSixteenNineTitles() -> [(appId: String, choice: Bool?)] {
+        guard let titles = storage.dictionary(forKey: k.sixteenNineTitles) else { return [] }
+        return titles.keys.sorted().compactMap { appId in
+            guard (titles[appId] as? Bool) == true else { return nil }
+            return (appId, sixteenNineChoice(appId))
+        }
+    }
+
+    /// Drops both the detection and the answer, so the title is measured again from scratch.
+    public static func forgetSixteenNineTitle(_ appId: String) {
+        rememberTitleStreamsSixteenNineContent(appId, false)
+        forgetSixteenNineChoice(appId)
+    }
+
     public static func rememberTitleStreamsSixteenNineContent(_ appId: String, _ value: Bool) {
         guard !appId.isEmpty else { return }
         var titles = storage.dictionary(forKey: k.sixteenNineTitles) ?? [:]
