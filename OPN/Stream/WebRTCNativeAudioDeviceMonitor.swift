@@ -5,8 +5,6 @@
 //  playout unit stays pinned to whatever device was default when the stream started, so plugging in
 //  headphones mid-game leaves the audio on the speakers.
 //
-//  Split out of WebRTCNativeAudio.swift.
-//
 
 import AudioUnit
 import CoreAudio

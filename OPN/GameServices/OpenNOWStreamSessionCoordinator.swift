@@ -486,8 +486,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 }
 
-/// Coercions for the loosely typed CloudMatch dictionaries the coordinator threads around. They
-/// carry no coordinator state, so they live out here and keep the class body to its size budget.
+/// Coercions for the loosely typed CloudMatch dictionaries the coordinator threads around.
 extension OpenNOWStreamSessionCoordinator {
     func jsonString(_ value: [String: Any]) -> String {
         guard JSONSerialization.isValidJSONObject(value),

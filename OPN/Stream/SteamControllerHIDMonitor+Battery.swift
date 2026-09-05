@@ -1,4 +1,4 @@
-//  Battery readings grouped by physical controller. Split from SteamControllerHIDMonitor.swift for size.
+//  Battery readings grouped by physical controller.
 //
 
 import AppKit

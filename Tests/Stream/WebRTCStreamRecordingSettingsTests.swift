@@ -1,6 +1,5 @@
 //  The writer's pure encoder decisions: which pixel format the adaptor declares, which codec can
 //  encode a given frame size, and what the automatic bitrate resolves to. No file is written here.
-//  Split out of WebRTCStreamRecordingTests.swift, which is a suite of live recording runs.
 //
 
 import AVFoundation

@@ -1,9 +1,6 @@
 //  The embedded server end to end: a real TLS listener, a real WebSocket upgrade, and the
 //  authorisation cases that decide whether a guest may act as a participant at all.
 //
-//  Split from `RemoteCoOpServerProtocolTests.swift`, which held eight independent suites. The wire
-//  layers stayed there; everything that stands a server up lives here.
-//
 
 import Foundation
 import Security

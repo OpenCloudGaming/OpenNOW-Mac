@@ -148,8 +148,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         guestSignalingEvent() ?? sessionSignalingEvent()
     }
 
-    /// The four kinds a guest may originate. Split from the rest only to keep each switch small
-    /// enough to read; the authorisation decision lives in `OPNRemoteCoOpGuestMessageGate`, not here.
+    /// The four kinds a guest may originate. The authorisation decision lives in
+    /// `OPNRemoteCoOpGuestMessageGate`, not here.
     private func guestSignalingEvent() -> OPNRemoteCoOpSignalingEvent? {
         switch kind {
         case .guestJoinRequested:

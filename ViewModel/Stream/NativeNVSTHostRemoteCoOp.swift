@@ -535,11 +535,10 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    /// Everything between "the host pressed Create" and "there is an invite": relay credentials, the
-    /// local listener, the hosted channel, and the signed invite itself.
+    /// Everything between "the host pressed Create" and "there is an invite": relay credentials,
+    /// the local listener, the hosted channel, and the signed invite itself.
     ///
-    /// Extracted from `startRemoteCoOpInvite`, which was doing this plus teardown, clipboard and HUD
-    /// state in one body. The ordering here is load-bearing and the comments explain each step.
+    /// The ordering here is load-bearing and the comments explain each step.
     private func buildRemoteCoOpHosting(preferences: OPNRemoteCoOpPreferences) async throws -> (hosting: OPNRemoteCoOpHostingSession, invite: OPNRemoteCoOpInvite) {
                 remoteCoOpNetworkConfiguration = await OPNRemoteCoOpHostingEndpoint.relayAugmented(
             OPNRemoteCoOpNetworkConfiguration(

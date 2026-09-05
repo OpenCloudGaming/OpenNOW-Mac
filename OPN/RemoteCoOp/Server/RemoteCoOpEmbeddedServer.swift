@@ -100,8 +100,7 @@ public enum OPNRemoteCoOpEmbeddedServerError: LocalizedError {
 ///
 /// Owns the listener and every guest socket. It speaks the same JSON wire protocol as the Node
 /// broker, so `Resources/RemoteCoOp/browser` runs unchanged against either.
-/// One accepted socket. At file scope rather than nested in the actor: it carries no actor state,
-/// and nesting it only counted its lines against the actor's size budget.
+/// One accepted socket. At file scope rather than nested in the actor: it carries no actor state.
 private final class Connection {
     let id = UUID()
     let connection: NWConnection

@@ -1,5 +1,5 @@
-//  Turning AppKit events into stream input: mouse, wheel, keyboard, text input and the
-//  shortcuts the client keeps for itself. Split out of NativeWebRTCStreamView.swift.
+//  Turning AppKit events into stream input: mouse, wheel, keyboard, text input and the shortcuts
+//  the client keeps for itself.
 //
 
 import AppKit

@@ -1,5 +1,4 @@
 //  The native NVST surface's own HUD: stats, network health, the unified dock and its panels.
-//  Split out of WebRTCMediaStreamHost.swift.
 //
 
 import Combine
@@ -485,10 +484,10 @@ extension NativeNVSTMediaStreamSurface {
         .help("Stream quality for this guest")
     }
 
-    /// Split into two boxes, matching how every other HUD group (MIC/REC/AFK, NETWORK) already
-    /// separates itself: one for controls you change, one for the stream's own read-only facts.
-    /// Previously this was one flat "VIDEO" box mixing both, with a static "Target" info row that
-    /// duplicated (and could visibly contradict) the "Target Resolution" control above it.
+    /// Two boxes, matching how every other HUD group (MIC/REC/AFK, NETWORK) already separates
+    /// itself: one for controls you change, one for the stream's own read-only facts. Previously
+    /// this was one flat "VIDEO" box mixing both, with a static "Target" info row that duplicated
+    /// (and could visibly contradict) the "Target Resolution" control above it.
     var nativeHUDVideoPanel: some View {
         Group {
             nativeHUDUpscalingPanel

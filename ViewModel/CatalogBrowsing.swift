@@ -1,5 +1,5 @@
-//  Navigating the catalog: destinations, Show All, the browse query and its sort and filters,
-//  and paging through the results. Split out of CatalogViewModel.swift.
+//  Navigating the catalog: destinations, Show All, the browse query and its sort and filters, and
+//  paging through the results.
 //
 
 import Foundation

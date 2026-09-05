@@ -1,5 +1,5 @@
 //  The `@objc` reference-type mirrors of the catalog value types, for the call sites that need
-//  identity or Objective-C bridging. Split out of OPNModels.swift, which keeps the value types.
+//  identity or Objective-C bridging.
 //
 
 import Foundation

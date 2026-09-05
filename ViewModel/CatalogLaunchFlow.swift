@@ -1,6 +1,5 @@
-//  Launching a game: the vendor launch flow, an active session that has to be resumed or
-//  ended first, the required ad, and reporting how the stream finished.
-//  Split out of CatalogViewModel.swift.
+//  Launching a game: the vendor launch flow, an active session that has to be resumed or ended
+//  first, the required ad, and reporting how the stream finished.
 //
 
 import Foundation

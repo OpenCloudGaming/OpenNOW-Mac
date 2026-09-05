@@ -1,5 +1,4 @@
 //  The recording inspector, the empty states behind it and the chrome they sit on.
-//  Split out of RecordingsView.swift.
 //
 
 import AppKit

@@ -1,9 +1,8 @@
 //  The wizard's two conditional configuration steps: how guests are reached, and how their video
 //  gets through a filtering network.
 //
-//  Split from `SettingsRemoteCoOpSetupWizard.swift` on the seam the step MARKs already drew. These
-//  two are the only steps that write settings rather than asking questions, so they are also the
-//  only ones whose contents depend on which provider or route the host picked.
+//  These two are the only steps that write settings rather than asking questions, so they are also
+//  the only ones whose contents depend on which provider or route the host picked.
 //
 
 import SwiftUI

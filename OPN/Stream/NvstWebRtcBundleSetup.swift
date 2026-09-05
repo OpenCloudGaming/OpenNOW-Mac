@@ -1,5 +1,5 @@
-//  Bringing the ICE/DTLS/SCTP bundle up and tearing it down, plus the feedback and control
-//  channels it opens. Split out of NvstWebRtcBundle.swift.
+//  Bringing the ICE/DTLS/SCTP bundle up and tearing it down, plus the feedback and control channels
+//  it opens.
 //
 
 import Foundation

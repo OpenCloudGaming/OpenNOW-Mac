@@ -1,5 +1,4 @@
-//  Pointer lock and absolute-cursor confinement: taking the cursor for a stream and giving it
-//  back. Split out of NativeWebRTCStreamView.swift.
+//  Pointer lock and absolute-cursor confinement: taking the cursor for a stream and giving it back.
 //
 
 import AppKit

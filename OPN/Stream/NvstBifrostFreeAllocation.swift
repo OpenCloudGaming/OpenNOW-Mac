@@ -1,5 +1,4 @@
-//  Reading the seat's allocation: the stream profile it implies, and where the session is
-//  running. Split out of NvstBifrostFreeTransport.swift.
+//  Reading the seat's allocation: the stream profile it implies, and where the session is running.
 //
 
 import CoreGraphics

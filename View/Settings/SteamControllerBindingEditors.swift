@@ -1,5 +1,5 @@
 //  The per-binding editors — gamepad chord, keyboard key, mouse button — and the pad/stick
-//  behaviour section. Split out of SteamControllerMappingView.swift.
+//  behaviour section.
 //
 //  Every control here is a square chip from SteamControllerModalChrome; the native segmented and
 //  menu pickers this used to draw render rounded system chrome the app shell does not have.

@@ -1,5 +1,5 @@
-//  The value coercion and payload shaping the CloudMatch session calls share, plus the claim
-//  poll's retry context. Split out of OPNSessionManager.swift.
+//  The value coercion and payload shaping the CloudMatch session calls share, plus the claim poll's
+//  retry context.
 //
 
 @preconcurrency import Foundation

@@ -1,5 +1,4 @@
-//  The Jarvis auth actor: session lifecycle, token exchange and the account operations built on
-//  it. Split out of JarvisService.swift, which keeps the value types and the operation factory.
+//  The Jarvis auth actor: session lifecycle, token exchange and the account operations built on it.
 //
 
 import Foundation
@@ -350,8 +349,6 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
 
 // MARK: - Session bookkeeping, requests and response parsing
 
-// Split out of the main declaration so the actor's body stays inside the size budget. Same file,
-// so `private` members stay reachable.
 extension JarvisAuthService {
     private func setSessionInMemory(_ session: JarvisSession) {
         self.session = session

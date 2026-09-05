@@ -510,8 +510,6 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
 
 // MARK: - STUN, hole punching and round-trip probing
 
-// Split out of the main declaration so the receiver's body stays inside the size budget. Same file,
-// so `private` members stay reachable.
 extension NvstMjolnirReceiver {
 
     /// A relayed inbound Binding Request is answered with an authenticated Binding Success,

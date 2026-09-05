@@ -1,6 +1,6 @@
 //  The autopilot: a dev harness that drives a session from a shell — auto end, scripted steps, a
-//  polled command file, snapshots — so decode, bitrate and pacing can be measured with nobody at the
-//  keyboard. Split from NativeNVSTHostViewModel.swift for size.
+//  polled command file, snapshots — so decode, bitrate and pacing can be measured with nobody at
+//  the keyboard.
 //
 
 //  swiftlint:disable:next no_appkit_in_view_model
@@ -129,27 +129,28 @@ extension NativeNVSTHostViewModel {
         OpenNOWLog.warning(.stream, "Autopilot: unknown action \(action)")
     }
 
+    private static let autopilotPadButtons: [String: GamepadButtons] = [
+        "a": .south,
+        "b": .east,
+        "x": .west,
+        "y": .north,
+        "start": .start,
+        "select": .select,
+        "back": .select,
+        "lb": .leftShoulder,
+        "rb": .rightShoulder,
+        "up": .dpadUp,
+        "down": .dpadDown,
+        "left": .dpadLeft,
+        "right": .dpadRight
+    ]
+
     /// `pad<button>` taps one button on the seat's pad 0 for 120 ms (`padA`, `padB`, `padX`,
     /// `padY`, `padStart`, `padSelect`, `padLB`, `padRB`, `padUp/Down/Left/Right`). Games that
     /// rumble only the active player's controller (Streets of Rage 4 hands player 1 to whichever
     /// device pressed first) need a pad press before the keyboard-driven harness can measure rumble.
     private func performAutopilotPad(_ name: String, dispatcher: NativeNVSTInputDispatcher) async {
-        let buttons: GamepadButtons? = switch name.lowercased() {
-        case "a": .south
-        case "b": .east
-        case "x": .west
-        case "y": .north
-        case "start": .start
-        case "select", "back": .select
-        case "lb": .leftShoulder
-        case "rb": .rightShoulder
-        case "up": .dpadUp
-        case "down": .dpadDown
-        case "left": .dpadLeft
-        case "right": .dpadRight
-        default: nil
-        }
-        guard let buttons else {
+        guard let buttons = Self.autopilotPadButtons[name.lowercased()] else {
             OpenNOWLog.warning(.stream, "Autopilot: unknown pad button \(name)")
             return
         }

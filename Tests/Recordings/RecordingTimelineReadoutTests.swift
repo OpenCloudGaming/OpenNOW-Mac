@@ -3,8 +3,7 @@ import Testing
 @testable import OpenNOW
 
 // The timeline's geometry and readouts: the ruler, the transport's clock, the crop rectangle's
-// coordinate flip, and the grid lookup behind the filmstrip. Split out of RecordingEditorTests.swift,
-// which had grown past the file-length budget.
+// coordinate flip, and the grid lookup behind the filmstrip.
 
 // MARK: - Timeline ruler and readouts
 

@@ -1,5 +1,5 @@
-//  libwebrtc's peer-connection and data-channel callbacks, and what the bundle does with the
-//  seat's messages on them. Split out of NvstWebRtcBundle.swift.
+//  libwebrtc's peer-connection and data-channel callbacks, and what the bundle does with the seat's
+//  messages on them.
 //
 
 import Foundation
@@ -73,32 +73,42 @@ extension NvstWebRtcBundle {
         // used to drop them.
         let (parsedCommands, _) = NvstControlCommand.parse(buffer.data)
         for command in parsedCommands {
-            if let stats = NvstSeatStats.from(command) {
-                onSeatStats?(stats)
-                continue
-            }
-            if let haptics = NvstHapticEvent.parse(command) {
-                describeHapticCommand(command, events: haptics)
-                if !haptics.isEmpty { onHapticEvents?(haptics) }
-                continue
-            }
-            if let hdrMode = NvstHdrModeNotification.parse(command) {
-                logger?("NVST hdr-mode notification \(hdrMode.summary) payload=\(command.payload.prefix(16).map { String(format: "%02x", $0) }.joined())")
-                onHdrMode?(hdrMode)
-                continue
-            }
-            guard let cursor = NvstRemoteCursor.from(command) else {
-                describeCursorCommandIfUnparsed(command)
-                continue
-            }
-            // The visibility byte's position is inferred, not captured, so the raw payload is
-            // logged next to the decision it produced. "Pointer shows or hides at the wrong time"
-            // cannot be told from "the seat said something we misread" without both halves.
-            describeCursorCommand(command, decision: cursor.isVisible)
-            onRemoteCursor?(cursor)
+            dispatchInboundCommand(command)
         }
 
         guard shouldLog else { return }
+        logInboundMessage(buffer, on: dataChannel)
+    }
+
+    /// One parsed control command, routed to whoever owns it.
+    private func dispatchInboundCommand(_ command: NvstControlCommand) {
+        if let stats = NvstSeatStats.from(command) {
+            onSeatStats?(stats)
+            return
+        }
+        if let haptics = NvstHapticEvent.parse(command) {
+            describeHapticCommand(command, events: haptics)
+            if !haptics.isEmpty { onHapticEvents?(haptics) }
+            return
+        }
+        if let hdrMode = NvstHdrModeNotification.parse(command) {
+            logger?("NVST hdr-mode notification \(hdrMode.summary) payload=\(command.payload.prefix(16).map { String(format: "%02x", $0) }.joined())")
+            onHdrMode?(hdrMode)
+            return
+        }
+        guard let cursor = NvstRemoteCursor.from(command) else {
+            describeCursorCommandIfUnparsed(command)
+            return
+        }
+        // The visibility byte's position is inferred, not captured, so the raw payload is
+        // logged next to the decision it produced. "Pointer shows or hides at the wrong time"
+        // cannot be told from "the seat said something we misread" without both halves.
+        describeCursorCommand(command, decision: cursor.isVisible)
+        onRemoteCursor?(cursor)
+    }
+
+    /// What an inbound control message logs, once it is inside the logging budget.
+    private func logInboundMessage(_ buffer: RTCDataBuffer, on dataChannel: RTCDataChannel) {
         // The seat opens a conversation on `control_channel_reliable` and resets it when we never
         // answer, so what it sends is the next thing we have to understand. NVST command packets
         // start with a 16-bit code (`Command: 0x0206` and friends in Bifrost's own stats), so the

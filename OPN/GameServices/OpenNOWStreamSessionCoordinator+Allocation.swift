@@ -1,6 +1,5 @@
-//  Getting a seat: creating or claiming the CloudMatch session, waiting for it to come up,
-//  playing any required ad, and the launch settings that go with it. Split out of
-//  OpenNOWStreamSessionCoordinator.swift.
+//  Getting a seat: creating or claiming the CloudMatch session, waiting for it to come up, playing
+//  any required ad, and the launch settings that go with it.
 //
 
 import Foundation

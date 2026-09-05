@@ -1,5 +1,4 @@
 //  The handoff, the SRTP sealing and the packet builders the Mjolnir receiver suites share.
-//  Split out of NvstMjolnirReceiverTests.swift so each suite stays a readable size.
 //
 
 import Foundation

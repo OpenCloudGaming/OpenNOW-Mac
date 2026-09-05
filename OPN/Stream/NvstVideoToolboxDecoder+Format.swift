@@ -1,5 +1,4 @@
 //  What the bitstream declares about itself and which output surface to ask VideoToolbox for.
-//  Split from NvstVideoToolboxDecoder.swift for size.
 //
 
 import CoreMedia

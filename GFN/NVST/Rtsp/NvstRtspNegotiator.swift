@@ -164,8 +164,6 @@ public struct NvstRtspNegotiator: Sendable {
 
 // MARK: - Handshake stages
 
-// Split out of the main declaration so neither it nor `negotiate` carries the whole handshake.
-// Same file, so `private` members stay reachable.
 extension NvstRtspNegotiator {
     /// Headers every request on the control connection carries.
     static func commonHeaders(target: NvstRtspEndpoints.Target, sessionID: String) -> [(String, String)] {

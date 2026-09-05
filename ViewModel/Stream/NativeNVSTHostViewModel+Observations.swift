@@ -1,6 +1,5 @@
 //  What the view model concludes from the stream while it runs: decode history for Settings, the
-//  periodic render log line, 16:9-title detection and the bitrate-starvation verdict. Split from
-//  NativeNVSTHostViewModel+Controls.swift for size.
+//  periodic render log line, 16:9-title detection and the bitrate-starvation verdict.
 //
 
 import Foundation

@@ -1,6 +1,5 @@
 //  The value types the RTSP negotiation exchanges: what the client reserves, what can go wrong,
-//  what it is asked for, and what it hands back. Split out of NvstRtspNegotiator.swift so that
-//  file holds only the handshake itself.
+//  what it is asked for, and what it hands back.
 //
 
 import Foundation

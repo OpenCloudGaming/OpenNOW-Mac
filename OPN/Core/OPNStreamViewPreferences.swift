@@ -1,5 +1,5 @@
-//  The Objective-C-facing snapshot of the stream preferences, and the region-measurement
-//  scratch state. Split out of OPNStreamPreferences.swift.
+//  The Objective-C-facing snapshot of the stream preferences, and the region-measurement scratch
+//  state.
 //
 
 import AppKit

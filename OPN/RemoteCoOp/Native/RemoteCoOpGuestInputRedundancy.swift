@@ -3,8 +3,6 @@
 //  poll sees the state it believes it already sent. Fixed by sending each state more than once:
 //  packets carry absolute pad state, so a duplicate is a no-op.
 //
-//  Split from the sender because the sender needs a physical controller to test and this does not.
-//
 
 import Foundation
 

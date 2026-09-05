@@ -1,5 +1,4 @@
 //  Catalog browsing, panels and the library: what the vendor's GraphQL answers turn into.
-//  Split out of OpenNOWGameServicesTests.swift.
 //
 
 import Testing

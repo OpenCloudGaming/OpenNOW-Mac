@@ -1,8 +1,8 @@
 //  "How Guests Reach You": the glossary, the per-situation readiness table, and the route an invite
 //  will actually take.
 //
-//  Split from `SettingsRemoteCoOpViews.swift`. This is the card that answers "do I need any of
-//  this", which is a different question from the cards that configure it.
+//  This is the card that answers "do I need any of this", which is a different question from the
+//  cards that configure it.
 //
 
 import SwiftUI

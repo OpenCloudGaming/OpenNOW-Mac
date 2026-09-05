@@ -1,5 +1,4 @@
-//  Core Image fallbacks, pixel-buffer pools and the naming the HUD reports. Split out of
-//  OPNVideoEnhancementRenderer.swift.
+//  Core Image fallbacks, pixel-buffer pools and the naming the HUD reports.
 //
 
 import CoreGraphics

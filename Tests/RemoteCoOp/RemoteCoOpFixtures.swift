@@ -1,5 +1,4 @@
 //  Preference isolation and the media frames the Remote Co-Op suites are written against.
-//  Split out of RemoteCoOpTests.swift.
 //
 
 import Testing

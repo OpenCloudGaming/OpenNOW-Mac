@@ -1,8 +1,5 @@
-//  The floating stats overlay and the formatters behind it.
-//
-//  Split from `NativeNVSTStreamHUD.swift` on the seam that was already there: this is a diagnostic
-//  surface with its own colour thresholds and number formatting, and none of it is reachable from
-//  the HUD's controls.
+//  The floating stats overlay and the formatters behind it. Its colour thresholds and number
+//  formatting are its own, and none of it is reachable from the HUD's controls.
 //
 
 import SwiftUI

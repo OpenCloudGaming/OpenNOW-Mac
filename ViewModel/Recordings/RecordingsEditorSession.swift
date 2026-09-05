@@ -1,9 +1,6 @@
 //  Everything the recordings page does once an edit is open: the live preview pipeline, the export,
 //  the guards that stop an unexported edit being thrown away, and the pad routing for the editor.
 //
-//  Split out of RecordingsViewModel.swift, which owns the library, the selection and the player.
-//  Those are one concern and this is another, and together they were past the type-size budget.
-//
 
 import AVFoundation
 import Combine

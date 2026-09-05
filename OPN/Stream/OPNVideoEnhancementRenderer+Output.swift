@@ -1,5 +1,4 @@
-//  Output-format pipelines, pillarbox detection and the offscreen snapshot render. Split from
-//  OPNVideoEnhancementRenderer.swift for size.
+//  Output-format pipelines, pillarbox detection and the offscreen snapshot render.
 //
 
 import CoreGraphics

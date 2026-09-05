@@ -2,9 +2,8 @@
 //  title, and the file-open plumbing that arrives either through `onOpenURL` or through a
 //  notification posted by the app delegate.
 //
-//  Extracted from `ContentView`, which held all of it as `@State` and subscribed to
-//  `NotificationCenter` from inside `body`. A notification observer whose lifetime is a view's
-//  render is exactly the shape that leaks, so it lives here with an explicit bind/unbind.
+//  A notification observer whose lifetime is a view's render is exactly the shape that leaks, so it
+//  lives here with an explicit bind/unbind.
 //
 
 import Combine

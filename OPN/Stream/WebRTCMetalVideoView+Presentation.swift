@@ -1,6 +1,6 @@
 //  Presentation and output-format half of `OPNMetalVideoView`: how decoded frames meet the display
 //  (pacing modes, 10-bit and EDR drawables), the presented-time measurement, and the snapshot paths
-//  the autopilot uses to look at the picture. Split from WebRTCMetalVideoView.swift for size.
+//  the autopilot uses to look at the picture.
 //
 
 import AppKit

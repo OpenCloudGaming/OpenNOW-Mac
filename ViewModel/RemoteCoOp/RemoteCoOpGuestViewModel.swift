@@ -305,9 +305,8 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     /// This guest's own record as the host last described it, and the phase that follows from it.
     ///
-    /// Split out of `handle` because it carries a nested state machine of its own: the outer switch
-    /// was the most complex function in the feature, and the `participant.id == participantID` filter
-    /// that keeps another guest's record from being applied here is easy to lose in that size.
+    /// The `participant.id == participantID` filter is what keeps another guest's record from
+    /// being applied here.
     private func applyParticipantUpdate(_ message: OPNRemoteCoOpWireMessage) {
         guard let participant = message.participant, participant.id == participantID else { return }
         if let sessionQualityPreset = message.sessionQualityPreset {

@@ -1,6 +1,5 @@
-//  Bringing a libwebrtc session up: the peer-connection factory, the ICE configuration, the
-//  offer rewrite this receiver needs, and the answer that closes the handshake.
-//  Split out of WebRTCNativeStreamSession.swift.
+//  Bringing a libwebrtc session up: the peer-connection factory, the ICE configuration, the offer
+//  rewrite this receiver needs, and the answer that closes the handshake.
 //
 
 import AppKit

@@ -1,5 +1,4 @@
-//  Claiming and resuming an existing seat session, and the errors that can come back
-//  instead. Split out of OpenNOWSessionManagerTests.swift.
+//  Claiming and resuming an existing seat session, and the errors that can come back instead.
 //
 
 import Testing

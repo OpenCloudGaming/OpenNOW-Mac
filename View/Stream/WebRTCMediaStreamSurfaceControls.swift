@@ -1,5 +1,5 @@
 //  What the HUD's controls do: focus movement, recording, upscaling changes and the paste and
-//  pointer shortcuts. Split out of WebRTCMediaStreamSurface.swift.
+//  pointer shortcuts.
 //
 
 import AppKit

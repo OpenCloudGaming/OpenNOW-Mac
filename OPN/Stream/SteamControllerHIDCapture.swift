@@ -1,6 +1,5 @@
-//  Taking exclusive control of a controller for streaming: seizing the device, turning lizard
-//  mode off, the keepalive heartbeat, and the property reads that identify a device.
-//  Split out of SteamControllerHIDMonitor.swift.
+//  Taking exclusive control of a controller for streaming: seizing the device, turning lizard mode
+//  off, the keepalive heartbeat, and the property reads that identify a device.
 //
 
 import AppKit

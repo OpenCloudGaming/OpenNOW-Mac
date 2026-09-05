@@ -1,9 +1,8 @@
 //  The recordings library: what is on disk, what is selected, what the player is doing, and the
-//  editor preview pipeline behind it. Extracted from `RecordingsView`, which owned all of it as
-//  `@State` and could therefore only be exercised by rendering it.
+//  editor preview pipeline behind it.
 //
-//  `RecordingEditorViewModel` still owns the edit itself; this owns which recording is being
-//  edited and keeps the player in step with it.
+//  `RecordingEditorViewModel` still owns the edit itself; this owns which recording is being edited
+//  and keeps the player in step with it.
 //
 
 import AVFoundation

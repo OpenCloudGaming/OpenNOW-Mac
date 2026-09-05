@@ -1,5 +1,5 @@
-//  The signaling leg: connecting to the seat's WebSocket, wiring its callbacks and turning
-//  its offer into a `StreamOffer`. Split out of OpenNOWStreamSessionCoordinator.swift.
+//  The signaling leg: connecting to the seat's WebSocket, wiring its callbacks and turning its
+//  offer into a `StreamOffer`.
 //
 
 import Foundation
@@ -47,8 +47,7 @@ extension OpenNOWStreamSessionCoordinator {
         }
     }
 
-    /// Wires the signaling client's callbacks to the coordinator. Split out of `connectSignaling`
-    /// so the connect path reads as: build the client, wire it, install it, connect.
+    /// Wires the signaling client's callbacks to the coordinator.
     @MainActor
     func installSignalingHandlers(_ client: NVSTWebSocketSignalingClient,
                                           sessionInfo: AllocatedStreamSession,

@@ -577,6 +577,53 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         return profile
     }
 
+}
+
+extension NvstBifrostFreeTransport {
+    /// What the RTSP negotiator is asked for: the resolved profile plus the client-side switches.
+    func negotiationInput(sessionID: String, endpoints: [String], profile: StreamProfile) -> NvstRtspNegotiationInput {
+        NvstRtspNegotiationInput(
+            sessionID: sessionID,
+            rtspsEndpoints: endpoints,
+            resolution: profile.resolution,
+            fps: profile.fps,
+            codec: profile.codec,
+            bitrateKbps: profile.bitrateKbps,
+            maximumBitrateKbps: profile.maximumBitrateKbps,
+            prefilterMode: configuredPrefilterMode,
+            prefilterSharpness: configuredPrefilterSharpness,
+            prefilterDenoise: configuredPrefilterDenoise,
+            prefilterModel: configuredPrefilterModel,
+            colorQuality: configuredColorQuality,
+            timeout: controlTimeout,
+            // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
+            // keeps feedback as SRTCP on the Mjolnir socket.
+            rtcpOnSctp: false,
+            forcesLegacyPath: Self.forcesLegacyPath,
+            disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
+            announcesExtendedSettings: Self.announcesExtendedSettings,
+            echoesOfferedAttributes: Self.echoesOfferedAttributes,
+            announceOverrides: Self.announceOverridesFromEnvironment(logger: logger)
+        )
+    }
+
+    /// The encoder-knob A/B harness. `OPN_NVST_ANNOUNCE_OVERRIDES="x-nv-video[0].vbvMultiplier=50;
+    /// x-nv-vqos[0].drc.enable=1"` announces those attributes verbatim, after every other layer.
+    /// A dev-harness switch like the autopilot's, not a behaviour toggle: a knob that moves
+    /// `NVST BITRATE meanFrameBytes=` on the same title and scene graduates into the announce
+    /// builder proper; one that does not is dropped. Logged so the run's log says what it tested.
+    static func announceOverridesFromEnvironment(logger: (@Sendable (String) -> Void)?) -> [(String, String)] {
+        guard let raw = ProcessInfo.processInfo.environment["OPN_NVST_ANNOUNCE_OVERRIDES"], !raw.isEmpty else { return [] }
+        let pairs = raw.split(separator: ";").compactMap { entry -> (String, String)? in
+            let parts = entry.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count == 2, !parts[0].isEmpty else { return nil }
+            let name = parts[0].hasPrefix("x-nv-") ? parts[0] : "x-nv-" + parts[0]
+            return (name, parts[1])
+        }
+        logger?("NVST announce overrides (harness): " + pairs.map { "\($0.0)=\($0.1)" }.joined(separator: " "))
+        return pairs
+    }
+
     // MARK: - Teardown
 
     func teardown(reason: String) async {
@@ -641,54 +688,5 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         terminationContinuation?.finish()
         terminationContinuation = nil
         terminationStream = nil
-    }
-
-}
-
-// Split out so the actor's body stays under the type-body budget; same file, so the actor's
-// `private` configuration members stay reachable.
-extension NvstBifrostFreeTransport {
-    /// What the RTSP negotiator is asked for: the resolved profile plus the client-side switches.
-    func negotiationInput(sessionID: String, endpoints: [String], profile: StreamProfile) -> NvstRtspNegotiationInput {
-        NvstRtspNegotiationInput(
-            sessionID: sessionID,
-            rtspsEndpoints: endpoints,
-            resolution: profile.resolution,
-            fps: profile.fps,
-            codec: profile.codec,
-            bitrateKbps: profile.bitrateKbps,
-            maximumBitrateKbps: profile.maximumBitrateKbps,
-            prefilterMode: configuredPrefilterMode,
-            prefilterSharpness: configuredPrefilterSharpness,
-            prefilterDenoise: configuredPrefilterDenoise,
-            prefilterModel: configuredPrefilterModel,
-            colorQuality: configuredColorQuality,
-            timeout: controlTimeout,
-            // The negotiator raises this to 1 when the bundle comes up; false is the fallback that
-            // keeps feedback as SRTCP on the Mjolnir socket.
-            rtcpOnSctp: false,
-            forcesLegacyPath: Self.forcesLegacyPath,
-            disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
-            announcesExtendedSettings: Self.announcesExtendedSettings,
-            echoesOfferedAttributes: Self.echoesOfferedAttributes,
-            announceOverrides: Self.announceOverridesFromEnvironment(logger: logger)
-        )
-    }
-
-    /// The encoder-knob A/B harness. `OPN_NVST_ANNOUNCE_OVERRIDES="x-nv-video[0].vbvMultiplier=50;
-    /// x-nv-vqos[0].drc.enable=1"` announces those attributes verbatim, after every other layer.
-    /// A dev-harness switch like the autopilot's, not a behaviour toggle: a knob that moves
-    /// `NVST BITRATE meanFrameBytes=` on the same title and scene graduates into the announce
-    /// builder proper; one that does not is dropped. Logged so the run's log says what it tested.
-    static func announceOverridesFromEnvironment(logger: (@Sendable (String) -> Void)?) -> [(String, String)] {
-        guard let raw = ProcessInfo.processInfo.environment["OPN_NVST_ANNOUNCE_OVERRIDES"], !raw.isEmpty else { return [] }
-        let pairs = raw.split(separator: ";").compactMap { entry -> (String, String)? in
-            let parts = entry.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, !parts[0].isEmpty else { return nil }
-            let name = parts[0].hasPrefix("x-nv-") ? parts[0] : "x-nv-" + parts[0]
-            return (name, parts[1])
-        }
-        logger?("NVST announce overrides (harness): " + pairs.map { "\($0.0)=\($0.1)" }.joined(separator: " "))
-        return pairs
     }
 }

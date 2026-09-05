@@ -555,5 +555,3 @@ func pixelFormatName(_ format: OSType) -> String {
 
 // MARK: - Renderer selection and diagnostics
 
-// Split out of the main declaration so it stays inside the size budget. Same file, so `private`
-// members stay reachable.

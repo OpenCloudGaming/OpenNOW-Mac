@@ -1,5 +1,5 @@
 //  Stats and the adaptive bitrate they drive, plus microphone attachment and ICE server
-//  translation. Split out of WebRTCNativeStreamSession.swift.
+//  translation.
 //
 
 import AppKit

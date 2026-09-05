@@ -1,5 +1,5 @@
 //  The scrolling half of the detail panel: description, NVIDIA tech, content rating and the
-//  read-more control. Split out of GameDetailPanel.swift.
+//  read-more control.
 //
 
 import AppKit

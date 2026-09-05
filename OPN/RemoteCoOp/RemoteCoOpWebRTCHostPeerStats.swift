@@ -1,10 +1,6 @@
 //  What one guest's peer connection is actually achieving: the outbound sample loop and the pacing
 //  telemetry derived from it.
 //
-//  Split from `RemoteCoOpWebRTCHostPeer.swift`, which had outgrown a reviewable size. This is the
-//  half with no bearing on whether a guest connects - it only measures - so separating it keeps the
-//  connection lifecycle readable on its own.
-//
 
 import Foundation
 @preconcurrency import WebRTC

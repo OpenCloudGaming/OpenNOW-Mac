@@ -1,6 +1,5 @@
-//  The CloudMatch responses and settings dictionaries the session tests are written
-//  against, plus the stub URL protocol that serves them.
-//  Split out of OpenNOWSessionClaimTests.swift.
+//  The CloudMatch responses and settings dictionaries the session tests are written against, plus
+//  the stub URL protocol that serves them.
 //
 
 import Testing

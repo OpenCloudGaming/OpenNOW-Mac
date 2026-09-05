@@ -1,5 +1,4 @@
-//  The option tables' element types and the resolved profile they add up to. Split out of
-//  OPNStreamPreferences.swift, which keeps the store that reads and writes them.
+//  The option tables' element types and the resolved profile they add up to.
 //
 
 import AppKit

@@ -1,5 +1,5 @@
-//  The receiver's feedback plane: SRTCP indices, receiver reports, the drain loop and the
-//  socket itself. Split out of NvstMjolnirReceiverTests.swift.
+//  The receiver's feedback plane: SRTCP indices, receiver reports, the drain loop and the socket
+//  itself.
 //
 
 import Foundation

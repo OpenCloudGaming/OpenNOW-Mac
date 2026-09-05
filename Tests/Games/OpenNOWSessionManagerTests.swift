@@ -1,5 +1,4 @@
 //  Session creation, claiming and the ad flow, plus the fixtures every session test shares.
-//  Split out of OpenNOWGameServicesTests.swift.
 //
 
 import Testing

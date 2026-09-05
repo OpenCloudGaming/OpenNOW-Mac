@@ -1,5 +1,4 @@
-//  Fetching regions and running the network preflight, plus the per-setting writers behind
-//  them. Split out of OPNStreamPreferences.swift.
+//  Fetching regions and running the network preflight, plus the per-setting writers behind them.
 //
 
 import AppKit

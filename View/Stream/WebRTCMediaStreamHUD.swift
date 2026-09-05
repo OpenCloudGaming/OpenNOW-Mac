@@ -1,5 +1,4 @@
 //  The in-stream HUD: the stats overlay, the unified dock and its panels, and the quit menu.
-//  Split out of WebRTCMediaStreamSurface.swift.
 //
 
 import AppKit

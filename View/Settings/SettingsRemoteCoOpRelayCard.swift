@@ -1,9 +1,5 @@
 //  The Relay card and the provider-specific rows behind it.
 //
-//  Split from `SettingsRemoteCoOpViews.swift` on the seam the card boundaries already draw: four
-//  providers, each with its own credential shape, is the largest single concern on that page and the
-//  one a reader is least likely to want while reading the rest of it.
-//
 
 import SwiftUI
 

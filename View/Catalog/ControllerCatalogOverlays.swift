@@ -1,5 +1,5 @@
-//  The full-screen overlays controller mode pushes over the catalog: search, the picker, the
-//  game detail sheet and the action menu. Split out of ControllerCatalogView.swift.
+//  The full-screen overlays controller mode pushes over the catalog: search, the picker, the game
+//  detail sheet and the action menu.
 //
 
 import AppKit

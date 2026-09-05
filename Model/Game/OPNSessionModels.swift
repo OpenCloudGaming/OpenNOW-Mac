@@ -1,5 +1,5 @@
 //  Streaming session models: the negotiated media profile, session progress and ads, and the JSON
-//  parser that reads them off the wire. Split out of OPNModels.swift.
+//  parser that reads them off the wire.
 //
 
 import Foundation

@@ -1,5 +1,5 @@
-//  Saved sessions and the account list they live in: which account is active, how one is
-//  added or removed, and the stay-signed-in preference. Split out of OPNAuthService.swift.
+//  Saved sessions and the account list they live in: which account is active, how one is added or
+//  removed, and the stay-signed-in preference.
 //
 
 import AppKit

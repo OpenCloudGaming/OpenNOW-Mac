@@ -1,6 +1,5 @@
 //  Renderer selection (libwebrtc's NV12/RGB/I420 Metal renderers vs the custom enhancement path),
-//  per-second diagnostics and draw-cadence bookkeeping for `OPNMetalVideoView`. Split from
-//  WebRTCMetalVideoView.swift for size.
+//  per-second diagnostics and draw-cadence bookkeeping for `OPNMetalVideoView`.
 //
 
 import AppKit

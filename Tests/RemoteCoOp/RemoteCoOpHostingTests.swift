@@ -1,5 +1,5 @@
 //  Hosting a Remote Co-Op session: invites, guest approval, the input router and the peer
-//  controller behind them. Split out of RemoteCoOpTests.swift.
+//  controller behind them.
 //
 
 import Testing

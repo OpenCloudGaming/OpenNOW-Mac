@@ -1,6 +1,5 @@
-//  The negotiator itself: endpoint selection, the feedback channel, and the handshake it
-//  drives end to end against a stubbed control channel. Split out of
-//  NvstRtspNegotiationTests.swift.
+//  The negotiator itself: endpoint selection, the feedback channel, and the handshake it drives end
+//  to end against a stubbed control channel.
 //
 
 import Foundation

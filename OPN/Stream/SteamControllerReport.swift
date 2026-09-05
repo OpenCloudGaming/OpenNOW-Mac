@@ -454,8 +454,6 @@ public enum SteamControllerReport {
 
 // MARK: - Report bit layouts
 
-// Split out of the main declaration so it stays inside the size budget. Same file, so `private`
-// members stay reachable.
 extension SteamControllerReport {
     private enum LegacyButtonMask {
         static let rightShoulder: UInt8 = 0x04

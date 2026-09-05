@@ -434,6 +434,52 @@ public actor NativeNVSTStreamingPath {
         throw CancellationError()
     }
 
+    private func publish(_ report: StreamReport) {
+        for continuation in reportContinuations.values {
+            continuation.yield(report)
+        }
+    }
+
+    private func removeReportContinuation(_ id: UUID) {
+        reportContinuations[id] = nil
+    }
+
+    private func publishProgress(configuration: StreamLaunchConfiguration,
+                                 step: StreamLaunchStep,
+                                 message: String,
+                                 isReady: Bool = false,
+                                 progress: (@Sendable (StreamProgress) async -> Void)?) async throws {
+        let value = StreamProgress(configuration: configuration, step: step, message: message, isReady: isReady)
+        if isReady, let activeSession {
+            state = .running(activeSession)
+        } else {
+            state = .starting(value)
+        }
+        await progress?(value)
+    }
+
+    private func validate(allocation: NativeNVSTSessionAllocation) throws {
+        guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
+        guard !allocation.session.serverAddress.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a server address.") }
+        guard !allocation.signalingURL.isEmpty || !allocation.signalingServer.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing signaling connection information.") }
+    }
+
+    private func streamDurationSeconds() -> Double {
+        guard let startedAt else { return 0 }
+        let duration = startedAt.duration(to: .now)
+        let components = duration.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1_000_000_000_000_000_000
+    }
+
+    private static func message(for error: Error) -> String {
+        if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
+        return error.localizedDescription.isEmpty ? "Native NVST stream failed." : error.localizedDescription
+    }
+}
+
+// Transport death and recovery.
+extension NativeNVSTStreamingPath {
+
     private func monitorTransportTermination() {
         terminalTask?.cancel()
         terminalTask = Task { [weak self, transport] in
@@ -562,47 +608,5 @@ public actor NativeNVSTStreamingPath {
             await transport.resetForRecovery()
         }
         return false
-    }
-
-    private func publish(_ report: StreamReport) {
-        for continuation in reportContinuations.values {
-            continuation.yield(report)
-        }
-    }
-
-    private func removeReportContinuation(_ id: UUID) {
-        reportContinuations[id] = nil
-    }
-
-    private func publishProgress(configuration: StreamLaunchConfiguration,
-                                 step: StreamLaunchStep,
-                                 message: String,
-                                 isReady: Bool = false,
-                                 progress: (@Sendable (StreamProgress) async -> Void)?) async throws {
-        let value = StreamProgress(configuration: configuration, step: step, message: message, isReady: isReady)
-        if isReady, let activeSession {
-            state = .running(activeSession)
-        } else {
-            state = .starting(value)
-        }
-        await progress?(value)
-    }
-
-    private func validate(allocation: NativeNVSTSessionAllocation) throws {
-        guard !allocation.session.id.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a session id.") }
-        guard !allocation.session.serverAddress.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing a server address.") }
-        guard !allocation.signalingURL.isEmpty || !allocation.signalingServer.isEmpty else { throw NativeNVSTError.invalidSession("Native NVST session is missing signaling connection information.") }
-    }
-
-    private func streamDurationSeconds() -> Double {
-        guard let startedAt else { return 0 }
-        let duration = startedAt.duration(to: .now)
-        let components = duration.components
-        return Double(components.seconds) + Double(components.attoseconds) / 1_000_000_000_000_000_000
-    }
-
-    private static func message(for error: Error) -> String {
-        if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
-        return error.localizedDescription.isEmpty ? "Native NVST stream failed." : error.localizedDescription
     }
 }

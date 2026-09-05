@@ -1,5 +1,5 @@
-//  One controller's battery as the HUD and the low-battery alert see it, and the tracker that decides
-//  when an alert fires. Split from NativeWebRTCGamepadMonitor.swift for size.
+//  One controller's battery as the HUD and the low-battery alert see it, and the tracker that
+//  decides when an alert fires.
 //
 
 import Foundation

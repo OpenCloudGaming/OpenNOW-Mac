@@ -1,6 +1,5 @@
-//  Starting and ending the stream the surface hosts: the transport, the input route into it,
-//  and the recording and session-limit state it publishes. Split out of
-//  WebRTCMediaStreamSurface.swift.
+//  Starting and ending the stream the surface hosts: the transport, the input route into it, and
+//  the recording and session-limit state it publishes.
 //
 
 import AppKit

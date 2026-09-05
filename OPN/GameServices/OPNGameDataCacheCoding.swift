@@ -1,5 +1,5 @@
-//  Property-list encoding for the cached catalog: games, variants and the small helpers that
-//  write them. Split out of OPNGameDataCache.swift.
+//  Property-list encoding for the cached catalog: games, variants and the small helpers that write
+//  them.
 //
 
 import CryptoKit

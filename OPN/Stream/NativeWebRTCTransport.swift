@@ -349,8 +349,6 @@ public enum NativeWebRTCTransportError: LocalizedError, Sendable {
 
 // MARK: - Input wire encoding
 
-// Split out of the main declaration so it stays inside the size budget. Same file, so `private`
-// members stay reachable.
 extension NativeWebRTCTransport {
     static func gfnMouseButton(_ button: MouseButton) -> UInt8 {
         switch button {
