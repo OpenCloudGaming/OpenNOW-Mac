@@ -218,6 +218,17 @@ struct StreamQuitMenuButton: View {
 /// Square design-system dropdown for stream HUD panels. Replaces native
 /// `.pickerStyle(.menu)`, which renders rounded system chrome the stream
 /// design forbids (DESIGN.md "Overflow Menu" / "Don't" sections).
+/// Set by a dropdown while its panel is open, read by the section around it. `zIndex` only orders
+/// views within one container, so a panel that spills past its own section was painted over by the
+/// next section's translucent background and read as transparent. The section lifts itself in the
+/// sidebar's stack instead.
+struct StreamHUDExpandedPanelKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 struct StreamHUDDropdown: View {
     let label: String
     let options: [(value: Int, title: String)]
@@ -280,6 +291,7 @@ struct StreamHUDDropdown: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.46 : 1)
         .zIndex(isExpanded ? 10 : 0)
+        .preference(key: StreamHUDExpandedPanelKey.self, value: isExpanded)
         .onChange(of: isDisabled) { _, disabled in
             if disabled { isExpanded = false }
         }
@@ -299,11 +311,15 @@ struct StreamHUDDropdown: View {
         }
         .padding(.vertical, 4)
         .frame(width: 208)
+        // Two fills: the sidebar itself is slightly translucent over the video, and a single
+        // near-black fill over it still let the picture read through the panel.
         .background(WebRTCMediaStreamTheme.surfaceRaised)
+        .background(WebRTCMediaStreamTheme.panel)
         .overlay {
             Rectangle()
                 .stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.55), radius: 14, x: 0, y: 8)
     }
 }
 
@@ -411,6 +427,8 @@ struct StreamHUDSection<Content: View>: View {
     let caption: String?
     let content: Content
 
+    @State private var hasExpandedPanel = false
+
     init(label: String, spacing: CGFloat = 10, showsBetaTag: Bool = false, caption: String? = nil, @ViewBuilder content: () -> Content) {
         self.label = label
         self.spacing = spacing
@@ -443,6 +461,10 @@ struct StreamHUDSection<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        .onPreferenceChange(StreamHUDExpandedPanelKey.self) { hasExpandedPanel = $0 }
+        // Above every sibling section while one of this section's dropdowns is open, so the panel
+        // is not tinted by the next section's background painting over it.
+        .zIndex(hasExpandedPanel ? 50 : 0)
     }
 }
 
