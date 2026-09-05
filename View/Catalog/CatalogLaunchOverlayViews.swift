@@ -21,8 +21,6 @@ struct VendorLaunchFlowOverlay: View {
             .ignoresSafeArea()
 
             switch viewModel.launchFlowState {
-            case .sixteenNinePrompt:
-                VendorSixteenNineCard(viewModel: viewModel)
             case .activeSessionPrompt:
                 VendorActiveSessionCard(viewModel: viewModel)
             case .checkingSession, .stoppingSession, .startingStream:
@@ -31,59 +29,6 @@ struct VendorLaunchFlowOverlay: View {
                 EmptyView()
             }
         }
-    }
-}
-
-/// Asked once per title. The recommendation is the narrower stream, because the bars it removes
-/// are encoded pixels the seat is spending on nothing, but the wider one stays a single click away
-/// for anyone who would rather have the resolution they picked reported back to them.
-struct VendorSixteenNineCard: View {
-    let viewModel: CatalogViewModel
-
-    var body: some View {
-        let downgrade = viewModel.sixteenNineDowngrade
-        VendorLaunchPanel(title: "Widescreen Title", subtitle: viewModel.launchFlowTitle) {
-            VStack(alignment: .leading, spacing: 18) {
-                VendorLaunchStepHeader(
-                    index: "1",
-                    title: "This Game Renders 16:9",
-                    message: "\(viewModel.launchFlowTitle) draws a 16:9 picture inside the wider frame, so the seat encodes black bars down each side. Streaming at 16:9 removes them: the same picture, with every bit spent on the game instead of the bars."
-                )
-                if let downgrade {
-                    VStack(alignment: .leading, spacing: 10) {
-                        VendorLaunchSessionRow(label: "Your resolution", value: downgrade.from.label)
-                        VendorLaunchSessionRow(label: "16:9 equivalent", value: downgrade.to.label)
-                        VendorLaunchSessionRow(label: "Picture", value: "Identical, letterboxed in the window")
-                    }
-                    .padding(14)
-                    .background(Color.white.opacity(0.055))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-                }
-                Text("Remembered for this game. Change it any time in Settings, or turn the whole behaviour off with 16:9 Titles at 16:9.")
-                    .font(.nvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 12) {
-                    Button("CANCEL") { viewModel.cancelVendorLaunch() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                    Spacer()
-                    Button(keepTitle(downgrade)) { viewModel.resolveSixteenNinePrompt(streamsAtSixteenNine: false) }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                    Button(narrowTitle(downgrade)) { viewModel.resolveSixteenNinePrompt(streamsAtSixteenNine: true) }
-                        .buttonStyle(VendorLaunchPrimaryButtonStyle())
-                }
-            }
-        }
-    }
-
-    private func keepTitle(_ downgrade: (from: OPNStreamResolutionOption, to: OPNStreamResolutionOption)?) -> String {
-        guard let downgrade else { return "KEEP MY RESOLUTION" }
-        return "KEEP \(downgrade.from.value.uppercased())"
-    }
-
-    private func narrowTitle(_ downgrade: (from: OPNStreamResolutionOption, to: OPNStreamResolutionOption)?) -> String {
-        guard let downgrade else { return "STREAM AT 16:9" }
-        return "STREAM \(downgrade.to.value.uppercased())"
     }
 }
 

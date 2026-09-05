@@ -119,8 +119,6 @@ extension NativeNVSTMediaStreamSurface {
     /// Why the resolution is what it is: `16:9 title` once the launch dropped the bars, or
     /// `16:9 title · 16:9 next launch` when this session found them and the next one will.
     var nativeStatsResolutionDetail: String? {
-        if model.resolutionOverriddenForSixteenNine { return "16:9 title" }
-        if model.sixteenNineTitleDetected { return "16:9 title · 16:9 next launch" }
         return nil
     }
 

@@ -581,7 +581,6 @@ extension NativeNVSTHostViewModel {
                     }
                     logRenderDiagnosticsIfDue()
                     updateBitrateStarvation(snapshot)
-                    updateSixteenNineDetection(snapshot)
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }

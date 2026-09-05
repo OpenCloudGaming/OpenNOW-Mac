@@ -173,11 +173,6 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    func setStreamSixteenNineTitlesAtSixteenNine(_ enabled: Bool) {
-        OPNStreamPreferences.saveStreamSixteenNineTitlesAtSixteenNine(enabled)
-        loadSettingsPreferences()
-    }
-
     func setPowerSaverEnabled(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.savePowerSaverEnabled(enabled)

@@ -33,10 +33,6 @@ struct CatalogSettingsPreferencesSnapshot: Sendable {
 @MainActor
 enum CatalogLaunchFlowState: Equatable {
     case idle
-    /// Asked once per title, before anything is allocated: this game renders 16:9 inside the wider
-    /// frame, so the stream can be narrowed to match. Silently changing the resolution a user
-    /// picked is the kind of thing they notice in the stats HUD and read as a bug.
-    case sixteenNinePrompt
     case checkingSession
     case activeSessionPrompt
     case stoppingSession
@@ -229,8 +225,6 @@ final class CatalogViewModel {
     /// panel and the tile's toggle then reopened it — the details never closed from the tile.
     var isPointerInsideGameTile = false
     var launchFlowState = CatalogLaunchFlowState.idle
-    /// The resolution swap the pending launch would make, while the prompt is on screen.
-    var sixteenNineDowngrade: (from: OPNStreamResolutionOption, to: OPNStreamResolutionOption)?
     var launchFlowTitle = ""
     var launchFlowMessage = ""
     var launchFlowError = ""

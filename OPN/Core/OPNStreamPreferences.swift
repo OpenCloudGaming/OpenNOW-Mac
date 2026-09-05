@@ -144,7 +144,6 @@ public enum OPNStreamPreferences {
         Keys.l4sEnabled,
         Keys.hdrEnabled,
         Keys.powerSaverEnabled,
-        Keys.streamSixteenNineTitlesAtSixteenNine,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
         Keys.mouseSensitivityPercent,
@@ -345,87 +344,7 @@ public enum OPNStreamPreferences {
             profile.presentationModeIndex = gameProfile.presentationModeIndex
             profile.presentationMode = gameProfile.presentationMode
         }
-        profile = applyingSixteenNineOverride(profile, titleIsSixteenNine: titleStreamsSixteenNineContent(appId) && sixteenNineChoice(appId) != false)
         return effectiveProfile(profile, capabilities: capabilities)
-    }
-
-    /// Swaps a wider-than-16:9 resolution for the 16:9 one of the same height when the title is
-    /// known to render 16:9 inside it. See `NativeNVSTSixteenNineTitle`. Pure, for the tests.
-    public static func applyingSixteenNineOverride(_ profile: OPNStreamPreferenceProfile, titleIsSixteenNine: Bool) -> OPNStreamPreferenceProfile {
-        guard titleIsSixteenNine,
-              profile.streamSixteenNineTitlesAtSixteenNine,
-              profile.pillarboxFillMode == .black,
-              let narrower = NativeNVSTSixteenNineTitle.sixteenNineResolution(for: profile.resolution) else { return profile }
-        var result = profile
-        result.resolution = narrower
-        result.resolutionOverriddenForSixteenNine = true
-        return result
-    }
-
-    /// Titles seen rendering 16:9 inside a wider frame, keyed by app id. Kept apart from the
-    /// per-game profile dictionary: writing that enables every per-game override at once.
-    public static func titleStreamsSixteenNineContent(_ appId: String) -> Bool {
-        guard !appId.isEmpty, let titles = storage.dictionary(forKey: k.sixteenNineTitles) else { return false }
-        return (titles[appId] as? Bool) ?? false
-    }
-
-    /// What the user answered when asked about this title: true to stream it at 16:9, false to
-    /// keep the wider resolution, nil while they have not been asked. Detection can go on
-    /// recording what the title renders; the answer decides what is done about it.
-    public static func sixteenNineChoice(_ appId: String) -> Bool? {
-        guard !appId.isEmpty, let choices = storage.dictionary(forKey: k.sixteenNineTitleChoices) else { return nil }
-        return choices[appId] as? Bool
-    }
-
-    public static func saveSixteenNineChoice(_ appId: String, streamsAtSixteenNine: Bool) {
-        guard !appId.isEmpty else { return }
-        var choices = storage.dictionary(forKey: k.sixteenNineTitleChoices) ?? [:]
-        choices[appId] = streamsAtSixteenNine
-        storage.set(choices, forKey: k.sixteenNineTitleChoices)
-    }
-
-    public static func forgetSixteenNineChoice(_ appId: String) {
-        guard !appId.isEmpty, var choices = storage.dictionary(forKey: k.sixteenNineTitleChoices) else { return }
-        choices.removeValue(forKey: appId)
-        storage.set(choices, forKey: k.sixteenNineTitleChoices)
-    }
-
-    /// Whether launching this app would silently narrow the stream, and so is worth asking about.
-    /// Mirrors `applyingSixteenNineOverride`'s conditions, minus the answer itself.
-    public static func sixteenNineDowngrade(forGame appId: String) -> (from: OPNStreamResolutionOption, to: OPNStreamResolutionOption)? {
-        guard !appId.isEmpty, titleStreamsSixteenNineContent(appId), sixteenNineChoice(appId) == nil else { return nil }
-        var profile = loadProfile()
-        if let gameProfile = loadProfile(forGame: appId) {
-            profile.resolution = gameProfile.resolution
-            profile.pillarboxFillMode = gameProfile.pillarboxFillMode
-        }
-        guard profile.streamSixteenNineTitlesAtSixteenNine, profile.pillarboxFillMode == .black,
-              let narrower = NativeNVSTSixteenNineTitle.sixteenNineResolution(for: profile.resolution),
-              narrower != profile.resolution else { return nil }
-        return (profile.resolution, narrower)
-    }
-
-    /// Every title detection has flagged, with the answer the user gave for it (nil until asked).
-    /// Sorted by app id so the settings list does not reshuffle between reads.
-    public static func knownSixteenNineTitles() -> [(appId: String, choice: Bool?)] {
-        guard let titles = storage.dictionary(forKey: k.sixteenNineTitles) else { return [] }
-        return titles.keys.sorted().compactMap { appId in
-            guard (titles[appId] as? Bool) == true else { return nil }
-            return (appId, sixteenNineChoice(appId))
-        }
-    }
-
-    /// Drops both the detection and the answer, so the title is measured again from scratch.
-    public static func forgetSixteenNineTitle(_ appId: String) {
-        rememberTitleStreamsSixteenNineContent(appId, false)
-        forgetSixteenNineChoice(appId)
-    }
-
-    public static func rememberTitleStreamsSixteenNineContent(_ appId: String, _ value: Bool) {
-        guard !appId.isEmpty else { return }
-        var titles = storage.dictionary(forKey: k.sixteenNineTitles) ?? [:]
-        if value { titles[appId] = true } else { titles.removeValue(forKey: appId) }
-        storage.set(titles, forKey: k.sixteenNineTitles)
     }
 
     public static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {

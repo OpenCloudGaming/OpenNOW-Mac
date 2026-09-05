@@ -309,10 +309,6 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var enableL4S = false
     public var enableHdr = false
     public var enablePowerSaver = false
-    /// Request a 16:9 resolution for titles known to render 16:9 inside a wider stream.
-    public var streamSixteenNineTitlesAtSixteenNine = true
-    /// Set by `launchProfile` when it swapped the resolution for this launch; not stored.
-    public var resolutionOverriddenForSixteenNine = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
     public var mouseSensitivityPercent = 100

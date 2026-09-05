@@ -72,10 +72,6 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// The seat's GPU as the official client names it, resolved once per distinct `gpuType`.
     @Published var nativeRigName = ""
     var nativeRigRawName = ""
-    @Published var sixteenNineTitleDetected = false
-    @Published var resolutionOverriddenForSixteenNine = false
-    var sixteenNineTracker = NativeNVSTSixteenNineTitle.Tracker()
-    var sixteenNineTraceCounter = 0
     var renderTraceCounter = 0
     var nativeStatsTask: Task<Void, Never>?
     var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
@@ -412,8 +408,6 @@ final class NativeNVSTHostViewModel: ObservableObject {
                                        denoise: launchProfile.upscalingDenoise,
                                        targetHeight: launchProfile.upscalingTargetHeight)
         nativeView.setPresentationMode(launchProfile.presentationMode)
-        resolutionOverriddenForSixteenNine = launchProfile.resolutionOverriddenForSixteenNine
-        sixteenNineTitleDetected = OPNStreamPreferences.titleStreamsSixteenNineContent(configuration.applicationID)
         onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
         WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
         nativeConnectedAt = Date()

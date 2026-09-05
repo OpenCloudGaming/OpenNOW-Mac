@@ -24,7 +24,7 @@ public final class NvstBifrostFreeVideoRenderer {
         private var renderedFrames: UInt64 = 0
         private var latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
         /// Measures the baked pillarbox regardless of render path or fill mode, so a 16:9 title
-        /// can be recognised (`NativeNVSTSixteenNineTitle`) even with the fill off and the plain
+        /// can be recognised even with the fill off and the plain
         /// 8-bit renderer drawing. Throttled inside: a 32-row scan a few times a second.
         private let contentDetector = OPNPillarboxDetector()
         /// The most recent decoded frame, kept so a diagnostic snapshot can be written on request
