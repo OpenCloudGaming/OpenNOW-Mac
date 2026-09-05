@@ -67,12 +67,27 @@ struct CatalogTopBar: View {
                 HStack(spacing: 24 * uiScale) {
                     Spacer()
                     HStack(spacing: 4 * uiScale) {
+                        if viewModel.selectedMainPage == .games {
+                            // Cmd+K opens the field and puts the caret in it, and focuses it again
+                            // when it is already open. Zero-sized rather than `.hidden()`, which
+                            // keeps the view in the hierarchy but stops it taking the key.
+                            Button {
+                                setSearchExpanded(true)
+                                isSearchFieldFocused = true
+                            } label: { Color.clear.frame(width: 0, height: 0) }
+                            .buttonStyle(.plain)
+                            .keyboardShortcut("k", modifiers: .command)
+                            .frame(width: 0, height: 0)
+                            .opacity(0)
+                            .accessibilityHidden(true)
+                        }
                         if viewModel.selectedMainPage == .games, !isSearchExpanded {
                             Button { setSearchExpanded(true) } label: {
                                 CatalogTopBarIconLabel(systemName: "magnifyingglass")
                             }
                             .buttonStyle(.opnPressable(scale: 0.90))
                             .accessibilityLabel("Search games")
+                            .help("Search games (⌘K)")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
                         Button { controllerModeEnabled = true } label: {
