@@ -132,7 +132,13 @@ extension SteamControllerHIDMonitor {
             return
         }
         rumbleReportsSent += 1
-        let shouldLog = !resend && (rumbleReportsSent <= 6 || rumbleReportsSent % 500 == 0)
+        // Resends outnumber real commands 25 to 1 at the 40 ms cadence, so counting them together
+        // meant the log showed the first six *resends* of one rumble and then almost nothing.
+        // Only the commands that actually ask for motion: a rumble is bracketed by zero writes,
+        // and sampling "the first twelve writes" caught the silence around it instead of it.
+        let isMotion = leftAmplitude > 0 || rightAmplitude > 0
+        if !resend, isMotion { rumbleCommandsWritten += 1 }
+        let shouldLog = !resend && isMotion && (rumbleCommandsWritten <= 12 || rumbleCommandsWritten % 50 == 0)
         for context in contexts {
             let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
             let status = sendFeatureReport(report, to: context.device, attempts: 3)

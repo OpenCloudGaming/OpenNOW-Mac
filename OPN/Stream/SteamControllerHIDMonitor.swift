@@ -130,6 +130,8 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     nonisolated(unsafe) var heartbeatTimer: Timer?
     /// Rumble feature reports written this process, for the rate-limited per-interface log.
     var rumbleReportsSent = 0
+    /// Writes that came from a new command rather than the 40 ms keepalive resend.
+    var rumbleCommandsWritten = 0
     /// The 40 ms keep-alive re-sends for each controller currently rumbling.
     var rumbleResendTasks: [InputDeviceID: Task<Void, Never>] = [:]
 

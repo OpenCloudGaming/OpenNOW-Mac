@@ -238,6 +238,11 @@ struct StreamHUDDropdown: View {
     var isFocused = false
     @State private var isExpanded = false
     @State private var isHovering = false
+    /// Where the button sits in the window, so the panel can open upward when there is no room
+    /// below it. The sidebar's list scrolls and its footer does not, so a panel opening downward
+    /// from a control near the bottom was cut off by the scroll view's edge.
+    @State private var buttonMaxY: CGFloat = 0
+    @State private var windowHeight: CGFloat = 0
 
     private var selectedTitle: String {
         options.first(where: { $0.value == selection })?.title ?? options.first?.title ?? ""
@@ -280,10 +285,22 @@ struct StreamHUDDropdown: View {
                         .onTapGesture { isExpanded = false }
                 }
             }
-            .overlay(alignment: .topTrailing) {
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            buttonMaxY = proxy.frame(in: .global).maxY
+                            // The window, not the screen: the HUD lives in a stream window that is
+                            // often, but not always, fullscreen.
+                            windowHeight = NSApp.keyWindow?.frame.height ?? NSApp.mainWindow?.frame.height ?? NSScreen.main?.frame.height ?? 0
+                        }
+                        .onChange(of: proxy.frame(in: .global).maxY) { _, value in buttonMaxY = value }
+                }
+            )
+            .overlay(alignment: opensUpward ? .bottomTrailing : .topTrailing) {
                 if isExpanded {
                     dropdownPanel
-                        .offset(y: 30)
+                        .offset(y: opensUpward ? -30 : 30)
                 }
             }
             .onExitCommand { isExpanded = false }
@@ -295,6 +312,13 @@ struct StreamHUDDropdown: View {
         .onChange(of: isDisabled) { _, disabled in
             if disabled { isExpanded = false }
         }
+    }
+
+    /// Panel height is `rows * 30 + 8`; open upward when that would not fit under the button.
+    private var opensUpward: Bool {
+        guard windowHeight > 0, buttonMaxY > 0 else { return false }
+        let panelHeight = CGFloat(options.count) * 30 + 8
+        return buttonMaxY + panelHeight + 40 > windowHeight
     }
 
     private var dropdownPanel: some View {
