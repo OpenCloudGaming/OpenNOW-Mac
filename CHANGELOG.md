@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.5.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.4.0...v0.5.0) (2026-09-05)
+
+
+### Features
+
+* add read more catalog view screen ([28b0beb](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/28b0beb4ef1c74a68775b987cb6278be19ecb688))
+* **catalog:** open search with cmd+k ([06947c7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/06947c7ea7d1e74a2951c814a23562ade0c860ed))
+* **catalog:** tell WebRTC users the native transport is where features land ([0c05d9e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0c05d9effb04cc372c065faa097769c7358ff021))
+* controllers panel in stream HUD with squared battery gauge ([76d3bff](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/76d3bff433a73fc222e6c3ae7afca6bf6e73f1c7))
+* improve settings tabs layout ([ed9a9a7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ed9a9a75eb1ac053e9806451f74d6687eb776488))
+* **nvst:** 16:9 titles at 16:9, frame pacing modes, decode budget, autopilot harness ([e3c1036](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e3c10365abfcedaa166e36ab2f282b482e5fca75))
+* **nvst:** decode history in Settings, A/V estimate, non-freezing resync, rig name map ([7cc5daa](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7cc5daa8b78aaa5bc29b88b0efd4edefef89e9be))
+* **nvst:** follow bitstream to 10-bit drawable ([90c26f4](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/90c26f492f26567b5b45c3789e22ff1a4039d09d))
+* **nvst:** mouse sensitivity in Settings and the stream HUD, decode recommendations ([b7a4a27](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b7a4a2764a07a3f9c86ea17dd01d66f26078c7ce))
+* **nvst:** seat rumble with SC2 output report, in-place reconnect, HUD grid navigation, rumble intensity, proxy toggle fix ([44d9d86](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/44d9d86c58f4c8cf67221a124047ebeed4302e21))
+* **proxy:** scope the session proxy to the catalog or to sessions as well ([a2601a6](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a2601a65af0428da68a2aa12c48e1eb20ab68753))
+* **settings:** list the titles 16:9 detection has learned about ([26fc53a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/26fc53a534be397c5a5d6d13ccbf3c964efbde2c))
+* **settings:** tag the Network tab as beta ([e4538f1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e4538f15eae9a31af5f86a6b6e6f3aec1cfb7290))
+* **stream:** ask once per title before streaming it at 16:9 ([5776ecc](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5776ecc5a2f8a2729303906bb66759b2b940d0a0))
+
+
+### Bug Fixes
+
+* catalog high cpu ([8868d6a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8868d6a9a46bdb3ceab11b4dcf3b14f9ae02ad27))
+* **catalog:** flip the search tile chevron with its detail row and match the tray height ([270fb4d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/270fb4dffe6f2152a7d09b0dbd19ba9b00cef21b))
+* **catalog:** keep launch failures on screen and name the region that refused ([2917fe6](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2917fe61e65eaa3f9d371f09140afd2ce06c224d))
+* **catalog:** let a click on an open tile close its details ([0671cd8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0671cd887b862edb40e6179d885982c91ab149c5))
+* **catalog:** match search result tiles to home and animate their detail row ([4528fc0](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4528fc0c49dd9d5eb041f60e4575b88e91f14471))
+* **catalog:** order hovered tiles above their neighbours and close details from the tray ([0c03364](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0c03364e0c9b6eb1215052ed0e593e6b5b9974e7))
+* **catalog:** raise the hovered tile from the rail that placed it ([627da8a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/627da8acc9dd738e857398b7d9ea8e874f21a184))
+* **catalog:** reserve the tile bottom margin the hover scale grows into ([b5108a8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b5108a8685f85ae314472249e81e9c16e650ebb1))
+* **catalog:** restore the search tile play button and match its tray to home ([efef6c6](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/efef6c63ccad904e6ca377e04b087a0851727203))
+* **catalog:** stop clipping the detail panel mid-element and tighten the left column ([68b5cf1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/68b5cf199652aed3dbaf0e0c006314fede0286e8))
+* **catalog:** stop the detail panel printing the access sentence twice, clipped ([f6973ee](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f6973eee5e6cde1b465f9567e0dd9f104778534b))
+* **nvst:** punch the video socket before PLAY so far-region seats stream ([0c17692](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0c17692fb7ec631a89d657ccd23f68cff00c4a15))
+* **settings:** stack the account cards full width ([aa3f571](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/aa3f571034b88c79be41009e3534b236b3e0ae80))
+* stop titlebar double-click zoom crash from a zeroed window aspect ratio ([9f72720](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9f72720be80be81fb61527c1a8de245cbea7cb53))
+* **stream:** lift a HUD section with an open dropdown above its siblings ([3335a65](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3335a65cf9271cb04bd931781698f758720c0528))
+
+
+### Reverts
+
+* **stream:** drop 16:9 title detection and always use the selected resolution ([f7f8126](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f7f812635f0ce769f5383838e06685bca804f665))
+
 ## [0.4.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.3.0...v0.4.0) (2026-09-03)
 
 
