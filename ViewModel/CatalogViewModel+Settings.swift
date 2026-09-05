@@ -127,6 +127,11 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setPresentationModeIndex(_ index: Int) {
+        OPNStreamPreferences.savePresentationModeIndex(index)
+        loadSettingsPreferences()
+    }
+
     func setPillarboxFillDim(_ value: Double) {
         OPNStreamPreferences.savePillarboxFillDim(Int(value.rounded()))
         loadSettingsPreferences()
@@ -141,6 +146,11 @@ extension CatalogViewModel {
     func setHDREnabled(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveHDREnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setStreamSixteenNineTitlesAtSixteenNine(_ enabled: Bool) {
+        OPNStreamPreferences.saveStreamSixteenNineTitlesAtSixteenNine(enabled)
         loadSettingsPreferences()
     }
 

@@ -34,15 +34,17 @@ extension NativeNVSTMediaStreamSurface {
                 nativeStatsStandardRow(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
                 // Client-side decode cost. It used to occupy the MS box, where it read as network
                 // latency and was not one.
-                nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor)
                 nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
-                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nativeStatsResolutionDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nativeStatsDecoderDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from
                 // the HUD rather than from the diagnostic log.
                 nativeStatsStandardRow(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor)
                 nativeStatsStandardRow(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Rig", value: nativeStatsRigName, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
+                nativeStatsStandardRow(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
             }
         }
@@ -111,15 +113,54 @@ extension NativeNVSTMediaStreamSurface {
         }
     }
 
-    /// The seat's GPU, trimmed of the vendor prefix so it fits the row: "RTX 4080" not
-    /// "NVIDIA GeForce RTX 4080".
-    var nativeStatsRigName: String {
-        guard let gpu = model.latestNativeStats?.serverGPU, !gpu.isEmpty else { return "--" }
-        var name = gpu
-        for prefix in ["NVIDIA ", "GeForce "] where name.hasPrefix(prefix) {
-            name = String(name.dropFirst(prefix.count))
+    /// Why the resolution is what it is: `16:9 title` once the launch dropped the bars, or
+    /// `16:9 title · 16:9 next launch` when this session found them and the next one will.
+    var nativeStatsResolutionDetail: String? {
+        if model.resolutionOverriddenForSixteenNine { return "16:9 title" }
+        if model.sixteenNineTitleDetected { return "16:9 title · 16:9 next launch" }
+        return nil
+    }
+
+    /// `ms of 8.3`: decode time against the negotiated frame interval. Over it and the seat is
+    /// already lowering the frame rate to what this Mac reports it can decode.
+    var nativeStatsDecodeDetail: String {
+        guard let fps = model.latestNativeStats?.negotiatedFramesPerSecond,
+              let interval = NativeNVSTDecodeBudget.frameIntervalMilliseconds(framesPerSecond: fps) else { return "ms" }
+        return String(format: "ms of %.1f", interval)
+    }
+
+    var nativeDecodeBudgetColor: Color {
+        guard let stats = model.latestNativeStats else { return WebRTCMediaStreamTheme.textPrimary }
+        switch NativeNVSTDecodeBudget.level(for: stats) {
+        case .over: return WebRTCMediaStreamTheme.danger
+        case .tight: return WebRTCMediaStreamTheme.warning
+        case .comfortable, .unknown: return WebRTCMediaStreamTheme.textPrimary
         }
-        return name
+    }
+
+    /// Mean decode-to-glass latency over the last second.
+    var nativeStatsPresentValue: String {
+        guard let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "--" }
+        return String(format: "%.1f", render.presentLatencyMs)
+    }
+
+    /// `ms · max 14.2 · jitter 0.8`.
+    var nativeStatsPresentDetail: String? {
+        guard let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "ms" }
+        var detail = String(format: "ms · max %.1f", render.presentLatencyMaxMs)
+        if render.presentJitterMs >= 0 { detail += String(format: " · jitter %.2f", render.presentJitterMs) }
+        return detail
+    }
+
+    /// The seat's GPU as the official client names it (`GeForce RTX 5080`, `Basic Rig`), via the
+    /// service's own `gpuNameMap`; the raw identifier (`5080h / B40`) as the detail.
+    var nativeStatsRigName: String {
+        model.nativeRigName.isEmpty ? "--" : model.nativeRigName
+    }
+
+    var nativeStatsRigDetail: String? {
+        guard !model.nativeRigRawName.isEmpty, model.nativeRigRawName != model.nativeRigName else { return nil }
+        return model.nativeRigRawName
     }
 
     /// `Mbps of 100`: the used rate against the configured ceiling, so a low reading can be judged
@@ -165,7 +206,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeStatsRenderDetail: String? {
         guard let render = model.latestRenderDiagnostics, render.framesReceived > 0 else { return nil }
         let skipped = render.framesReceived > render.framesDrawn ? render.framesReceived - render.framesDrawn : 0
-        return "skipped \(skipped)"
+        return render.presentationMode.isEmpty ? "skipped \(skipped)" : "skipped \(skipped) · \(render.presentationMode)"
     }
 
     func nativeGameFPSColor(target: Double) -> Color {

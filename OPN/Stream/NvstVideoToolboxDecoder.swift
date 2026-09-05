@@ -428,6 +428,12 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         statsLock.lock()
         currentBitstreamFormat = format
         statsLock.unlock()
+        // The seat's parameter sets, verbatim, once per format description. Whether the decoder
+        // may hold frames for reordering is written in the SPS (`sps_max_num_reorder_pics`, and
+        // the VUI's bitstream restriction), and that decides how long a decoded frame waits inside
+        // VideoToolbox before this app sees it.
+        let hex = sets.ordered.map { data in data.map { String(format: "%02x", $0) }.joined() }.joined(separator: " ")
+        onDecodeFailure?(0, "NVST parameter sets \(format.summary): \(hex)")
         return description
     }
 

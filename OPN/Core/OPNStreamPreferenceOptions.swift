@@ -93,6 +93,16 @@ public struct OPNStreamPrefilterModeOption: Equatable, Sendable {
     }
 }
 
+public struct OPNStreamPresentationModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
 public struct OPNStreamUpscalingModeOption: Equatable, Sendable {
     public var label: String
     public var value: Int
@@ -206,6 +216,10 @@ public struct OPNStreamCloudVariables: Equatable, Sendable {
     public var supportedPrefilterModes: [Int] = []
     public var refreshIntervalSeconds = 3600
     public var gpuName = ""
+    /// Seat GPU identifiers as the session reports them (`5080h / B40`) to the names the official
+    /// client shows (`GeForce RTX 5080`, `Basic Rig`). From the `enableGpuNameMappingV2` feature's
+    /// `gpuNameMap` in the cloud-variables payload.
+    public var gpuNameMap: [String: String] = [:]
 
     public init() {}
 }
@@ -295,6 +309,10 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var enableL4S = false
     public var enableHdr = false
     public var enablePowerSaver = false
+    /// Request a 16:9 resolution for titles known to render 16:9 inside a wider stream.
+    public var streamSixteenNineTitlesAtSixteenNine = true
+    /// Set by `launchProfile` when it swapped the resolution for this launch; not stored.
+    public var resolutionOverriddenForSixteenNine = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
     public var antiAFKMouseMovementEnabled = false
@@ -317,6 +335,8 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
     public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
     public var pillarboxFillMode = OPNPillarboxFillMode.black
+    public var presentationModeIndex = 0
+    public var presentationMode = 0
 
     public var allowsStreamingCustomization: Bool {
         streamingQualityProfileIndex == 0

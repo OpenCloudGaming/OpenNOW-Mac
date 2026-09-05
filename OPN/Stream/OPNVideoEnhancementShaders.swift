@@ -56,6 +56,30 @@ static float3 opn_i420_rgb_cm(texture2d<float> yTexture, texture2d<float> uTextu
 // those by name so the many sampling sites below stay as they were.
 #define opn_nv12_rgb(Y, UV, S, COORD) opn_nv12_rgb_cm(Y, UV, S, COORD, cm, cr)
 #define opn_i420_rgb(Y, U, V, S, COORD) opn_i420_rgb_cm(Y, U, V, S, COORD, cm, cr)
+// Downscale-aware centre sample. A 5K stream drawn into a smaller window used to be one bilinear
+// tap per output pixel, which reads two of every three source texels at 3:1 and aliases text
+// and fine detail. `down` is source/destination texels per axis; above ~1 the four taps sit a
+// quarter of the footprint out in each direction, so with each tap's own bilinear 2x2 the
+// output pixel averages its whole footprint up to ~3:1. At 1:1 or when magnifying it is the
+// plain sample it always was.
+static float3 opn_box4_rgb(texture2d<float> t, sampler s, float2 uv, float2 texel, float2 down) {
+    if (max(down.x, down.y) < 1.05) { return t.sample(s, uv).rgb; }
+    float2 o = texel * down * 0.25;
+    return (t.sample(s, uv + float2(-o.x, -o.y)).rgb + t.sample(s, uv + float2(o.x, -o.y)).rgb
+          + t.sample(s, uv + float2(-o.x, o.y)).rgb + t.sample(s, uv + float2(o.x, o.y)).rgb) * 0.25;
+}
+static float3 opn_box4_nv12(texture2d<float> y, texture2d<float> uvT, sampler s, float2 uv, float2 texel, float2 down, float4 cm, float4 cr) {
+    if (max(down.x, down.y) < 1.05) { return opn_nv12_rgb_cm(y, uvT, s, uv, cm, cr); }
+    float2 o = texel * down * 0.25;
+    return (opn_nv12_rgb_cm(y, uvT, s, uv + float2(-o.x, -o.y), cm, cr) + opn_nv12_rgb_cm(y, uvT, s, uv + float2(o.x, -o.y), cm, cr)
+          + opn_nv12_rgb_cm(y, uvT, s, uv + float2(-o.x, o.y), cm, cr) + opn_nv12_rgb_cm(y, uvT, s, uv + float2(o.x, o.y), cm, cr)) * 0.25;
+}
+static float3 opn_box4_i420(texture2d<float> y, texture2d<float> u, texture2d<float> v, sampler s, float2 uv, float2 texel, float2 down, float4 cm, float4 cr) {
+    if (max(down.x, down.y) < 1.05) { return opn_i420_rgb_cm(y, u, v, s, uv, cm, cr); }
+    float2 o = texel * down * 0.25;
+    return (opn_i420_rgb_cm(y, u, v, s, uv + float2(-o.x, -o.y), cm, cr) + opn_i420_rgb_cm(y, u, v, s, uv + float2(o.x, -o.y), cm, cr)
+          + opn_i420_rgb_cm(y, u, v, s, uv + float2(-o.x, o.y), cm, cr) + opn_i420_rgb_cm(y, u, v, s, uv + float2(o.x, o.y), cm, cr)) * 0.25;
+}
 // Pillarbox fill. `fill` carries (contentLeft, contentRight, dim, mode) where the
 // edges are fractions of frame width and mode is an OPNPillarboxFillMode raw value.
 // The server bakes black side bars into 16:9-only titles, so these columns hold
@@ -238,7 +262,7 @@ static float opn_block_luma(texture2d<float> sourceTexture, sampler s, float2 uv
     float vertical = opn_luma(sourceTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb) + opn_luma(sourceTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb);
     return (center * 2.0 + horizontal + vertical) / 6.0;
 }
-fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
     uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
@@ -255,7 +279,7 @@ fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float
     if (alpha >= 1.0 && w <= 0.0) {
         result = opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor);
     } else {
-        float3 center = sourceTexture.sample(s, uv).rgb;
+        float3 center = opn_box4_rgb(sourceTexture, s, uv, texel, downscale);
         float3 blur = (sourceTexture.sample(s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(0.0, texel.y), crop)).rgb) * 0.25;
         float3 content = opn_finish(center, blur, sharpness, denoise);
         if (alpha <= 0.0 && w <= 0.0) {
@@ -293,7 +317,7 @@ fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
+fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
     uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
@@ -310,7 +334,7 @@ fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<floa
     if (alpha >= 1.0 && w <= 0.0) {
         result = opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor);
     } else {
-        float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);
+        float3 center = opn_box4_nv12(yTexture, uvTexture, s, uv, texel, downscale, cm, cr);
         float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
         float3 content = opn_finish(center, blur, sharpness, denoise);
         if (alpha <= 0.0 && w <= 0.0) {
@@ -348,7 +372,7 @@ fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<floa
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
+fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
     uv = opn_fill_geometry_uv(uv, in.texCoord, fill, fillGeom);
@@ -365,7 +389,7 @@ fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<floa
     if (alpha >= 1.0 && w <= 0.0) {
         result = opn_fill_outside(fillHistory, s, uv, in.texCoord, fill, fillColor);
     } else {
-        float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);
+        float3 center = opn_box4_i420(yTexture, uTexture, vTexture, s, uv, texel, downscale, cm, cr);
         float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
         float3 content = opn_finish(center, blur, sharpness, denoise);
         if (alpha <= 0.0 && w <= 0.0) {
@@ -403,7 +427,7 @@ fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<floa
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]]) {
+fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
     float2 texel = max(scale, float2(1.0 / 8192.0));
@@ -415,7 +439,7 @@ fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> s
     // fragment position, so bending the image does not also bend the bands that decide
     // how it is mixed. Outside the bevel the offset is exactly zero.
     uv += float2(opn_glass_refraction(uv, fill, seamRadius), 0.0);
-    float3 content = sourceTexture.sample(s, uv).rgb;
+    float3 content = opn_box4_rgb(sourceTexture, s, uv, texel, downscale);
     float3 result;
     if (alpha <= 0.0 && w <= 0.0) {
         result = content;
@@ -454,7 +478,7 @@ fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> s
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
+fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
     float2 texel = max(scale, float2(1.0 / 8192.0));
@@ -466,7 +490,7 @@ fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> 
     // fragment position, so bending the image does not also bend the bands that decide
     // how it is mixed. Outside the bevel the offset is exactly zero.
     uv += float2(opn_glass_refraction(uv, fill, seamRadius), 0.0);
-    float3 content = opn_nv12_rgb(yTexture, uvTexture, s, uv);
+    float3 content = opn_box4_nv12(yTexture, uvTexture, s, uv, texel, downscale, cm, cr);
     float3 result;
     if (alpha <= 0.0 && w <= 0.0) {
         result = content;
@@ -505,7 +529,7 @@ fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> 
     }
     return float4(result, 1.0);
 }
-fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]]) {
+fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], texture2d<float> fillHistory [[texture(3)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]], constant float4 &fill [[buffer(5)]], constant float4 &fillGeom [[buffer(6)]], constant float4 &fillColor [[buffer(7)]], constant float4 &cm [[buffer(8)]], constant float4 &cr [[buffer(9)]], constant float2 &downscale [[buffer(10)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     float2 uv = opn_fill_geometry_uv(opn_crop_uv(in.texCoord, crop), in.texCoord, fill, fillGeom);
     float2 texel = max(scale, float2(1.0 / 8192.0));
@@ -517,7 +541,7 @@ fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> 
     // fragment position, so bending the image does not also bend the bands that decide
     // how it is mixed. Outside the bevel the offset is exactly zero.
     uv += float2(opn_glass_refraction(uv, fill, seamRadius), 0.0);
-    float3 content = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);
+    float3 content = opn_box4_i420(yTexture, uTexture, vTexture, s, uv, texel, downscale, cm, cr);
     float3 result;
     if (alpha <= 0.0 && w <= 0.0) {
         result = content;

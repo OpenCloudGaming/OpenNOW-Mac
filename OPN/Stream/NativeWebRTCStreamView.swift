@@ -271,6 +271,7 @@ public final class NativeWebRTCStreamView: NSView {
     var nativeNVSTVideoVisible = false
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
     var nvstBifrostFreeRenderer: NvstBifrostFreeVideoRenderer?
+    var presentationMode = 0
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -397,6 +398,13 @@ public final class NativeWebRTCStreamView: NSView {
         pushBifrostFreeVideoSettings()
     }
 
+    /// How decoded frames meet the display on the Bifrost-free NVST path. See
+    /// `OPNVideoPresentationMode`.
+    public func setPresentationMode(_ mode: Int) {
+        presentationMode = mode
+        pushBifrostFreeVideoSettings()
+    }
+
     /// Pushes the enhancement and fill settings into the Bifrost-free renderer, which has no
     /// libwebrtc session to pull them from. Also called on attach so settings chosen before the
     /// stream starts apply.
@@ -409,6 +417,7 @@ public final class NativeWebRTCStreamView: NSView {
                                                      pillarboxFillMode: pillarboxFillMode.rawValue,
                                                      pillarboxFillDim: pillarboxFillDim,
                                                      pillarboxFillColor: 0)
+        nvstBifrostFreeRenderer?.setPresentationMode(OPNVideoPresentationMode(rawValue: presentationMode) ?? .balanced)
     }
 
 

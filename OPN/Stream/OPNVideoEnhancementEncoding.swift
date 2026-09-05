@@ -84,6 +84,13 @@ extension OPNVideoEnhancementRenderer {
         var colorRange = Self.colorRangeCoefficients(textureFrame)
         encoder.setFragmentBytes(&colorMatrix, length: MemoryLayout<SIMD4<Float>>.size, index: 8)
         encoder.setFragmentBytes(&colorRange, length: MemoryLayout<SIMD4<Float>>.size, index: 9)
+        // Source texels per destination pixel, floored at 1: the shader widens its centre sample
+        // to the footprint when the picture is being shrunk (a 5K stream in a smaller window).
+        var downscale = SIMD2<Float>(
+            destinationTexture.width > 0 ? max(1, Float(primaryTexture.width) / Float(destinationTexture.width)) : 1,
+            destinationTexture.height > 0 ? max(1, Float(primaryTexture.height) / Float(destinationTexture.height)) : 1
+        )
+        encoder.setFragmentBytes(&downscale, length: MemoryLayout<SIMD2<Float>>.size, index: 10)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return true

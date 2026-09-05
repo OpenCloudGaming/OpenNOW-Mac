@@ -45,6 +45,7 @@ public extension OPNRemoteCoOpHostVideoSink {
 }
 
 public final class OPNRemoteCoOpHostVideoRelay: @unchecked Sendable {
+    private let pixelTransfer = OPNPixelBufferTransfer()
     let lock = NSLock()
     private var sinks: [UUID: any OPNRemoteCoOpHostVideoSink] = [:]
     private var preferredOutputWidth = 0
@@ -99,6 +100,12 @@ public final class OPNRemoteCoOpHostVideoRelay: @unchecked Sendable {
     public func renderPixelBuffer(_ pixelBuffer: CVPixelBuffer, presentationTime: CMTime) {
         let state = lock.withLock { (Array(sinks.values), preferredOutputWidth, preferredOutputHeight) }
         guard !state.0.isEmpty else { return }
+        // `RTCCVPixelBuffer` reads NV12 and BGRA only. A 10-bit or 4:4:4 session decodes to
+        // neither, and libwebrtc would hand guests uninitialised planes rather than an error, so
+        // such frames are transferred to NV12 first — only while someone is watching.
+        guard let pixelBuffer = OPNPixelBufferTransfer.isLibWebRTCReadable(CVPixelBufferGetPixelFormatType(pixelBuffer))
+            ? pixelBuffer
+            : pixelTransfer.convert(pixelBuffer, to: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) else { return }
         let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
         let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
         guard sourceWidth > 0, sourceHeight > 0 else { return }

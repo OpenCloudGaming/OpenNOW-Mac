@@ -91,6 +91,7 @@ extension NativeNVSTMediaStreamSurface {
         // Bitrate alone says nothing on NVST: the seat skips unchanged frames, so menus and pauses
         // read as a few hundred kilobits with the link perfectly healthy. The model raises this
         // only when low bitrate and a falling frame rate have persisted together.
+        if let stats = model.latestNativeStats, let decodeWarning = NativeNVSTDecodeBudget.warning(for: stats) { return decodeWarning }
         if model.nativeBitrateStarved { return "Inbound bitrate is low and frames are arriving late; the link may be starved." }
         if model.latestNativeStats?.decoderIsHardware == false { return "Video is decoding in software; this colour format has no hardware decoder here." }
         return ""

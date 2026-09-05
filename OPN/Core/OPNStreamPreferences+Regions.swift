@@ -126,7 +126,43 @@ extension OPNStreamPreferences {
         else if let maxKbps = cloudVariableNumber(json, names: ["maxBitrateKbps", "maximumBitrateKbps", "streamMaxBitrateKbps"]), maxKbps.doubleValue > 0 { variables.maxBitrateMbps = max(1, Int((maxKbps.doubleValue / 1000.0).rounded(.down))) }
         if let refresh = cloudVariableNumber(json, names: ["refreshIntervalSeconds", "ttlSeconds", "cacheTtlSeconds"]), refresh.intValue > 0 { variables.refreshIntervalSeconds = max(60, min(refresh.intValue, 86_400)) }
         if let gpu = cloudVariableString(json, names: ["gpuName", "gpuType", "defaultGpuName", "preferredGpuName"]) { variables.gpuName = gpu }
+        variables.gpuNameMap = gpuNameMap(from: json)
         return variables
+    }
+
+    /// `[{"gpuName": "5080h / B40", "mappedGpuName": "GeForce RTX 5080", ...}, ...]` wherever the
+    /// payload nests it, as a lookup.
+    static func gpuNameMap(from json: Any?) -> [String: String] {
+        guard let entries = firstRecursiveJSONValue(json, keys: ["gpuNameMap"]) as? [Any] else { return [:] }
+        var map: [String: String] = [:]
+        for case let entry as [String: Any] in entries {
+            guard let raw = jsonString(entry["gpuName"]), !raw.isEmpty,
+                  let mapped = jsonString(entry["mappedGpuName"]), !mapped.isEmpty else { continue }
+            map[raw] = mapped
+        }
+        return map
+    }
+
+    /// The name the official client would show for a seat's `gpuType`. The service's own map
+    /// first; failing that, a four-digit GeForce model number at the front of the identifier
+    /// (`4080p / L40x2` → `GeForce RTX 4080`); failing that, the identifier with vendor prefixes
+    /// trimmed.
+    public static func friendlyGPUName(for raw: String, map: [String: String]) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let mapped = map[trimmed] { return mapped }
+        if let match = trimmed.range(of: "^[2-9][0-9]{3}", options: .regularExpression) {
+            return "GeForce RTX \(trimmed[match])"
+        }
+        var name = trimmed
+        for prefix in ["NVIDIA ", "GeForce "] where name.hasPrefix(prefix) {
+            name = String(name.dropFirst(prefix.count))
+        }
+        return name
+    }
+
+    public static func friendlyGPUName(for raw: String) -> String {
+        friendlyGPUName(for: raw, map: loadCachedCloudVariables().gpuNameMap)
     }
 
     public static func loadCachedCloudVariables() -> OPNStreamCloudVariables {

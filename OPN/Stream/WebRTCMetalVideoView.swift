@@ -41,6 +41,31 @@ private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
     }
 }
 
+/// How decoded frames meet the display.
+///
+/// Measured 2026-09-04 on a 120 Hz panel with a 120 fps stream: decode completions arrive in bursts
+/// of two per refresh often enough that `balanced` — draw the newest frame at each refresh — left
+/// ~17% of received frames undrawn (`skipped 1493` of ~8600). The other two modes trade that
+/// against latency in opposite directions.
+enum OPNVideoPresentationMode: Int, Sendable {
+    /// Newest decoded frame at each display refresh. What the view always did.
+    case balanced = 0
+    /// A queue of one: the oldest undrawn frame at each refresh, so a burst of two both get shown
+    /// a refresh apart. Even cadence for about one frame of added latency.
+    case smooth = 1
+    /// Present as soon as a frame decodes, without waiting for the refresh (`displaySyncEnabled`
+    /// off, the display link paused). Lowest latency; tearing is possible.
+    case lowestLatency = 2
+
+    var label: String {
+        switch self {
+        case .balanced: "balanced"
+        case .smooth: "smooth"
+        case .lowestLatency: "lowest latency"
+        }
+    }
+}
+
 /// What the renderer is actually doing, for a HUD with no libwebrtc session to ask. The
 /// Bifrost-free NVST path owns its own decoder, so `OPNLibWebRTCStreamSession`'s diagnostics
 /// never reach it; this is the owner-less equivalent.
@@ -60,6 +85,17 @@ struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
     /// display loop never got to — decode running ahead of the refresh, or a stalled draw.
     var framesReceived: UInt64 = 0
     var framesDrawn: UInt64 = 0
+    var presentationMode = ""
+    /// Decode-to-glass: from the frame reaching the renderer to the drawable's presented time,
+    /// mean and worst over the last diagnostics window; -1 with no presents in the window.
+    var presentLatencyMs = -1.0
+    var presentLatencyMaxMs = -1.0
+    /// Mean absolute deviation of consecutive present intervals, ms — the judder number.
+    var presentJitterMs = -1.0
+    /// Picture content span as fractions of frame width, from the pillarbox detector; 0...1 when
+    /// the frame has no bars (or nothing has been measured yet).
+    var contentLeft = 0.0
+    var contentRight = 1.0
 }
 
 @objc(OPNMetalVideoView)
@@ -111,6 +147,31 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var appliedTransfer = OPNVideoTransferFunction.sdr
     nonisolated(unsafe) private var framesReceived: UInt64 = 0
     private var framesDrawn: UInt64 = 0
+    nonisolated(unsafe) private var presentationMode = OPNVideoPresentationMode.balanced
+    /// `smooth` only: frames waiting for a refresh, oldest first. Capped at two so a stall cannot
+    /// build a latency debt; anything older than the newest two is dropped like `balanced` does.
+    nonisolated(unsafe) private var pendingFrames: [(frame: RTCVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)] = []
+    /// When the newest frame reached `renderFrame`, for the presented-time measurement.
+    nonisolated(unsafe) private var latestFrameReceivedAt: CFTimeInterval = 0
+    /// Presented-time accounting, filled from the drawable's presented handler on a Metal thread.
+    nonisolated(unsafe) private var presentLock = os_unfair_lock_s()
+    nonisolated(unsafe) private var presentLatencyTotalMs = 0.0
+    nonisolated(unsafe) private var presentLatencyMaxMs = 0.0
+    nonisolated(unsafe) private var presentCount = 0
+    nonisolated(unsafe) private var lastPresentedAt: CFTimeInterval = 0
+    nonisolated(unsafe) private var lastPresentInterval = -1.0
+    nonisolated(unsafe) private var presentJitterTotalMs = 0.0
+    nonisolated(unsafe) private var presentJitterCount = 0
+    /// `lowestLatency` only: `draw()` is driven from the decode thread; two completions must not
+    /// enter the render pass together.
+    nonisolated(unsafe) private var manualDrawLock = os_unfair_lock_s()
+    /// The same MTKView, reachable from the decode thread for the manual `draw()` call. MTKView
+    /// already invokes `draw(in:)` off the main thread from its own display link, so the render
+    /// path is written for that; this only changes who kicks it.
+    nonisolated(unsafe) private let metalViewForManualDraw: MTKView
+    /// A one-shot request to write the next drawn frame — the drawable itself, after our render
+    /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
+    nonisolated(unsafe) private var pendingRenderSnapshotURL: URL?
     /// Owner-less diagnostics sink (the NVST path). Called about once a second from the render
     /// thread.
     nonisolated(unsafe) var renderDiagnosticsHandler: (@Sendable (OPNVideoRenderDiagnosticsSnapshot) -> Void)?
@@ -119,6 +180,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         self.owner = owner
         self.targetFps = min(max(Int(targetFps), 30), 240)
         metalView = MTKView(frame: frameRect, device: MTLCreateSystemDefaultDevice())
+        metalViewForManualDraw = metalView
         super.init(frame: frameRect)
 
         wantsLayer = true
@@ -222,7 +284,171 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         videoFrame = frame
         frameSerial += 1
         framesReceived &+= 1
+        let receivedAt = CACurrentMediaTime()
+        latestFrameReceivedAt = receivedAt
+        let mode = presentationMode
+        if mode == .smooth {
+            pendingFrames.append((frame, frameSerial, receivedAt))
+            if pendingFrames.count > 2 { pendingFrames.removeFirst(pendingFrames.count - 2) }
+        }
         os_unfair_lock_unlock(&frameLock)
+        if mode == .lowestLatency {
+            os_unfair_lock_lock(&manualDrawLock)
+            metalViewForManualDraw.draw()
+            os_unfair_lock_unlock(&manualDrawLock)
+        }
+    }
+
+    /// Asks for the next drawn frame to be written to `url` as a JPEG: what the viewer sees, fill,
+    /// scaling and all, as opposed to the decoded frame the NVST sink can hand out. The layer is
+    /// switched off `framebufferOnly` so the drawable can be read back; that costs a little
+    /// bandwidth, so it is only done once a snapshot has been asked for.
+    func requestRenderSnapshot(to url: URL) {
+        metalView.framebufferOnly = false
+        os_unfair_lock_lock(&frameLock)
+        pendingRenderSnapshotURL = url
+        os_unfair_lock_unlock(&frameLock)
+    }
+
+    /// On the render thread, after a render path has committed its commands: copies the drawable
+    /// out on the same queue (so the copy runs after the render) and writes it once complete.
+    /// The libwebrtc renderers use their own queue, so a capture taken on that path may read a
+    /// frame that is still being drawn; the custom paths are exact.
+    private func captureDrawableIfRequested() {
+        os_unfair_lock_lock(&frameLock)
+        let url = pendingRenderSnapshotURL
+        pendingRenderSnapshotURL = nil
+        os_unfair_lock_unlock(&frameLock)
+        guard let url else { return }
+        guard let drawable = metalView.currentDrawable, let commandQueue, let device = metalView.device else {
+            OpenNOWLog.warning(.stream, "Render snapshot: no drawable")
+            return
+        }
+        let source = drawable.texture
+        guard !source.isFramebufferOnly else {
+            // The drawable in flight was vended before `framebufferOnly` flipped; the next one works.
+            os_unfair_lock_lock(&frameLock)
+            pendingRenderSnapshotURL = url
+            os_unfair_lock_unlock(&frameLock)
+            return
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: source.pixelFormat, width: source.width, height: source.height, mipmapped: false)
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead]
+        guard let staging = device.makeTexture(descriptor: descriptor),
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let blit = commandBuffer.makeBlitCommandEncoder() else {
+            OpenNOWLog.warning(.stream, "Render snapshot: could not create the copy")
+            return
+        }
+        blit.copy(from: source, to: staging)
+        blit.endEncoding()
+        let formatName = Self.outputFormatName(source.pixelFormat)
+        commandBuffer.addCompletedHandler { _ in
+            guard let image = CIImage(mtlTexture: staging, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else {
+                OpenNOWLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
+                return
+            }
+            // Metal's origin is top-left, Core Image's bottom-left.
+            let oriented = image.oriented(.downMirrored)
+            let context = CIContext(options: [.cacheIntermediates: false])
+            guard let data = context.jpegRepresentation(of: oriented, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else {
+                OpenNOWLog.warning(.stream, "Render snapshot: JPEG encode failed")
+                return
+            }
+            do {
+                try data.write(to: url, options: .atomic)
+                OpenNOWLog.info(.stream, "Render snapshot \(source.width)x\(source.height) \(formatName) -> \(url.path)")
+            } catch {
+                OpenNOWLog.warning(.stream, "Render snapshot: write failed \(error.localizedDescription)")
+            }
+        }
+        commandBuffer.commit()
+    }
+
+    /// Switches how frames meet the display. Main actor: it reconfigures the layer and the
+    /// display link.
+    func setPresentationMode(_ mode: OPNVideoPresentationMode) {
+        os_unfair_lock_lock(&frameLock)
+        let previous = presentationMode
+        presentationMode = mode
+        pendingFrames.removeAll()
+        os_unfair_lock_unlock(&frameLock)
+        guard previous != mode else { return }
+        let metalLayer = metalView.layer as? CAMetalLayer
+        switch mode {
+        case .lowestLatency:
+            // Our own draw() calls replace the display link; presenting no longer waits for vsync.
+            metalView.isPaused = true
+            metalView.enableSetNeedsDisplay = false
+            metalLayer?.displaySyncEnabled = false
+        case .balanced, .smooth:
+            metalLayer?.displaySyncEnabled = true
+            metalView.enableSetNeedsDisplay = false
+            metalView.isPaused = false
+        }
+        resetDrawCadence()
+        OpenNOWLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
+    }
+
+    /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
+    /// its queue oldest first; the other modes hand out the newest frame once.
+    private func nextFrameToDraw() -> (frame: RTCVideoFrame, serial: UInt64, sourceSize: CGSize, tenBit: Bool, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
+        os_unfair_lock_lock(&frameLock)
+        defer { os_unfair_lock_unlock(&frameLock) }
+        let output = (desiredOutputFormat, desiredTransfer)
+        if presentationMode == .smooth {
+            guard !pendingFrames.isEmpty else { return nil }
+            let next = pendingFrames.removeFirst()
+            return (next.frame, next.serial, sourceFrameSize, cachedIsTenBitBiPlanar, output, next.receivedAt)
+        }
+        guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
+        return (frame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar, output, latestFrameReceivedAt)
+    }
+
+    /// Hooks the drawable every render path is about to present (MTKView hands the same one to
+    /// whoever asks during this draw) so its presented time can be measured against when the frame
+    /// reached the renderer. That difference is the latency a viewer can feel from this side of the
+    /// wire; its interval jitter is what reads as judder.
+    private func attachPresentedHandler(receivedAt: CFTimeInterval) {
+        guard receivedAt > 0, let drawable = metalView.currentDrawable else { return }
+        drawable.addPresentedHandler { [weak self] presented in
+            guard let self else { return }
+            let presentedAt = presented.presentedTime
+            guard presentedAt > 0 else { return }
+            let latencyMs = max(0, (presentedAt - receivedAt) * 1000)
+            os_unfair_lock_lock(&self.presentLock)
+            self.presentLatencyTotalMs += latencyMs
+            self.presentLatencyMaxMs = max(self.presentLatencyMaxMs, latencyMs)
+            self.presentCount += 1
+            if self.lastPresentedAt > 0 {
+                let interval = (presentedAt - self.lastPresentedAt) * 1000
+                if self.lastPresentInterval >= 0 {
+                    self.presentJitterTotalMs += abs(interval - self.lastPresentInterval)
+                    self.presentJitterCount += 1
+                }
+                self.lastPresentInterval = interval
+            }
+            self.lastPresentedAt = presentedAt
+            os_unfair_lock_unlock(&self.presentLock)
+        }
+    }
+
+    /// Drains the presented-time window into the diagnostics snapshot.
+    private func takePresentDiagnostics() -> (latency: Double, maximum: Double, jitter: Double) {
+        os_unfair_lock_lock(&presentLock)
+        defer {
+            presentLatencyTotalMs = 0
+            presentLatencyMaxMs = 0
+            presentCount = 0
+            presentJitterTotalMs = 0
+            presentJitterCount = 0
+            os_unfair_lock_unlock(&presentLock)
+        }
+        let latency = presentCount > 0 ? presentLatencyTotalMs / Double(presentCount) : -1
+        let maximum = presentCount > 0 ? presentLatencyMaxMs : -1
+        let jitter = presentJitterCount > 0 ? presentJitterTotalMs / Double(presentJitterCount) : -1
+        return (latency, maximum, jitter)
     }
 
     /// The drawable a decoded surface deserves. 8-bit video keeps the 8-bit drawable it always
@@ -292,16 +518,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         // the current drawable and catches up a frame later.
         synchronizeDrawableSize()
 
-        os_unfair_lock_lock(&frameLock)
-        let snapshot = (videoFrame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar)
-        let wantedOutput = (desiredOutputFormat, desiredTransfer)
-        os_unfair_lock_unlock(&frameLock)
-        guard let frame = snapshot.0,
-              frame.width > 0,
-              frame.height > 0,
-              snapshot.1 > 0,
-              snapshot.1 != lastDrawnFrameSerial else { return }
-        if applyOutputFormatIfNeeded(wantedOutput.0, transfer: wantedOutput.1) { return }
+        guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
+        let frame = next.frame
+        let snapshot = (frame, next.serial, next.sourceSize, next.tenBit)
+        if applyOutputFormatIfNeeded(next.output.0, transfer: next.output.1) { return }
+        attachPresentedHandler(receivedAt: next.receivedAt)
 
         let sourceSize = snapshot.2.width > 0 && snapshot.2.height > 0 ? snapshot.2 : CGSize(width: Int(frame.width), height: Int(frame.height))
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
@@ -313,6 +534,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             setCustomDrawableRenderingEnabled(true)
         }
         if needsCustomPath, renderEnhancedFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
+            captureDrawableIfRequested()
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
@@ -322,6 +544,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             setCustomDrawableRenderingEnabled(true)
         }
         if tenBitFrame, renderTenBitFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
+            captureDrawableIfRequested()
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
@@ -332,6 +555,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             renderer.drawFrame(frame)
             lastDrawnFrameSerial = snapshot.1
             recordDrawCadence()
+            captureDrawableIfRequested()
         } else {
             diagnostics.fallback = "renderer unavailable"
         }
@@ -700,6 +924,7 @@ extension OPNMetalVideoView {
             os_unfair_lock_lock(&frameLock)
             let received = framesReceived
             os_unfair_lock_unlock(&frameLock)
+            let present = takePresentDiagnostics()
             renderDiagnosticsHandler(OPNVideoRenderDiagnosticsSnapshot(
                 pixelFormat: diagnostics.pixelFormat,
                 outputFormat: diagnostics.outputFormat,
@@ -710,7 +935,11 @@ extension OPNMetalVideoView {
                 frameIntervalMs: diagnostics.frameIntervalMs,
                 maxFrameIntervalMs: diagnostics.maxFrameIntervalMs,
                 framesReceived: received,
-                framesDrawn: framesDrawn
+                framesDrawn: framesDrawn,
+                presentationMode: presentationMode.label,
+                presentLatencyMs: present.latency,
+                presentLatencyMaxMs: present.maximum,
+                presentJitterMs: present.jitter
             ))
         }
         owner?.setVideoRenderDiagnostics(

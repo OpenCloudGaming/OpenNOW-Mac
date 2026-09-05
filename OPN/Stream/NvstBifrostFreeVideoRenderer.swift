@@ -23,6 +23,14 @@ public final class NvstBifrostFreeVideoRenderer {
         private var lastSize = CGSize.zero
         private var renderedFrames: UInt64 = 0
         private var latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
+        /// Measures the baked pillarbox regardless of render path or fill mode, so a 16:9 title
+        /// can be recognised (`NativeNVSTSixteenNineTitle`) even with the fill off and the plain
+        /// 8-bit renderer drawing. Throttled inside: a 32-row scan a few times a second.
+        private let contentDetector = OPNPillarboxDetector()
+        /// The most recent decoded frame, kept so a diagnostic snapshot can be written on request
+        /// without a screen-recording grant. One buffer retained; the pool has more.
+        private var latestPixelBuffer: CVPixelBuffer?
+        private let snapshotTransfer = OPNPixelBufferTransfer()
 
         init(videoView: OPNMetalVideoView) {
             self.videoView = videoView
@@ -32,7 +40,33 @@ public final class NvstBifrostFreeVideoRenderer {
 
         /// The renderer's own account of the last second: decoded surface format, the drawable it
         /// presented into, whether EDR is on, and how many frames it drew versus received.
-        var renderDiagnostics: OPNVideoRenderDiagnosticsSnapshot { lock.lock(); defer { lock.unlock() }; return latestRenderDiagnostics }
+        var renderDiagnostics: OPNVideoRenderDiagnosticsSnapshot {
+            lock.lock()
+            defer { lock.unlock() }
+            var snapshot = latestRenderDiagnostics
+            snapshot.contentLeft = contentDetector.contentRect.left
+            snapshot.contentRight = contentDetector.contentRect.right
+            return snapshot
+        }
+
+        /// Writes the latest decoded frame as a JPEG. 10-bit and 4:4:4 surfaces go through an NV12
+        /// transfer first, which is the layout Core Image reads reliably. Returns the frame size.
+        func writeLatestFrameJPEG(to url: URL) -> CGSize? {
+            lock.lock()
+            let buffer = latestPixelBuffer
+            lock.unlock()
+            guard let buffer,
+                  let nv12 = snapshotTransfer.convert(buffer, to: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) else { return nil }
+            let image = CIImage(cvPixelBuffer: nv12)
+            let context = CIContext(options: [.cacheIntermediates: false])
+            guard let data = context.jpegRepresentation(of: image, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else { return nil }
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                return nil
+            }
+            return image.extent.size
+        }
 
         func noteRenderDiagnostics(_ snapshot: OPNVideoRenderDiagnosticsSnapshot) {
             lock.lock()
@@ -41,6 +75,10 @@ public final class NvstBifrostFreeVideoRenderer {
         }
 
         public func render(pixelBuffer: CVPixelBuffer, presentationTime: CMTime, isKeyframe: Bool) {
+            lock.lock()
+            _ = contentDetector.update(with: pixelBuffer)
+            latestPixelBuffer = pixelBuffer
+            lock.unlock()
             guard let videoView else { return }
             let size = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
             lock.lock()
@@ -74,6 +112,9 @@ public final class NvstBifrostFreeVideoRenderer {
 
     var renderDiagnostics: OPNVideoRenderDiagnosticsSnapshot { sink.renderDiagnostics }
 
+    /// Saves the latest decoded frame as a JPEG; see `NvstBifrostFreeVideoSink.writeLatestFrameJPEG`.
+    func writeLatestFrameJPEG(to url: URL) -> CGSize? { sink.writeLatestFrameJPEG(to: url) }
+
     public var frameSink: NvstBifrostFreeVideoSink { sink }
 
     /// The health monitor's readiness signal for this renderer. `nativeNVSTRendererSurfaceReady` is
@@ -104,6 +145,15 @@ public final class NvstBifrostFreeVideoRenderer {
                                                    pillarboxFillMode: Int32(pillarboxFillMode),
                                                    pillarboxFillDim: Int32(pillarboxFillDim),
                                                    pillarboxFillColor: Int32(pillarboxFillColor))
+    }
+
+    /// Writes the next drawn frame — the drawable, after our render pass — as a JPEG.
+    func requestRenderSnapshot(to url: URL) {
+        videoView.requestRenderSnapshot(to: url)
+    }
+
+    func setPresentationMode(_ mode: OPNVideoPresentationMode) {
+        videoView.setPresentationMode(mode)
     }
 
     public func detach() {

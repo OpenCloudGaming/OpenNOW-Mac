@@ -86,13 +86,16 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         public var lastDecodeLatencyMilliseconds = 0.0
         public var peak = StageTimings()
         public var total = StageTimings()
+        /// Frames still awaiting decode output at each submit, by count. See the submit path.
+        public var inFlightHistogram: [Int: Int] = [:]
 
         /// Peak names the worst stall; mean names whether the client keeps up at all.
         public var timingSummary: String {
             let frames = Double(max(1, framesHandled))
-            return String(format: "peak[hop=%.1f decode=%.1f ack=%.1f] mean[hop=%.2f decode=%.2f ack=%.2f]ms",
+            let inFlight = inFlightHistogram.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
+            return String(format: "peak[hop=%.1f decode=%.1f ack=%.1f] mean[hop=%.2f decode=%.2f ack=%.2f]ms inFlight=%@",
                           peak.hop, peak.decode, peak.ack,
-                          total.hop / frames, total.decode / frames, total.ack / frames)
+                          total.hop / frames, total.decode / frames, total.ack / frames, inFlight)
         }
     }
 
@@ -271,6 +274,12 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         mediaSink?(unit)
 
         do {
+            // How many earlier submissions VideoToolbox still has not answered when this one goes
+            // in. A decoder that holds each frame until the next arrives shows 1 here on nearly
+            // every frame; one that returns frames as they finish shows 0.
+            lock.lock()
+            counters.inFlightHistogram[pendingCompletions.count, default: 0] += 1
+            lock.unlock()
             try decoder.decode(unit)
             consecutiveDecodeFailures = 0
             // Decode is asynchronous from here — VideoToolbox has only accepted the submission.
@@ -428,6 +437,11 @@ public final class NvstVideoPipeline: @unchecked Sendable {
             // the session's real negotiated frame interval, not a fixed value. Both of those were
             // wrong here before: this used to clamp to at most `target` and hardcode a ~75 fps
             // constant regardless of what was negotiated.
+            // Tried (2026-09-05): sending the decoded-frame interval here instead of hop+decode, on
+            // the reading that the vendor's ~15.9 ms on a 60 fps session is a cadence, not a
+            // latency. Cyberpunk benchmark at 3840x2160, cap 150, same seat class: stream 85–107 fps
+            // and 31–71 Mbps with either value (84–107 and 31–67 the run before). The seat's
+            // frame controller is not steering off this field; the plateau is seat-side.
             let clientMicroseconds = Int((timings.hop + timings.decode) * 1000)
             let pacing = NvstFramePacingReport(
                 frameNumber: frameAckNumber,

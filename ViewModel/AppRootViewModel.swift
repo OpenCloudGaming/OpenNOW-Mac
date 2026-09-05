@@ -87,6 +87,14 @@ final class AppRootViewModel: ObservableObject {
     }
 
     func handleOpenURL(_ url: URL) {
+        // SwiftUI delivers a document opened while the app is running (Finder, `open -a`) here as a
+        // file URL, not through the AppKit `application(openFile:)` delegate; a `.gfnpc` shortcut
+        // arriving this way used to be treated as an OAuth callback and dropped.
+        if url.isFileURL {
+            OpenNOWLog.info(.shortcut, "onOpenURL received file: \(url.path)")
+            login?.handleOpenedFile(url)
+            return
+        }
         login?.handleOAuthCallback(url)
     }
 }

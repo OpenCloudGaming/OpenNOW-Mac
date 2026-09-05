@@ -24,6 +24,11 @@ extension WebRTCStreamRecorder {
 
     func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
         guard isRecording, selectVideoFrameSourceIfNeeded(source) else { return }
+        // The adaptor is declared from the first frame and the encoder takes NV12, P010 and BGRA.
+        // A 4:4:4 or 4:2:2 surface is transferred to the 4:2:0 layout of its own depth here, so
+        // the recording keeps 10 bits where the stream has them and the append never fails on
+        // a format the writer was not declared for.
+        guard let pixelBuffer = Self.encoderCompatiblePixelBuffer(pixelBuffer, using: pixelTransfer) else { return }
         // Recorded before the writer is consulted: the first-frame watchdog needs to tell "no
         // frames are arriving" from "the encoder has not taken one yet".
         offeredVideoFrame = true
@@ -351,6 +356,22 @@ extension WebRTCStreamRecorder {
             }
             self.fail(WebRTCStreamRecorderError.videoFramesUnavailable)
         }
+    }
+
+    static func encoderCompatiblePixelBuffer(_ pixelBuffer: CVPixelBuffer, using transfer: OPNPixelBufferTransfer) -> CVPixelBuffer? {
+        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        if isDirectlyEncodable(format) || format == kCVPixelFormatType_32BGRA { return pixelBuffer }
+        let target = OPNVideoTextureSource.isTenBitBiPlanarFormat(format)
+            ? kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            : kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        return transfer.convert(pixelBuffer, to: target)
+    }
+
+    static func isDirectlyEncodable(_ format: OSType) -> Bool {
+        format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            || format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            || format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
     }
 
     static func isWritableBGRA(_ pixelBuffer: CVPixelBuffer) -> Bool {

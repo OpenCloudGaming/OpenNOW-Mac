@@ -1,4 +1,5 @@
 import CoreMedia
+import QuartzCore
 import CoreVideo
 import Foundation
 import Testing
@@ -376,5 +377,46 @@ extension NvstVideoToolboxDecoderTests {
         }
         CVPixelBufferUnlockBaseAddress(buffer, [])
         return buffer
+    }
+}
+
+// MARK: - Output latency
+
+extension NvstVideoToolboxDecoderTests {
+    /// Does an asynchronously decoded frame come out on its own, or only once the next frame is
+    /// submitted? Live sessions (2026-09-05) measured "decode" at almost exactly one frame
+    /// interval at every resolution — 8.1 ms at ~122 fps, 9.2–9.4 ms at ~105 fps — which is the
+    /// signature of a decoder holding one frame for reordering. A frame that takes 300 ms to
+    /// appear here is being held.
+    @Test func asynchronousDecodeOutputsWithoutWaitingForTheNextFrame() throws {
+        guard VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) else { return }
+        let units = encodeAnnexB(codec: kCMVideoCodecType_HEVC, frameCount: 3)
+        try #require(units.count == 3)
+        final class Arrivals: @unchecked Sendable {
+            private let lock = NSLock()
+            private var times: [CFTimeInterval] = []
+            func note() { lock.lock(); times.append(CACurrentMediaTime()); lock.unlock() }
+            var count: Int { lock.lock(); defer { lock.unlock() }; return times.count }
+        }
+        let arrivals = Arrivals()
+        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        decoder.onPixelBuffer = { _, _, _ in arrivals.note() }
+
+        try decoder.decode(accessUnit(units[0], index: 0, codec: .hevc))
+        let submitted = CACurrentMediaTime()
+        while arrivals.count < 1, CACurrentMediaTime() - submitted < 0.3 { usleep(1000) }
+        let firstAlone = arrivals.count
+        let firstLatencyMs = (CACurrentMediaTime() - submitted) * 1000
+
+        try decoder.decode(accessUnit(units[1], index: 1, codec: .hevc))
+        let secondSubmitted = CACurrentMediaTime()
+        while arrivals.count < 2, CACurrentMediaTime() - secondSubmitted < 0.3 { usleep(1000) }
+        let afterSecond = arrivals.count
+        decoder.drain()
+        print("VT async: first frame alone arrived=\(firstAlone) after \(String(format: "%.1f", firstLatencyMs)) ms; after second submit arrived=\(afterSecond)")
+        // The keyframe must come out on its own; if it only shows up once frame 2 is in, every
+        // frame of a live stream is delayed by one frame interval before this app ever sees it.
+        #expect(firstAlone == 1, "first frame held until the next submit: reorder hold")
+        #expect(afterSecond == 2)
     }
 }

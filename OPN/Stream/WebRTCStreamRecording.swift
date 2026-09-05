@@ -160,6 +160,8 @@ public enum WebRTCStreamRecordingStatus: Equatable, Sendable {
 }
 
 final class WebRTCStreamRecorder: @unchecked Sendable {
+    /// Converts surfaces the asset-writer adaptor was not declared for. See `encoderCompatiblePixelBuffer`.
+    let pixelTransfer = OPNPixelBufferTransfer()
     /// Written by whoever owns the recorder, read on `queue` by `emit`. Locked because those are
     /// different threads and the NVST transport installs the handler from its actor.
     var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)? {

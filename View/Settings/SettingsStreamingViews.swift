@@ -87,6 +87,15 @@ struct ResolutionUpscalingSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
 
+    /// Each mode's trade, in one line, next to the picker.
+    var presentationModeSubtitle: String {
+        switch viewModel.streamProfile.presentationMode {
+        case 1: "Queues one frame so bursts of two decoded frames per refresh both get shown. Even motion, about one frame more latency."
+        case 2: "Presents each frame the moment it decodes, without waiting for the display refresh. Lowest latency; tearing is possible."
+        default: "Draws the newest decoded frame at each display refresh."
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             SettingsCard(title: "MetalFX Upscaling", uiScale: uiScale) {
@@ -97,6 +106,10 @@ struct ResolutionUpscalingSettingsPage: View {
                 SettingsSliderRow(title: "Clarity", valueText: "\(viewModel.streamProfile.upscalingSharpness)", value: Double(viewModel.streamProfile.upscalingSharpness), range: 0...15, uiScale: uiScale, action: viewModel.setUpscalingSharpness)
                 SettingsDivider(uiScale: uiScale)
                 SettingsSliderRow(title: "Noise Reduction", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, uiScale: uiScale, action: viewModel.setUpscalingDenoise)
+            }
+
+            SettingsCard(title: "Presentation", uiScale: uiScale) {
+                SettingsOptionRow(title: "Frame Pacing", subtitle: presentationModeSubtitle, options: OPNStreamPreferences.presentationModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.presentationModeIndex, uiScale: uiScale, action: viewModel.setPresentationModeIndex)
             }
 
             SettingsCard(title: "Pillarbox", uiScale: uiScale) {

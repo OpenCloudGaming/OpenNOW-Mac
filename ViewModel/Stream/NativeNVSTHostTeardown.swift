@@ -25,8 +25,11 @@ extension NativeNVSTHostViewModel {
         nativeStatsTask = nil
         latestNativeStats = nil
         latestRenderDiagnostics = nil
+        nativeRigName = ""
+        nativeRigRawName = ""
         nativeBitrateStarved = false
         bitrateStarvation.reset()
+        sixteenNineTracker = NativeNVSTSixteenNineTitle.Tracker()
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil
         networkGovernor = nil
@@ -171,6 +174,8 @@ extension NativeNVSTHostViewModel {
         nativeStatsTask = nil
         latestNativeStats = nil
         latestRenderDiagnostics = nil
+        nativeRigName = ""
+        nativeRigRawName = ""
         nativeBitrateStarved = false
         bitrateStarvation.reset()
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()

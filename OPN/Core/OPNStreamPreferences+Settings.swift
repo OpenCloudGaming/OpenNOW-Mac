@@ -131,6 +131,7 @@ extension OPNStreamPreferences {
         storage.set(sharpness, forKey: k.upscalingSharpness)
         storage.set(denoise, forKey: k.upscalingDenoise)
     }
+    public static func savePresentationModeIndex(_ value: Int) { storage.set(clamp(value, 0, presentationModeOptions.count - 1), forKey: k.presentationModeIndex) }
     public static func savePillarboxFillModeIndex(_ value: Int) { storage.set(normalizedPillarboxFillModeIndex(value), forKey: k.pillarboxFillModeIndex) }
     public static func savePillarboxFillColor(_ value: String) { storage.set(normalizedPillarboxFillColor(value), forKey: k.pillarboxFillColor) }
     public static func savePillarboxFillDim(_ value: Int) { storage.set(clamp(value, 0, 100), forKey: k.pillarboxFillDim) }
@@ -140,6 +141,7 @@ extension OPNStreamPreferences {
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
+    public static func saveStreamSixteenNineTitlesAtSixteenNine(_ value: Bool) { storage.set(value, forKey: k.streamSixteenNineTitlesAtSixteenNine) }
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
     public static func saveAntiAFKMouseMovementEnabled(_ value: Bool) { storage.set(value, forKey: k.antiAFKMouseMovementEnabled) }
@@ -248,6 +250,8 @@ extension OPNStreamPreferences {
         profile.pillarboxFillMode = OPNPillarboxFillMode.from(profile.pillarboxFillModeIndex)
         profile.pillarboxFillColor = normalizedPillarboxFillColor(string(value(dictionary, k.pillarboxFillColor), defaultPillarboxFillColor))
         profile.pillarboxFillDim = clampedInt(dictionary, k.pillarboxFillDim, 55, 101)
+        profile.presentationModeIndex = clampedInt(dictionary, k.presentationModeIndex, 0, presentationModeOptions.count)
+        profile.presentationMode = presentationModeOptions[profile.presentationModeIndex].value
     }
 
     /// Recording output plus the per-session behaviour toggles.
@@ -258,6 +262,7 @@ extension OPNStreamPreferences {
         profile.enableL4S = bool(value(dictionary, k.l4sEnabled), false)
         profile.enableHdr = bool(value(dictionary, k.hdrEnabled), false)
         profile.enablePowerSaver = bool(value(dictionary, k.powerSaverEnabled), false)
+        profile.streamSixteenNineTitlesAtSixteenNine = bool(value(dictionary, k.streamSixteenNineTitlesAtSixteenNine), true)
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
         profile.antiAFKMouseMovementEnabled = bool(value(dictionary, k.antiAFKMouseMovementEnabled), false)
@@ -304,12 +309,14 @@ extension OPNStreamPreferences {
             k.pillarboxFillModeIndex: profile.pillarboxFillModeIndex,
             k.pillarboxFillColor: profile.pillarboxFillColor,
             k.pillarboxFillDim: profile.pillarboxFillDim,
+            k.presentationModeIndex: profile.presentationModeIndex,
             k.recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             k.l4sEnabled: profile.enableL4S,
             k.hdrEnabled: profile.enableHdr,
             k.powerSaverEnabled: profile.enablePowerSaver,
+            k.streamSixteenNineTitlesAtSixteenNine: profile.streamSixteenNineTitlesAtSixteenNine,
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
             k.antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,

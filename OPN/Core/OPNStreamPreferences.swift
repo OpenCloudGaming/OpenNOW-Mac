@@ -27,7 +27,10 @@ public enum OPNStreamPreferences {
         OPNStreamBitrateOption(label: "25 Mbps", mbps: 25),
         OPNStreamBitrateOption(label: "50 Mbps", mbps: 50),
         OPNStreamBitrateOption(label: "75 Mbps", mbps: 75),
-        OPNStreamBitrateOption(label: "100 Mbps", mbps: 100)
+        OPNStreamBitrateOption(label: "100 Mbps", mbps: 100),
+        // 5K at 120 fps has room above the vendor default of 100; the announce clamps at 150 000
+        // and the session request at 1 000 000, so this is the first value the seat can refuse.
+        OPNStreamBitrateOption(label: "150 Mbps", mbps: 150)
     ]
     public static let colorQualityOptions = [
         OPNStreamColorQualityOption(label: "8-bit 4:2:0", value: "8bit_420"),
@@ -67,6 +70,12 @@ public enum OPNStreamPreferences {
         OPNStreamUpscalingModeOption(label: "Off", value: 0),
         OPNStreamUpscalingModeOption(label: "MetalFX", value: 3),
         OPNStreamUpscalingModeOption(label: "Spatial", value: 2)
+    ]
+    /// How decoded frames meet the display. Values are `OPNVideoPresentationMode` raw values.
+    public static let presentationModeOptions = [
+        OPNStreamPresentationModeOption(label: "Balanced", value: 0),
+        OPNStreamPresentationModeOption(label: "Smooth", value: 1),
+        OPNStreamPresentationModeOption(label: "Lowest Latency", value: 2)
     ]
     public static let upscalingTargetOptions = [
         OPNStreamUpscalingTargetOption(label: "2K", height: 1440),
@@ -122,6 +131,7 @@ public enum OPNStreamPreferences {
         Keys.pillarboxFillModeIndex,
         Keys.pillarboxFillColor,
         Keys.pillarboxFillDim,
+        Keys.presentationModeIndex,
         Keys.recordingVideoBitrateMbps,
         Keys.recordingAudioBitrateKbps,
         Keys.recordingEnhancedVideoEnabled,
@@ -130,6 +140,7 @@ public enum OPNStreamPreferences {
         Keys.l4sEnabled,
         Keys.hdrEnabled,
         Keys.powerSaverEnabled,
+        Keys.streamSixteenNineTitlesAtSixteenNine,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
         Keys.antiAFKMouseMovementEnabled,
@@ -326,8 +337,38 @@ public enum OPNStreamPreferences {
             profile.pillarboxFillMode = gameProfile.pillarboxFillMode
             profile.pillarboxFillColor = gameProfile.pillarboxFillColor
             profile.pillarboxFillDim = gameProfile.pillarboxFillDim
+            profile.presentationModeIndex = gameProfile.presentationModeIndex
+            profile.presentationMode = gameProfile.presentationMode
         }
+        profile = applyingSixteenNineOverride(profile, titleIsSixteenNine: titleStreamsSixteenNineContent(appId))
         return effectiveProfile(profile, capabilities: capabilities)
+    }
+
+    /// Swaps a wider-than-16:9 resolution for the 16:9 one of the same height when the title is
+    /// known to render 16:9 inside it. See `NativeNVSTSixteenNineTitle`. Pure, for the tests.
+    public static func applyingSixteenNineOverride(_ profile: OPNStreamPreferenceProfile, titleIsSixteenNine: Bool) -> OPNStreamPreferenceProfile {
+        guard titleIsSixteenNine,
+              profile.streamSixteenNineTitlesAtSixteenNine,
+              profile.pillarboxFillMode == .black,
+              let narrower = NativeNVSTSixteenNineTitle.sixteenNineResolution(for: profile.resolution) else { return profile }
+        var result = profile
+        result.resolution = narrower
+        result.resolutionOverriddenForSixteenNine = true
+        return result
+    }
+
+    /// Titles seen rendering 16:9 inside a wider frame, keyed by app id. Kept apart from the
+    /// per-game profile dictionary: writing that enables every per-game override at once.
+    public static func titleStreamsSixteenNineContent(_ appId: String) -> Bool {
+        guard !appId.isEmpty, let titles = storage.dictionary(forKey: k.sixteenNineTitles) else { return false }
+        return (titles[appId] as? Bool) ?? false
+    }
+
+    public static func rememberTitleStreamsSixteenNineContent(_ appId: String, _ value: Bool) {
+        guard !appId.isEmpty else { return }
+        var titles = storage.dictionary(forKey: k.sixteenNineTitles) ?? [:]
+        if value { titles[appId] = true } else { titles.removeValue(forKey: appId) }
+        storage.set(titles, forKey: k.sixteenNineTitles)
     }
 
     public static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {
