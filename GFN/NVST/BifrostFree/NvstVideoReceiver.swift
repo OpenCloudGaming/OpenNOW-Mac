@@ -36,8 +36,10 @@ public enum NvstReceiveEvent: Sendable {
     case recoveryNeeded(firstMissingIndex: UInt64, lastMissingIndex: UInt64)
     /// The reference chain is broken but nothing identifiable is missing in RTP sequence space
     /// (a hole in the GS stream sequence with contiguous RTP delivery — a slot consumed
-    /// upstream, not a lost packet). Retransmission cannot repair it; only a keyframe can.
-    case chainBroken
+    /// upstream, not a lost packet). Retransmission cannot repair it; a keyframe can, and so can
+    /// telling the seat not to reference `frameIndex` (the frame the hole was in) — the latter
+    /// without the keyframe's cost.
+    case chainBroken(frameIndex: UInt32)
 }
 
 public struct NvstReceiverStats: Equatable, Sendable {
@@ -444,9 +446,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             stats.fecPackets += 1
         } else {
             stats.droppedPackets += 1
-            if case .sequenceGap = drop {
+            if case .sequenceGap(_, _, let frameIndex) = drop {
                 stats.recoveries += 1
-                events.append(.chainBroken)
+                events.append(.chainBroken(frameIndex: frameIndex))
             }
         }
         events.append(.dropped(.reassembly(drop)))

@@ -275,6 +275,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         var device = outputDevice
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
         if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.output_device.error", level: .warning, message: "CoreAudio set output device failed.", attributes: ["status": String(status), "device": String(outputDevice)]) }
+        applyOutputBufferFrameSize(unit: unit, device: outputDevice)
         var format = streamFormat(sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         var callback = AURenderCallbackStruct(inputProc: coreAudioPlayoutCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
@@ -314,6 +315,41 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         isRecordingInitialized = true
         return true
     }
+
+    /// The output device's IO buffer, in seconds: 5 ms, the seat's own Opus frame. A device left at
+    /// its default (512 frames, 10.7 ms at 48 kHz; some USB interfaces sit at 4096) adds that much
+    /// to every sample's path to the speaker, on top of the jitter buffer's dwell that the HUD's
+    /// A/V row already reports. The device's own range clamps the request, and whatever the device
+    /// actually settled on is read back into `outputIOBufferDuration`, which libwebrtc reads for
+    /// its playout-delay estimate and the A/V estimate now includes.
+    static let preferredOutputBufferSeconds = 0.005
+
+    private func applyOutputBufferFrameSize(unit: AudioUnit, device: AudioDeviceID) {
+        guard device != AudioDeviceID(kAudioObjectUnknown), deviceOutputSampleRate > 0 else { return }
+        var range = AudioValueRange(mMinimum: 0, mMaximum: 0)
+        var rangeSize = UInt32(MemoryLayout<AudioValueRange>.size)
+        var rangeAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyBufferFrameSizeRange, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+        let hasRange = AudioObjectGetPropertyData(device, &rangeAddress, 0, nil, &rangeSize, &range) == noErr && range.mMaximum >= range.mMinimum && range.mMaximum > 0
+        var frames = UInt32(max(1, (Self.preferredOutputBufferSeconds * deviceOutputSampleRate).rounded()))
+        if hasRange { frames = min(max(frames, UInt32(range.mMinimum)), UInt32(range.mMaximum)) }
+        let requested = frames
+        let status = AudioUnitSetProperty(unit, kAudioDevicePropertyBufferFrameSize, kAudioUnitScope_Global, 0, &frames, UInt32(MemoryLayout<UInt32>.size))
+        var actual: UInt32 = 0
+        var actualSize = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyBufferFrameSize, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+        if AudioObjectGetPropertyData(device, &address, 0, nil, &actualSize, &actual) == noErr, actual > 0 {
+            outputIOBufferDuration = Double(actual) / deviceOutputSampleRate
+        }
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.output_buffer", level: .info, message: "CoreAudio output buffer frame size applied.", attributes: [
+            "requested": String(requested), "actual": String(actual), "status": String(status),
+            "range": hasRange ? "\(Int(range.mMinimum))-\(Int(range.mMaximum))" : "unknown",
+            "deviceLatencyMs": String(format: "%.1f", outputLatency * 1000),
+        ])
+    }
+
+    /// Device latency plus the IO buffer: how long a sample libwebrtc hands the render callback
+    /// takes to reach the speaker, beyond the jitter buffer's dwell.
+    var outputPathLatencySeconds: TimeInterval { outputLatency + outputIOBufferDuration }
 
     private func createHALOutputUnit() -> AudioUnit? {
         var description = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: kAudioUnitSubType_HALOutput, componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0)

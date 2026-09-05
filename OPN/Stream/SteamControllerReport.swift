@@ -71,8 +71,13 @@ public enum SteamControllerModel: Equatable, Sendable {
 }
 
 public struct SteamControllerFeatureReport: Equatable, Sendable {
+    /// Which HID report pipe carries it. Commands are feature reports; the 2026 controller's
+    /// haptics are output reports.
+    public enum Kind: Equatable, Sendable { case feature, output }
+
     public let reportID: Int
     public let bytes: [UInt8]
+    public var kind: Kind = .feature
 }
 
 public enum SteamControllerReport {
@@ -418,15 +423,32 @@ public enum SteamControllerReport {
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }
 
+    /// The 2026 controller ("Ibex" in Linux `hid-steam`; the Puck is `USB_DEVICE_ID_STEAM_CONTROLLER_PROTEUS`
+    /// 0x1304, `STEAM_QUIRK_IBEX | WIRELESS`) does not take the Steam Deck's `0xEB` feature-report
+    /// rumble — the firmware accepts the write and ignores it (2026-09-05, `-> 0x00000000`, no
+    /// motion). Its haptics are HID **output** reports: `REPORT_ID_HAPTIC_RUMBLE` 0x80 followed by
+    /// `steam_ibex_haptic_rumble { u8 type; u16 LE intensity; { u16 LE speed; u8 gain } left, right }`
+    /// (9 bytes, `static_assert`ed in the driver), sent with `hid_hw_output_report` as 10 bytes.
+    /// SDL's own Triton driver (`SDL_hidapi_steam_triton.c`, `ID_OUT_REPORT_HAPTIC_RUMBLE`,
+    /// `HID_RUMBLE_OUTPUT_REPORT_BYTES 10`) writes type 0, intensity 0 and both gains 0 (dB) with
+    /// `hid_write`; that is the layout used here. **The firmware stops the motors ~50 ms after the
+    /// last command** ("hardware safety timeout"), so the driver re-sends every 40 ms while a rumble
+    /// is active — `SteamControllerHIDMonitor.sendRumble` does the same.
+    private static let tritonHapticRumbleReportID = 0x80
+    /// SDL's `TRITON_RUMBLE_RESEND_INTERVAL_MS`.
+    public static let tritonRumbleResendMilliseconds = 40
+
     private static func tritonRumbleReport(leftAmplitude: UInt16, rightAmplitude: UInt16) -> SteamControllerFeatureReport {
-        var buffer = [UInt8](repeating: 0, count: reportLength)
-        buffer[0] = UInt8(tritonFeatureReportID)
-        buffer[1] = rumbleCommand
-        buffer[2] = UInt8(leftAmplitude & 0xff)
-        buffer[3] = UInt8((leftAmplitude >> 8) & 0xff)
-        buffer[4] = UInt8(rightAmplitude & 0xff)
-        buffer[5] = UInt8((rightAmplitude >> 8) & 0xff)
-        return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
+        let bytes: [UInt8] = [
+            UInt8(tritonHapticRumbleReportID),
+            0, // type: plain motor speeds
+            0, 0, // intensity, unused by that type
+            UInt8(leftAmplitude & 0xff), UInt8((leftAmplitude >> 8) & 0xff),
+            0, // left gain, dB — 0 as SDL sends it; the speed field alone scales felt strength (tester verified)
+            UInt8(rightAmplitude & 0xff), UInt8((rightAmplitude >> 8) & 0xff),
+            0, // right gain, dB
+        ]
+        return SteamControllerFeatureReport(reportID: tritonHapticRumbleReportID, bytes: bytes, kind: .output)
     }
 }
 

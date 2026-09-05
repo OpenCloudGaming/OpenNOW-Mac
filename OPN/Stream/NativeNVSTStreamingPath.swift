@@ -117,8 +117,23 @@ public actor NativeNVSTStreamingPath {
     var startedAt: ContinuousClock.Instant?
     private var terminalTask: Task<Void, Never>?
     private var cancelStartTask: Task<Void, Never>?
-    private var recoveryAttempted = false
+    /// Recoveries started inside the current `recoveryAttemptWindow`; the budget, not a flag.
+    private var recoveryAttempts = 0
+    private var recoveryWindowStartedAt: ContinuousClock.Instant?
+    /// True while a recovery is rebuilding the transport, so a termination event the teardown
+    /// itself produces, or a second caller, cannot start a parallel one or end the session.
+    private var isRecovering = false
     private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
+
+    /// How many reconnects to the same cloud session are attempted before the stream is declared
+    /// lost, and the window they are counted in. A Wi-Fi roam or a sleeping router comes back in
+    /// seconds, not on the first retry; the seat keeps a disconnected session resumable for
+    /// minutes, so the attempts are cheap and the alternative is a dead stream the user has to
+    /// relaunch by hand.
+    public static let maximumRecoveryAttempts = 4
+    public static let recoveryAttemptWindow: Duration = .seconds(120)
+    /// Pause before each attempt after the first: the network usually needs a moment.
+    public static let recoveryAttemptDelays: [Duration] = [.zero, .seconds(2), .seconds(4), .seconds(6)]
 
     public init(sessionProvider: any NativeNVSTSessionProvider,
                 transport: any NativeNVSTTransport,
@@ -229,7 +244,8 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = allocation
         launchConfiguration = configuration
         startedAt = .now
-        recoveryAttempted = false
+        recoveryAttempts = 0
+        recoveryWindowStartedAt = nil
         state = .running(allocation.session)
         monitorTransportTermination()
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
@@ -323,7 +339,8 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
-        recoveryAttempted = false
+        recoveryAttempts = 0
+        recoveryWindowStartedAt = nil
         WebRTCMediaTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
         await transport.disconnect()
         let diagnostics = await transport.diagnosticMetadata()
@@ -353,13 +370,15 @@ public actor NativeNVSTStreamingPath {
         let originalStartedAt = startedAt
         let originalAllocation = activeAllocation
         let originalConfiguration = launchConfiguration
-        let originalRecoveryAttempted = recoveryAttempted
+        let originalRecoveryAttempts = recoveryAttempts
+        let originalRecoveryWindow = recoveryWindowStartedAt
         let durationSeconds = streamDurationSeconds()
         self.activeSession = nil
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
-        recoveryAttempted = false
+        recoveryAttempts = 0
+        recoveryWindowStartedAt = nil
         WebRTCMediaTelemetry.capture("nvst.path.pause", level: .info, message: message, attributes: ["sessionId": activeSession.id])
         do {
             try await transport.pause()
@@ -376,7 +395,8 @@ public actor NativeNVSTStreamingPath {
             activeAllocation = originalAllocation
             launchConfiguration = originalConfiguration
             startedAt = originalStartedAt
-            recoveryAttempted = originalRecoveryAttempted
+            recoveryAttempts = originalRecoveryAttempts
+            recoveryWindowStartedAt = originalRecoveryWindow
             state = .running(activeSession)
             monitorTransportTermination()
             throw error
@@ -428,11 +448,16 @@ public actor NativeNVSTStreamingPath {
 
     private func handleTransportTermination(_ termination: NativeNVSTTransportTermination) async {
         guard let activeSession else { return }
+        // A recovery in flight tears the transport down itself; the termination that produces is
+        // not a second failure.
+        guard !isRecovering else { return }
         terminalTask = nil
-        if automaticRecovery == .singleAttempt,
-           !recoveryAttempted, NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, let launchConfiguration {
-            recoveryAttempted = true
-            if await recover(session: activeSession, configuration: launchConfiguration) {
+        if automaticRecovery == .singleAttempt, NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, launchConfiguration != nil {
+            let reason: String = switch termination {
+            case .sessionTerminated(let info): "seat: \(info.message)"
+            case .transportFailed(let failure): "transport: \(failure.message)"
+            }
+            if await recoverInPlace(reason: reason) {
                 return
             }
         }
@@ -442,7 +467,8 @@ public actor NativeNVSTStreamingPath {
         activeAllocation = nil
         launchConfiguration = nil
         startedAt = nil
-        recoveryAttempted = false
+        recoveryAttempts = 0
+        recoveryWindowStartedAt = nil
         let reason: StreamEndReason
         let message: String
         switch termination {
@@ -468,7 +494,52 @@ public actor NativeNVSTStreamingPath {
         publish(report)
     }
 
-    private func recover(session: StreamSessionDescriptor, configuration: StreamLaunchConfiguration) async -> Bool {
+    /// Whether a reconnect to the current session is still allowed by the attempt budget.
+    public func canRecoverInPlace() -> Bool {
+        guard automaticRecovery == .singleAttempt, activeSession != nil, activeAllocation != nil, launchConfiguration != nil, !isRecovering else { return false }
+        if let started = recoveryWindowStartedAt, started.duration(to: .now) > Self.recoveryAttemptWindow { return true }
+        return recoveryAttempts < Self.maximumRecoveryAttempts
+    }
+
+    public var isRecoveringInPlace: Bool { isRecovering }
+
+    /// Reconnects to the same cloud session without ending it: tears the transport down, asks
+    /// CloudMatch to resume the session on this device (which is where the seat publishes a fresh
+    /// RTSPS control endpoint), and negotiates again. Tries up to `maximumRecoveryAttempts` times
+    /// inside `recoveryAttemptWindow`, pausing `recoveryAttemptDelays` between tries so a network
+    /// that is still coming back gets the chance to. Returns false once the budget is spent or the
+    /// session went away; the caller ends the stream then.
+    ///
+    /// Callers: the transport's own termination event, and the host's stall watchdog and network
+    /// path monitor — a stream whose UDP simply stopped never raises a termination at all.
+    public func recoverInPlace(reason: String) async -> Bool {
+        guard canRecoverInPlace(), let session = activeSession, let configuration = launchConfiguration else { return false }
+        isRecovering = true
+        defer { isRecovering = false }
+        terminalTask?.cancel()
+        terminalTask = nil
+        if let started = recoveryWindowStartedAt, started.duration(to: .now) > Self.recoveryAttemptWindow {
+            recoveryAttempts = 0
+            recoveryWindowStartedAt = nil
+        }
+        if recoveryWindowStartedAt == nil { recoveryWindowStartedAt = .now }
+        while recoveryAttempts < Self.maximumRecoveryAttempts {
+            let attempt = recoveryAttempts
+            recoveryAttempts += 1
+            let delay = Self.recoveryAttemptDelays[min(attempt, Self.recoveryAttemptDelays.count - 1)]
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+            }
+            guard activeSession?.id == session.id, !Task.isCancelled else { return false }
+            WebRTCMediaTelemetry.capture("nvst.path.recovery.attempt", level: .info, message: "Reconnecting native NVST session in place.", attributes: ["sessionId": session.id, "attempt": String(attempt + 1), "reason": reason])
+            if await recover(session: session, configuration: configuration, attempt: attempt + 1) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func recover(session: StreamSessionDescriptor, configuration: StreamLaunchConfiguration, attempt: Int = 1) async -> Bool {
         await transport.resetForRecovery()
         guard activeSession?.id == session.id, !Task.isCancelled else { return false }
         do {
@@ -484,10 +555,10 @@ public actor NativeNVSTStreamingPath {
             }
             activeAllocation = refreshed
             monitorTransportTermination()
-            WebRTCMediaTelemetry.capture("nvst.path.recovered", level: .info, message: "Native NVST session recovered.", attributes: ["sessionId": session.id, "attempt": "1"])
+            WebRTCMediaTelemetry.capture("nvst.path.recovered", level: .info, message: "Native NVST session recovered.", attributes: ["sessionId": session.id, "attempt": String(attempt)])
             return true
         } catch {
-            WebRTCMediaTelemetry.capture("nvst.path.recovery.failed", level: .warning, message: Self.message(for: error), attributes: ["sessionId": session.id, "attempt": "1"])
+            WebRTCMediaTelemetry.capture("nvst.path.recovery.failed", level: .warning, message: Self.message(for: error), attributes: ["sessionId": session.id, "attempt": String(attempt)])
             await transport.resetForRecovery()
         }
         return false

@@ -84,6 +84,9 @@ public final class NativeWebRTCGamepadMonitor {
     private var chordTracker = StreamOSKChordTracker()
     private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
     private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
+    /// Pending "motors off" for each Steam Controller currently rumbling.
+    private var steamRumbleStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
+    private var steamRumbleCommandsSent = 0
     private var accessibilityPromptShown = false
 
     /// Controller chords: the `...` quick-access button toggles the HUD, and
@@ -216,7 +219,21 @@ public final class NativeWebRTCGamepadMonitor {
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
 
-    public func playHaptic(_ command: NativeNVSTHapticCommand) {
+    public func playHaptic(_ seatCommand: NativeNVSTHapticCommand) {
+        // The user's rumble ceiling applies to everything the seat sends, before routing.
+        let percent = ControllerRumblePreference.loadIntensityPercent()
+        let command = percent == 100 ? seatCommand : NativeNVSTHapticCommand(
+            playerIndex: seatCommand.playerIndex,
+            lowFrequency: ControllerRumblePreference.scaled(seatCommand.lowFrequency, percent: percent),
+            highFrequency: ControllerRumblePreference.scaled(seatCommand.highFrequency, percent: percent),
+            durationMilliseconds: seatCommand.durationMilliseconds
+        )
+        // Steam Controllers hold the low slots (see `refreshControllerSlots`) and have no
+        // GameController haptics; their motors are driven through the HID feature report.
+        if let deviceID = pollState.steamControllerSlots.first(where: { $0.value == command.playerIndex })?.key {
+            playSteamControllerRumble(deviceID: deviceID, command: command)
+            return
+        }
         guard let controller = pollState.cachedControllers.first(where: { pollState.controllerSlots[ObjectIdentifier($0)] == command.playerIndex }),
               controller.haptics != nil else { return }
         let identifier = ObjectIdentifier(controller)
@@ -233,6 +250,32 @@ public final class NativeWebRTCGamepadMonitor {
     public func stopHaptics() {
         hapticStates.values.forEach { $0.stop() }
         hapticStates.removeAll()
+        for (deviceID, task) in steamRumbleStopTasks {
+            task.cancel()
+            SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+        }
+        steamRumbleStopTasks.removeAll()
+    }
+
+    /// A Steam Controller's rumble is a *state* set by feature report, not a timed pattern, so a
+    /// command with a duration is a set now and a clear later. A newer command for the same pad
+    /// replaces the pending clear: games refresh the state every frame while vibrating and the
+    /// clear must not fire in the middle of a refreshed rumble.
+    private func playSteamControllerRumble(deviceID: InputDeviceID, command: NativeNVSTHapticCommand) {
+        steamRumbleStopTasks.removeValue(forKey: deviceID)?.cancel()
+        steamRumbleCommandsSent += 1
+        if steamRumbleCommandsSent <= 8 || steamRumbleCommandsSent % 200 == 0 {
+            WebRTCMediaTelemetry.capture("input.gamepad.rumble.steam", level: .info, message: "Steam Controller rumble.", attributes: ["device": deviceID.rawValue, "player": String(command.playerIndex), "left": String(command.lowFrequency), "right": String(command.highFrequency), "ms": String(command.durationMilliseconds), "count": String(steamRumbleCommandsSent)])
+        }
+        SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: command.lowFrequency, rightAmplitude: command.highFrequency)
+        guard command.lowFrequency > 0 || command.highFrequency > 0 else { return }
+        let duration = Int(max(command.durationMilliseconds, 1))
+        steamRumbleStopTasks[deviceID] = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(duration))
+            guard !Task.isCancelled else { return }
+            SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+            self?.steamRumbleStopTasks.removeValue(forKey: deviceID)
+        }
     }
 
     public func refreshInputState() {

@@ -147,7 +147,10 @@ extension NativeNVSTMediaStreamSurface {
     var nativeStatsAVOffsetMilliseconds: Double? {
         guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0, stats.decodeMilliseconds >= 0,
               let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return nil }
-        return stats.decodeMilliseconds + render.presentLatencyMs - stats.audioJitterBufferMilliseconds
+        // Audio's path: jitter-buffer dwell, then the output device's latency and IO buffer. Video's:
+        // decode, then present-to-glass. Both measured on this Mac; neither includes the seat.
+        let audioPath = stats.audioJitterBufferMilliseconds + max(0, stats.audioOutputLatencyMilliseconds)
+        return stats.decodeMilliseconds + render.presentLatencyMs - audioPath
     }
 
     var nativeStatsAVValue: String {
@@ -158,7 +161,8 @@ extension NativeNVSTMediaStreamSurface {
     var nativeStatsAVDetail: String? {
         guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0 else { return "ms est." }
         let lead = nativeStatsAVOffsetMilliseconds.map { $0 >= 0 ? "video late" : "audio late" } ?? ""
-        return String(format: "ms est. · audio buffer %.0f ms%@", stats.audioJitterBufferMilliseconds, lead.isEmpty ? "" : " · " + lead)
+        let device = stats.audioOutputLatencyMilliseconds >= 0 ? String(format: " + device %.0f", stats.audioOutputLatencyMilliseconds) : ""
+        return String(format: "ms est. · audio buffer %.0f%@ ms%@", stats.audioJitterBufferMilliseconds, device, lead.isEmpty ? "" : " · " + lead)
     }
 
     /// Mean decode-to-glass latency over the last second.
@@ -212,6 +216,9 @@ extension NativeNVSTMediaStreamSurface {
             detail += " → " + render.outputFormat
             if render.isHDR { detail += " HDR" }
         }
+        // What the seat says the game is outputting, from its 0x010e notification. Next to the
+        // drawable so "game says HDR, drawable is SDR" is visible on one line.
+        if !model.nativeHdrModeText.isEmpty { detail += " · game \(model.nativeHdrModeText)" }
         return detail
     }
 

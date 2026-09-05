@@ -28,6 +28,7 @@ struct SteamControllerTestView: View {
                     connectionStatusBar
                     if model.isConnected {
                         controllerDiagram
+                        rumblePanel
                         rawValuesPanel
                     } else {
                         noControllerMessage
@@ -121,6 +122,47 @@ struct SteamControllerTestView: View {
                 .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
                 .foregroundStyle(OpenNOWDesign.Text.muted)
         }
+    }
+
+    // MARK: - Rumble
+
+    /// The same feature report a seat's rumble command drives, one motor at a time, so a game
+    /// that stays silent can be told apart from a pad whose motors never fire.
+    private var rumblePanel: some View {
+        SteamControllerSection(title: "RUMBLE", uiScale: uiScale) {
+            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                    rumbleButton("Left Motor", target: .left)
+                    rumbleButton("Both", target: .both)
+                    rumbleButton("Right Motor", target: .right)
+                    Spacer()
+                    Text(model.rumbleInFlight == nil ? "Pulses for \(ControllerRumbleTester.pulseMilliseconds) ms" : "Rumbling…")
+                        .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .monospacedDigit()
+                }
+                HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                    Text("Intensity")
+                        .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .frame(width: 60 * uiScale, alignment: .leading)
+                    Slider(value: Binding(get: { Double(model.rumbleIntensityPercent) }, set: { model.rumbleIntensityPercent = Int($0.rounded()) }), in: 0...100, step: 5)
+                        .tint(OpenNOWDesign.accent)
+                    Text("\(model.rumbleIntensityPercent)%")
+                        .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .monospacedDigit()
+                        .frame(width: 40 * uiScale, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    private func rumbleButton(_ title: String, target: SteamControllerTestModel.RumbleTarget) -> some View {
+        Button(title) { model.testRumble(target) }
+            .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+            .disabled(model.rumbleInFlight != nil)
+            .opacity(model.rumbleInFlight == target ? 0.6 : 1)
     }
 
     // MARK: - Raw values

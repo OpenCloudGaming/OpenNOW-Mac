@@ -113,7 +113,7 @@ struct NvstVideoPacketTests {
         // Sequence 21 never arrives.
         let end = try NvstVideoPacketParser.parse(buildPacket(sequence: 22, frameIndex: 5, flags: 0x03, media: [0xcc]))
         #expect(try assembler.push(start) == nil)
-        #expect(throws: NvstReassemblyDrop.sequenceGap(expected: 21, received: 22)) { _ = try assembler.push(end) }
+        #expect(throws: NvstReassemblyDrop.sequenceGap(expected: 21, received: 22, frameIndex: 5)) { _ = try assembler.push(end) }
 
         // The next whole frame still assembles: the gap abandons one frame, not the stream.
         let nextStart = try NvstVideoPacketParser.parse(buildPacket(sequence: 23, frameIndex: 6, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]))

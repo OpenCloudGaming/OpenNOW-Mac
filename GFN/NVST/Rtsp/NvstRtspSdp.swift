@@ -270,6 +270,8 @@ public enum NvstRtspSdp {
         public var announcesExtendedSettings: Bool
         /// Lets the seat's DESCRIBE offer override our value for keys we already send.
         public var echoesOfferedAttributes: Bool
+        /// Applied last, verbatim: the A/B harness for encoder knobs. Empty in normal operation.
+        public var announceOverrides: [(String, String)]
 
         public init(resolution: String? = nil,
                     fps: Int? = nil,
@@ -299,10 +301,12 @@ public enum NvstRtspSdp {
                     maximumBitrateKbps: Int? = nil,
                     disablesOwdCongestionControl: Bool = true,
                     announcesExtendedSettings: Bool = false,
-                    echoesOfferedAttributes: Bool = false) {
+                    echoesOfferedAttributes: Bool = false,
+                    announceOverrides: [(String, String)] = []) {
             self.disablesOwdCongestionControl = disablesOwdCongestionControl
             self.announcesExtendedSettings = announcesExtendedSettings
             self.echoesOfferedAttributes = echoesOfferedAttributes
+            self.announceOverrides = announceOverrides
             self.offeredAttributes = offeredAttributes
             self.codec = codec
             self.bitrateKbps = bitrateKbps

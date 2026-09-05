@@ -152,11 +152,24 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var upscalingModeIndex = 0
     @Published var upscalingTargetIndex = 1
     @Published var mouseSensitivityPercent = 100
+    /// The rumble ceiling (`ControllerRumblePreference`), mirrored for the HUD's slider.
+    @Published var rumbleIntensityPercent = ControllerRumblePreference.loadIntensityPercent()
     @Published var upscalingSharpness = 10
     @Published var upscalingDenoise = 0
     @Published var nativeStreamResolutionText = ""
     @Published var nativeStreamFrameRateText = ""
     @Published var nativeStreamCodecText = ""
+    /// The seat's last `0x010e` HDR mode word (`hdr`, `true-hdr`), empty while the game is SDR or
+    /// the seat has said nothing. Informational: the drawable follows the bitstream's own tags.
+    @Published var nativeHdrModeText = ""
+    /// Rumble commands received from the seat this session, for the HUD's controllers panel.
+    @Published var nativeHapticEventCount = 0
+    /// True while the path is reconnecting to the same seat after a stall or a network change.
+    @Published var isReconnecting = false
+    /// One-second stats samples with no frames before the stall watchdog reconnects. Five seconds
+    /// of nothing is a dead link, not a quiet scene: a static picture still carries the seat's
+    /// keyframe cadence, and the earlier ten-second verdict only ever ended the stream.
+    static let stalledSamplesBeforeReconnect = 5
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
@@ -244,7 +257,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
@@ -298,6 +311,25 @@ final class NativeNVSTHostViewModel: ObservableObject {
             Task {
                 await bifrostFree.setRemoteCursorVisibilityHandler { [weak nativeView] isVisible in
                     nativeView?.setRemoteCursorVisible(isVisible)
+                }
+                // Rumble: the seat names a pad slot and two motor amplitudes; the gamepad monitor
+                // behind the view knows which physical device (GameController pad or Steam
+                // Controller) holds that slot.
+                await bifrostFree.setHapticEventHandler { [weak self, weak nativeView] events in
+                    guard let self, !self.didEnd else { return }
+                    self.nativeHapticEventCount += events.count
+                    for event in events {
+                        nativeView?.playHaptic(NativeNVSTHapticCommand(
+                            playerIndex: Int(event.gamepadIndex),
+                            lowFrequency: event.leftMotor,
+                            highFrequency: event.rightMotor,
+                            durationMilliseconds: event.effectiveDurationMilliseconds
+                        ))
+                    }
+                }
+                await bifrostFree.setHdrModeHandler { [weak self] notification in
+                    guard let self, !self.didEnd else { return }
+                    self.nativeHdrModeText = notification.isHDR ? (notification.mode == .trueHdr ? "true-hdr" : "hdr") : ""
                 }
             }
         }

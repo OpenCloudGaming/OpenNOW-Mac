@@ -149,6 +149,10 @@ public struct NvstRtspNegotiationInput: Sendable {
     public let announcesExtendedSettings: Bool
     /// `OPN_NVST_ANNOUNCE_ECHO_OFFER=1`: lets the seat's offer override our announced values.
     public let echoesOfferedAttributes: Bool
+    /// Attributes applied after every other layer, verbatim. The encoder-knob A/B harness
+    /// (`OPN_NVST_ANNOUNCE_OVERRIDES`, see `NvstBifrostFreeTransport.announceOverridesFromEnvironment`);
+    /// empty in normal operation.
+    public let announceOverrides: [(String, String)]
 
     public init(sessionID: String,
                 rtspsEndpoints: [String],
@@ -167,10 +171,12 @@ public struct NvstRtspNegotiationInput: Sendable {
                 forcesLegacyPath: Bool = false,
                 disablesOwdCongestionControl: Bool = true,
                 announcesExtendedSettings: Bool = false,
-                echoesOfferedAttributes: Bool = false) {
+                echoesOfferedAttributes: Bool = false,
+                announceOverrides: [(String, String)] = []) {
         self.disablesOwdCongestionControl = disablesOwdCongestionControl
         self.announcesExtendedSettings = announcesExtendedSettings
         self.echoesOfferedAttributes = echoesOfferedAttributes
+        self.announceOverrides = announceOverrides
         self.sessionID = sessionID
         self.rtspsEndpoints = rtspsEndpoints
         self.resolution = resolution

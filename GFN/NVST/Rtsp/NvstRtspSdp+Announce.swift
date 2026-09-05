@@ -133,6 +133,11 @@ extension NvstRtspSdp {
         applyVideoAttributes(&attributes, options: options)
         applyBitrateAttributes(&attributes, options: options)
         applyMicrophoneAttributes(&attributes, options: options)
+        // The A/B harness: whatever the run under test asks for wins over every layer above,
+        // including the client-only ones, so a knob can be measured exactly as written.
+        for (name, value) in options.announceOverrides where !name.isEmpty {
+            attributes.set(name, value)
+        }
         return attributes
     }
 

@@ -43,7 +43,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             Task { @MainActor in
                 let deviceIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
                 guard deviceIndex >= 0, deviceIndex < deviceIDs.count else { return }
-                SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceIDs[deviceIndex], leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+                let percent = ControllerRumblePreference.loadIntensityPercent()
+                SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceIDs[deviceIndex],
+                                                            leftAmplitude: ControllerRumblePreference.scaled(leftAmplitude, percent: percent),
+                                                            rightAmplitude: ControllerRumblePreference.scaled(rightAmplitude, percent: percent))
             }
         }
         updateEnhancedVideoFrameCapture()

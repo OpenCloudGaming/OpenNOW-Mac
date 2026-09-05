@@ -232,6 +232,14 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     public var onRemoteCursor: (@Sendable (NvstRemoteCursor) -> Void)?
     /// The seat's periodic `0x0101` statistics: game render rate and its latency estimate.
     public var onSeatStats: (@Sendable (NvstSeatStats) -> Void)?
+    /// Rumble from the seat (`0x010b`), one call per command with every record it carried.
+    public var onHapticEvents: (@Sendable ([NvstHapticEvent]) -> Void)?
+    var hapticCommandCount = 0
+    var hapticEventCount = 0
+    var hapticChangeCount = 0
+    var lastHapticSignature = ""
+    /// The seat's HDR mode notification (`0x010e`): the game's HDR state as a mode word.
+    public var onHdrMode: (@Sendable (NvstHdrModeNotification) -> Void)?
     public var onRemoteAudio: (@Sendable (Int) -> Void)?
     /// Decoded playout PCM (Int16 interleaved) on its way to the output device, so a recording can
     /// capture game audio. Called on the CoreAudio render thread: it must copy and return, never
@@ -240,6 +248,10 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     /// Held for the lifetime of the bundle because `OPNCoreAudioRTCDevice.owner` is weak and the
     /// factory holds only the device.
     var audioDevice: OPNCoreAudioRTCDevice?
+    /// Output device latency plus its IO buffer, in seconds; nil before the device exists.
+    public var audioOutputLatencySeconds: Double? {
+        lock.withLock { audioDevice?.outputPathLatencySeconds }
+    }
     /// Fires when `control_channel_partially_reliable` opens, so QoS feedback can start.
     public var onPartiallyReliableControlOpen: (@Sendable () -> Void)?
 

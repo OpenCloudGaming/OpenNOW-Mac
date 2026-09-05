@@ -15,25 +15,33 @@ import Foundation
 @MainActor
 extension NativeNVSTHostViewModel {
 
+    /// In the order the HUD draws them, grouped the way it lays them out: the CONTROLS and INPUT
+    /// panels are 4-wide icon grids, everything else is a full-width row. Pad navigation reads this
+    /// list, so it has to follow the screen — it used to run mic → audio → record → pointer → …,
+    /// crossing from one panel into the next mid-row.
     var hudFocusEntries: [StreamHUDFocusEntry] {
         [
-            StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, action: toggleNativeMicrophone),
-            StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, action: toggleNativeLocalAudioMute),
-            StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, action: toggleNativeRecording),
-            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, action: toggleNativePointerLock),
-            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, action: toggleNativeAntiAFKMouseMovement),
-            StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), action: toggleNativeStatsHUD),
-            StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), action: { [weak self] in
+            StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "controls", columns: 4, action: toggleNativeMicrophone),
+            StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
+            StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
+            StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
+            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, group: "input", columns: 4, action: toggleNativePointerLock),
+            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
+            StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showStreamControls() }),
+            StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
+        ]
+        // The CONTROLLERS panel, and its rumble row, only exist while a pad is connected.
+        + (controllerBatteries.isEmpty ? [] : [StreamHUDFocusEntry(id: "rumble-intensity", isDisabled: false, action: cycleRumbleIntensity)])
+        + [
+            StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), group: "coop", columns: 4, action: { [weak self] in
                 guard let self else { return }
                 if remoteCoOpSnapshot.invite == nil { startRemoteCoOpInvite() } else { stopRemoteCoOpInvite() }
             }),
-            StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
+            StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, group: "coop", columns: 4, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
         ]
         + remoteCoOpParticipantFocusEntries
         + [
-            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: { [weak self] in self?.showingControllerMapping = true }),
-            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { [weak self] in self?.showStreamControls() }),
-            StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
             StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
             StreamHUDFocusEntry(id: "upscaling-target", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTarget),
             StreamHUDFocusEntry(id: "clarity", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeClarity),
@@ -51,12 +59,14 @@ extension NativeNVSTHostViewModel {
         guard sidebarCapabilities.supports(.remoteCoOp) else { return [] }
         return remoteCoOpSnapshot.participants.flatMap { participant -> [StreamHUDFocusEntry] in
             var entries: [StreamHUDFocusEntry] = []
+            // Approve and remove sit side by side on the participant's row.
+            let group = "coop-participant-\(participant.id.uuidString)"
             if participant.connectionState == .waitingForApproval {
-                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
                     self?.approveRemoteCoOpParticipant(participant.id)
                 }))
             }
-            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, action: { [weak self] in
+            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
                 self?.removeRemoteCoOpParticipant(participant.id)
             }))
             return entries
@@ -82,6 +92,20 @@ extension NativeNVSTHostViewModel {
         let count = OPNStreamPreferences.upscalingTargetOptions.count
         guard count > 0 else { return }
         updateNativeUpscalingTarget(targetIndex: (upscalingTargetIndex + 1) % count)
+    }
+
+    /// The rumble ceiling, saved as the global setting; the gamepad monitor reads it per command.
+    func updateRumbleIntensity(percent: Int) {
+        let clamped = min(max(percent, ControllerRumblePreference.range.lowerBound), ControllerRumblePreference.range.upperBound)
+        rumbleIntensityPercent = clamped
+        ControllerRumblePreference.saveIntensityPercent(clamped)
+        WebRTCMediaTelemetry.capture("nvst.ui.rumble.intensity", level: .info, message: "Rumble intensity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
+    }
+
+    /// Controller/keyboard step through the HUD row: +25% per press, wrapping to off.
+    func cycleRumbleIntensity() {
+        let next = rumbleIntensityPercent + 25
+        updateRumbleIntensity(percent: next > ControllerRumblePreference.range.upperBound ? ControllerRumblePreference.range.lowerBound : next)
     }
 
     /// Relative mouse multiplier for the stream, applied live and saved as the global setting.
@@ -124,8 +148,8 @@ extension NativeNVSTHostViewModel {
     func handleHUDGamepad(_ state: GamepadState) {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
-        case .move(let delta):
-            moveHUDFocus(by: delta)
+        case .move(let direction):
+            moveHUDFocus(direction)
         case .activate:
             StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
         case .back:
@@ -133,16 +157,16 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    func moveHUDFocus(by step: Int) {
-        guard let next = StreamHUDFocusEntry.focusID(after: hudFocusID, in: hudFocusEntries, step: step) else { return }
+    func moveHUDFocus(_ direction: StreamHUDFocusDirection) {
+        guard let next = StreamHUDFocusEntry.focusID(from: hudFocusID, direction: direction, in: hudFocusEntries) else { return }
         hudFocusID = next
     }
 
     func handleStreamControlsGamepad(_ state: GamepadState) {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
-        case .move(let delta):
-            streamControlsFocusIndex = (streamControlsFocusIndex + delta + 3) % 3
+        case .move(let direction):
+            streamControlsFocusIndex = (streamControlsFocusIndex + direction.linearStep + 3) % 3
         case .activate:
             switch streamControlsFocusIndex {
             case 0: dismissStreamControls()
@@ -434,11 +458,11 @@ extension NativeNVSTHostViewModel {
         controllerBatteries = batteries
     }
 
-    func showNativeTransientStreamMessage(_ message: String) {
+    func showNativeTransientStreamMessage(_ message: String, duration: Duration = .seconds(2)) {
         transientStreamMessageTask?.cancel()
         transientStreamMessage = message
         transientStreamMessageTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
             transientStreamMessage = ""
             transientStreamMessageTask = nil
@@ -562,8 +586,13 @@ extension NativeNVSTHostViewModel {
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
                 }
-                if isConnected, !isEnding, !didEnd,
+                if isConnected, !isEnding, !didEnd, !isReconnecting,
                    let failure = nativeStreamHealth.observe(snapshot: snapshot, rendererReady: nativeView?.nativeNVSTRendererSurfaceReady == true) {
+                    // A stalled stream is a dead link far more often than a dead seat: reconnect
+                    // to the same session first, and only end the stream when that is exhausted.
+                    if failure == .streamStalled, await attemptInPlaceReconnect(path: path, reason: "stall") {
+                        continue
+                    }
                     WebRTCMediaTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
                     _ = await finish(reason: .failed, message: failure.message)
                     return
@@ -591,20 +620,59 @@ extension NativeNVSTHostViewModel {
         networkPathTask?.cancel()
         let monitor = NativeNVSTNetworkPathMonitor()
         networkPathTask = Task { @MainActor in
+            var wasUnavailable = false
             for await networkPath in monitor.updates() {
                 guard !Task.isCancelled, !didEnd else { return }
                 if networkPath.isSatisfied {
                     networkPathAvailable = true
                     if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = true }
                     WebRTCMediaTelemetry.capture("nvst.network.path.available", level: .info, message: "Native NVST network path is available.", attributes: ["wifi": String(networkPath.usesWiFi), "ethernet": String(networkPath.usesWiredEthernet), "expensive": String(networkPath.isExpensive), "constrained": String(networkPath.isConstrained)])
+                    // The path came back. The seat still sends to the address the old path had, so
+                    // a stream that has already gone quiet will not resume on its own: reconnect
+                    // now rather than waiting out the stall watchdog.
+                    if wasUnavailable, isConnected, !isEnding, let path, nativeStreamHealth.zeroFrameStreak >= 2 {
+                        Task { [weak self] in
+                            guard let self else { return }
+                            if await !self.attemptInPlaceReconnect(path: path, reason: "network path restored") {
+                                _ = await self.finish(reason: .failed, message: NativeNVSTStreamHealthFailure.streamStalled.message)
+                            }
+                        }
+                    }
+                    wasUnavailable = false
                 } else {
+                    wasUnavailable = true
                     networkPathAvailable = false
                     nativeView?.remoteInputEnabled = false
-                    showNativeTransientStreamMessage("Network interrupted - waiting to reconnect")
+                    showNativeTransientStreamMessage("Network interrupted - waiting to reconnect", duration: .seconds(30))
                     WebRTCMediaTelemetry.capture("nvst.network.path.unavailable", level: .warning, message: "Native NVST network path is unavailable.")
                 }
             }
         }
+    }
+
+    /// Reconnects to the same seat through the path's in-place recovery, keeping the HUD honest
+    /// about it. Returns false when the path has spent its attempts, in which case the caller ends
+    /// the stream with the failure it was about to report.
+    func attemptInPlaceReconnect(path: NativeNVSTStreamingPath, reason: String) async -> Bool {
+        guard !isReconnecting, await path.canRecoverInPlace() else { return false }
+        isReconnecting = true
+        nativeView?.remoteInputEnabled = false
+        showNativeTransientStreamMessage("Connection lost - reconnecting…", duration: .seconds(60))
+        WebRTCMediaTelemetry.capture("nvst.stream.reconnect.start", level: .warning, message: "Native NVST reconnecting in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+        let recovered = await path.recoverInPlace(reason: reason)
+        isReconnecting = false
+        guard recovered, !didEnd, !isEnding else {
+            WebRTCMediaTelemetry.capture("nvst.stream.reconnect.failed", level: .error, message: "Native NVST could not reconnect in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+            return false
+        }
+        // A fresh transport: the watchdog starts over, the mic gate is re-applied (the new bundle
+        // comes up muted), and input is live again.
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
+        try? await path.setMicrophoneEnabled(microphoneEnabled)
+        if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = networkPathAvailable }
+        showNativeTransientStreamMessage("Reconnected")
+        WebRTCMediaTelemetry.capture("nvst.stream.reconnect.succeeded", level: .info, message: "Native NVST reconnected in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+        return true
     }
 
     func applyNativeNetworkAdjustment(_ adjustment: NativeNVSTNetworkAdjustment, path: NativeNVSTStreamingPath) async {

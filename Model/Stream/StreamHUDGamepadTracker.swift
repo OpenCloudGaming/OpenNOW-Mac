@@ -8,18 +8,20 @@ import Foundation
 /// purpose: mutating it from input callbacks must not invalidate the view.
 @MainActor
 final class StreamHUDGamepadTracker {
-    enum NavigationStep {
-        case move(Int)
+    enum NavigationStep: Equatable {
+        /// A direction, not a ±1: the HUD's icon panels are grids, and "down" has to mean the
+        /// row below rather than the next tile to the right.
+        case move(StreamHUDFocusDirection)
         case activate
         case back
     }
 
     var lastButtons: [InputDeviceID: GamepadButtons] = [:]
-    var lastStickStep: [InputDeviceID: Int] = [:]
+    var lastStickDirection: [InputDeviceID: StreamHUDFocusDirection?] = [:]
 
     func reset() {
         lastButtons.removeAll()
-        lastStickStep.removeAll()
+        lastStickDirection.removeAll()
     }
 
     func navigationStep(_ state: GamepadState) -> NavigationStep? {
@@ -27,17 +29,29 @@ final class StreamHUDGamepadTracker {
         let pressed = state.buttons.subtracting(previousButtons)
         lastButtons[state.deviceID] = state.buttons
 
-        let horizontal = abs(state.leftStickX) >= abs(state.leftStickY) ? state.leftStickX : 0
-        let vertical = abs(state.leftStickY) > abs(state.leftStickX) ? state.leftStickY : 0
-        let stickStep: Int = horizontal > 0.6 || vertical < -0.6 ? 1 : (horizontal < -0.6 || vertical > 0.6 ? -1 : 0)
-        let previousStickStep = lastStickStep[state.deviceID] ?? 0
-        lastStickStep[state.deviceID] = stickStep
+        let stickDirection = Self.stickDirection(x: state.leftStickX, y: state.leftStickY)
+        let previousStickDirection = lastStickDirection[state.deviceID] ?? nil
+        lastStickDirection[state.deviceID] = stickDirection
 
         if pressed.contains(.south) { return .activate }
         if pressed.contains(.east) { return .back }
-        if pressed.contains(.dpadRight) || pressed.contains(.dpadDown) { return .move(1) }
-        if pressed.contains(.dpadLeft) || pressed.contains(.dpadUp) { return .move(-1) }
-        if stickStep != 0, stickStep != previousStickStep { return .move(stickStep) }
+        if pressed.contains(.dpadRight) { return .move(.right) }
+        if pressed.contains(.dpadLeft) { return .move(.left) }
+        if pressed.contains(.dpadDown) { return .move(.down) }
+        if pressed.contains(.dpadUp) { return .move(.up) }
+        if let stickDirection, stickDirection != previousStickDirection { return .move(stickDirection) }
+        return nil
+    }
+
+    /// The dominant stick axis past the 0.6 threshold, or nil in the dead zone. Stick up is +Y.
+    static func stickDirection(x: Float, y: Float) -> StreamHUDFocusDirection? {
+        if abs(x) >= abs(y) {
+            if x > 0.6 { return .right }
+            if x < -0.6 { return .left }
+            return nil
+        }
+        if y > 0.6 { return .up }
+        if y < -0.6 { return .down }
         return nil
     }
 }

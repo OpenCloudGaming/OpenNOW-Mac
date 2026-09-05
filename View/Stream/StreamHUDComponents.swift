@@ -76,10 +76,32 @@ struct StreamHUDActionRow: View {
     }
 }
 
+/// Where the pad wants focus to go. Left/right read through the controls in visual order;
+/// up/down move between rows of the HUD's grids, keeping the column.
+enum StreamHUDFocusDirection: Equatable {
+    case left, right, up, down
+
+    /// The ±1 a one-dimensional menu (the quit menu) reads this as.
+    var linearStep: Int { self == .left || self == .up ? -1 : 1 }
+}
+
 struct StreamHUDFocusEntry {
     let id: String
     let isDisabled: Bool
     let action: () -> Void
+    /// Entries that share a group and sit next to each other in the list form one grid of
+    /// `columns` tiles per row — the HUD's 4-wide icon panels. An entry with no group is a
+    /// full-width row of its own (a slider, a dropdown, a participant row).
+    var group = ""
+    var columns = 1
+
+    init(id: String, isDisabled: Bool, group: String = "", columns: Int = 1, action: @escaping () -> Void) {
+        self.id = id
+        self.isDisabled = isDisabled
+        self.group = group
+        self.columns = max(1, columns)
+        self.action = action
+    }
 
     /// Focus only ever lands on enabled rows, so both navigation and activation
     /// filter the disabled ones out — a row that goes disabled while focused
@@ -89,6 +111,57 @@ struct StreamHUDFocusEntry {
         guard !enabled.isEmpty else { return nil }
         guard let currentIndex = enabled.firstIndex(where: { $0.id == current }) else { return enabled.first?.id }
         return enabled[(currentIndex + step + enabled.count) % enabled.count].id
+    }
+
+    /// The rows the entries lay out as: grouped entries chunked `columns` at a time, everything
+    /// else one per row. Indices into `entries`.
+    static func rows(of entries: [StreamHUDFocusEntry]) -> [[Int]] {
+        var rows: [[Int]] = []
+        var index = 0
+        while index < entries.count {
+            let entry = entries[index]
+            guard !entry.group.isEmpty else {
+                rows.append([index])
+                index += 1
+                continue
+            }
+            var row: [Int] = []
+            while index < entries.count, entries[index].group == entry.group, row.count < entry.columns {
+                row.append(index)
+                index += 1
+            }
+            rows.append(row)
+        }
+        return rows
+    }
+
+    /// Two-dimensional focus movement. Left and right walk the enabled controls in visual order
+    /// (wrapping), so a grid still reads like a list when scanned. Up and down go to the previous
+    /// or next row that has an enabled control, landing on the one nearest the current column — a
+    /// press of "down" on the microphone tile reaches the pointer tile beneath it, not the tile to
+    /// its right, which is what the flat ±1 walk did.
+    static func focusID(from current: String?, direction: StreamHUDFocusDirection, in entries: [StreamHUDFocusEntry]) -> String? {
+        switch direction {
+        case .left, .right:
+            return focusID(after: current, in: entries, step: direction.linearStep)
+        case .up, .down:
+            let rows = rows(of: entries)
+            guard !rows.isEmpty else { return nil }
+            guard let currentIndex = entries.firstIndex(where: { $0.id == current }),
+                  let rowIndex = rows.firstIndex(where: { $0.contains(currentIndex) }),
+                  let column = rows[rowIndex].firstIndex(of: currentIndex) else {
+                return entries.first(where: { !$0.isDisabled })?.id
+            }
+            let step = direction.linearStep
+            for offset in 1..<max(2, rows.count) {
+                let row = rows[(rowIndex + step * offset + rows.count * offset) % rows.count]
+                let candidates = row.enumerated().filter { !entries[$0.element].isDisabled }
+                guard !candidates.isEmpty else { continue }
+                let nearest = candidates.min { abs($0.offset - column) < abs($1.offset - column) }
+                return nearest.map { entries[$0.element].id }
+            }
+            return nil
+        }
     }
 
     static func activatable(_ current: String?, in entries: [StreamHUDFocusEntry]) -> StreamHUDFocusEntry? {
@@ -333,12 +406,16 @@ struct StreamHUDSection<Content: View>: View {
     /// Marks a section as still settling. Sits beside the label rather than in the content so it
     /// reads as a property of the feature, not of one control inside it.
     let showsBetaTag: Bool
+    /// What the focused control in this section does, for a pad user reading icon-only tiles.
+    /// Drawn in the accent colour under the content; nil hides the line.
+    let caption: String?
     let content: Content
 
-    init(label: String, spacing: CGFloat = 10, showsBetaTag: Bool = false, @ViewBuilder content: () -> Content) {
+    init(label: String, spacing: CGFloat = 10, showsBetaTag: Bool = false, caption: String? = nil, @ViewBuilder content: () -> Content) {
         self.label = label
         self.spacing = spacing
         self.showsBetaTag = showsBetaTag
+        self.caption = caption
         self.content = content()
     }
 
@@ -353,6 +430,14 @@ struct StreamHUDSection<Content: View>: View {
                 Spacer(minLength: 0)
             }
             content
+            if let caption, !caption.isEmpty {
+                Text(caption)
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

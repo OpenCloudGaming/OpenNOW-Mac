@@ -202,6 +202,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     var lastInvalidationAt: Date?
     var pendingInvalidationFirst: UInt32?
     var pendingInvalidationLast: UInt32?
+    var invalidationFlushTask: Task<Void, Never>?
     var invalidationsSent = 0
     var inputEventsSent = 0
     var inputSequence: UInt16 = 0
@@ -495,6 +496,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
             "framesDecoded": String(decoder?.decodedFrameCount ?? 0),
             "framesFailed": String(decoder?.failedFrameCount ?? 0),
             "mjolnirInbound": receiver?.inbound.summary ?? "-",
+            "hapticEvents": String(hapticEventsReceived),
+            "hdrMode": lastHdrMode?.summary ?? "-",
             "bundle": bundle?.diagnosticSummary ?? "-",
             "bundleProbe": bundleProbe?.snapshot.summary ?? "-",
         ]
@@ -524,6 +527,13 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// Raised when the game shows or hides its pointer, so the client can match it and avoid
     /// drawing a second one (or leaving one floating during mouselook).
     public internal(set) var onRemoteCursorVisibilityChanged: (@MainActor @Sendable (Bool) -> Void)?
+    /// Rumble from the seat, per `0x010b` command. Delivered on the main actor because the
+    /// consumers (CoreHaptics engines, the Steam Controller HID monitor) live there.
+    public internal(set) var onHapticEvents: (@MainActor @Sendable ([NvstHapticEvent]) -> Void)?
+    var hapticEventsReceived: UInt64 = 0
+    /// The seat's `0x010e` HDR mode notification, for the HUD and the log.
+    public internal(set) var onHdrModeChanged: (@MainActor @Sendable (NvstHdrModeNotification) -> Void)?
+    public internal(set) var lastHdrMode: NvstHdrModeNotification?
 
     /// The stream profile this session negotiates with, after the app's configured overrides.
     static func resolvedStreamProfile(allocation: NativeNVSTSessionAllocation,
@@ -570,6 +580,26 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         isTornDown = true
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        invalidationFlushTask?.cancel()
+        invalidationFlushTask = nil
+        pendingInvalidationFirst = nil
+        pendingInvalidationLast = nil
+        // Per-connection handshake state. A recovery negotiates a fresh session on the same
+        // actor, and the seat on the other end has never seen this client: the activation chain,
+        // the client-state announce and the pad registration all have to run again. Left set,
+        // a reconnected session had video but no input.
+        didActivateInput = false
+        didAnnounceClientState = false
+        registeredGamepadBitmap = nil
+        didDisableCursorCapture = false
+        remoteCursorVisible = nil
+        lastSnapshotAt = nil
+        lastSnapshotFrames = 0
+        lastSnapshotBytes = 0
+        lastSnapshotPackets = 0
+        lastSnapshotLost = 0
+        lastAudioJitterSample = nil
+        latestSeatStats = nil
         controlKeepAliveTask?.cancel()
         controlKeepAliveTask = nil
         qosFeedbackTask?.cancel()
@@ -637,7 +667,25 @@ extension NvstBifrostFreeTransport {
             forcesLegacyPath: Self.forcesLegacyPath,
             disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
             announcesExtendedSettings: Self.announcesExtendedSettings,
-            echoesOfferedAttributes: Self.echoesOfferedAttributes
+            echoesOfferedAttributes: Self.echoesOfferedAttributes,
+            announceOverrides: Self.announceOverridesFromEnvironment(logger: logger)
         )
+    }
+
+    /// The encoder-knob A/B harness. `OPN_NVST_ANNOUNCE_OVERRIDES="x-nv-video[0].vbvMultiplier=50;
+    /// x-nv-vqos[0].drc.enable=1"` announces those attributes verbatim, after every other layer.
+    /// A dev-harness switch like the autopilot's, not a behaviour toggle: a knob that moves
+    /// `NVST BITRATE meanFrameBytes=` on the same title and scene graduates into the announce
+    /// builder proper; one that does not is dropped. Logged so the run's log says what it tested.
+    static func announceOverridesFromEnvironment(logger: (@Sendable (String) -> Void)?) -> [(String, String)] {
+        guard let raw = ProcessInfo.processInfo.environment["OPN_NVST_ANNOUNCE_OVERRIDES"], !raw.isEmpty else { return [] }
+        let pairs = raw.split(separator: ";").compactMap { entry -> (String, String)? in
+            let parts = entry.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count == 2, !parts[0].isEmpty else { return nil }
+            let name = parts[0].hasPrefix("x-nv-") ? parts[0] : "x-nv-" + parts[0]
+            return (name, parts[1])
+        }
+        logger?("NVST announce overrides (harness): " + pairs.map { "\($0.0)=\($0.1)" }.joined(separator: " "))
+        return pairs
     }
 }

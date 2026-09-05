@@ -26,7 +26,10 @@ public enum NvstReassemblyDrop: Equatable, Sendable {
     case missingStartCode
     /// A source packet is missing from the middle of the frame. Concatenating across the hole
     /// produces an access unit the decoder rejects as bad data, so the frame is abandoned instead.
-    case sequenceGap(expected: UInt32, received: UInt32)
+    /// `frameIndex` names the abandoned frame: it is what the seat has to be told not to reference
+    /// (`0x0301` frame invalidation), and knowing it here saves waiting for the decoder to reject
+    /// the *next* frame before the invalidation goes out.
+    case sequenceGap(expected: UInt32, received: UInt32, frameIndex: UInt32)
     case accessUnitTooLarge(limit: Int)
     /// The AV1 frame header advertised an access-unit length the assembled frame cannot satisfy.
     case invalidAv1AccessUnitLength(reported: Int, available: Int)
@@ -136,7 +139,7 @@ public final class NvstFrameReassembler: @unchecked Sendable {
             let expected = (previous &+ 1) & 0x00ff_ffff
             if packet.streamSequence != expected {
                 resetLocked()
-                throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence)
+                throw NvstReassemblyDrop.sequenceGap(expected: expected, received: packet.streamSequence, frameIndex: packet.frameIndex)
             }
         }
         guard packet.payload.count <= maxAccessUnitBytes - bytes.count else {
@@ -222,8 +225,8 @@ extension NvstReassemblyDrop: LocalizedError {
         case .awaitingStartOfFrame: "NVST video packet arrived before its start-of-frame."
         case .missingStartCode: "NVST start-of-frame payload has no Annex-B start code."
         case .accessUnitTooLarge(let limit): "NVST access unit exceeded \(limit) bytes."
-        case .sequenceGap(let expected, let received):
-            "NVST video packet \(received) arrived where \(expected) was expected; the frame has a hole."
+        case .sequenceGap(let expected, let received, let frameIndex):
+            "NVST video packet \(received) arrived where \(expected) was expected; frame \(frameIndex) has a hole."
         case .invalidAv1AccessUnitLength(let reported, let available):
             "NVST AV1 frame header reported \(reported) bytes but only \(available) were assembled."
         }

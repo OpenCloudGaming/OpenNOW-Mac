@@ -128,6 +128,10 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     private var captureRequesters: Set<ObjectIdentifier> = []
     private var permissionRetryObserver: NSObjectProtocol?
     nonisolated(unsafe) var heartbeatTimer: Timer?
+    /// Rumble feature reports written this process, for the rate-limited per-interface log.
+    var rumbleReportsSent = 0
+    /// The 40 ms keep-alive re-sends for each controller currently rumbling.
+    var rumbleResendTasks: [InputDeviceID: Task<Void, Never>] = [:]
 
     let mappingProvider: any SteamControllerMappingProviding
 

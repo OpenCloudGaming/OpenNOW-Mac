@@ -303,4 +303,16 @@ public enum NvstRemoteInput {
     public static func imeHotkey(_ code: UInt8) -> Data {
         packet(type: .imeHotkey, body: Data([code]))
     }
+
+    /// Haptics on or off for this session: packet type 13 with a two-byte little-endian body,
+    /// exactly what `RiClientBackend::enableHaptics(bool)` writes (`sturh w1, [x0, #0x19]` into the
+    /// body slot, body length 2, then the ordinary `SendPacket` envelope). The seat sends no
+    /// `0x010b` rumble commands until it has seen this with the flag set; the official client
+    /// sends it when the app enables the "gamepad haptics" feature, which is whenever a
+    /// rumble-capable pad is attached.
+    public static func hapticsState(enabled: Bool) -> Data {
+        var writer = NvstByteWriter(capacity: 2)
+        writer.u16LE(enabled ? 1 : 0)
+        return packet(type: .hapticsState, body: writer.data)
+    }
 }

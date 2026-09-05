@@ -55,7 +55,9 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     private var counters = NvstInboundCounters()
 
     public var onAccessUnit: (@Sendable (NvstAccessUnit) -> Void)?
-    public var onRecoveryNeeded: (@Sendable () -> Void)?
+    /// The reference chain broke. The argument is the frame the damage landed in when the receiver
+    /// knows it (a hole inside a frame), nil for a finalized RTP loss whose frame is unknown.
+    public var onRecoveryNeeded: (@Sendable (UInt32?) -> Void)?
     public var onDrop: (@Sendable (NvstReceiveDrop) -> Void)?
     /// Diagnostics that would otherwise be invisible, such as a feedback timer producing nothing.
     public var onDiagnostic: (@Sendable (String) -> Void)?
@@ -374,13 +376,15 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
                 callbackLock.lock()
                 let handler = onRecoveryNeeded
                 callbackLock.unlock()
-                handler?()
-            case .chainBroken:
-                // Nothing identifiable to retransmit — only a keyframe restores the chain.
+                handler?(nil)
+            case .chainBroken(let frameIndex):
+                // Nothing identifiable to retransmit. The frame with the hole is named so the
+                // transport can invalidate it at the seat right away, before the decoder has even
+                // seen the damage.
                 callbackLock.lock()
                 let handler = onRecoveryNeeded
                 callbackLock.unlock()
-                handler?()
+                handler?(frameIndex)
             case .dropped(let reason):
                 callbackLock.lock()
                 let handler = onDrop

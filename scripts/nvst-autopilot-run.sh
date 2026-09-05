@@ -2,7 +2,9 @@
 # scripts/nvst-autopilot-run.sh <cmsId> <shortName> <seconds> [defaults key=value ...]
 # Drives one "OpenNOW Dev" session with nobody at the keyboard: writes a .gfnpc shortcut, opens the
 # Debug build with OPN_NVST_AUTOPILOT_SECONDS (auto End Stream + quit) and OPN_NVST_AUTOPILOT_SCRIPT
-# (`<s>:key36`, `<s>:click0.5,0.5`, `<s>:snapName` -> $TMP/Name.jpg), waits, prints the log verdict.
+# (`<s>:key36`, `<s>:click0.5,0.5`, `<s>:padA` (pad 0 button tap: A/B/X/Y/Start/Select/LB/RB/Up/Down/
+# Left/Right), `<s>:reconnect` (in-place same-session reconnect), `<s>:snapName` -> $TMP/Name.jpg),
+# waits, prints the log verdict. OPN_NVST_ANNOUNCE_OVERRIDES="x-nv-…=…;…" announces knobs verbatim (A/B).
 # Extra args are defaults to write first, e.g. OpenNOW.Stream.ColorQualityIndex=2.
 # Steam titles stop at the Steam password prompt: type it on the stream, the script carries on.
 # Known cmsIds: Streets of Rage 4 100688311 streets_of_rage_4_gfn_pc; Manor Lords 101729111; BeamNG 100163111.

@@ -133,10 +133,24 @@ extension NativeNVSTMediaStreamSurface {
     @ViewBuilder
     var nativeHUDControllersPanel: some View {
         if !model.controllerBatteries.isEmpty {
-            StreamHUDSection(label: "CONTROLLERS", spacing: 6) {
+            StreamHUDSection(label: "CONTROLLERS", spacing: 6,
+                             caption: model.hudFocusID == "rumble-intensity" ? "Rumble Intensity · A steps +25%, 0 is off" : nil) {
                 ForEach(model.controllerBatteries) { battery in
                     StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, charging: battery.charging)
                 }
+                // The same ceiling as Settings → Steam Controller → Rumble Intensity, reachable
+                // mid-game: a title whose special moves ignore its own vibration slider is
+                // discovered while playing it.
+                StreamHUDSliderRow(
+                    label: "Rumble Intensity %",
+                    value: model.rumbleIntensityPercent,
+                    range: ControllerRumblePreference.range,
+                    step: ControllerRumblePreference.step,
+                    isDisabled: false,
+                    isFocused: model.hudFocusID == "rumble-intensity",
+                    action: { model.updateRumbleIntensity(percent: $0) }
+                )
+                .padding(.top, 4)
             }
         }
     }
@@ -149,89 +163,120 @@ extension NativeNVSTMediaStreamSurface {
     /// a deliberate grid.
     static let nativeHUDControlsColumns = Array(repeating: GridItem(.fixed(42), spacing: 8), count: 4)
 
-    var nativeHUDControlsPanel: some View {
-        StreamHUDSection(label: "CONTROLS", spacing: 8) {
-            LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
+    /// One icon tile of the CONTROLS / INPUT grids. Declared as data so the grid and the caption
+    /// under it read the same title — a pad user has no hover tooltip to learn what an icon does.
+    struct NativeHUDTile: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+        let systemName: String
+        let isActive: Bool
+        let isDisabled: Bool
+        let action: () -> Void
+    }
+
+    var nativeHUDControlTiles: [NativeHUDTile] {
+        [
+            NativeHUDTile(id: "microphone",
+                          title: model.microphoneEnabled ? "Mute microphone" : "Unmute microphone",
+                          subtitle: nativeMicrophoneStatusText,
+                          systemName: model.microphoneEnabled ? "mic.slash.fill" : "mic.fill",
+                          isActive: model.microphoneEnabled && model.microphoneAvailable,
+                          isDisabled: !model.sidebarCapabilities.supports(.microphone) || !model.microphoneAvailable || model.microphoneUpdateTask != nil,
+                          action: model.toggleNativeMicrophone),
+            NativeHUDTile(id: "localAudioMute",
+                          title: model.nativeLocalAudioMuted ? "Unmute Local Audio" : "Mute Local Audio",
+                          subtitle: model.nativeLocalAudioMuted ? "Muted on this Mac" : "Playing on this Mac",
+                          systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                          isActive: model.nativeLocalAudioMuted,
+                          isDisabled: !model.isConnected,
+                          action: model.toggleNativeLocalAudioMute),
+            NativeHUDTile(id: "recording",
+                          title: model.recordingCanStop ? "Stop Recording" : "Record",
+                          subtitle: model.recordingStatusText,
+                          systemName: model.recordingCanStop ? "stop.circle" : "record.circle",
+                          isActive: model.recordingCanStop,
+                          isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || model.recordingIsBusy,
+                          action: model.toggleNativeRecording),
+            NativeHUDTile(id: "floating-stats",
+                          title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
+                          subtitle: "Detailed overlay",
+                          systemName: "chart.line.uptrend.xyaxis",
+                          isActive: model.nativeStatsVisible,
+                          isDisabled: !model.sidebarCapabilities.supports(.floatingStats),
+                          action: model.toggleNativeStatsHUD),
+        ]
+    }
+
+    var nativeHUDInputTiles: [NativeHUDTile] {
+        [
+            NativeHUDTile(id: "pointer",
+                          title: model.pointerLocked ? "Release Mouse" : "Capture Mouse",
+                          subtitle: model.pointerLocked ? "Pointer locked" : "Click stream also captures",
+                          systemName: model.pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
+                          isActive: model.pointerLocked,
+                          isDisabled: !model.isConnected || model.nativeView?.directMouseInputEnabled != true,
+                          action: model.toggleNativePointerLock),
+            NativeHUDTile(id: "anti-afk",
+                          title: model.antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
+                          subtitle: model.antiAFKMouseMovementEnabled ? "Active" : "Idle",
+                          systemName: "cursorarrow.motionlines",
+                          isActive: model.antiAFKMouseMovementEnabled,
+                          isDisabled: !model.sidebarCapabilities.supports(.antiAFK) || !model.isConnected,
+                          action: model.toggleNativeAntiAFKMouseMovement),
+            NativeHUDTile(id: "controller-mapping",
+                          title: "Controller Mapping",
+                          subtitle: "Steam Controller grip binds",
+                          systemName: "gamecontroller",
+                          isActive: false,
+                          isDisabled: false,
+                          action: { model.showingControllerMapping = true }),
+            NativeHUDTile(id: "quit",
+                          title: "Quit Menu",
+                          subtitle: "End session",
+                          systemName: "power",
+                          isActive: false,
+                          isDisabled: false,
+                          action: { model.showStreamControls() }),
+        ]
+    }
+
+    /// `Title · subtitle` of the focused tile in `tiles`, or nil when focus is elsewhere.
+    func nativeHUDCaption(for tiles: [NativeHUDTile], extra: [(id: String, caption: String)] = []) -> String? {
+        guard let focus = model.hudFocusID else { return nil }
+        if let tile = tiles.first(where: { $0.id == focus }) {
+            return tile.subtitle.isEmpty ? tile.title : "\(tile.title) · \(tile.subtitle)"
+        }
+        return extra.first(where: { $0.id == focus })?.caption
+    }
+
+    func nativeHUDTileGrid(_ tiles: [NativeHUDTile]) -> some View {
+        LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
+            ForEach(tiles) { tile in
                 StreamHUDActionRow(
-                    title: model.microphoneEnabled ? "Mute microphone" : "Unmute microphone",
-                    subtitle: nativeMicrophoneStatusText,
-                    systemName: model.microphoneEnabled ? "mic.slash.fill" : "mic.fill",
-                    isActive: model.microphoneEnabled && model.microphoneAvailable,
-                    isDisabled: !model.sidebarCapabilities.supports(.microphone) || !model.microphoneAvailable || model.microphoneUpdateTask != nil,
-                    isFocused: model.hudFocusID == "microphone",
-                    action: model.toggleNativeMicrophone
-                )
-                StreamHUDActionRow(
-                    title: model.nativeLocalAudioMuted ? "Unmute Local Audio" : "Mute Local Audio",
-                    subtitle: model.nativeLocalAudioMuted ? "Muted on this Mac" : "Playing on this Mac",
-                    systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                    isActive: model.nativeLocalAudioMuted,
-                    isDisabled: !model.isConnected,
-                    isFocused: model.hudFocusID == "localAudioMute",
-                    action: model.toggleNativeLocalAudioMute
-                )
-                StreamHUDActionRow(
-                    title: model.recordingCanStop ? "Stop Recording" : "Record",
-                    subtitle: model.recordingStatusText,
-                    systemName: model.recordingCanStop ? "stop.circle" : "record.circle",
-                    isActive: model.recordingCanStop,
-                    isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || model.recordingIsBusy,
-                    isFocused: model.hudFocusID == "recording",
-                    action: model.toggleNativeRecording
-                )
-                StreamHUDActionRow(
-                    title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                    subtitle: "Detailed overlay",
-                    systemName: "chart.line.uptrend.xyaxis",
-                    isActive: model.nativeStatsVisible,
-                    isDisabled: !model.sidebarCapabilities.supports(.floatingStats),
-                    isFocused: model.hudFocusID == "floating-stats",
-                    action: model.toggleNativeStatsHUD
+                    title: tile.title,
+                    subtitle: tile.subtitle,
+                    systemName: tile.systemName,
+                    isActive: tile.isActive,
+                    isDisabled: tile.isDisabled,
+                    isFocused: model.hudFocusID == tile.id,
+                    action: tile.action
                 )
             }
         }
     }
 
+    var nativeHUDControlsPanel: some View {
+        let tiles = nativeHUDControlTiles
+        return StreamHUDSection(label: "CONTROLS", spacing: 8, caption: nativeHUDCaption(for: tiles)) {
+            nativeHUDTileGrid(tiles)
+        }
+    }
+
     var nativeHUDInputPanel: some View {
-        StreamHUDSection(label: "INPUT", spacing: 8) {
-            LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
-                StreamHUDActionRow(
-                    title: model.pointerLocked ? "Release Mouse" : "Capture Mouse",
-                    subtitle: model.pointerLocked ? "Pointer locked" : "Click stream also captures",
-                    systemName: model.pointerLocked ? "cursorarrow.slash" : "cursorarrow.click",
-                    isActive: model.pointerLocked,
-                    isDisabled: !model.isConnected || model.nativeView?.directMouseInputEnabled != true,
-                    isFocused: model.hudFocusID == "pointer",
-                    action: model.toggleNativePointerLock
-                )
-                StreamHUDActionRow(
-                    title: model.antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
-                    subtitle: model.antiAFKMouseMovementEnabled ? "Active" : "Idle",
-                    systemName: "cursorarrow.motionlines",
-                    isActive: model.antiAFKMouseMovementEnabled,
-                    isDisabled: !model.sidebarCapabilities.supports(.antiAFK) || !model.isConnected,
-                    isFocused: model.hudFocusID == "anti-afk",
-                    action: model.toggleNativeAntiAFKMouseMovement
-                )
-                StreamHUDActionRow(
-                    title: "Controller Mapping",
-                    subtitle: "Steam Controller grip binds",
-                    systemName: "gamecontroller",
-                    isActive: false,
-                    isDisabled: false,
-                    isFocused: model.hudFocusID == "controller-mapping",
-                    action: { model.showingControllerMapping = true }
-                )
-                StreamHUDActionRow(
-                    title: "Quit Menu",
-                    subtitle: "End session",
-                    systemName: "power",
-                    isActive: false,
-                    isDisabled: false,
-                    isFocused: model.hudFocusID == "quit",
-                    action: { model.showStreamControls() }
-                )
-            }
+        let tiles = nativeHUDInputTiles
+        return StreamHUDSection(label: "INPUT", spacing: 8, caption: nativeHUDCaption(for: tiles, extra: [("mouse-sensitivity", "Mouse Sensitivity · A steps +25%")])) {
+            nativeHUDTileGrid(tiles)
             StreamHUDSliderRow(
                 label: "Mouse Sensitivity %",
                 value: model.mouseSensitivityPercent,

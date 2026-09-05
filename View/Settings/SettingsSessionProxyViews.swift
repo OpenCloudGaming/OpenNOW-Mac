@@ -20,6 +20,12 @@ struct SessionProxySettingsPage: View {
                 uiScale: uiScale
             ) { newValue in
                 settings.isEnabled = newValue
+                // Turning the proxy off is saved at once. The SAVE button lives in the enabled
+                // block below, so with the old flow the toggle hid the only way to persist the
+                // change and the proxy stayed on — every CloudMatch request kept leaving through
+                // the proxy's exit region, and the seats it allocated there streamed no video
+                // (2026-09-05).
+                if !newValue { save() }
             }
             if settings.isEnabled {
                 SettingsDivider(uiScale: uiScale)
@@ -81,9 +87,14 @@ struct SessionProxySettingsPage: View {
                     )
                 }
             }
-            if settings.isEnabled {
+            if settings.isEnabled || isDirty {
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 12 * uiScale) {
+                    if !settings.isEnabled {
+                        Text(savedSettings.isEnabled ? "Proxy still active until saved." : "Proxy off. Requests connect directly.")
+                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.75))
+                    }
                     if !testMessage.isEmpty {
                         Text(testMessage)
                             .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
@@ -91,15 +102,18 @@ struct SessionProxySettingsPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
-                    SettingsActionButton(title: isTesting ? "TESTING" : "TEST", minimumWidth: 104 * uiScale, uiScale: uiScale) {
-                        testConnection()
+                    if settings.isEnabled {
+                        SettingsActionButton(title: isTesting ? "TESTING" : "TEST", minimumWidth: 104 * uiScale, uiScale: uiScale) {
+                            testConnection()
+                        }
+                        .disabled(!isConfigurationValid || isTesting)
                     }
-                    .disabled(!isConfigurationValid || isTesting)
                     if isDirty {
                         SettingsActionButton(title: "SAVE", minimumWidth: 104 * uiScale, uiScale: uiScale) {
                             save()
                         }
-                        .disabled(!isConfigurationValid)
+                        // Disabling never needs a valid host; only an enabled proxy does.
+                        .disabled(settings.isEnabled && !isConfigurationValid)
                     }
                 }
             }

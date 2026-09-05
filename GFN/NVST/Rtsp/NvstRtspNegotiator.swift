@@ -551,7 +551,8 @@ extension NvstRtspNegotiator {
             maximumBitrateKbps: input.maximumBitrateKbps,
             disablesOwdCongestionControl: input.disablesOwdCongestionControl,
             announcesExtendedSettings: input.announcesExtendedSettings,
-            echoesOfferedAttributes: input.echoesOfferedAttributes
+            echoesOfferedAttributes: input.echoesOfferedAttributes,
+            announceOverrides: input.announceOverrides
         )
     }
 

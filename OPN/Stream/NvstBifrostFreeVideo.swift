@@ -71,13 +71,13 @@ extension NvstBifrostFreeTransport {
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
-        receiver.onRecoveryNeeded = { [weak self, weak receiver] in
+        receiver.onRecoveryNeeded = { [weak self, weak receiver] brokenFrameIndex in
             // Reached only for gaps too wide to repair by retransmission; the receiver NACKs the
             // rest itself. A broken reference chain then only recovers with a fresh keyframe.
             receiver?.requestKeyframe()
             // The seat never opens `rtcp_on_sctp_private`, so a PLI has nowhere to go; the control
             // channel's IDR request is the only path that reaches the encoder.
-            Task { await self?.requestKeyframeOverControlChannel() }
+            Task { await self?.recoverBrokenReferenceChain(frameIndex: brokenFrameIndex) }
         }
         receiver.onDiagnostic = { message in logger?("NVST \(message)") }
         // FEC-repair and control packets legitimately carry no picture; do not log each one (it
@@ -227,6 +227,12 @@ extension NvstBifrostFreeTransport {
         }
         bundle.onSeatStats = { [weak self] stats in
             Task { await self?.recordSeatStats(stats) }
+        }
+        bundle.onHapticEvents = { [weak self] events in
+            Task { await self?.handleHapticEvents(events) }
+        }
+        bundle.onHdrMode = { [weak self] notification in
+            Task { await self?.handleHdrMode(notification) }
         }
         bundle.onRemoteAudio = { [weak self] count in
             logger?("NVST bundle seat offered \(count) audio track(s)")
@@ -472,6 +478,32 @@ extension NvstBifrostFreeTransport {
         onRemoteCursorVisibilityChanged = handler
     }
 
+    public func setHapticEventHandler(_ handler: (@MainActor @Sendable ([NvstHapticEvent]) -> Void)?) {
+        onHapticEvents = handler
+    }
+
+    public func setHdrModeHandler(_ handler: (@MainActor @Sendable (NvstHdrModeNotification) -> Void)?) {
+        onHdrModeChanged = handler
+    }
+
+    /// Rumble from the seat. Counted here; the routing to a physical pad is the host's business.
+    func handleHapticEvents(_ events: [NvstHapticEvent]) {
+        hapticEventsReceived &+= UInt64(events.count)
+        guard let notify = onHapticEvents else { return }
+        Task { @MainActor in notify(events) }
+    }
+
+    func handleHdrMode(_ notification: NvstHdrModeNotification) {
+        let previous = lastHdrMode
+        lastHdrMode = notification
+        if previous != notification {
+            logger?(String(format: "NVST hdr mode %@ -> %@ at %.3fs", previous?.summary ?? "unknown", notification.summary,
+                           Double(clock.elapsedMicroseconds()) / 1_000_000))
+        }
+        guard let notify = onHdrModeChanged else { return }
+        Task { @MainActor in notify(notification) }
+    }
+
     /// Microseconds since this session started, as the remote-input timestamps are expressed.
     func sessionElapsedMicroseconds() -> UInt64 {
         guard let start = sessionStartedAt else { return 0 }
@@ -545,26 +577,64 @@ extension NvstBifrostFreeTransport {
         return host
     }
 
+    /// A hole the receiver saw, or a finalized RTP loss. Invalidates the damaged frame at the seat
+    /// when it is known — the encoder then references only frames this client has — and asks for
+    /// a keyframe either way. Measured before this (2026-09-05, 4K Cyberpunk): rtpLoss 3 became 22
+    /// rejected frames, because nothing told the seat until the decoder had rejected the next frame,
+    /// and the follow-up invalidations for the rest of the chain were held for half a second.
+    func recoverBrokenReferenceChain(frameIndex: UInt32?) {
+        if let frameIndex { invalidateFrame(frameIndex) }
+        requestKeyframeOverControlChannel()
+    }
+
     /// Tells the seat which frame the decoder could not use, so its encoder stops referencing it.
-    /// Throttled: a broken reference chain rejects every following frame, and one range covers them.
+    ///
+    /// Coalesced, not throttled: a broken reference chain rejects every following frame, and one
+    /// range covers a run of them, but the range has to reach the seat while the run is happening.
+    /// The first frame of a run goes out at once; the rest are folded into one range that is
+    /// flushed `invalidationCoalesceInterval` later. The earlier form only re-sent when a *further*
+    /// failure arrived after the interval — a second loss inside the window was reported at the
+    /// third, or never.
     func invalidateFrame(_ frameIndex: UInt32) {
-        guard let bundle else { return }
         let now = Date()
-        if let last = lastInvalidationAt, now.timeIntervalSince(last) < Self.idrRequestInterval {
+        if let last = lastInvalidationAt, now.timeIntervalSince(last) < Self.invalidationCoalesceInterval {
+            pendingInvalidationFirst = min(pendingInvalidationFirst ?? frameIndex, frameIndex)
             pendingInvalidationLast = max(pendingInvalidationLast ?? frameIndex, frameIndex)
+            scheduleInvalidationFlush(after: Self.invalidationCoalesceInterval - now.timeIntervalSince(last))
             return
         }
-        let first = UInt64(pendingInvalidationFirst ?? frameIndex)
-        let last = UInt64(max(pendingInvalidationLast ?? frameIndex, frameIndex))
-        lastInvalidationAt = now
+        sendInvalidation(first: frameIndex, last: frameIndex, at: now)
+    }
+
+    private func scheduleInvalidationFlush(after delay: TimeInterval) {
+        guard invalidationFlushTask == nil else { return }
+        invalidationFlushTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(max(1, Int(delay * 1000))))
+            await self?.flushPendingInvalidation()
+        }
+    }
+
+    private func flushPendingInvalidation() {
+        invalidationFlushTask = nil
+        guard let first = pendingInvalidationFirst, let last = pendingInvalidationLast else { return }
+        sendInvalidation(first: first, last: last, at: Date())
+    }
+
+    private func sendInvalidation(first: UInt32, last: UInt32, at now: Date) {
         pendingInvalidationFirst = nil
         pendingInvalidationLast = nil
-        guard bundle.sendControl(.frameInvalidationRange(first: first, last: last)) else {
+        lastInvalidationAt = now
+        guard let bundle else { return }
+        guard bundle.sendControl(.frameInvalidationRange(first: UInt64(first), last: UInt64(last))) else {
             logger?("NVST frame invalidation write failed")
             return
         }
         invalidationsSent += 1
     }
+
+    /// How long follow-up invalidations are gathered into one range before it goes out — a few
+    /// frames at 120 fps, well under the seat's reaction time to the first one.
+    static let invalidationCoalesceInterval: TimeInterval = 0.04
 
     /// Asks the seat's encoder for a fresh keyframe, at most a few times a second: a decode failure
     /// can repeat for every frame in a broken reference chain, and one IDR fixes the whole run of
@@ -652,6 +722,11 @@ extension NvstBifrostFreeTransport {
         sent.append("window=\(bundle.sendControl(.windowStateChange()))")
         sent.append("system=\(bundle.sendControl(.systemStateChange()))")
         sent.append("enableOn=\(bundle.sendControl(NvstInputActivation.enableInput(counter: UInt32((videoPipeline?.snapshot.frameAcksSent ?? 0) + 1))))")
+        // Haptics on. The seat sends no `0x010b` rumble until the client has enabled the feature
+        // with RI type 13 (`RiClientBackend::enableHaptics`); the official client sends it whenever
+        // a rumble-capable pad is present. Always on here: a pad without motors just never gets a
+        // command it could act on, and the seat otherwise stays silent for every pad.
+        sent.append("haptics=\((try? sendFramedRemoteInput(NvstRemoteInput.hapticsState(enabled: true))) != nil)")
         logger?("NVST input activation sent (\(sent.joined(separator: " ")))")
     }
 

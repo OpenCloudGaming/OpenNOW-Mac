@@ -36,8 +36,12 @@ public struct NvstControlCommandCode: Equatable, Hashable, Sendable,
     /// `NvstMessageForClient_t` with msgType 7 via `signalOnServerMessage`; outbound the official
     /// `sendCustomMessage` picks 0x113 only for messageType 0xe and 0x10a otherwise.
     public static let customMessage: NvstControlCommandCode = 0x010a
-    /// NVSC client event type 7 (u16, u16 + blob); likely haptics/rumble related.
-    public static let nvscClientEvent: NvstControlCommandCode = 0x010b
+    /// Gamepad rumble from the seat: `[u16 kind][u16 length][records]`, see `NvstHapticEvent`.
+    /// The dispatcher turns it into `NvstClientEvent_t` type 7, which the NVB layer publishes as
+    /// `NVB_EVT_HAPTIC_EVENT` (arm64 disassembly of `handleServerCommand` and `onNvscEvent`).
+    public static let hapticEvent: NvstControlCommandCode = 0x010b
+    /// Older name for `hapticEvent`, kept for the call sites that predate the disassembly.
+    public static let nvscClientEvent: NvstControlCommandCode = hapticEvent
     /// Verified against the official `handleServerCommand` dispatch; this code was previously
     /// misread as HDR mode.
     public static let controllerScheme: NvstControlCommandCode = 0x010d
@@ -129,7 +133,7 @@ public struct NvstControlCommandCode: Equatable, Hashable, Sendable,
         case 0x106: "gamepad-handling"
         case 0x109: "termination"
         case 0x10a: "custom-message"
-        case 0x10b: "nvsc-client-event"
+        case 0x10b: "haptic-event"
         case 0x10d: "controller-scheme"
         case 0x10e: "hdr-mode"
         case 0x10f: "cursor-info"

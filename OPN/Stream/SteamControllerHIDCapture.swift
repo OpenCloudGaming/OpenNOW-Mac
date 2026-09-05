@@ -90,21 +90,59 @@ extension SteamControllerHIDMonitor {
         }
     }
 
-    func sendFeatureReport(_ report: SteamControllerFeatureReport, to device: IOHIDDevice, attempts: Int = SteamControllerHIDMonitor.featureReportAttempts) {
+    @discardableResult
+    func sendFeatureReport(_ report: SteamControllerFeatureReport, to device: IOHIDDevice, attempts: Int = SteamControllerHIDMonitor.featureReportAttempts) -> IOReturn {
         report.bytes.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
+            guard let base = buffer.baseAddress else { return kIOReturnBadArgument }
+            var status = kIOReturnError
             for _ in 0..<max(1, attempts) {
-                if IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, CFIndex(report.reportID), base, buffer.count) == kIOReturnSuccess {
-                    return
-                }
+                status = IOHIDDeviceSetReport(device, report.kind == .output ? kIOHIDReportTypeOutput : kIOHIDReportTypeFeature, CFIndex(report.reportID), base, buffer.count)
+                if status == kIOReturnSuccess { return status }
+            }
+            return status
+        }
+    }
+
+    /// Rumble goes to every HID interface that carries this controller, the way the lizard-mode
+    /// reports do: a wireless puck exposes several interfaces under one device ID and only one of
+    /// them forwards vendor commands to the pad — `first(where:)` on a dictionary picked one at
+    /// random, which is why seat rumble reached this method and moved nothing (2026-09-05). The
+    /// per-interface result is logged for the first few commands so a refused report is visible.
+    public func sendRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16) {
+        writeRumble(deviceID: deviceID, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+        // The 2026 controller's firmware cuts the motors ~50 ms after the last command, so a rumble
+        // that should last is re-sent every 40 ms (SDL's `TRITON_RUMBLE_RESEND_INTERVAL_MS`) until
+        // the caller sends zeros or a newer state. One write gave a single imperceptible blip.
+        rumbleResendTasks.removeValue(forKey: deviceID)?.cancel()
+        guard leftAmplitude > 0 || rightAmplitude > 0 else { return }
+        rumbleResendTasks[deviceID] = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(SteamControllerReport.tritonRumbleResendMilliseconds))
+                guard !Task.isCancelled, let self else { return }
+                self.writeRumble(deviceID: deviceID, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude, resend: true)
             }
         }
     }
 
-    public func sendRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16) {
-        guard let context = devices.values.first(where: { $0.deviceID == deviceID }) else { return }
-        let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
-        sendFeatureReport(report, to: context.device, attempts: 3)
+    private func writeRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16, resend: Bool = false) {
+        let contexts = devices.values.filter { $0.deviceID == deviceID }
+        guard !contexts.isEmpty else {
+            if !resend { OpenNOWLog.warning(.controller, "Rumble: no HID interface for \(deviceID.rawValue)") }
+            rumbleResendTasks.removeValue(forKey: deviceID)?.cancel()
+            return
+        }
+        rumbleReportsSent += 1
+        let shouldLog = !resend && (rumbleReportsSent <= 6 || rumbleReportsSent % 500 == 0)
+        for context in contexts {
+            let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
+            let status = sendFeatureReport(report, to: context.device, attempts: 3)
+            if shouldLog {
+                OpenNOWLog.info(.controller, String(format: "Rumble #%d %@ model=%@ active=%d left=%d right=%d reportID=%d bytes=%@ -> 0x%08x",
+                                                    rumbleReportsSent, deviceID.rawValue, String(describing: context.model), context.isActive ? 1 : 0,
+                                                    Int(leftAmplitude), Int(rightAmplitude), report.reportID,
+                                                    report.bytes.prefix(12).map { String(format: "%02x", $0) }.joined(), status))
+            }
+        }
     }
 
     func stringProperty(_ device: IOHIDDevice, key: String) -> String? {

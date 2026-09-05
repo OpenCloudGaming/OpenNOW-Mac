@@ -15,6 +15,29 @@ final class SteamControllerTestModel: ObservableObject {
     @Published var isConnected = false
     @Published var batteryLevel: UInt8?
     @Published var isCharging: Bool = false
+    /// Which motor the tester is currently pulsing, for the button highlight.
+    @Published var rumbleInFlight: RumbleTarget?
+    /// Motor amplitude for the test pulse, percent of full scale. Lets the controller's own
+    /// intensity curve be felt without a game in the loop.
+    @Published var rumbleIntensityPercent = 100
+
+    enum RumbleTarget: Equatable { case left, right, both }
+
+    /// Drives the connected controller's motors the way a seat rumble command would, for
+    /// `ControllerRumbleTester.pulseMilliseconds`, then clears them.
+    func testRumble(_ target: RumbleTarget) {
+        guard let deviceID = SteamControllerHIDMonitor.shared.activeDeviceIDs.first(where: { $0.rawValue == self.deviceID })
+                ?? SteamControllerHIDMonitor.shared.activeDeviceIDs.first else { return }
+        let amplitude = UInt16(clamping: Int(Double(UInt16.max) * Double(min(max(rumbleIntensityPercent, 0), 100)) / 100))
+        let left: UInt16 = target == .right ? 0 : amplitude
+        let right: UInt16 = target == .left ? 0 : amplitude
+        rumbleInFlight = target
+        ControllerRumbleTester.pulseSteamController(deviceID, left: left, right: right)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(ControllerRumbleTester.pulseMilliseconds))
+            if self?.rumbleInFlight == target { self?.rumbleInFlight = nil }
+        }
+    }
 
     private var consumerKey: ObjectIdentifier?
     private var monitorWasEnabled = false

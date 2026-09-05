@@ -255,7 +255,8 @@ extension NvstBifrostFreeTransport {
             decoderOutputFormat: decoder?.outputPixelFormatName ?? "",
             targetBitrateMegabitsPerSecond: configuredMaxBitrateKbps.map { Double($0) / 1000 } ?? -1,
             serverGPU: sessionGPUType ?? "",
-            audioJitterBufferMilliseconds: audioJitterBufferMilliseconds
+            audioJitterBufferMilliseconds: audioJitterBufferMilliseconds,
+            audioOutputLatencyMilliseconds: bundle?.audioOutputLatencySeconds.map { $0 * 1000 } ?? -1
         )
     }
     // Session-peak tracker for the NVST SESSION SUMMARY line (see logCounters).

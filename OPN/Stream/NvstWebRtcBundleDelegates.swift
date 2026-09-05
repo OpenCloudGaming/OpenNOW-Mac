@@ -77,6 +77,16 @@ extension NvstWebRtcBundle {
                 onSeatStats?(stats)
                 continue
             }
+            if let haptics = NvstHapticEvent.parse(command) {
+                describeHapticCommand(command, events: haptics)
+                if !haptics.isEmpty { onHapticEvents?(haptics) }
+                continue
+            }
+            if let hdrMode = NvstHdrModeNotification.parse(command) {
+                logger?("NVST hdr-mode notification \(hdrMode.summary) payload=\(command.payload.prefix(16).map { String(format: "%02x", $0) }.joined())")
+                onHdrMode?(hdrMode)
+                continue
+            }
             guard let cursor = NvstRemoteCursor.from(command) else {
                 describeCursorCommandIfUnparsed(command)
                 continue
@@ -129,6 +139,32 @@ extension NvstWebRtcBundle {
 
     /// Enough to characterise the control conversation without flooding the log.
     static let maxLoggedInboundMessages = 40
+
+    /// Rumble arrives at frame rate while a game vibrates the pad, so only *changes* of motor state
+    /// are logged — a held rumble refreshed every 50 ms is one line — and those stop after a
+    /// budget. Enough to read a game's intensity curve off the log (a "10% feels like 100%" report
+    /// needs the seat's amplitudes, not a count).
+    static let maxLoggedHapticChanges = 400
+
+    func describeHapticCommand(_ command: NvstControlCommand, events: [NvstHapticEvent]) {
+        let signature = events.map { "\($0.gamepadIndex):\($0.leftMotor):\($0.rightMotor)" }.joined(separator: ",")
+        let (shouldLog, ordinal): (Bool, Int) = lock.withLock {
+            hapticCommandCount += 1
+            hapticEventCount += events.count
+            let changed = signature != lastHapticSignature
+            if changed { lastHapticSignature = signature; hapticChangeCount += 1 }
+            return ((changed && hapticChangeCount <= Self.maxLoggedHapticChanges) || hapticCommandCount % 2000 == 0, hapticCommandCount)
+        }
+        guard shouldLog else { return }
+        let hex = command.payload.prefix(24).map { String(format: "%02x", $0) }.joined()
+        let records = events.isEmpty ? "unparsed" : events.map(\.summary).joined(separator: " | ")
+        logger?("NVST haptic #\(ordinal) len=\(command.payload.count) \(records) payload=\(hex)")
+    }
+
+    /// Haptic commands seen this session, for the diagnostics summary.
+    public var hapticCounters: (commands: Int, events: Int) {
+        lock.withLock { (hapticCommandCount, hapticEventCount) }
+    }
 
     /// The first channel to actually open with the feedback label is the one the seat accepted; the
     /// rest of the burst is redundant.

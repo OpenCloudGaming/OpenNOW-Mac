@@ -111,7 +111,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     /// The same MTKView, reachable from the decode thread for the manual `draw()` call. MTKView
     /// already invokes `draw(in:)` off the main thread from its own display link, so the render
     /// path is written for that; this only changes who kicks it.
-    nonisolated(unsafe) let metalViewForManualDraw: MTKView
+    let metalViewForManualDraw: MTKView
     /// A one-shot request to write the next drawn frame — the drawable itself, after our render
     /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
     nonisolated(unsafe) var pendingRenderSnapshotURL: URL?
@@ -237,7 +237,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         os_unfair_lock_unlock(&frameLock)
         if mode == .lowestLatency {
             os_unfair_lock_lock(&manualDrawLock)
-            metalViewForManualDraw.draw()
+            // Deliberately off the main actor: this is the decode thread kicking a draw the
+            // moment a frame lands, which is the whole point of the mode. `MTKView.draw()` is
+            // main-actor-annotated in the SDK, though MTKView itself calls `draw(in:)` from its
+            // display-link thread; the ObjC dispatch says what the annotation cannot.
+            _ = metalViewForManualDraw.perform(#selector(MTKView.draw as (MTKView) -> () -> Void))
             os_unfair_lock_unlock(&manualDrawLock)
         }
     }

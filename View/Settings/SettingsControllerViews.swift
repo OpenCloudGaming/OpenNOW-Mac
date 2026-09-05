@@ -79,10 +79,50 @@ struct SteamControllerSettingsPage: View {
     @State private var showingControllerMapping = false
     @State private var permissionResetInFlight = false
     @State private var permissionResetError: String?
+    @State private var rumbleTestMessage: String?
+    @State private var rumbleIntensityPercent = ControllerRumblePreference.loadIntensityPercent()
     @State private var accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
+            // Rumble is for every controller (GameController pads through CoreHaptics, Steam
+            // Controllers through their HID report), so it lives outside the Steam Controller
+            // opt-in below rather than disappearing with it.
+            SettingsCard(title: "Rumble", uiScale: uiScale) {
+                SettingsSliderRow(
+                    title: "Rumble Intensity",
+                    valueText: rumbleIntensityPercent == 0 ? "Off" : "\(rumbleIntensityPercent)%",
+                    value: Double(rumbleIntensityPercent),
+                    range: Double(ControllerRumblePreference.range.lowerBound)...Double(ControllerRumblePreference.range.upperBound),
+                    step: Double(ControllerRumblePreference.step),
+                    uiScale: uiScale
+                ) { value in
+                    rumbleIntensityPercent = Int(value.rounded())
+                    ControllerRumblePreference.saveIntensityPercent(rumbleIntensityPercent)
+                }
+                Text("Ceiling for every rumble the game sends, on every controller. Games scale only some of their effects with their own vibration setting; this scales all of them. Also on the stream HUD (⌘G) under Controllers.")
+                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+
+                SettingsDivider(uiScale: uiScale)
+                HStack {
+                    VStack(alignment: .leading, spacing: 5 * uiScale) {
+                        Text("Test Rumble")
+                            .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                            .foregroundStyle(.white.opacity(1))
+                        Text(rumbleTestMessage ?? "Pulse the motors of every connected controller — Steam Controllers and GameController pads — at the intensity above, the way a game's rumble reaches them during a stream.")
+                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer()
+                    Button("Rumble All") {
+                        let result = ControllerRumbleTester.pulseAllControllers()
+                        rumbleTestMessage = result.summary
+                    }
+                    .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                }
+            }
+
             SettingsCard(title: "Steam Controller", uiScale: uiScale) {
                 SettingsToggleRow(
                     title: "Steam Controller Support",

@@ -17,20 +17,22 @@ extension WebRTCMediaStreamSurface {
     /// No Remote Co-Op entries here: this HUD belongs to the WebRTC surface, which can no longer host
     /// a session, so the invite and copy rows that used to be appended went with it.
     var hudFocusEntries: [StreamHUDFocusEntry] {
+        // One wrapping row of icon tiles; the wrap width follows the dock, so the grid model
+        // treats them as a single row and up/down has nothing to do here.
         [
-            StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", action: toggleMicrophone),
-            StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, action: toggleRecording),
-            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, action: toggleAntiAFKMouseMovement),
-            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, action: openControllerMapping),
-            StreamHUDFocusEntry(id: "quit", isDisabled: false, action: { showQuitMenu() }),
+            StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", group: "controls", columns: 8, action: toggleMicrophone),
+            StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, group: "controls", columns: 8, action: toggleRecording),
+            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, group: "controls", columns: 8, action: toggleAntiAFKMouseMovement),
+            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controls", columns: 8, action: openControllerMapping),
+            StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "controls", columns: 8, action: { showQuitMenu() }),
         ]
     }
 
     func handleHUDGamepad(_ state: GamepadState) {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
-        case .move(let delta):
-            moveHUDFocus(by: delta)
+        case .move(let direction):
+            moveHUDFocus(direction)
         case .activate:
             StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
         case .back:
@@ -38,16 +40,16 @@ extension WebRTCMediaStreamSurface {
         }
     }
 
-    func moveHUDFocus(by step: Int) {
-        guard let next = StreamHUDFocusEntry.focusID(after: hudFocusID, in: hudFocusEntries, step: step) else { return }
+    func moveHUDFocus(_ direction: StreamHUDFocusDirection) {
+        guard let next = StreamHUDFocusEntry.focusID(from: hudFocusID, direction: direction, in: hudFocusEntries) else { return }
         hudFocusID = next
     }
 
     func handleQuitMenuGamepad(_ state: GamepadState) {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
-        case .move(let delta):
-            quitMenuFocusIndex = (quitMenuFocusIndex + delta + 3) % 3
+        case .move(let direction):
+            quitMenuFocusIndex = (quitMenuFocusIndex + direction.linearStep + 3) % 3
         case .activate:
             switch quitMenuFocusIndex {
             case 0: dismissQuitMenu()

@@ -113,7 +113,53 @@ extension NativeNVSTHostViewModel {
             await performAutopilotClick(action, dispatcher: dispatcher)
             return
         }
+        if action.hasPrefix("pad") {
+            await performAutopilotPad(String(action.dropFirst(3)), dispatcher: dispatcher)
+            return
+        }
+        if action == "reconnect" {
+            // The same in-place recovery the stall watchdog and the network-path monitor run, on
+            // demand: tears the transport down, resumes the session through CloudMatch and
+            // negotiates again. The only way to exercise that path without pulling a cable.
+            guard let path else { return }
+            let recovered = await attemptInPlaceReconnect(path: path, reason: "autopilot")
+            OpenNOWLog.info(.stream, "Autopilot: reconnect \(recovered ? "succeeded" : "failed")")
+            return
+        }
         OpenNOWLog.warning(.stream, "Autopilot: unknown action \(action)")
+    }
+
+    /// `pad<button>` taps one button on the seat's pad 0 for 120 ms (`padA`, `padB`, `padX`,
+    /// `padY`, `padStart`, `padSelect`, `padLB`, `padRB`, `padUp/Down/Left/Right`). Games that
+    /// rumble only the active player's controller (Streets of Rage 4 hands player 1 to whichever
+    /// device pressed first) need a pad press before the keyboard-driven harness can measure rumble.
+    private func performAutopilotPad(_ name: String, dispatcher: NativeNVSTInputDispatcher) async {
+        let buttons: GamepadButtons? = switch name.lowercased() {
+        case "a": .south
+        case "b": .east
+        case "x": .west
+        case "y": .north
+        case "start": .start
+        case "select", "back": .select
+        case "lb": .leftShoulder
+        case "rb": .rightShoulder
+        case "up": .dpadUp
+        case "down": .dpadDown
+        case "left": .dpadLeft
+        case "right": .dpadRight
+        default: nil
+        }
+        guard let buttons else {
+            OpenNOWLog.warning(.stream, "Autopilot: unknown pad button \(name)")
+            return
+        }
+        func state(_ pressed: GamepadButtons) -> UserInputEvent {
+            .gamepad(GamepadState(deviceID: InputDeviceID("autopilot-pad"), playerIndex: 0, buttons: pressed, timestamp: autopilotTimestamp()))
+        }
+        dispatcher.enqueue(state(buttons))
+        try? await Task.sleep(for: .milliseconds(120))
+        dispatcher.enqueue(state([]))
+        OpenNOWLog.info(.stream, "Autopilot: tapped pad button \(name)")
     }
 
     /// `osnap` renders offscreen, `rsnap` reads the next drawable back, `snap` writes the decoded frame.

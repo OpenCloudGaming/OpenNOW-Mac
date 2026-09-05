@@ -51,6 +51,9 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     /// Mean time audio spent in libwebrtc's jitter buffer over the last snapshot interval, ms; -1
     /// when unknown. Against video's decode + present time it gives an A/V offset estimate.
     public let audioJitterBufferMilliseconds: Double
+    /// The output device's own latency plus its IO buffer, ms; -1 when unknown. The part of the
+    /// audio path after the jitter buffer that the A/V estimate would otherwise leave out.
+    public let audioOutputLatencyMilliseconds: Double
     /// The seat's GPU as named by the session response ("NVIDIA GeForce RTX 4080"); the rig.
     public let serverGPU: String
 
@@ -76,8 +79,10 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 decoderOutputFormat: String = "",
                 targetBitrateMegabitsPerSecond: Double = -1,
                 serverGPU: String = "",
-                audioJitterBufferMilliseconds: Double = -1) {
+                audioJitterBufferMilliseconds: Double = -1,
+                audioOutputLatencyMilliseconds: Double = -1) {
         self.audioJitterBufferMilliseconds = audioJitterBufferMilliseconds
+        self.audioOutputLatencyMilliseconds = audioOutputLatencyMilliseconds
         self.serverGPU = serverGPU
         self.targetBitrateMegabitsPerSecond = targetBitrateMegabitsPerSecond
         self.negotiatedFramesPerSecond = negotiatedFramesPerSecond
@@ -133,6 +138,10 @@ struct NativeNVSTStreamHealthMonitor: Equatable, Sendable {
         self.stalledSampleLimit = max(1, stalledSampleLimit)
         self.rendererSampleLimit = max(1, rendererSampleLimit)
     }
+
+    /// Consecutive samples with no frames, so a network-path change can act before the stall
+    /// verdict when the picture has already stopped.
+    var zeroFrameStreak: Int { zeroFrameSamples }
 
     mutating func observe(snapshot: NativeNVSTPerformanceSnapshot?, rendererReady: Bool) -> NativeNVSTStreamHealthFailure? {
         guard let snapshot, snapshot.available else { return nil }
@@ -262,13 +271,20 @@ public enum NativeNVSTRecoveryPolicy {
         switch termination {
         case .sessionTerminated(let info):
             info.permitsSameSessionRecovery
-        case .transportFailed:
-            false
+        case .transportFailed(let failure):
+            // The transport's own verdict: a network-class failure leaves the cloud session alive
+            // and resumable, a decoder that gave up does not.
+            failure.recoveryClassification == .transientNetwork
         }
     }
 
 }
 
+/// Whether the streaming path reconnects to the same cloud session on its own when the transport
+/// dies or stalls. `singleAttempt` is the historical name; since 2026-09-05 it means "a bounded
+/// series of attempts" (`NativeNVSTStreamingPath.maximumRecoveryAttempts` within
+/// `recoveryAttemptWindow`), because one try at the instant a Wi-Fi network drops is the one try
+/// most likely to fail.
 public enum NativeNVSTAutomaticRecovery: Equatable, Sendable {
     case disabled
     case singleAttempt
