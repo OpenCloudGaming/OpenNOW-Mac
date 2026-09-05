@@ -36,7 +36,7 @@ extension NativeNVSTMediaStreamSurface {
                 // latency and was not one.
                 nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor)
                 nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
-                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nativeStatsResolutionDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Codec", value: codec, detail: nativeStatsDecoderDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from
                 // the HUD rather than from the diagnostic log.
@@ -114,12 +114,6 @@ extension NativeNVSTMediaStreamSurface {
                     .lineLimit(1)
             }
         }
-    }
-
-    /// Why the resolution is what it is: `16:9 title` once the launch dropped the bars, or
-    /// `16:9 title · 16:9 next launch` when this session found them and the next one will.
-    var nativeStatsResolutionDetail: String? {
-        return nil
     }
 
     /// `ms of 8.3`: decode time against the negotiated frame interval. Over it and the seat is
