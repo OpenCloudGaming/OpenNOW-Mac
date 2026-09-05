@@ -48,16 +48,11 @@ struct AccountSettingsPage: View {
                 }
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 16 * uiScale) {
-                    profilePrivacyCard
-                    sessionCard
-                }
-                VStack(alignment: .leading, spacing: 16 * uiScale) {
-                    profilePrivacyCard
-                    sessionCard
-                }
-            }
+            // Full width, one under the other, like every other settings page. Side by side the
+            // two cards held different amounts and so ended at different heights, which read as a
+            // layout accident rather than a choice, and squeezed the value columns of both.
+            profilePrivacyCard
+            sessionCard
 
             SettingsCard(title: "Playtime Statistics", uiScale: uiScale) {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
