@@ -20,7 +20,6 @@ struct ServerLocationSettingsPage: View {
                         .foregroundStyle(.white.opacity(0.58))
                 }
                 Spacer(minLength: 12 * uiScale)
-                SettingsStatusPill(title: "ACTIVE", value: selectedRegionTitle(selectedOption), positive: true, uiScale: uiScale)
                 SettingsActionButton(title: viewModel.isRefreshingSettingsRegions ? "PINGING" : "REFRESH", minimumWidth: 104 * uiScale, uiScale: uiScale) { viewModel.refreshSettingsRegions() }
                     .disabled(viewModel.isRefreshingSettingsRegions)
             }
@@ -37,11 +36,6 @@ struct ServerLocationSettingsPage: View {
                 }
             }
         }
-    }
-
-    private func selectedRegionTitle(_ option: OPNStreamRegionOption?) -> String {
-        guard let option else { return "Automatic" }
-        return SettingsRegionName.shortName(for: option)
     }
 }
 
