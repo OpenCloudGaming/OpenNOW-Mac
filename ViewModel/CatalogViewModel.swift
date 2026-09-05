@@ -233,6 +233,8 @@ final class CatalogViewModel {
     var selectedVariantIndex = -1
     var activeStreamConfiguration: StreamLaunchConfiguration?
     var activeStreamProgress: StreamProgress?
+    /// One ready alert per launch: allocation and the transport each publish a ready progress.
+    var didNotifySessionReady = false
     var isActiveStreamLaunchOverlayVisible = false
     /// True while the pointer is over a game tile. The page-wide "tap anywhere else to close the
     /// details" gesture runs alongside the tile's own tap, so a click on the open tile closed the

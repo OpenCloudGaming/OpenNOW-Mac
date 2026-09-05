@@ -356,6 +356,10 @@ extension CatalogViewModel {
         activeStreamProgress = progress
         isActiveStreamLaunchOverlayVisible = true
         guard progress.isReady else { return }
+        if !didNotifySessionReady {
+            didNotifySessionReady = true
+            OpenNOWSessionReadyNotifier.sessionDidBecomeReady(title: progress.title)
+        }
         if let presence = activeDiscordPresence {
             discordPresence.update(.streaming(presence))
         }
@@ -428,7 +432,9 @@ extension CatalogViewModel {
         launchFlowError = ""
         streamProgressGeneration += 1
         isActiveStreamLaunchOverlayVisible = true
+        didNotifySessionReady = false
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
+        OpenNOWSessionReadyNotifier.prepareAuthorizationIfNeeded()
         activeStreamConfiguration = configuration
         clearLaunchFlow()
     }

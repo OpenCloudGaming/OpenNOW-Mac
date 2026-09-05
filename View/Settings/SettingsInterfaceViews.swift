@@ -7,6 +7,7 @@ struct InterfaceSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScaleStorage = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWSessionReadyNotifier.enabledKey) private var sessionReadyNotificationsEnabled = true
     @StateObject private var model = InterfaceSettingsViewModel()
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
@@ -47,6 +48,13 @@ struct InterfaceSettingsPage: View {
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            SettingsCard(title: "Notifications", uiScale: uiScale) {
+                SettingsToggleRow(title: "Session Ready Alerts", subtitle: "Post a system notification when a queued or provisioning session becomes ready while OpenNOW is in the background.", isOn: sessionReadyNotificationsEnabled, uiScale: uiScale) { enabled in
+                    sessionReadyNotificationsEnabled = enabled
+                    if enabled { OpenNOWSessionReadyNotifier.prepareAuthorizationIfNeeded() }
+                }
             }
 
             SettingsCard(title: "Controls", uiScale: uiScale) {
