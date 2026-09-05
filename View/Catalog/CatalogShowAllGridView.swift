@@ -101,30 +101,36 @@ struct CatalogShowAllGridView: NSViewRepresentable {
                 layout.invalidateLayout()
                 collectionView.layoutSubtreeIfNeeded()
             }
+            // The layout knows where the detail row goes; the *items* still hold the selection
+            // they were built with. Without this the tile the row belongs to kept its closed
+            // chevron and lighter title while its panel was open, because this branch runs
+            // whenever the selected index changes and the reload branch below never got a turn.
+            reloadSelectionAffectedItems(collectionView: collectionView, coordinator: context.coordinator, selectedIdentity: selectedIdentity)
             if selectedIndexChanged, let detailRowFrame = layout.detailRowFrame {
                 collectionView.animator().scrollToVisible(detailRowFrame)
             }
         } else if context.coordinator.selectedIdentity != selectedIdentity {
-            let oldIdentity = context.coordinator.selectedIdentity
-            context.coordinator.selectedIdentity = selectedIdentity
-            var indexPathsToReload = Set<IndexPath>()
-            if let oldIdentity {
-                if let oldIndex = context.coordinator.gameIdentities.firstIndex(of: oldIdentity) {
-                    indexPathsToReload.insert(IndexPath(item: oldIndex, section: 0))
-                }
-            }
-            if let newIdentity = selectedIdentity {
-                if let newIndex = context.coordinator.gameIdentities.firstIndex(of: newIdentity) {
-                    indexPathsToReload.insert(IndexPath(item: newIndex, section: 0))
-                }
-            }
-            if !indexPathsToReload.isEmpty {
-                collectionView.reloadItems(at: indexPathsToReload)
-            }
+            reloadSelectionAffectedItems(collectionView: collectionView, coordinator: context.coordinator, selectedIdentity: selectedIdentity)
         }
 
         let contentSize = layout.collectionViewContentSize
         collectionView.frame.size.height = contentSize.height
+    }
+
+    /// Rebuilds the tiles whose selected state changed, so the chevron, the title weight and the
+    /// accent underline follow the panel. Shared by both update paths.
+    private func reloadSelectionAffectedItems(collectionView: NSCollectionView, coordinator: Coordinator, selectedIdentity: String?) {
+        guard coordinator.selectedIdentity != selectedIdentity else { return }
+        let oldIdentity = coordinator.selectedIdentity
+        coordinator.selectedIdentity = selectedIdentity
+        var indexPathsToReload = Set<IndexPath>()
+        for identity in [oldIdentity, selectedIdentity].compactMap({ $0 }) {
+            if let index = coordinator.gameIdentities.firstIndex(of: identity) {
+                indexPathsToReload.insert(IndexPath(item: index, section: 0))
+            }
+        }
+        guard !indexPathsToReload.isEmpty else { return }
+        collectionView.reloadItems(at: indexPathsToReload)
     }
 
     func makeCoordinator() -> CatalogShowAllGridCoordinator {
@@ -554,7 +560,12 @@ final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
 }
 
 enum CatalogShowAllLayout {
-    static let cardTrayHeight: CGFloat = 28
+    /// The rails' tray height, not a second one: a search result and a home tile are the same
+    /// component and the bar was 12pt shorter here.
+    static let cardTrayHeight = CatalogVendorLayout.cardTrayHeight(scale: 1)
+    /// Deliberately gentler than the rails' 1.12. A rail can raise the hovered tile above its
+    /// neighbours; this grid is an NSCollectionView, where each item is its own layer and the
+    /// enlarged tile cannot be reordered over the one beside it.
     static let tileScaleFactor: CGFloat = 1.04
     /// The home rails' tray token, not a second near-black of its own: the two trays sat side by
     /// side across a search and did not match.
