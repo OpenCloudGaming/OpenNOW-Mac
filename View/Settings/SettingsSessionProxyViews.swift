@@ -15,7 +15,7 @@ struct SessionProxySettingsPage: View {
         SettingsCard(title: "Session Proxy", uiScale: uiScale) {
             SettingsToggleRow(
                 title: "Session Proxy",
-                subtitle: "Route GeForce NOW catalog, session creation, and queue requests through a proxy. Streaming and signaling traffic always connects directly.",
+                subtitle: "Route GeForce NOW catalog requests, and optionally session creation and queue requests, through a proxy. Streaming and signaling traffic always connects directly.",
                 isOn: settings.isEnabled,
                 uiScale: uiScale
             ) { newValue in
@@ -23,8 +23,9 @@ struct SessionProxySettingsPage: View {
                 // Turning the proxy off is saved at once. The SAVE button lives in the enabled
                 // block below, so with the old flow the toggle hid the only way to persist the
                 // change and the proxy stayed on — every CloudMatch request kept leaving through
-                // the proxy's exit region, and the seats it allocated there streamed no video
-                // (2026-09-05).
+                // the proxy's exit region and kept allocating far seats. (Those seats' black
+                // screen was the video punch landing after PLAY, fixed in the NVST transport the
+                // same day, 2026-09-05; the Scope row below keeps sessions direct regardless.)
                 if !newValue { save() }
             }
             if settings.isEnabled {
@@ -37,6 +38,16 @@ struct SessionProxySettingsPage: View {
                     uiScale: uiScale
                 ) { index in
                     settings.scheme = OPNSessionProxyScheme.allCases[index]
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(
+                    title: "Scope",
+                    subtitle: "Catalog Only unlocks another region's store while sessions still go to your selected Cloudmatch region. Catalog + Sessions also allocates the seat where the proxy exits.",
+                    options: OPNSessionProxyScope.allCases.map(\.title),
+                    selectedIndex: OPNSessionProxyScope.allCases.firstIndex(of: settings.scope) ?? 0,
+                    uiScale: uiScale
+                ) { index in
+                    settings.scope = OPNSessionProxyScope.allCases[index]
                 }
                 SettingsDivider(uiScale: uiScale)
                 SettingsTextFieldRow(

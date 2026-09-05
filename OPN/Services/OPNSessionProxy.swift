@@ -8,25 +8,62 @@ public enum OPNSessionProxyScheme: String, CaseIterable, Sendable {
     public var title: String { rawValue.uppercased() }
 }
 
+/// Which control-plane requests leave through the proxy. The catalog (games.geforce.com and the
+/// account/ownership lookups) decides what the store shows; CloudMatch decides where the seat is.
+/// A user in one region reading another region's catalog usually still wants their own seat: a
+/// seat allocated where the proxy exits adds the proxy's distance to every frame. `catalogOnly`
+/// keeps CloudMatch direct, so the selected region (or the automatic one, from the real address)
+/// still picks the seat.
+public enum OPNSessionProxyScope: String, CaseIterable, Sendable {
+    case everything
+    case catalogOnly
+
+    public var title: String {
+        switch self {
+        case .everything: "Catalog + Sessions"
+        case .catalogOnly: "Catalog Only"
+        }
+    }
+}
+
+/// What a control-plane request is for, so the scope can route it.
+public enum OPNSessionProxyPurpose: Sendable {
+    /// Catalog, account, ownership and region lookups.
+    case catalog
+    /// CloudMatch session create/poll/claim/stop and the active-session service.
+    case session
+}
+
 public struct OPNSessionProxySettings: Equatable, Sendable {
     public var isEnabled: Bool
     public var scheme: OPNSessionProxyScheme
     public var host: String
     public var port: String
     public var username: String
+    public var scope: OPNSessionProxyScope
 
     public init(
         isEnabled: Bool = false,
         scheme: OPNSessionProxyScheme = .http,
         host: String = "",
         port: String = "",
-        username: String = ""
+        username: String = "",
+        scope: OPNSessionProxyScope = .everything
     ) {
         self.isEnabled = isEnabled
         self.scheme = scheme
         self.host = host
         self.port = port
         self.username = username
+        self.scope = scope
+    }
+
+    public func routes(_ purpose: OPNSessionProxyPurpose) -> Bool {
+        guard isEnabled else { return false }
+        switch (scope, purpose) {
+        case (.everything, _), (.catalogOnly, .catalog): return true
+        case (.catalogOnly, .session): return false
+        }
     }
 }
 
@@ -84,6 +121,7 @@ public enum OPNSessionProxyStore {
     private static let hostKey = "OpenNOW.Stream.SessionProxyHost"
     private static let portKey = "OpenNOW.Stream.SessionProxyPort"
     private static let usernameKey = "OpenNOW.Stream.SessionProxyUsername"
+    private static let scopeKey = "OpenNOW.Stream.SessionProxyScope"
     private static let passwordKey = "OpenNOW.Stream.SessionProxyPassword"
     private static let legacyKeychainPurgeKey = "OpenNOW.Stream.SessionProxyLegacyKeychainPurged"
 
@@ -91,12 +129,14 @@ public enum OPNSessionProxyStore {
         purgeLegacyKeychainPasswordIfNeeded()
         let storage = OPNAppPreferenceStorage.standard
         let schemeRaw = storage.object(forKey: schemeKey) as? String ?? ""
+        let scopeRaw = storage.object(forKey: scopeKey) as? String ?? ""
         return OPNSessionProxySettings(
             isEnabled: storage.bool(forKey: enabledKey),
             scheme: OPNSessionProxyScheme(rawValue: schemeRaw) ?? .http,
             host: storage.object(forKey: hostKey) as? String ?? "",
             port: storage.object(forKey: portKey) as? String ?? "",
-            username: storage.object(forKey: usernameKey) as? String ?? ""
+            username: storage.object(forKey: usernameKey) as? String ?? "",
+            scope: OPNSessionProxyScope(rawValue: scopeRaw) ?? .everything
         )
     }
 
@@ -107,6 +147,7 @@ public enum OPNSessionProxyStore {
         storage.set(settings.host, forKey: hostKey)
         storage.set(settings.port, forKey: portKey)
         storage.set(settings.username, forKey: usernameKey)
+        storage.set(settings.scope.rawValue, forKey: scopeKey)
     }
 
     public static func loadPassword() -> String {
@@ -134,6 +175,14 @@ public enum OPNSessionProxyStore {
     public static func configuration() -> OPNSessionProxyConfiguration? {
         let settings = load()
         guard settings.isEnabled else { return nil }
+        return configuration(from: settings, password: loadPassword())
+    }
+
+    /// The proxy for one request, or nil when the request should connect directly — proxy off,
+    /// configuration invalid, or a session request under `catalogOnly`.
+    public static func configuration(for purpose: OPNSessionProxyPurpose) -> OPNSessionProxyConfiguration? {
+        let settings = load()
+        guard settings.routes(purpose) else { return nil }
         return configuration(from: settings, password: loadPassword())
     }
 
@@ -174,8 +223,8 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         self.now = now
     }
 
-    public func controlPlaneURLSession() -> URLSession {
-        guard let configuration = OPNSessionProxyStore.configuration() else { return .shared }
+    public func controlPlaneURLSession(for purpose: OPNSessionProxyPurpose = .catalog) -> URLSession {
+        guard let configuration = OPNSessionProxyStore.configuration(for: purpose) else { return .shared }
         lock.lock()
         let inCooldown = state.cooldownUntil > now()
         lock.unlock()
@@ -183,8 +232,8 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         return session(for: configuration)
     }
 
-    public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        let session = controlPlaneURLSession()
+    public func data(for request: URLRequest, purpose: OPNSessionProxyPurpose = .catalog) async throws -> (Data, URLResponse) {
+        let session = controlPlaneURLSession(for: purpose)
         let proxied = session !== URLSession.shared
         do {
             let (data, response) = try await session.data(for: request)

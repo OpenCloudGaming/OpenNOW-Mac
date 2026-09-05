@@ -200,9 +200,45 @@ private final class MutableClock: @unchecked Sendable {
             var settings = validSettings()
             settings.scheme = .socks5
             settings.username = "user"
+            settings.scope = .catalogOnly
             OPNSessionProxyStore.save(settings)
             #expect(OPNSessionProxyStore.load() == settings)
         }
+    }
+
+    @Test func catalogOnlyScopeKeepsSessionRequestsDirect() async {
+        await withPreservedProxySettings {
+            var settings = validSettings()
+            settings.scope = .catalogOnly
+            OPNSessionProxyStore.save(settings)
+            OPNSessionProxyStore.savePassword("")
+            let provider = OPNSessionProxySessionProvider()
+            #expect(provider.controlPlaneURLSession(for: .catalog) !== URLSession.shared)
+            #expect(provider.controlPlaneURLSession(for: .session) === URLSession.shared)
+            #expect(OPNSessionProxyStore.configuration(for: .session) == nil)
+            #expect(OPNSessionProxyStore.configuration(for: .catalog) != nil)
+        }
+    }
+
+    @Test func everythingScopeRoutesSessionRequestsThroughProxy() async {
+        await withPreservedProxySettings {
+            OPNSessionProxyStore.save(validSettings())
+            OPNSessionProxyStore.savePassword("")
+            let provider = OPNSessionProxySessionProvider()
+            #expect(provider.controlPlaneURLSession(for: .session) !== URLSession.shared)
+        }
+    }
+
+    @Test func scopeRoutingIgnoredWhileDisabled() {
+        var settings = validSettings()
+        settings.isEnabled = false
+        #expect(!settings.routes(.catalog))
+        #expect(!settings.routes(.session))
+        settings.isEnabled = true
+        #expect(settings.routes(.session))
+        settings.scope = .catalogOnly
+        #expect(settings.routes(.catalog))
+        #expect(!settings.routes(.session))
     }
 
     @Test func passwordRoundTripsThroughPreferences() async {
@@ -223,6 +259,7 @@ private final class MutableClock: @unchecked Sendable {
             "OpenNOW.Stream.SessionProxyHost",
             "OpenNOW.Stream.SessionProxyPort",
             "OpenNOW.Stream.SessionProxyUsername",
+            "OpenNOW.Stream.SessionProxyScope",
         ]
         let existing = keys.map { defaults.object(forKey: $0) }
         let existingPassword = OPNSessionProxyStore.loadPassword()

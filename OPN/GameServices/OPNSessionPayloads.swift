@@ -43,7 +43,7 @@ final class OPNPollClaimSessionContext: @unchecked Sendable {
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollClaimSession")
         let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { [self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
             manager.pollClaimSessionRequestFinished(context: self, attempt: attempt, data: data, error: error)
         }.resume()

@@ -41,7 +41,7 @@ extension OPNSessionManager {
                                                        settings: settings)
         let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
         let tracedValidationRequest = validationRequest
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             self.handleClaimValidation(data: data, response: response, error: error, context: context, completion: completion)
@@ -179,7 +179,7 @@ extension OPNSessionManager {
         let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile, requiresNvstControlEndpoint: transportMode == "nvst")
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
         let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             self.handleClaimResponse(data: data, response: response, error: error, target: target, completion: completion)

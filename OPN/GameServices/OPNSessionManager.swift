@@ -92,7 +92,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let networkStart = OPNNetworkLog.start(&request, operation: operation)
         let traced = request
         do {
-            let (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: traced)
+            let (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: traced, purpose: .session)
             OPNNetworkLog.finish(traced, operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
             return (data, response as? HTTPURLResponse, nil)
         } catch {
@@ -206,7 +206,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -243,7 +243,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data?
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -270,7 +270,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: nil, response: nil, error: error)
@@ -314,7 +314,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: nil, response: nil, error: error)

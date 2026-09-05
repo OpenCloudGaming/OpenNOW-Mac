@@ -50,7 +50,7 @@ enum OPNActiveSessionService {
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.fetch")
         let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
             Task { @MainActor in
             if let error {
@@ -96,7 +96,7 @@ enum OPNActiveSessionService {
         }
         let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.stop")
         let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
             Task { @MainActor in
             if let error {
