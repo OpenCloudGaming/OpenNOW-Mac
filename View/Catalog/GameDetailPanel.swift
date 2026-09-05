@@ -56,33 +56,42 @@ struct GameDetailPanel: View {
                     )
                     LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.02), .black.opacity(0.22)], startPoint: .top, endPoint: .bottom)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top) {
+                    // Explicit gaps instead of one uniform stack spacing: the title block, the
+                    // launch block and the reading block are three groups, and a flat rhythm read
+                    // as one undifferentiated list.
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top, spacing: 12) {
                             Text(game.title.isEmpty ? "Selected Game" : game.title)
                                 .nvidiaFont(size: 30, weight: .bold)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
                                 .foregroundStyle(.white.opacity(0.96))
-                            Spacer(minLength: 20)
                             Button { viewModel.toggleFavoriteSelectedGame() } label: {
                                 Image(systemName: viewModel.isFavorite(game) ? "heart.fill" : "heart")
                                     .nvidiaFont(size: 21, weight: .bold)
                                     .foregroundStyle(.white.opacity(0.94))
-                                    .frame(width: 36 * uiScale, height: 32 * uiScale)
+                                    .frame(width: 36 * uiScale, height: 34 * uiScale)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(viewModel.isFavorite(game) ? "Remove from favorites" : "Add to favorites")
+                            Spacer(minLength: 0)
                         }
 
                         detailMetadataLine(game: game)
+                            .padding(.top, 6)
                         capabilityChips(game: game)
+                            .padding(.top, 9)
                         variantStatusRow(game: game)
+                            .padding(.top, 13)
                         detailActions(game: game)
+                            .padding(.top, 11)
                             .zIndex(1)
                         accessMessage(game: game)
+                            .padding(.top, 11)
                         detailMetadataScrollArea(game: game, panelHeight: resolvedHeight)
-                            .padding(.top, 4)
+                            .padding(.top, 15)
                         readMoreButton
-                            .padding(.top, 2)
+                            .padding(.top, 12)
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

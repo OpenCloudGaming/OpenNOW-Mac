@@ -8,16 +8,25 @@ struct GFNGameShortcut: Equatable, Sendable {
     let parentGameId: String
     let launchSource: String
 
+    static let fileExtension = "opennow"
+    static let legacyFileExtension = "gfnpc"
+
     var lookupTitle: String {
         var title = displayName
-        if Self.hasCaseInsensitiveSuffix(".gfnpc", in: title) {
-            title = String(title.dropLast(6))
+        for fileExtension in [".\(Self.fileExtension)", ".\(Self.legacyFileExtension)"] where Self.hasCaseInsensitiveSuffix(fileExtension, in: title) {
+            title = String(title.dropLast(fileExtension.count))
         }
-        let suffix = " on GeForce NOW"
-        if Self.hasCaseInsensitiveSuffix(suffix, in: title) {
+        for suffix in [" on OpenNOW", " on GeForce NOW"] where Self.hasCaseInsensitiveSuffix(suffix, in: title) {
             title = String(title.dropLast(suffix.count))
         }
         return title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Both the shortcuts we write and the vendor ones a user may already have on disk.
+    static func isShortcutFile(_ url: URL) -> Bool {
+        let pathExtension = url.pathExtension
+        return pathExtension.caseInsensitiveCompare(fileExtension) == .orderedSame
+            || pathExtension.caseInsensitiveCompare(legacyFileExtension) == .orderedSame
     }
 
     var urlRoute: String {

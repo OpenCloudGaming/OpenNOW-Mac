@@ -369,7 +369,7 @@ private struct SignInModal: View {
 
             Button {
                 viewModel.rememberSession = true
-                viewModel.launchOAuth()
+                viewModel.launchOAuthThroughTermsGate()
             } label: {
                 Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
                     .frame(maxWidth: .infinity)
@@ -380,7 +380,7 @@ private struct SignInModal: View {
 
             Button {
                 viewModel.rememberSession = true
-                viewModel.launchDeviceCodeOAuth()
+                viewModel.launchDeviceCodeThroughTermsGate()
             } label: {
                 Text("BROWSER SIGN-IN")
                     .font(.nvidiaSans(size: 12, weight: .bold))

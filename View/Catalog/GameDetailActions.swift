@@ -83,7 +83,8 @@ extension GameDetailPanel {
     }
 
     func variantStatusRow(game: OPNCatalogGameObject) -> some View {
-        HStack(spacing: 0) {
+        let hasAccess = selectedPlatformHasAccess(game)
+        return HStack(spacing: 8) {
             if let option = selectedPlatformOption {
                 Button { viewModel.changeSelectedGameStore() } label: {
                     HStack(spacing: 6) {
@@ -95,17 +96,24 @@ extension GameDetailPanel {
                             .nvidiaFont(size: 12, weight: .bold)
                     }
                     .foregroundStyle(.white.opacity(0.92))
-                    .frame(height: 30 * uiScale)
-                    .padding(.horizontal, 0)
+                    .frame(height: 28 * uiScale)
+                    .padding(.horizontal, 10 * uiScale)
+                    .background(Color.white.opacity(0.10))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Change game store, currently \(option.title)")
             }
-            Text(selectedPlatformHasAccess(game) ? "Ready" : "Not Owned")
-                .nvidiaFont(size: 12, weight: .bold)
-                .foregroundStyle(.white.opacity(0.72))
-                .padding(.horizontal, 10 * uiScale)
-                .frame(height: 30 * uiScale)
-                .background(Color.black.opacity(0.14))
+            // The state reads as a state, not as a second button: a dot and a word, no box.
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(hasAccess ? OpenNOWDesign.accent : Color.white.opacity(0.42))
+                    .frame(width: 6, height: 6)
+                Text(hasAccess ? "Ready" : "Not Owned")
+                    .nvidiaFont(size: 12, weight: .bold)
+                    .foregroundStyle(.white.opacity(hasAccess ? 0.86 : 0.66))
+            }
+            .frame(height: 28 * uiScale)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: 520 * uiScale, alignment: .leading)

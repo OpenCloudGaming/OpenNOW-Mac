@@ -10,30 +10,37 @@ import ImageIO
 import SwiftUI
 
 extension GameDetailPanel {
+    /// Collapsed the panel shows the summary and nothing else, truncated by whole lines. It used to
+    /// show every block clipped to a fixed height, which sliced the rating badge and the detail rows
+    /// through the middle — a hard cut mid-element reads as a rendering bug, not as "there is more".
     func detailMetadataScrollArea(game: OPNCatalogGameObject, panelHeight: CGFloat) -> some View {
         // Text area grows with the panel so tall (ultrawide) panels do not leave a dead gap.
         let collapsedHeight = OpenNOWDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
         let expandedHeight = OpenNOWDesign.clamped(panelHeight * 0.496, minimum: 248, maximum: 420)
-        return ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
-            VStack(alignment: .leading, spacing: 14) {
+        let collapsedLineLimit = max(3, Int(collapsedHeight / 22))
+        return Group {
+            if isDescriptionExpanded {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        shortDescription(game: game)
+                        divider
+                        nvidiaTechRows(game: game)
+                        ratingBlock(game: game)
+                        detailRows(game: game)
+                        fullDescription(game: game)
+                    }
+                    .frame(maxWidth: 660, alignment: .leading)
+                    .padding(.trailing, 8)
+                }
+                .frame(maxWidth: 660, maxHeight: expandedHeight, alignment: .topLeading)
+            } else {
+                // No reserved height: a `maxHeight` frame here takes the whole proposal and pushes
+                // the read-more control a paragraph away from the text it belongs to.
                 shortDescription(game: game)
-                divider
-                nvidiaTechRows(game: game)
-                ratingBlock(game: game)
-                detailRows(game: game)
-                fullDescription(game: game)
+                    .lineLimit(collapsedLineLimit)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: 660, alignment: .leading)
-            .padding(.trailing, isDescriptionExpanded ? 8 : 0)
         }
-        .scrollDisabled(!isDescriptionExpanded)
-        .frame(
-            maxWidth: 660,
-            minHeight: collapsedHeight,
-            maxHeight: isDescriptionExpanded ? expandedHeight : collapsedHeight,
-            alignment: .topLeading
-        )
-        .clipped()
     }
 
     func shortDescription(game: OPNCatalogGameObject) -> some View {
@@ -85,16 +92,23 @@ extension GameDetailPanel {
             if !game.ratingLabel.isEmpty {
                 CatalogRatingBadge(game: game, shortRating: GameDetailPresentation.esrbShortRating(game.ratingLabel))
             }
-            VStack(alignment: .leading, spacing: 7) {
+            let descriptors = GameDetailPresentation.ratingDescriptors(game: game)
+            VStack(alignment: .leading, spacing: 0) {
                 Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
                     .nvidiaFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.92))
-                ForEach(GameDetailPresentation.ratingDescriptors(game: game), id: \.self) { descriptor in
+                    .padding(.bottom, 7)
+                ForEach(Array(descriptors.enumerated()), id: \.element) { index, descriptor in
                     Text(descriptor)
                         .nvidiaFont(size: 12, weight: .medium)
                         .foregroundStyle(.white.opacity(0.70))
                         .frame(maxWidth: 215, alignment: .leading)
-                        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.24)).frame(height: 1).offset(y: 5) }
+                        .padding(.bottom, 5)
+                    if index < descriptors.count - 1 {
+                        divider
+                            .frame(maxWidth: 215)
+                            .padding(.bottom, 5)
+                    }
                 }
             }
         }

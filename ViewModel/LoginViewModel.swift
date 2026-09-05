@@ -18,6 +18,8 @@ final class LoginViewModel: ObservableObject {
     @Published var isLaunchingOAuth = false
     @Published var isAuthenticating = false
     var loginLaunchGeneration = 0
+    /// Which sign-in flow is paused on the terms-of-use gate, resumed once the user accepts.
+    private var pendingTermsLaunch: TermsGatedLaunch?
     @Published var requestedFocus: LoginField?
     @Published var currentAuthorizationURL = ""
     @Published var pendingGameShortcut: GFNGameShortcut?
@@ -110,13 +112,21 @@ final class LoginViewModel: ObservableObject {
         acceptedTerms = true
         OPNAppPreferenceStorage.standard.set(true, forKey: Self.termsAcceptedKey)
         isShowingTermsOfUse = false
-        launchOAuth()
+        let pending = pendingTermsLaunch
+        pendingTermsLaunch = nil
+        switch pending {
+        case .deviceCode:
+            launchDeviceCodeOAuth()
+        case .oauth, nil:
+            launchOAuth()
+        }
     }
 
     func declineTermsOfUse() {
         acceptedTerms = false
         OPNAppPreferenceStorage.standard.removeObject(forKey: Self.termsAcceptedKey)
         isShowingTermsOfUse = false
+        pendingTermsLaunch = nil
         validationMessage = "You must accept the GeForce NOW Terms of Use to continue."
     }
 
@@ -136,6 +146,24 @@ final class LoginViewModel: ObservableObject {
 
     func launchDeviceCodeOAuth() {
         Task { await beginDeviceCodeOAuth() }
+    }
+
+    func launchOAuthThroughTermsGate() {
+        guard acceptedTerms else {
+            pendingTermsLaunch = .oauth
+            presentTermsOfUseIfNeeded()
+            return
+        }
+        launchOAuth()
+    }
+
+    func launchDeviceCodeThroughTermsGate() {
+        guard acceptedTerms else {
+            pendingTermsLaunch = .deviceCode
+            presentTermsOfUseIfNeeded()
+            return
+        }
+        launchDeviceCodeOAuth()
     }
 
     func cancelPendingLogin() {
@@ -160,23 +188,23 @@ final class LoginViewModel: ObservableObject {
 
     func handleOpenedFile(_ url: URL) {
         OpenNOWLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
-        guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else {
-            OpenNOWLog.info(.shortcut, "Ignoring non-gfnpc opened file: \(url.pathExtension)")
+        guard GFNGameShortcut.isShortcutFile(url) else {
+            OpenNOWLog.info(.shortcut, "Ignoring unsupported opened file: \(url.pathExtension)")
             return
         }
         do {
             pendingGameShortcut = try GFNGameShortcut(fileURL: url)
             if let shortcut = pendingGameShortcut {
-                OpenNOWLog.info(.shortcut, "Parsed gfnpc shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
+                OpenNOWLog.info(.shortcut, "Parsed game shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
             }
             if activeSession == nil {
                 OpenNOWLog.info(.shortcut, "Shortcut parsed but no active session is available")
-                validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its GeForce NOW shortcut."
+                validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its shortcut."
             } else {
                 OpenNOWLog.info(.shortcut, "Shortcut queued for active catalog session")
             }
         } catch {
-            OpenNOWLog.error(.shortcut, "Failed to parse gfnpc shortcut: \(error.localizedDescription)")
+            OpenNOWLog.error(.shortcut, "Failed to parse game shortcut: \(error.localizedDescription)")
             validationMessage = error.localizedDescription
         }
     }
@@ -463,6 +491,12 @@ struct LoginProvider: Identifiable, Hashable, Sendable {
 enum LoginSignInRequest: Equatable {
     case reauthenticate(email: String)
     case addAccount
+}
+
+/// A sign-in flow awaiting the terms-of-use gate before it can run.
+private enum TermsGatedLaunch {
+    case oauth
+    case deviceCode
 }
 
 enum LoginField: Hashable {

@@ -359,11 +359,13 @@ extension CatalogViewModel {
         OPNCatalogGameObject(game: game.swiftValue)
     }
 
+    /// Our own extension, not `.gfnpc`: the official GeForce NOW app owns that type in Launch
+    /// Services, so a shortcut we wrote opened their client instead of this one.
     static func safeShortcutFilename(_ title: String) -> String {
         let invalidCharacters = CharacterSet(charactersIn: ":/").union(.newlines).union(.controlCharacters)
         let sanitized = title.components(separatedBy: invalidCharacters).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseName = sanitized.isEmpty ? "GeForce NOW Game" : sanitized
-        return "\(baseName) on GeForce NOW.gfnpc"
+        let baseName = sanitized.isEmpty ? "Cloud Game" : sanitized
+        return "\(baseName) on OpenNOW.opennow"
     }
 
     func requestSelectedGameReveal(for game: OPNCatalogGameObject, sectionId: String) {

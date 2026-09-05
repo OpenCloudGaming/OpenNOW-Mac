@@ -148,7 +148,7 @@ extension CatalogViewModel {
 
     func addShortcutForSelectedGame() {
         guard let selectedGame else { return }
-        let title = selectedGame.title.isEmpty ? "GeForce NOW Game" : selectedGame.title
+        let title = selectedGame.title.isEmpty ? "Cloud Game" : selectedGame.title
         do {
             let desktopURL = try FileManager.default.url(for: .desktopDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let shortcutURL = desktopURL.appendingPathComponent(Self.safeShortcutFilename(title))
@@ -163,7 +163,7 @@ extension CatalogViewModel {
             let shortcut = GFNGameShortcut(sourceURL: nil, displayName: title, cmsId: cmsId, shortName: shortName, parentGameId: shortName)
             try shortcut.write(to: shortcutURL)
             systemIntegration.applyAppIcon(toFileAt: shortcutURL)
-            actionMessage = "Added GeForce NOW shortcut to Desktop."
+            actionMessage = "Added OpenNOW shortcut to Desktop."
         } catch {
             errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
         }
