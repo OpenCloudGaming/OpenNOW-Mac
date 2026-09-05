@@ -85,10 +85,24 @@ struct CatalogShowAllGridView: NSViewRepresentable {
             let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - renderStart) * 1000)
             OpenNOWLog.info(.catalog, "Show All grid reloaded items=\(games.count) elapsed=\(elapsedMs)ms")
         } else if selectedIndexChanged || widthChanged {
-            layout.invalidateLayout()
-            collectionView.layoutSubtreeIfNeeded()
+            // Home animates the detail panel in and out; this grid is an NSCollectionView, whose
+            // layout invalidation is instant unless it happens inside an animation group. Without
+            // it the row and every tile below it jumped, which is the same panel behaving two
+            // different ways depending on which page you opened it from.
+            if selectedIndexChanged {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.24
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    context.allowsImplicitAnimation = true
+                    layout.invalidateLayout()
+                    collectionView.layoutSubtreeIfNeeded()
+                }
+            } else {
+                layout.invalidateLayout()
+                collectionView.layoutSubtreeIfNeeded()
+            }
             if selectedIndexChanged, let detailRowFrame = layout.detailRowFrame {
-                collectionView.scrollToVisible(detailRowFrame)
+                collectionView.animator().scrollToVisible(detailRowFrame)
             }
         } else if context.coordinator.selectedIdentity != selectedIdentity {
             let oldIdentity = context.coordinator.selectedIdentity
@@ -321,9 +335,11 @@ struct CatalogShowAllGridTile: View {
                     .accessibilityAddTraits(.isButton)
 
                 playButton
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
+                    .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .opacity(isHovering ? 1 : 0)
-                    .opnHoverScale(!isHovering, factor: 0.92)
+                    .opnHoverScale(!isHovering, factor: 0.92, anchor: .topLeading)
                     .allowsHitTesting(isHovering)
                     .accessibilityHidden(!isHovering)
                     .zIndex(2)
@@ -540,7 +556,10 @@ final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
 }
 
 enum CatalogShowAllLayout {
-    static let cardTrayHeight: CGFloat = 28
-    static let tileScaleFactor: CGFloat = 1.04
+    /// The same tray and hover travel as the home rails. Search results used a shorter tray and a
+    /// smaller scale, so the identical tile read as two different components either side of a
+    /// search.
+    static let cardTrayHeight: CGFloat = 40
+    static let tileScaleFactor: CGFloat = 1.12
     static let tileTray = Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255)
 }
