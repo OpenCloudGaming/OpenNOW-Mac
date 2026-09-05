@@ -431,6 +431,9 @@ struct SettingsContent: View {
             .padding(.bottom, 48 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // A fresh scroll view per tab: the offset from a long page would otherwise
+        // survive the switch and park a shorter page's viewport past its content.
+        .id(viewModel.selectedSettingsGroup)
         .onChange(of: focusedID) { _, id in
             guard let id else { return }
             withAnimation(.easeOut(duration: 0.18)) {
