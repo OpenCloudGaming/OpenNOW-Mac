@@ -111,17 +111,27 @@ extension GameDetailPanel {
         .frame(maxWidth: 520 * uiScale, alignment: .leading)
     }
 
+    /// Two lines, not one clipped one: the access sentence wraps, and the store hint sits under it
+    /// in the quieter weight it deserves. Side by side the sentence was truncated mid-word while a
+    /// piece of advice that applies to few titles kept its full width.
     func accessMessage(game: OPNCatalogGameObject) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(accessBody(game: game))
                 .nvidiaFont(size: 13, weight: .medium)
                 .foregroundStyle(.white.opacity(0.76))
-                .lineLimit(1)
-            Text("Configure stores from Connections.")
-                .nvidiaFont(size: 13, weight: .bold)
-                .foregroundStyle(.white.opacity(0.68))
-            Spacer(minLength: 0)
+                .fixedSize(horizontal: false, vertical: true)
+            if showsStoreConfigurationHint(game: game) {
+                Text("Configure stores from Connections.")
+                    .nvidiaFont(size: 12, weight: .medium)
+                    .foregroundStyle(.white.opacity(0.52))
+            }
         }
+        .frame(maxWidth: 520 * uiScale, alignment: .leading)
+    }
+
+    /// Only when a store actually stands between the user and the game.
+    func showsStoreConfigurationHint(game: OPNCatalogGameObject) -> Bool {
+        !selectedPlatformHasAccess(game) && !game.isLaunchPatching
     }
 
     /// Resolves the parts of the current selection that the detail copy depends on. Everything the

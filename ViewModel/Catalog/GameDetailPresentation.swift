@@ -27,9 +27,18 @@ enum GameDetailPresentation {
 
     // MARK: - Headline copy
 
+    /// A chip holds a label, not a sentence. The service's `skuPlayabilityText` is sometimes two
+    /// words ("Free to play") and sometimes a full sentence ("Access unlocked with your membership.
+    /// Game ownership required to play."), and the long form is the same sentence the access line
+    /// under the buttons already carries — so it appeared twice, once as a chip stretched across
+    /// the panel and once truncated to a single line.
+    static let capabilityChipCharacterLimit = 28
+
     static func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
         var labels: [String] = []
-        if !game.skuPlayabilityText.isEmpty { labels.append(game.skuPlayabilityText) }
+        if !game.skuPlayabilityText.isEmpty, game.skuPlayabilityText.count <= capabilityChipCharacterLimit {
+            labels.append(game.skuPlayabilityText)
+        }
         if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
         for technology in supportedTechnologyLabels(game: game).prefix(2) { appendUnique(technology, to: &labels) }
         if labels.isEmpty { labels.append("Cloud Ready") }
