@@ -62,6 +62,23 @@ extension OPNVideoEnhancementRenderer {
             return false
         }
 
+        bindSpatialInputs(encoder, pipeline: pipeline, textureFrame: textureFrame, primaryTexture: primaryTexture,
+                          fillHistory: fillHistory, destinationTexture: destinationTexture, uniforms: &uniforms)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
+    /// Binds the spatial pass inputs; `uniforms` is inout because Metal wants addresses.
+    private func bindSpatialInputs(
+        _ encoder: any MTLRenderCommandEncoder,
+        pipeline: any MTLRenderPipelineState,
+        textureFrame: OPNVideoTextureFrame,
+        primaryTexture: any MTLTexture,
+        fillHistory: (any MTLTexture)?,
+        destinationTexture: any MTLTexture,
+        uniforms: inout SpatialUniforms
+    ) {
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentTexture(primaryTexture, index: 0)
         if textureFrame.kind == 1 { encoder.setFragmentTexture(textureFrame.chromaTexture, index: 1) }
@@ -91,9 +108,6 @@ extension OPNVideoEnhancementRenderer {
             destinationTexture.height > 0 ? max(1, Float(primaryTexture.height) / Float(destinationTexture.height)) : 1
         )
         encoder.setFragmentBytes(&downscale, length: MemoryLayout<SIMD2<Float>>.size, index: 10)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-        return true
     }
 
     /// The YCbCr→RGB coefficients for this frame's tagged matrix. BT.709 unless the buffer says

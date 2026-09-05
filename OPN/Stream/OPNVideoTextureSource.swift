@@ -209,24 +209,26 @@ final class OPNVideoTextureSource: NSObject {
         return existing
     }
 
+    private static let pixelFormatNames: [OSType: String] = [
+        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: "420v/NV12",
+        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: "420f/NV12",
+        kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: "x420/P010",
+        kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: "xf20/P010",
+        kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange: "422v/NV16",
+        kCVPixelFormatType_422YpCbCr8BiPlanarFullRange: "422f/NV16",
+        kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange: "x422/P210",
+        kCVPixelFormatType_422YpCbCr10BiPlanarFullRange: "xf22/P210",
+        kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange: "444v/NV24",
+        kCVPixelFormatType_444YpCbCr8BiPlanarFullRange: "444f/NV24",
+        kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange: "x444/P410",
+        kCVPixelFormatType_444YpCbCr10BiPlanarFullRange: "xf44/P410",
+        kCVPixelFormatType_32BGRA: "BGRA",
+        kCVPixelFormatType_32ARGB: "ARGB",
+    ]
+
     static func pixelFormatName(_ format: OSType) -> String {
-        switch format {
-        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
-        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
-        case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: return "x420/P010"
-        case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: return "xf20/P010"
-        case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange: return "422v/NV16"
-        case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange: return "422f/NV16"
-        case kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange: return "x422/P210"
-        case kCVPixelFormatType_422YpCbCr10BiPlanarFullRange: return "xf22/P210"
-        case kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange: return "444v/NV24"
-        case kCVPixelFormatType_444YpCbCr8BiPlanarFullRange: return "444f/NV24"
-        case kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange: return "x444/P410"
-        case kCVPixelFormatType_444YpCbCr10BiPlanarFullRange: return "xf44/P410"
-        case kCVPixelFormatType_32BGRA: return "BGRA"
-        case kCVPixelFormatType_32ARGB: return "ARGB"
-        default: return String(format: "0x%08x", format)
-        }
+        if let name = pixelFormatNames[format] { return name }
+        return String(format: "0x%08x", format)
     }
 
     /// Luma plane plus one interleaved CbCr plane, at any chroma subsampling and either depth.

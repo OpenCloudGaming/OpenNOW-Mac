@@ -8,7 +8,7 @@ import ObjectiveC
 import QuartzCore
 @preconcurrency import WebRTC
 
-@objc private protocol OPNRTCMetalRenderer: NSObjectProtocol {
+@objc protocol OPNRTCMetalRenderer: NSObjectProtocol {
     @objc(addRenderingDestination:)
     func addRenderingDestination(_ view: MTKView) -> Bool
 
@@ -16,7 +16,7 @@ import QuartzCore
     func drawFrame(_ frame: RTCVideoFrame)
 }
 
-private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
+final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
     private let renderer: NSObject
     private let addDestinationSelector = NSSelectorFromString("addRenderingDestination:")
     private let drawFrameSelector = NSSelectorFromString("drawFrame:")
@@ -41,137 +41,80 @@ private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
     }
 }
 
-/// How decoded frames meet the display.
-///
-/// Measured 2026-09-04 on a 120 Hz panel with a 120 fps stream: decode completions arrive in bursts
-/// of two per refresh often enough that `balanced` — draw the newest frame at each refresh — left
-/// ~17% of received frames undrawn (`skipped 1493` of ~8600). The other two modes trade that
-/// against latency in opposite directions.
-enum OPNVideoPresentationMode: Int, Sendable {
-    /// Newest decoded frame at each display refresh. What the view always did.
-    case balanced = 0
-    /// A queue of one: the oldest undrawn frame at each refresh, so a burst of two both get shown
-    /// a refresh apart. Even cadence for about one frame of added latency.
-    case smooth = 1
-    /// Present as soon as a frame decodes, without waiting for the refresh (`displaySyncEnabled`
-    /// off, the display link paused). Lowest latency; tearing is possible.
-    case lowestLatency = 2
-
-    var label: String {
-        switch self {
-        case .balanced: "balanced"
-        case .smooth: "smooth"
-        case .lowestLatency: "lowest latency"
-        }
-    }
-}
-
-/// What the renderer is actually doing, for a HUD with no libwebrtc session to ask. The
-/// Bifrost-free NVST path owns its own decoder, so `OPNLibWebRTCStreamSession`'s diagnostics
-/// never reach it; this is the owner-less equivalent.
-struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
-    /// The decoded surface (`xf20/P010`, `420f/NV12`, ...).
-    var pixelFormat = ""
-    /// The drawable the frame was presented into (`bgra8`, `bgr10a2`, `rgba16f`).
-    var outputFormat = ""
-    var renderPath = ""
-    var activeTier = ""
-    var fallback = ""
-    /// Whether the layer is presenting extended-dynamic-range content (PQ or HLG stream).
-    var isHDR = false
-    var frameIntervalMs = -1.0
-    var maxFrameIntervalMs = -1.0
-    /// Frames handed to the renderer and frames it actually drew. The difference is frames the
-    /// display loop never got to — decode running ahead of the refresh, or a stalled draw.
-    var framesReceived: UInt64 = 0
-    var framesDrawn: UInt64 = 0
-    var presentationMode = ""
-    /// Decode-to-glass: from the frame reaching the renderer to the drawable's presented time,
-    /// mean and worst over the last diagnostics window; -1 with no presents in the window.
-    var presentLatencyMs = -1.0
-    var presentLatencyMaxMs = -1.0
-    /// Mean absolute deviation of consecutive present intervals, ms — the judder number.
-    var presentJitterMs = -1.0
-    /// Picture content span as fractions of frame width, from the pillarbox detector; 0...1 when
-    /// the frame has no bars (or nothing has been measured yet).
-    var contentLeft = 0.0
-    var contentRight = 1.0
-}
-
 @objc(OPNMetalVideoView)
 @MainActor
 final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
-    private let metalView: MTKView
-    nonisolated(unsafe) private var videoFrame: RTCVideoFrame?
-    private var rendererNV12: OPNRTCMetalRenderer?
-    private var rendererRGB: OPNRTCMetalRenderer?
-    private var rendererI420: OPNRTCMetalRenderer?
-    private var commandQueue: (any MTLCommandQueue)?
-    private var enhancementRenderer: OPNVideoEnhancementRenderer?
-    nonisolated(unsafe) private var sourceFrameSize = CGSize.zero
-    private let targetFps: Int
-    nonisolated(unsafe) private var frameSerial: UInt64 = 0
-    private var lastDrawnFrameSerial: UInt64 = 0
-    private var lastDrawCadenceTime: CFTimeInterval = 0
-    private var drawIntervalTotalMs = 0.0
-    private var drawIntervalMaxMs = 0.0
-    private var drawIntervalCount = 0
-    private var enhancementDroppedFrameCount: UInt64 = 0
+    let metalView: MTKView
+    nonisolated(unsafe) var videoFrame: RTCVideoFrame?
+    var rendererNV12: OPNRTCMetalRenderer?
+    var rendererRGB: OPNRTCMetalRenderer?
+    var rendererI420: OPNRTCMetalRenderer?
+    var commandQueue: (any MTLCommandQueue)?
+    var enhancementRenderer: OPNVideoEnhancementRenderer?
+    nonisolated(unsafe) var sourceFrameSize = CGSize.zero
+    let targetFps: Int
+    nonisolated(unsafe) var frameSerial: UInt64 = 0
+    var lastDrawnFrameSerial: UInt64 = 0
+    var lastDrawCadenceTime: CFTimeInterval = 0
+    var drawIntervalTotalMs = 0.0
+    var drawIntervalMaxMs = 0.0
+    var drawIntervalCount = 0
+    var enhancementDroppedFrameCount: UInt64 = 0
     private var lastEnhancementFrameTimeMs = -1.0
-    private var lastDiagnosticsUpdateTime: CFTimeInterval = 0
-    nonisolated(unsafe) private var drawableSizeDirty = true
+    var lastDiagnosticsUpdateTime: CFTimeInterval = 0
+    nonisolated(unsafe) var drawableSizeDirty = true
     private var enhancementSettings = OPNVideoEnhancementSettings()
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
     private var lastLoggedFallbackReason = ""
     private var adaptiveEnhancementPenalty = 0
-    private var customDrawableRenderingEnabled = false
-    nonisolated(unsafe) private weak var owner: OPNLibWebRTCStreamSession?
+    var customDrawableRenderingEnabled = false
+    nonisolated(unsafe) weak var owner: OPNLibWebRTCStreamSession?
     /// Enhancement/pillarbox settings for renderers with no libwebrtc session behind them. The
     /// Bifrost-free NVST path owns its own decoder, so there is no `OPNLibWebRTCStreamSession` to
     /// ask and every setting silently stayed at its default — which is why pillarbox fill did
     /// nothing on that transport. When set this wins over `owner`; everything downstream (the
     /// enhancement pass, the pillarbox detector, the fill shader) is shared, so NVST gets all the
     /// same modes without a second implementation.
-    nonisolated(unsafe) private var enhancementOverride: (Int32, Int32, Int32, Int32, Int32, Int32, Int32)?
-    nonisolated(unsafe) private var enhancementOverrideLock = os_unfair_lock_s()
-    nonisolated(unsafe) private var frameLock = os_unfair_lock_s()
+    nonisolated(unsafe) var enhancementOverride: (Int32, Int32, Int32, Int32, Int32, Int32, Int32)?
+    nonisolated(unsafe) var enhancementOverrideLock = os_unfair_lock_s()
+    nonisolated(unsafe) var frameLock = os_unfair_lock_s()
     nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
-    nonisolated(unsafe) private var cachedIsTenBitBiPlanar = false
+    nonisolated(unsafe) var cachedIsTenBitBiPlanar = false
     nonisolated(unsafe) private var pixelFormatCached = false
     /// The drawable format and transfer function the latest frame wants. Re-read on every frame:
     /// a stream can switch to 10-bit or HDR at a keyframe without changing size, which is the only
     /// event the older per-size cache above keyed on.
-    nonisolated(unsafe) private var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
-    nonisolated(unsafe) private var desiredTransfer = OPNVideoTransferFunction.sdr
-    private var appliedTransfer = OPNVideoTransferFunction.sdr
-    nonisolated(unsafe) private var framesReceived: UInt64 = 0
-    private var framesDrawn: UInt64 = 0
-    nonisolated(unsafe) private var presentationMode = OPNVideoPresentationMode.balanced
+    nonisolated(unsafe) var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
+    nonisolated(unsafe) var desiredTransfer = OPNVideoTransferFunction.sdr
+    var appliedTransfer = OPNVideoTransferFunction.sdr
+    nonisolated(unsafe) var framesReceived: UInt64 = 0
+    var framesDrawn: UInt64 = 0
+    nonisolated(unsafe) var presentationMode = OPNVideoPresentationMode.balanced
     /// `smooth` only: frames waiting for a refresh, oldest first. Capped at two so a stall cannot
     /// build a latency debt; anything older than the newest two is dropped like `balanced` does.
-    nonisolated(unsafe) private var pendingFrames: [(frame: RTCVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)] = []
+    nonisolated(unsafe) var pendingFrames: [(frame: RTCVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)] = []
     /// When the newest frame reached `renderFrame`, for the presented-time measurement.
-    nonisolated(unsafe) private var latestFrameReceivedAt: CFTimeInterval = 0
+    nonisolated(unsafe) var latestFrameReceivedAt: CFTimeInterval = 0
     /// Presented-time accounting, filled from the drawable's presented handler on a Metal thread.
-    nonisolated(unsafe) private var presentLock = os_unfair_lock_s()
-    nonisolated(unsafe) private var presentLatencyTotalMs = 0.0
-    nonisolated(unsafe) private var presentLatencyMaxMs = 0.0
-    nonisolated(unsafe) private var presentCount = 0
-    nonisolated(unsafe) private var lastPresentedAt: CFTimeInterval = 0
-    nonisolated(unsafe) private var lastPresentInterval = -1.0
-    nonisolated(unsafe) private var presentJitterTotalMs = 0.0
-    nonisolated(unsafe) private var presentJitterCount = 0
+    nonisolated(unsafe) var presentLock = os_unfair_lock_s()
+    nonisolated(unsafe) var presentLatencyTotalMs = 0.0
+    nonisolated(unsafe) var presentLatencyMaxMs = 0.0
+    nonisolated(unsafe) var presentCount = 0
+    nonisolated(unsafe) var lastPresentedAt: CFTimeInterval = 0
+    nonisolated(unsafe) var lastPresentInterval = -1.0
+    nonisolated(unsafe) var presentJitterTotalMs = 0.0
+    nonisolated(unsafe) var presentJitterCount = 0
     /// `lowestLatency` only: `draw()` is driven from the decode thread; two completions must not
     /// enter the render pass together.
-    nonisolated(unsafe) private var manualDrawLock = os_unfair_lock_s()
+    nonisolated(unsafe) var manualDrawLock = os_unfair_lock_s()
     /// The same MTKView, reachable from the decode thread for the manual `draw()` call. MTKView
     /// already invokes `draw(in:)` off the main thread from its own display link, so the render
     /// path is written for that; this only changes who kicks it.
-    nonisolated(unsafe) private let metalViewForManualDraw: MTKView
+    nonisolated(unsafe) let metalViewForManualDraw: MTKView
     /// A one-shot request to write the next drawn frame — the drawable itself, after our render
     /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
-    nonisolated(unsafe) private var pendingRenderSnapshotURL: URL?
+    nonisolated(unsafe) var pendingRenderSnapshotURL: URL?
     /// Owner-less diagnostics sink (the NVST path). Called about once a second from the render
     /// thread.
     nonisolated(unsafe) var renderDiagnosticsHandler: (@Sendable (OPNVideoRenderDiagnosticsSnapshot) -> Void)?
@@ -299,248 +242,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
     }
 
-    /// Asks for the next drawn frame to be written to `url` as a JPEG: what the viewer sees, fill,
-    /// scaling and all, as opposed to the decoded frame the NVST sink can hand out. The layer is
-    /// switched off `framebufferOnly` so the drawable can be read back; that costs a little
-    /// bandwidth, so it is only done once a snapshot has been asked for.
-    func requestRenderSnapshot(to url: URL) {
-        metalView.framebufferOnly = false
-        os_unfair_lock_lock(&frameLock)
-        pendingRenderSnapshotURL = url
-        os_unfair_lock_unlock(&frameLock)
-    }
-
-    /// On the render thread, after a render path has committed its commands: copies the drawable
-    /// out on the same queue (so the copy runs after the render) and writes it once complete.
-    /// The libwebrtc renderers use their own queue, so a capture taken on that path may read a
-    /// frame that is still being drawn; the custom paths are exact.
-    private func captureDrawableIfRequested() {
-        os_unfair_lock_lock(&frameLock)
-        let url = pendingRenderSnapshotURL
-        pendingRenderSnapshotURL = nil
-        os_unfair_lock_unlock(&frameLock)
-        guard let url else { return }
-        guard let drawable = metalView.currentDrawable, let commandQueue, let device = metalView.device else {
-            OpenNOWLog.warning(.stream, "Render snapshot: no drawable")
-            return
-        }
-        let source = drawable.texture
-        guard !source.isFramebufferOnly else {
-            // The drawable in flight was vended before `framebufferOnly` flipped; the next one works.
-            os_unfair_lock_lock(&frameLock)
-            pendingRenderSnapshotURL = url
-            os_unfair_lock_unlock(&frameLock)
-            return
-        }
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: source.pixelFormat, width: source.width, height: source.height, mipmapped: false)
-        descriptor.storageMode = .shared
-        descriptor.usage = [.shaderRead]
-        guard let staging = device.makeTexture(descriptor: descriptor),
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder() else {
-            OpenNOWLog.warning(.stream, "Render snapshot: could not create the copy")
-            return
-        }
-        blit.copy(from: source, to: staging)
-        blit.endEncoding()
-        let formatName = Self.outputFormatName(source.pixelFormat)
-        // Read on the completion thread only, after the GPU has written it.
-        nonisolated(unsafe) let stagingTexture = staging
-        let width = source.width
-        let height = source.height
-        commandBuffer.addCompletedHandler { _ in
-            guard let image = CIImage(mtlTexture: stagingTexture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else {
-                OpenNOWLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
-                return
-            }
-            // Metal's origin is top-left, Core Image's bottom-left.
-            let oriented = image.oriented(.downMirrored)
-            let context = CIContext(options: [.cacheIntermediates: false])
-            guard let data = context.jpegRepresentation(of: oriented, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else {
-                OpenNOWLog.warning(.stream, "Render snapshot: JPEG encode failed")
-                return
-            }
-            do {
-                try data.write(to: url, options: .atomic)
-                OpenNOWLog.info(.stream, "Render snapshot \(width)x\(height) \(formatName) -> \(url.path)")
-            } catch {
-                OpenNOWLog.warning(.stream, "Render snapshot: write failed \(error.localizedDescription)")
-            }
-        }
-        commandBuffer.commit()
-    }
-
-    /// Renders the latest frame offscreen through the fill/spatial pass — what the viewer would
-    /// see at the current settings — and writes it as a JPEG. Needs no window: the autopilot's way
-    /// to look at the picture when the app is not frontmost. Returns the rendered size.
-    func writeOffscreenRenderSnapshot(to url: URL) -> CGSize? {
-        os_unfair_lock_lock(&frameLock)
-        let frame = videoFrame
-        let sourceSize = sourceFrameSize
-        os_unfair_lock_unlock(&frameLock)
-        guard let frame, let enhancementRenderer else { return nil }
-        let size = metalView.drawableSize.width >= 1 && metalView.drawableSize.height >= 1
-            ? metalView.drawableSize
-            : CGSize(width: Int(frame.width), height: Int(frame.height))
-        let resolvedSource = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize : CGSize(width: Int(frame.width), height: Int(frame.height))
-        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(), sourceSize: resolvedSource, renderer: enhancementRenderer)
-        settings.drawableSize = size
-        settings.captureEnhancedPixelBuffer = false
-        if settings.configuredTier == .off || settings.configuredTier == .metalFX || settings.configuredTier == .temporal {
-            settings.configuredTier = .spatial
-        }
-        guard let texture = enhancementRenderer.renderOffscreenSnapshot(frame, settings: settings, size: size),
-              let image = CIImage(mtlTexture: texture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else { return nil }
-        let context = CIContext(options: [.cacheIntermediates: false])
-        guard let data = context.jpegRepresentation(of: image.oriented(.downMirrored), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else { return nil }
-        do { try data.write(to: url, options: .atomic) } catch { return nil }
-        return size
-    }
-
-    /// Switches how frames meet the display. Main actor: it reconfigures the layer and the
-    /// display link.
-    func setPresentationMode(_ mode: OPNVideoPresentationMode) {
-        os_unfair_lock_lock(&frameLock)
-        let previous = presentationMode
-        presentationMode = mode
-        pendingFrames.removeAll()
-        os_unfair_lock_unlock(&frameLock)
-        guard previous != mode else { return }
-        let metalLayer = metalView.layer as? CAMetalLayer
-        switch mode {
-        case .lowestLatency:
-            // Our own draw() calls replace the display link; presenting no longer waits for vsync.
-            metalView.isPaused = true
-            metalView.enableSetNeedsDisplay = false
-            metalLayer?.displaySyncEnabled = false
-        case .balanced, .smooth:
-            metalLayer?.displaySyncEnabled = true
-            metalView.enableSetNeedsDisplay = false
-            metalView.isPaused = false
-        }
-        resetDrawCadence()
-        OpenNOWLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
-    }
-
-    /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
-    /// its queue oldest first; the other modes hand out the newest frame once.
-    private func nextFrameToDraw() -> (frame: RTCVideoFrame, serial: UInt64, sourceSize: CGSize, tenBit: Bool, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
-        os_unfair_lock_lock(&frameLock)
-        defer { os_unfair_lock_unlock(&frameLock) }
-        let output = (desiredOutputFormat, desiredTransfer)
-        if presentationMode == .smooth {
-            guard !pendingFrames.isEmpty else { return nil }
-            let next = pendingFrames.removeFirst()
-            return (next.frame, next.serial, sourceFrameSize, cachedIsTenBitBiPlanar, output, next.receivedAt)
-        }
-        guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
-        return (frame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar, output, latestFrameReceivedAt)
-    }
-
-    /// Hooks the drawable every render path is about to present (MTKView hands the same one to
-    /// whoever asks during this draw) so its presented time can be measured against when the frame
-    /// reached the renderer. That difference is the latency a viewer can feel from this side of the
-    /// wire; its interval jitter is what reads as judder.
-    private func attachPresentedHandler(receivedAt: CFTimeInterval) {
-        guard receivedAt > 0, let drawable = metalView.currentDrawable else { return }
-        drawable.addPresentedHandler { [weak self] presented in
-            guard let self else { return }
-            let presentedAt = presented.presentedTime
-            guard presentedAt > 0 else { return }
-            let latencyMs = max(0, (presentedAt - receivedAt) * 1000)
-            os_unfair_lock_lock(&self.presentLock)
-            self.presentLatencyTotalMs += latencyMs
-            self.presentLatencyMaxMs = max(self.presentLatencyMaxMs, latencyMs)
-            self.presentCount += 1
-            if self.lastPresentedAt > 0 {
-                let interval = (presentedAt - self.lastPresentedAt) * 1000
-                if self.lastPresentInterval >= 0 {
-                    self.presentJitterTotalMs += abs(interval - self.lastPresentInterval)
-                    self.presentJitterCount += 1
-                }
-                self.lastPresentInterval = interval
-            }
-            self.lastPresentedAt = presentedAt
-            os_unfair_lock_unlock(&self.presentLock)
-        }
-    }
-
-    /// Drains the presented-time window into the diagnostics snapshot.
-    private func takePresentDiagnostics() -> (latency: Double, maximum: Double, jitter: Double) {
-        os_unfair_lock_lock(&presentLock)
-        defer {
-            presentLatencyTotalMs = 0
-            presentLatencyMaxMs = 0
-            presentCount = 0
-            presentJitterTotalMs = 0
-            presentJitterCount = 0
-            os_unfair_lock_unlock(&presentLock)
-        }
-        let latency = presentCount > 0 ? presentLatencyTotalMs / Double(presentCount) : -1
-        let maximum = presentCount > 0 ? presentLatencyMaxMs : -1
-        let jitter = presentJitterCount > 0 ? presentJitterTotalMs / Double(presentJitterCount) : -1
-        return (latency, maximum, jitter)
-    }
-
-    /// The drawable a decoded surface deserves. 8-bit video keeps the 8-bit drawable it always
-    /// had. A 10-bit surface gets a 10-bit drawable, so the extra two bits survive to the display
-    /// instead of being quantised away at present — the whole point of decoding to P010. An HDR
-    /// surface (PQ or HLG tagged) gets a half-float drawable with extended dynamic range on, so
-    /// the compositor tone-maps it for the panel.
-    nonisolated private static func desiredOutput(for pixelBuffer: CVPixelBuffer) -> (MTLPixelFormat, OPNVideoTransferFunction) {
-        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
-        let tenBit = OPNVideoTextureSource.isTenBitBiPlanarFormat(format)
-        let transfer = OPNVideoTransferFunction.from(pixelBuffer: pixelBuffer)
-        if tenBit, transfer.isHDR { return (.rgba16Float, transfer) }
-        return (tenBit ? .bgr10a2Unorm : .bgra8Unorm, .sdr)
-    }
-
-    /// Reconfigures the layer for a new output format. Returns true when it did, in which case the
-    /// current draw is skipped: the drawable already vended for this pass has the old format, and
-    /// the next display tick is a few milliseconds away.
-    private func applyOutputFormatIfNeeded(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
-        guard metalView.colorPixelFormat != format || appliedTransfer != transfer else { return false }
-        let previous = metalView.colorPixelFormat
-        metalView.colorPixelFormat = format
-        appliedTransfer = transfer
-        if let metalLayer = metalView.layer as? CAMetalLayer {
-            switch transfer {
-            case .pq:
-                metalLayer.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_PQ)
-                metalLayer.wantsExtendedDynamicRangeContent = true
-                // Static HDR10 metadata for a stream that carries none of its own. GeForce NOW
-                // asks the game for 1000-nit content (`desiredContentMaxLuminance` in the session
-                // request), and 1.0 in a PQ-encoded signal is 10 000 nits by definition, which is
-                // what the optical output scale describes for a PQ colour space.
-                metalLayer.edrMetadata = CAEDRMetadata.hdr10(minLuminance: 0.0001, maxLuminance: 1000, opticalOutputScale: 10_000)
-            case .hlg:
-                metalLayer.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
-                metalLayer.wantsExtendedDynamicRangeContent = true
-                metalLayer.edrMetadata = CAEDRMetadata.hlg
-            case .sdr:
-                metalLayer.colorspace = nil
-                metalLayer.wantsExtendedDynamicRangeContent = false
-                metalLayer.edrMetadata = nil
-            }
-        }
-        // libwebrtc's renderers compile their pipeline state against the view's format at attach
-        // time, so a format change invalidates them; they rebuild lazily on the next 8-bit frame.
-        rendererNV12 = nil
-        rendererRGB = nil
-        rendererI420 = nil
-        OpenNOWLog.info(.stream, "Video output format \(Self.outputFormatName(previous)) -> \(Self.outputFormatName(format)) transfer=\(transfer) edr=\(transfer.isHDR)")
-        return true
-    }
-
-    nonisolated static func outputFormatName(_ format: MTLPixelFormat) -> String {
-        switch format {
-        case .bgra8Unorm: "bgra8"
-        case .bgr10a2Unorm: "bgr10a2"
-        case .rgba16Float: "rgba16f"
-        default: "mtl\(format.rawValue)"
-        }
-    }
-
     func draw(in view: MTKView) {
         guard view == metalView else { return }
         // MTKView's internal display link invokes this on a background render thread,
@@ -631,7 +332,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     /// Fills in the shared settings object for this frame. Fill with upscaling off borrows the
     /// spatial path in its cheapest form: `lowCostSpatial` selects the plain-sample `fast_*`
     /// shaders, so the picture area is untouched and only the bar columns cost anything extra.
-    private func configuredEnhancementSettings(enhancement: VideoEnhancement,
+    func configuredEnhancementSettings(enhancement: VideoEnhancement,
                                                sourceSize: CGSize,
                                                renderer: OPNVideoEnhancementRenderer) -> OPNVideoEnhancementSettings {
         let settings = enhancementSettings
@@ -805,7 +506,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 /// 2/3/4 are real tier codes (`renderEnhancedFrame`'s own switch: spatial/MetalFX/temporal) that a
 /// caller can now select explicitly. 1 predates tier selection — it only ever meant "some
 /// enhancement is on" — so it keeps resolving to MetalFX rather than becoming a new, unintended tier.
-private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
+func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
     switch mode {
     case 0: return 0
     case 2: return 2
@@ -814,37 +515,6 @@ private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
     case 1: return 3
     default: return 0
     }
-}
-
-private struct VideoEnhancement {
-    var mode: Int32
-    var sharpness: Int32
-    var denoise: Int32
-    var targetHeight: Int32
-    var pillarboxFillMode: Int32
-    var pillarboxFillDim: Int32
-    var pillarboxFillColor: Int32
-
-    var fillMode: OPNPillarboxFillMode { OPNPillarboxFillMode.from(Int(pillarboxFillMode)) }
-}
-
-private struct RenderDiagnostics {
-    var pixelFormat = "unknown"
-    var renderMode = "I420"
-    var frameSource = "unknown"
-    var renderPath = "RTCMTLI420Renderer"
-    var fallback = ""
-    var enhancementConfiguredTier = "Off"
-    var enhancementActiveTier = "Native"
-    var enhancementFallbackReason = ""
-    var sourceResolution: String
-    var drawableResolution: String
-    var enhancementDiagnostics = ""
-    var enhancementFrameTimeMs = -1.0
-    var frameIntervalMs = -1.0
-    var maxFrameIntervalMs = -1.0
-    var outputFormat = ""
-    var isHDR = false
 }
 
 private func videoResolutionString(_ size: CGSize) -> String {
@@ -867,7 +537,7 @@ private func automaticEnhancementTier(renderer: OPNVideoEnhancementRenderer, dev
     return renderer.isMetalFXAvailable ? .metalFX : .spatial
 }
 
-private func pixelFormatName(_ format: OSType) -> String {
+func pixelFormatName(_ format: OSType) -> String {
     switch format {
     case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
     case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
@@ -883,171 +553,3 @@ private func pixelFormatName(_ format: OSType) -> String {
 
 // Split out of the main declaration so it stays inside the size budget. Same file, so `private`
 // members stay reachable.
-extension OPNMetalVideoView {
-    private func rendererForFrame(_ frame: RTCVideoFrame, diagnostics: inout RenderDiagnostics) -> OPNRTCMetalRenderer? {
-        if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            diagnostics.frameSource = "CVPixelBuffer"
-            let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
-            let isNV12 = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-            let isRGB = format == kCVPixelFormatType_32BGRA || format == kCVPixelFormatType_32ARGB
-            diagnostics.pixelFormat = pixelFormatName(format)
-            if isNV12 {
-                var fallback = ""
-                if rendererNV12 == nil { rendererNV12 = newRenderer(named: "RTCMTLNV12Renderer", fallback: &fallback) }
-                if let rendererNV12 {
-                    diagnostics.renderMode = "NV12"
-                    diagnostics.renderPath = "RTCMTLNV12Renderer"
-                    return rendererNV12
-                }
-                diagnostics.fallback = fallback.isEmpty ? "NV12 unavailable; using I420" : fallback
-            } else if isRGB {
-                var fallback = ""
-                if rendererRGB == nil { rendererRGB = newRenderer(named: "RTCMTLRGBRenderer", fallback: &fallback) }
-                if let rendererRGB {
-                    diagnostics.renderMode = "RGB"
-                    diagnostics.renderPath = "RTCMTLRGBRenderer"
-                    return rendererRGB
-                }
-                diagnostics.fallback = fallback.isEmpty ? "NV12 preferred; RGB unavailable; using I420" : fallback
-            } else {
-                diagnostics.fallback = "NV12 preferred; unsupported CVPixelBuffer; using I420"
-            }
-        } else {
-            diagnostics.frameSource = NSStringFromClass(type(of: frame.buffer as AnyObject))
-            diagnostics.pixelFormat = "I420"
-        }
-        diagnostics.renderMode = "I420"
-        diagnostics.renderPath = "RTCMTLI420Renderer"
-        return i420Renderer(fallback: &diagnostics.fallback)
-    }
-
-    private func newRenderer(named className: String, fallback: inout String) -> OPNRTCMetalRenderer? {
-        guard let rendererClass = NSClassFromString(className) as? NSObject.Type else {
-            fallback = "\(className) unavailable"
-            return nil
-        }
-        guard let renderer = OPNObjCMetalRenderer(rendererClass.init()) else {
-            fallback = "\(className) does not expose renderer selectors"
-            return nil
-        }
-        guard renderer.addRenderingDestination(metalView) else {
-            fallback = "\(className) rejected MTKView"
-            return nil
-        }
-        metalView.preferredFramesPerSecond = targetFps
-        return renderer
-    }
-
-    private func i420Renderer(fallback: inout String) -> OPNRTCMetalRenderer? {
-        if rendererI420 == nil { rendererI420 = newRenderer(named: "RTCMTLI420Renderer", fallback: &fallback) }
-        return rendererI420
-    }
-
-    private func emitDiagnosticsIfNeeded(_ diagnostics: RenderDiagnostics, force: Bool) {
-        let now = CACurrentMediaTime()
-        guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
-        lastDiagnosticsUpdateTime = now
-        var diagnostics = diagnostics
-        populateDrawCadenceDiagnostics(&diagnostics)
-        diagnostics.outputFormat = Self.outputFormatName(metalView.colorPixelFormat)
-        diagnostics.isHDR = appliedTransfer.isHDR
-        if let renderDiagnosticsHandler {
-            os_unfair_lock_lock(&frameLock)
-            let received = framesReceived
-            os_unfair_lock_unlock(&frameLock)
-            let present = takePresentDiagnostics()
-            renderDiagnosticsHandler(OPNVideoRenderDiagnosticsSnapshot(
-                pixelFormat: diagnostics.pixelFormat,
-                outputFormat: diagnostics.outputFormat,
-                renderPath: diagnostics.renderPath,
-                activeTier: diagnostics.enhancementActiveTier,
-                fallback: diagnostics.fallback,
-                isHDR: diagnostics.isHDR,
-                frameIntervalMs: diagnostics.frameIntervalMs,
-                maxFrameIntervalMs: diagnostics.maxFrameIntervalMs,
-                framesReceived: received,
-                framesDrawn: framesDrawn,
-                presentationMode: presentationMode.label,
-                presentLatencyMs: present.latency,
-                presentLatencyMaxMs: present.maximum,
-                presentJitterMs: present.jitter
-            ))
-        }
-        owner?.setVideoRenderDiagnostics(
-            pixelFormat: diagnostics.pixelFormat,
-            renderMode: diagnostics.renderMode,
-            frameSource: diagnostics.frameSource,
-            renderPath: diagnostics.renderPath,
-            fallback: diagnostics.fallback,
-            enhancementConfiguredTier: diagnostics.enhancementConfiguredTier,
-            enhancementActiveTier: diagnostics.enhancementActiveTier,
-            enhancementFallbackReason: diagnostics.enhancementFallbackReason,
-            enhancementSourceResolution: diagnostics.sourceResolution,
-            enhancementDrawableResolution: diagnostics.drawableResolution,
-            enhancementDiagnostics: diagnostics.enhancementDiagnostics,
-            enhancementFrameTimeMs: diagnostics.enhancementFrameTimeMs,
-            enhancementDroppedFrames: enhancementDroppedFrameCount,
-            frameIntervalMs: diagnostics.frameIntervalMs,
-            maxFrameIntervalMs: diagnostics.maxFrameIntervalMs
-        )
-    }
-
-    /// Supplies enhancement/pillarbox settings for an owner-less renderer. Safe from any thread;
-    /// the render pass reads it under the same lock.
-    nonisolated func setLocalVideoEnhancementOverride(mode: Int32,
-                                                      sharpness: Int32,
-                                                      denoise: Int32,
-                                                      targetHeight: Int32,
-                                                      pillarboxFillMode: Int32,
-                                                      pillarboxFillDim: Int32,
-                                                      pillarboxFillColor: Int32) {
-        os_unfair_lock_lock(&enhancementOverrideLock)
-        enhancementOverride = (mode, sharpness, denoise, targetHeight, pillarboxFillMode, pillarboxFillDim, pillarboxFillColor)
-        os_unfair_lock_unlock(&enhancementOverrideLock)
-    }
-
-    private func localVideoEnhancementOverride() -> (Int32, Int32, Int32, Int32, Int32, Int32, Int32)? {
-        os_unfair_lock_lock(&enhancementOverrideLock)
-        defer { os_unfair_lock_unlock(&enhancementOverrideLock) }
-        return enhancementOverride
-    }
-
-    private func localVideoEnhancement() -> VideoEnhancement {
-        let values = localVideoEnhancementOverride() ?? owner?.localVideoEnhancement() ?? (0, 0, 0, 2160, 0, 55, 0)
-        return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3, pillarboxFillMode: values.4, pillarboxFillDim: values.5, pillarboxFillColor: values.6)
-    }
-
-    private func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
-        guard customDrawableRenderingEnabled != enabled else { return }
-        customDrawableRenderingEnabled = enabled
-        metalView.framebufferOnly = !enabled
-    }
-
-    private func recordDrawCadence() {
-        framesDrawn &+= 1
-        let now = CACurrentMediaTime()
-        if lastDrawCadenceTime > 0 {
-            let intervalMs = max(0, (now - lastDrawCadenceTime) * 1000)
-            drawIntervalTotalMs += intervalMs
-            drawIntervalMaxMs = max(drawIntervalMaxMs, intervalMs)
-            drawIntervalCount += 1
-        }
-        lastDrawCadenceTime = now
-    }
-
-    private func populateDrawCadenceDiagnostics(_ diagnostics: inout RenderDiagnostics) {
-        guard drawIntervalCount > 0 else { return }
-        diagnostics.frameIntervalMs = drawIntervalTotalMs / Double(drawIntervalCount)
-        diagnostics.maxFrameIntervalMs = drawIntervalMaxMs
-        drawIntervalTotalMs = 0
-        drawIntervalMaxMs = 0
-        drawIntervalCount = 0
-    }
-
-    private func resetDrawCadence() {
-        lastDrawCadenceTime = 0
-        drawIntervalTotalMs = 0
-        drawIntervalMaxMs = 0
-        drawIntervalCount = 0
-    }
-}

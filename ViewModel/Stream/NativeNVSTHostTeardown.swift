@@ -23,14 +23,7 @@ extension NativeNVSTHostViewModel {
         endEventTask = nil
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
-        latestNativeStats = nil
-        latestRenderDiagnostics = nil
-        nativeRigName = ""
-        nativeRigRawName = ""
-        nativeBitrateStarved = false
-        bitrateStarvation.reset()
-        sixteenNineTracker = NativeNVSTSixteenNineTitle.Tracker()
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
+        resetSessionObservations()
         sessionLimit = nil
         networkGovernor = nil
         networkPathTask?.cancel()
@@ -41,18 +34,7 @@ extension NativeNVSTHostViewModel {
         nativeView?.remoteInputEnabled = false
         let inputDispatcher = self.inputDispatcher
         self.inputDispatcher = nil
-        isConnected = false
-        pointerLocked = false
-        unifiedHUDVisible = false
-        streamControlsVisible = false
-        nativeStatsVisible = false
-        microphoneAvailable = false
-        microphoneEnabled = false
-        microphoneDesiredEnabled = false
-        microphoneMode = "disabled"
-        microphonePendingStates.removeAll()
-        antiAFKMouseMovementEnabled = false
-        batteryAlertTracker.reset()
+        resetSessionUIState()
         nativeView?.stopHaptics()
         // Visibility is dropped by the transport's shutdown hook once the native session
         // is gone; hiding the Metal layer before `path.stop` wedges Geronimo's render loop.
@@ -85,6 +67,33 @@ extension NativeNVSTHostViewModel {
             Task { @MainActor in _ = await stopRemoteCoOpSession() }
             inputDispatcher?.cancel()
         }
+    }
+
+    /// Forgets what the ended session taught us about itself; the next session starts blank.
+    private func resetSessionObservations() {
+        latestNativeStats = nil
+        latestRenderDiagnostics = nil
+        nativeRigName = ""
+        nativeRigRawName = ""
+        nativeBitrateStarved = false
+        bitrateStarvation.reset()
+        sixteenNineTracker = NativeNVSTSixteenNineTitle.Tracker()
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor()
+    }
+
+    private func resetSessionUIState() {
+        isConnected = false
+        pointerLocked = false
+        unifiedHUDVisible = false
+        streamControlsVisible = false
+        nativeStatsVisible = false
+        microphoneAvailable = false
+        microphoneEnabled = false
+        microphoneDesiredEnabled = false
+        microphoneMode = "disabled"
+        microphonePendingStates.removeAll()
+        antiAFKMouseMovementEnabled = false
+        batteryAlertTracker.reset()
     }
 
     func finish(reason: StreamEndReason, message: String) async -> Bool {

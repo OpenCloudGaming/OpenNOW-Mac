@@ -146,6 +146,31 @@ extension NvstBifrostFreeTransport {
             + "the announced cap comes from the negotiated session profile.")
     }
 
+    /// Audio's mean jitter-buffer dwell since the previous snapshot, from libwebrtc's cumulative
+    /// counters; -1 until two samples exist.
+    private func sampleAudioJitterBufferMilliseconds() async -> Double {
+        var milliseconds = -1.0
+        if let audio = await bundle?.audioReception() {
+            if let previous = lastAudioJitterSample, audio.jitterBufferEmitted > previous.emitted {
+                milliseconds = (audio.jitterBufferDelaySeconds - previous.delaySeconds) / Double(audio.jitterBufferEmitted - previous.emitted) * 1000
+            }
+            lastAudioJitterSample = (audio.jitterBufferDelaySeconds, audio.jitterBufferEmitted)
+        }
+        lastAudioJitterBufferMilliseconds = milliseconds
+        return milliseconds
+    }
+
+    /// Loss over the interval, computed the way the WebRTC path computes it, so the two HUDs
+    /// report the same quantity rather than one percent and one running count.
+    private func lossPercentSinceLastSnapshot(packetsNow: UInt64, lostNow: UInt64) -> Double {
+        let packetsDelta = packetsNow >= lastSnapshotPackets ? packetsNow - lastSnapshotPackets : 0
+        let lostDelta = lostNow >= lastSnapshotLost ? lostNow - lastSnapshotLost : 0
+        lastSnapshotPackets = packetsNow
+        lastSnapshotLost = lostNow
+        return packetsDelta + lostDelta > 0 ? Double(lostDelta) * 100 / Double(packetsDelta + lostDelta) : 0
+    }
+
+
     /// Feeds both the on-screen overlay and `NativeNVSTStreamHealthMonitor` from the receive path's
     /// own counters.
     ///
@@ -165,15 +190,7 @@ extension NvstBifrostFreeTransport {
         let elapsed = max(0.001, now.timeIntervalSince(started))
 
         let interval = lastSnapshotAt.map { max(0.001, now.timeIntervalSince($0)) } ?? elapsed
-        // Audio's mean jitter-buffer dwell over this interval, from libwebrtc's cumulative counters.
-        var audioJitterBufferMilliseconds = -1.0
-        if let audio = await bundle?.audioReception() {
-            if let previous = lastAudioJitterSample, audio.jitterBufferEmitted > previous.emitted {
-                audioJitterBufferMilliseconds = (audio.jitterBufferDelaySeconds - previous.delaySeconds) / Double(audio.jitterBufferEmitted - previous.emitted) * 1000
-            }
-            lastAudioJitterSample = (audio.jitterBufferDelaySeconds, audio.jitterBufferEmitted)
-        }
-        lastAudioJitterBufferMilliseconds = audioJitterBufferMilliseconds
+        let audioJitterBufferMilliseconds = await sampleAudioJitterBufferMilliseconds()
         let framesSinceLast = counters.framesEmitted &- lastSnapshotFrames
         let bytesSinceLast = counters.bytesReceived &- lastSnapshotBytes
         let instantFps = Double(framesSinceLast) / interval
@@ -182,18 +199,8 @@ extension NvstBifrostFreeTransport {
         lastSnapshotFrames = counters.framesEmitted
         lastSnapshotBytes = counters.bytesReceived
 
-        // Loss over the interval, computed the way the WebRTC path computes it, so the two HUDs
-        // report the same quantity rather than one percent and one running count.
         let stats = receiver.stats
-        let packetsNow = stats.authenticatedPackets
-        let lostNow = UInt64(stats.lastCumulativeLost)
-        let packetsDelta = packetsNow >= lastSnapshotPackets ? packetsNow - lastSnapshotPackets : 0
-        let lostDelta = lostNow >= lastSnapshotLost ? lostNow - lastSnapshotLost : 0
-        lastSnapshotPackets = packetsNow
-        lastSnapshotLost = lostNow
-        let lossPercent = packetsDelta + lostDelta > 0
-            ? Double(lostDelta) * 100 / Double(packetsDelta + lostDelta)
-            : 0
+        let lossPercent = lossPercentSinceLastSnapshot(packetsNow: UInt64(stats.authenticatedPackets), lostNow: UInt64(stats.lastCumulativeLost))
 
         // The seat's round trip, from libwebrtc's own ICE candidate pair — the same source the
         // WebRTC transport's HUD reads. Requested here rather than on a timer of its own: the HUD
