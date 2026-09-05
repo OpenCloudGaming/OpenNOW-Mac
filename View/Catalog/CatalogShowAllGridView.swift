@@ -330,8 +330,9 @@ struct CatalogShowAllGridTile: View {
             }
             .opnHoverScale(isHovering, factor: CatalogShowAllLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
-            .zIndex(isHovering ? 1 : 0)
         }
+        // Outside the tracker: the grid is the container whose children need ordering.
+        .zIndex(isHovering ? 1 : 0)
     }
 
     private var playButtonAction: () -> Void {

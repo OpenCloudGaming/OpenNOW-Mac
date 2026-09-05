@@ -75,7 +75,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                 .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
                 .opacity(isHovering ? 1 : 0)
                 // Settles into place rather than materialising: the button is small and sits over
                 // busy artwork, where a pure fade is easy to miss.
@@ -86,8 +86,12 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
             }
             .opnHoverScale(isHovering && !isSelectionActive, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
-            .zIndex(isHovering ? 1 : 0)
         }
+        // On the tracker, not inside it: `zIndex` orders siblings within one container, and the
+        // container here is the rail's stack of tiles. Set on the inner ZStack it ordered that
+        // ZStack's own children, so the tiles drawn after this one still painted over the hovered
+        // tile's enlarged tray and title.
+        .zIndex(isHovering ? 1 : 0)
     }
 
     private var playButton: some View {
@@ -181,6 +185,12 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                         .padding(.horizontal, 16 * uiScale)
                         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
                         .background(CatalogVendorLayout.tileTray.opacity(1))
+                        // The tray carries the chevron, so it reads as the control that opens and
+                        // closes the details, but the taps were landing on the artwork button
+                        // behind it and only ever opened. Its own gesture, so the chevron does what
+                        // it points at.
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSelect() }
                     }
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
                 }
