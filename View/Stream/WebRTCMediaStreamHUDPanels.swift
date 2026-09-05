@@ -30,15 +30,13 @@ extension WebRTCMediaStreamSurface {
     var hudVideoPanel: some View {
         hudSection(label: "VIDEO") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("MetalFX Upscaling", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
-                    ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
-                        Text(option.label).tag(option.value)
-                    }
-                }
-                .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.segmented)
-                .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!sidebarCapabilities.supports(.videoEnhancement) || !isStreamReady)
+                StreamHUDSegmentedRow(
+                    label: "Upscaling",
+                    options: StreamRuntimeSettings.upscalingModes.map { ($0.value, $0.label) },
+                    selection: runtimeSettings.upscalingMode,
+                    isDisabled: !sidebarCapabilities.supports(.videoEnhancement) || !isStreamReady,
+                    onSelect: { updateVideoEnhancement(mode: $0) }
+                )
                 if runtimeSettings.upscalingMode != 0 {
                     videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
                     videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }

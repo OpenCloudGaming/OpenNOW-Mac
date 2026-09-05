@@ -629,6 +629,77 @@ struct StreamHUDSliderRow: View {
     }
 }
 
+/// Squared segmented control for the stream HUD, replacing `.pickerStyle(.segmented)`.
+///
+/// The stock style draws AppKit's rounded capsule with its own tint handling, which is the one
+/// piece of system chrome left in a HUD built entirely from square panels, 1px strokes and the
+/// NVIDIA type ramp. This is the same chip row Settings uses for its option rows, sized for the
+/// HUD: label on the left like `StreamHUDDropdown`, chips trailing, selected chip filled with the
+/// accent and set in black so it reads at HUD contrast.
+struct StreamHUDSegmentedRow<Value: Hashable>: View {
+    let label: String
+    let options: [(value: Value, title: String)]
+    let selection: Value
+    let isDisabled: Bool
+    var isFocused = false
+    let onSelect: (Value) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                ForEach(options, id: \.value) { option in
+                    StreamHUDSegmentedChip(
+                        title: option.title,
+                        isSelected: option.value == selection,
+                        isDisabled: isDisabled
+                    ) {
+                        onSelect(option.value)
+                    }
+                }
+            }
+        }
+        .hudFocusRing(isFocused)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.46 : 1)
+    }
+}
+
+private struct StreamHUDSegmentedChip: View {
+    let title: String
+    let isSelected: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(isSelected ? .black : WebRTCMediaStreamTheme.textPrimary)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(chipBackground)
+                .overlay {
+                    Rectangle()
+                        .stroke(isSelected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 && !isDisabled }
+    }
+
+    private var chipBackground: Color {
+        if isSelected { return WebRTCMediaStreamTheme.accent }
+        return Color.white.opacity(isHovering ? 0.14 : 0.075)
+    }
+}
+
 /// The approve / remove control on a Remote Co-Op participant row.
 ///
 /// Shared when both stream HUDs hosted Remote Co-Op; only the native HUD does now and the row has to look identical in each:

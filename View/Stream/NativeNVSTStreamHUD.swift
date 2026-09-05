@@ -499,21 +499,16 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDUpscalingPanel: some View {
         StreamHUDSection(label: "UPSCALING") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("Upscaling", selection: Binding(
-                    get: { OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].value },
-                    set: { model.updateNativeUpscalingTier(value: $0) }
-                )) {
-                    // Display order is independent of the stored option array's order, which
-                    // stays fixed for backward compatibility.
-                    ForEach(NativeNVSTHostViewModel.upscalingTierDisplayOrder, id: \.value) { tier in
-                        Text(tier.label).tag(tier.value)
-                    }
-                }
-                .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.segmented)
-                .tint(WebRTCMediaStreamTheme.accent)
-                .disabled(!model.sidebarCapabilities.supports(.videoEnhancement))
-                .hudFocusRing(model.hudFocusID == "upscaling-tier")
+                // Display order is independent of the stored option array's order, which stays
+                // fixed for backward compatibility.
+                StreamHUDSegmentedRow(
+                    label: "Upscaling",
+                    options: NativeNVSTHostViewModel.upscalingTierDisplayOrder.map { ($0.value, $0.label) },
+                    selection: OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].value,
+                    isDisabled: !model.sidebarCapabilities.supports(.videoEnhancement),
+                    isFocused: model.hudFocusID == "upscaling-tier",
+                    onSelect: { model.updateNativeUpscalingTier(value: $0) }
+                )
                 StreamHUDDropdown(
                     label: "Target Resolution",
                     options: Array(OPNStreamPreferences.upscalingTargetOptions.enumerated().map { ($0.offset, $0.element.label) }),
