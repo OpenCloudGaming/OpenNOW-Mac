@@ -4,20 +4,24 @@
 import AppKit
 import Foundation
 
-/// Guards every window-geometry mutation against AppKit's nested run loops.
+/// Guards every window-geometry mutation against AppKit's nested run loops, and owns the one
+/// supported way to release a window aspect-ratio lock.
 ///
-/// `inLiveResize` covers a user dragging an edge, and that was the whole guard until a titlebar
-/// double-click crashed the app. Zoom does not go through live resize: it runs
-/// `-[NSWindow setFrame:display:animate:]`, which spins its own run loop inside
-/// `-[NSMoveHelper _doAnimation]` and interpolates the frame from a display link. Swift's main-actor
-/// executor drains in that nested loop, so a queued `applyNow()` lands mid-animation, rebuilds the
-/// theme frame under AppKit, and the animation's next `_setFrameCommon:` traps inside
-/// `_adjustNeedsDisplayRegionForNewFrame:`.
+/// `inLiveResize` covers a user dragging an edge. AppKit also spins nested loops that raise no
+/// flag and post no notification: `-[NSWindow setFrame:display:animate:]` runs one inside
+/// `-[NSMoveHelper _doAnimation]` and interpolates the frame from a display link, in
+/// `_NSMoveTimerRunLoopMode`. Any non-default main run loop mode is therefore treated as "AppKit
+/// is busy" and the mutation waits for the default mode to come back — resize, move, zoom, menu
+/// tracking, a modal session.
 ///
-/// Any non-default main run loop mode means AppKit is inside one of those nested loops — resize,
-/// move, zoom, menu tracking, a modal session — so the only safe move is to wait for the default
-/// mode to come back.
+/// This gate is not what fixes the titlebar double-click crash. A queued `applyNow()` cannot land
+/// inside a zoom animation at all: no main-actor continuation drains in `_NSMoveTimerRunLoopMode`,
+/// and mutating the theme frame from inside that loop does not reproduce the trap. That crash was
+/// a zeroed aspect ratio; see `releaseAspectRatioLock`.
 enum StreamWindowGeometryGate {
+    /// One-point increments: fine enough to be indistinguishable from free resizing.
+    private static let onePointIncrements = NSSize(width: 1, height: 1)
+
     @MainActor
     static func isLiveResizing(_ window: NSWindow) -> Bool {
         window.inLiveResize || window.contentView?.inLiveResize == true
@@ -40,6 +44,26 @@ enum StreamWindowGeometryGate {
     @MainActor
     static func shouldDeferGeometryMutation(for window: NSWindow) -> Bool {
         isLiveResizing(window) || isRunningNestedRunLoop()
+    }
+
+    /// Releases an aspect-ratio lock without poisoning the window's zoom path.
+    ///
+    /// Assigning `.zero` to `aspectRatio`/`contentAspectRatio` does not release the lock. AppKit
+    /// keeps the zeroed ratio as a live divisor, so `-[NSWindow _zoomToScreen:]` computes a
+    /// standard frame whose height is NaN and the next titlebar double-click traps in
+    /// `-[NSWindow _adjustNeedsDisplayRegionForNewFrame:]` on its way to `translateX:y:`. The
+    /// poisoned window reads back identically to one that was never locked, so nothing downstream
+    /// can detect it, and no frame change, style-mask change, content-view swap or reordering
+    /// undoes it — only assigning a non-degenerate ratio again masks it.
+    ///
+    /// Aspect ratio and resize increments are mutually exclusive attributes and setting one
+    /// cancels the other, so one-point increments are the supported way to drop the ratio: they
+    /// leave the window freely resizable and its zoom target finite, and a later lock cancels
+    /// them again in turn.
+    @MainActor
+    static func releaseAspectRatioLock(_ window: NSWindow) {
+        window.contentResizeIncrements = onePointIncrements
+        window.resizeIncrements = onePointIncrements
     }
 
     /// Runs `body` once the nested loop ends, and drops it if that never happens.

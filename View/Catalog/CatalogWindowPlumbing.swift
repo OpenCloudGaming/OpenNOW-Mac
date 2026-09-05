@@ -268,8 +268,7 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
                 return
             }
             if appliedLockState == true {
-                window.contentAspectRatio = .zero
-                window.aspectRatio = .zero
+                StreamWindowGeometryGate.releaseAspectRatioLock(window)
             }
             appliedAspectRatio = nil
             appliedLockState = false

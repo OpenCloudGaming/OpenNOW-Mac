@@ -159,8 +159,7 @@ final class StreamWindowAspectCoordinator {
             return
         }
         if appliedLockState == true {
-            window.contentAspectRatio = .zero
-            window.aspectRatio = .zero
+            StreamWindowGeometryGate.releaseAspectRatioLock(window)
         }
         if appliedTitlebarExclusiveContent == true {
             configureWindowStyle(window, titlebarExclusiveContent: false)
@@ -271,8 +270,7 @@ final class StreamWindowAspectCoordinator {
     private static func restore(_ restoration: PendingRestoration) {
         let window = restoration.window
         if restoration.clearsAspectRatio {
-            window.contentAspectRatio = .zero
-            window.aspectRatio = .zero
+            StreamWindowGeometryGate.releaseAspectRatioLock(window)
         }
         if restoration.restoresFullSizeContentView {
             setFullSizeContentView(restoration.originalFullSizeContentView, on: window)
