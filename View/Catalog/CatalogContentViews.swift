@@ -7,6 +7,10 @@ import SwiftUI
 
 struct CatalogContentView: View {
     let viewModel: CatalogViewModel
+    /// False while Settings or Recordings is drawn over this page. The page stays mounted so it
+    /// does not have to be rebuilt on the way back, so the hero rotation has to be told to hold
+    /// still - nothing else would stop it animating a page nobody is looking at.
+    var isActive = true
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
@@ -189,7 +193,7 @@ struct CatalogContentView: View {
                 }
                 .background(OpenNOWDesign.Surface.app)
                 .onReceive(heroTimer) { _ in
-                    guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
+                    guard isActive, !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         heroIndex = (heroIndex + 1) % heroes.count
                     }

@@ -64,7 +64,14 @@ struct CatalogRailView: View {
             ScrollViewReader { proxy in
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 0) {
+                        // Lazy across the row, eager down the page. The vertical stack that holds
+                        // the rails has to stay a plain `VStack` (see `CatalogContentView`), but a
+                        // rail is a fixed-width run of fixed-width tiles, so estimating it is a
+                        // multiplication rather than an apply of every tile's view list. Building
+                        // all 18 tiles in every rail meant a page switch re-created - and re-decoded
+                        // the artwork for - a couple of hundred tiles at once, which is what pinned
+                        // the CPU for a second or two on the way back from Settings or into search.
+                        LazyHStack(alignment: .top, spacing: 0) {
                             ForEach(games, id: \.catalogIdentity) { game in
                                 EquatableView(content: CatalogGameTile(
                                     game: game,

@@ -8,7 +8,6 @@ struct ServerLocationSettingsPage: View {
     private let regionColumns = [GridItem(.adaptive(minimum: 138, maximum: 220), spacing: 10)]
 
     var body: some View {
-        let selectedOption = viewModel.settingsRegionOptions.first { $0.url == viewModel.selectedSettingsRegionUrl }
         SettingsCard(title: "Server Location", uiScale: uiScale) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {

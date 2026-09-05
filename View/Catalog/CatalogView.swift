@@ -148,6 +148,8 @@ struct CatalogView: View {
         catalogWindowTopInset > 0 ? catalogWindowTopInset : CatalogVendorLayout.fallbackWindowTopInset
     }
 
+    private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
+
     init(
         account: LoginAccount,
         session: LoginSession,
@@ -210,13 +212,24 @@ struct CatalogView: View {
                     } else {
                         VStack(spacing: 0) {
                             CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                            if viewModel.selectedMainPage == .settings {
-                                SettingsView(viewModel: viewModel)
-                            } else if viewModel.selectedMainPage == .recordings {
-                                RecordingsView()
-                            } else {
-                                CatalogContentView(viewModel: viewModel)
+                            ZStack {
+                                // The catalog stays mounted underneath Settings and Recordings
+                                // rather than being swapped out for them. Tearing it down drops
+                                // every rail, every tile and the decoded artwork each tile holds
+                                // in its own state, so coming back rebuilt and re-decoded the
+                                // whole page - a second or more of pinned CPU on a plain page
+                                // switch. Hidden, it costs a layout it has already done.
+                                CatalogContentView(viewModel: viewModel, isActive: isCatalogPageActive)
+                                    .opacity(isCatalogPageActive ? 1 : 0)
+                                    .disabled(!isCatalogPageActive)
+                                    .accessibilityHidden(!isCatalogPageActive)
+                                if viewModel.selectedMainPage == .settings {
+                                    SettingsView(viewModel: viewModel)
+                                } else if viewModel.selectedMainPage == .recordings {
+                                    RecordingsView()
+                                }
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         .padding(.top, measuredCatalogTopInset)
                         .transition(.opacity)
