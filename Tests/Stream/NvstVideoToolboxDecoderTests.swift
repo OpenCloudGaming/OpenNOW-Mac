@@ -380,6 +380,36 @@ extension NvstVideoToolboxDecoderTests {
     }
 }
 
+// MARK: - Warm start
+
+extension NvstVideoToolboxDecoderTests {
+    /// A prewarmed session has parameter sets before the stream's first keyframe, so the implicit
+    /// "no parameter sets yet" gate is gone; the explicit one must refuse P-frames until a keyframe.
+    @Test func prewarmedDecoderStillWaitsForTheFirstKeyframe() throws {
+        guard VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) else { return }
+        let units = encodeAnnexB(codec: kCMVideoCodecType_HEVC, frameCount: 3)
+        try #require(units.count == 3)
+        let sets = NvstElementaryStream.parameterSets(in: units[0], codec: .hevc)
+        try #require(sets.isComplete)
+
+        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        decoder.prewarm(parameterSets: sets)
+        #expect(decoder.sessionCreationCount == 1)
+        // A P-frame first: refused the same way an un-prewarmed decoder refuses it.
+        #expect(throws: NvstVideoToolboxDecoder.DecoderError.self) {
+            try decoder.decode(accessUnit(units[1], index: 1, codec: .hevc))
+        }
+        // The keyframe goes through on the prewarmed session, no rebuild, and the refused P-frame
+        // decodes once its reference exists.
+        try decoder.decode(accessUnit(units[0], index: 0, codec: .hevc))
+        try decoder.decode(accessUnit(units[1], index: 1, codec: .hevc))
+        try decoder.decode(accessUnit(units[2], index: 2, codec: .hevc))
+        decoder.drain()
+        #expect(decoder.sessionCreationCount == 1)
+        #expect(decoder.decodedFrameCount == 3)
+    }
+}
+
 // MARK: - Output latency
 
 extension NvstVideoToolboxDecoderTests {

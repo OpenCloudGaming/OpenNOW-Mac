@@ -55,6 +55,18 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
 
     /// Set by the transport so a rejected access unit can describe itself, and so the frame the
     /// decoder could not use can be named back to the seat.
+    /// Builds the decompression session from parameter sets ahead of the stream's first keyframe.
+    /// Kept for the first-keyframe gate's test; the transport no longer calls it (see
+    /// `NvstBifrostFreeTransport.startVideo` for the measured reason).
+    public func prewarm(parameterSets sets: NvstElementaryStream.ParameterSets) {
+        guard sets.isComplete else { return }
+        _ = try? prepareSession(for: sets)
+    }
+
+    /// Whether a keyframe has been submitted yet; see the gate at the top of `decode`.
+    private var hasSeenKeyframe = false
+
+
     public var onDecodeFailure: (@Sendable (UInt32, String) -> Void)?
 
     /// `bytes=N nals=[type:length, …]`, so a rejected access unit can be compared with an accepted
@@ -165,6 +177,16 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     /// which is the normal state while the seat is still answering the initial PLI.
     public func decode(_ unit: NvstAccessUnit) throws {
         let decodeStart = DispatchTime.now().uptimeNanoseconds
+        // Nothing before the stream's first keyframe can be decoded: a P-frame with no reference
+        // comes out as garbage and leaves the session behind for good (measured 2026-09-05 — the
+        // first prewarmed session decoded a stray P-frame first and never got under 20 ms a frame).
+        // Without a prewarm this gate was implicit, because the parameter sets only arrive with the
+        // keyframe; a prewarmed session has them already, so it is stated here.
+        stateLock.lock()
+        let awaitingFirstKeyframe = !hasSeenKeyframe
+        if unit.isKeyframe { hasSeenKeyframe = true }
+        stateLock.unlock()
+        guard !awaitingFirstKeyframe || unit.isKeyframe else { throw DecoderError.missingParameterSets }
         // One pass produces both the parameter sets and the length-prefixed sample. See
         // `NvstElementaryStream.prepare` for what this replaced.
         let prepared = NvstElementaryStream.prepare(unit.bytes, codec: codec)

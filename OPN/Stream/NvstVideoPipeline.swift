@@ -187,6 +187,16 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         let startedAt: UInt64
     }
     private var pendingCompletions: [PendingCompletion] = []
+    /// Frame index of the newest keyframe handed to `submit`, so frames still queued ahead of it can
+    /// be recognised as superseded while a resync is pending.
+    private var latestSubmittedKeyframeIndex: UInt32?
+
+    /// While a resync waits for a keyframe, a non-keyframe is dropped only when a newer keyframe is
+    /// already queued behind it — it would be decoded and then replaced before anyone saw it.
+    static func dropsStaleFrame(frameIndex: UInt32, latestSubmittedKeyframeIndex: UInt32?) -> Bool {
+        guard let keyframe = latestSubmittedKeyframeIndex else { return false }
+        return keyframe > frameIndex
+    }
 
     public init(decoder: NvstVideoToolboxDecoder,
                 clock: NvstSessionClock,
@@ -230,6 +240,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         let enqueued = DispatchTime.now().uptimeNanoseconds
         lock.lock()
         pendingFrames += 1
+        if unit.isKeyframe { latestSubmittedKeyframeIndex = unit.frameIndex }
         lock.unlock()
         queue.async { [weak self] in self?.process(unit, enqueuedAt: enqueued) }
     }
@@ -245,17 +256,24 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         guard !gate.stopped else { return }
 
         if gate.skipping {
-            guard unit.isKeyframe else {
+            if unit.isKeyframe {
                 lock.lock()
-                counters.framesSkippedForLatency += 1
+                isAwaitingKeyframe = false
+                awaitingKeyframeSince = nil
                 lock.unlock()
-                return
+                logger?("NVST decode resynchronised on a keyframe")
+            } else {
+                // Waiting for the keyframe used to mean dropping every frame until it came: a frozen
+                // picture for as long as the seat took — 169 frames, 1.4 s, on a 1440p launcher
+                // transition (2026-09-05). Now the backlog keeps decoding, late but moving, and only
+                // frames the queue already holds a newer keyframe behind are dropped: those can never
+                // be shown, the keyframe supersedes them. The freeze becomes a latency jump.
+                lock.lock()
+                let stale = Self.dropsStaleFrame(frameIndex: unit.frameIndex, latestSubmittedKeyframeIndex: latestSubmittedKeyframeIndex)
+                if stale { counters.framesSkippedForLatency += 1 }
+                lock.unlock()
+                if stale { return }
             }
-            lock.lock()
-            isAwaitingKeyframe = false
-            awaitingKeyframeSince = nil
-            lock.unlock()
-            logger?("NVST decode resynchronised on a keyframe")
         }
 
         // VideoToolbox rejects a frame with a broken reference chain in its asynchronous output

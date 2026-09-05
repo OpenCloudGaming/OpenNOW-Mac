@@ -165,6 +165,14 @@ extension NvstBifrostFreeTransport {
         let elapsed = max(0.001, now.timeIntervalSince(started))
 
         let interval = lastSnapshotAt.map { max(0.001, now.timeIntervalSince($0)) } ?? elapsed
+        // Audio's mean jitter-buffer dwell over this interval, from libwebrtc's cumulative counters.
+        var audioJitterBufferMilliseconds = -1.0
+        if let audio = await bundle?.audioReception() {
+            if let previous = lastAudioJitterSample, audio.jitterBufferEmitted > previous.emitted {
+                audioJitterBufferMilliseconds = (audio.jitterBufferDelaySeconds - previous.delaySeconds) / Double(audio.jitterBufferEmitted - previous.emitted) * 1000
+            }
+            lastAudioJitterSample = (audio.jitterBufferDelaySeconds, audio.jitterBufferEmitted)
+        }
         let framesSinceLast = counters.framesEmitted &- lastSnapshotFrames
         let bytesSinceLast = counters.bytesReceived &- lastSnapshotBytes
         let instantFps = Double(framesSinceLast) / interval
@@ -238,7 +246,8 @@ extension NvstBifrostFreeTransport {
             bitstreamFormat: decoder?.bitstreamFormat?.summary ?? "",
             decoderOutputFormat: decoder?.outputPixelFormatName ?? "",
             targetBitrateMegabitsPerSecond: configuredMaxBitrateKbps.map { Double($0) / 1000 } ?? -1,
-            serverGPU: sessionGPUType ?? ""
+            serverGPU: sessionGPUType ?? "",
+            audioJitterBufferMilliseconds: audioJitterBufferMilliseconds
         )
     }
     // Session-peak tracker for the NVST SESSION SUMMARY line (see logCounters).

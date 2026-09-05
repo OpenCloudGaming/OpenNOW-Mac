@@ -127,6 +127,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     var negotiatedFps: Int?
     /// Human server name from the CloudMatch allocation ("np-tyo-01" style), for the stats HUD.
     var sessionServerLocation: String?
+    /// Previous snapshot's cumulative audio jitter-buffer counters, for the per-interval mean.
+    var lastAudioJitterSample: (delaySeconds: Double, emitted: UInt64)?
     /// The seat's GPU name from the session response; the "rig" in the HUD.
     var sessionGPUType: String?
     /// The seat's latest `0x0101` statistics: the HUD's GAME FPS and MS come from here.
@@ -227,7 +229,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     private let configuredPrefilterModel: Int?
     /// The session's colour tier (`8bit_420`, `10bit_420`, `10bit_444`, ...), announced as
     /// `video[0].bitDepth` / `chromaFormat` so the ANNOUNCE agrees with what the session PUT asked for.
-    private let configuredColorQuality: String?
+    let configuredColorQuality: String?
 
     public init(pixelBufferSink: PixelBufferSink? = nil,
                 configuredFps: Int? = nil,

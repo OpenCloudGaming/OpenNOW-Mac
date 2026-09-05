@@ -150,6 +150,8 @@ extension NativeNVSTHostViewModel {
 
     func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
+        recordDecodeMeasurementIfLongEnough()
+        persistSixteenNineVerdictAtSessionEnd()
         nativeView?.remoteInputEnabled = false
         // Idempotent, and the backstop for the paths that reach `finishOnce` without going through
         // `finish` - a transport-side termination, for instance.

@@ -28,6 +28,12 @@ extension NvstBifrostFreeTransport {
         // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
         // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
         let coOpVideoRelay = self.remoteCoOpVideoRelay
+        // Tried (2026-09-05): building the VideoToolbox session before the first keyframe from
+        // parameter sets remembered from an earlier session of the same shape. Two prewarmed
+        // sessions started no cleaner than a cold one (slow frames 74/67 vs 42, one latency resync
+        // either way): the start-up burst is the first keyframe's own decode (50–76 ms) and the
+        // seat's opening frame burst, not session creation. Removed; the explicit first-keyframe
+        // gate it needed stays in the decoder.
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             recorder.appendNativePixelBuffer(pixelBuffer)
             coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)

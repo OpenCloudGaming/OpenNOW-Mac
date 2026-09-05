@@ -479,6 +479,7 @@ extension OPNStreamPreferences {
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
         static let streamSixteenNineTitlesAtSixteenNine = "OpenNOW.Stream.SixteenNineTitlesAtSixteenNine"
         static let sixteenNineTitles = "OpenNOW.Stream.SixteenNineTitles"
+        static let decodeMeasurements = "OpenNOW.Stream.DecodeMeasurements"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
         static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"

@@ -48,6 +48,9 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let decoderOutputFormat: String
     /// The ceiling the user configured, so the HUD can show used bitrate against it; -1 if unset.
     public let targetBitrateMegabitsPerSecond: Double
+    /// Mean time audio spent in libwebrtc's jitter buffer over the last snapshot interval, ms; -1
+    /// when unknown. Against video's decode + present time it gives an A/V offset estimate.
+    public let audioJitterBufferMilliseconds: Double
     /// The seat's GPU as named by the session response ("NVIDIA GeForce RTX 4080"); the rig.
     public let serverGPU: String
 
@@ -72,7 +75,9 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 bitstreamFormat: String = "",
                 decoderOutputFormat: String = "",
                 targetBitrateMegabitsPerSecond: Double = -1,
-                serverGPU: String = "") {
+                serverGPU: String = "",
+                audioJitterBufferMilliseconds: Double = -1) {
+        self.audioJitterBufferMilliseconds = audioJitterBufferMilliseconds
         self.serverGPU = serverGPU
         self.targetBitrateMegabitsPerSecond = targetBitrateMegabitsPerSecond
         self.negotiatedFramesPerSecond = negotiatedFramesPerSecond

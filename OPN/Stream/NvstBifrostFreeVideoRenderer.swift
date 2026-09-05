@@ -147,6 +147,11 @@ public final class NvstBifrostFreeVideoRenderer {
                                                    pillarboxFillColor: Int32(pillarboxFillColor))
     }
 
+    /// Renders the latest frame offscreen at the current settings and writes it; needs no window.
+    func writeOffscreenRenderSnapshot(to url: URL) -> CGSize? {
+        videoView.writeOffscreenRenderSnapshot(to: url)
+    }
+
     /// Writes the next drawn frame — the drawable, after our render pass — as a JPEG.
     func requestRenderSnapshot(to url: URL) {
         videoView.requestRenderSnapshot(to: url)

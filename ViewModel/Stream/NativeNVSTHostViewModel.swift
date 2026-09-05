@@ -66,6 +66,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var bitrateStarvation = NativeNVSTBitrateStarvationTracker()
     /// Whether this session found the title rendering 16:9 inside a wider frame, and whether the
     /// launch already requested the 16:9 resolution for it. Both drive the HUD's Resolution note.
+    /// When the stream connected, so a session's decode mean is only recorded once it has run long
+    /// enough to outweigh the start-up burst.
+    var nativeConnectedAt: Date?
     /// The seat's GPU as the official client names it, resolved once per distinct `gpuType`.
     @Published var nativeRigName = ""
     var nativeRigRawName = ""
@@ -380,6 +383,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         sixteenNineTitleDetected = OPNStreamPreferences.titleStreamsSixteenNineContent(configuration.applicationID)
         onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
         WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
+        nativeConnectedAt = Date()
         scheduleAutopilotEndIfRequested()
         scheduleAutopilotScriptIfRequested()
         startAutopilotCommandFileIfRequested()
@@ -452,6 +456,18 @@ final class NativeNVSTHostViewModel: ObservableObject {
     }
 
     func performAutopilotAction(_ action: String) async {
+        if action.hasPrefix("osnap") {
+            let name = String(action.dropFirst(5)).isEmpty ? "offscreen" : String(action.dropFirst(5))
+            let directory = ProcessInfo.processInfo.environment["OPN_NVST_AUTOPILOT_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+                ?? FileManager.default.temporaryDirectory
+            let url = directory.appendingPathComponent("\(name).jpg")
+            if let size = nativeView?.nvstBifrostFreeRenderer?.writeOffscreenRenderSnapshot(to: url) {
+                OpenNOWLog.info(.stream, "Autopilot: offscreen render \(Int(size.width))x\(Int(size.height)) -> \(url.path)")
+            } else {
+                OpenNOWLog.warning(.stream, "Autopilot: offscreen render failed -> \(url.path)")
+            }
+            return
+        }
         if action.hasPrefix("rsnap") {
             let name = String(action.dropFirst(5)).isEmpty ? "render" : String(action.dropFirst(5))
             let directory = ProcessInfo.processInfo.environment["OPN_NVST_AUTOPILOT_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }

@@ -218,6 +218,10 @@ extension NvstWebRtcBundle {
         public var samples: UInt64 = 0
         public var concealed: UInt64 = 0
         public var discarded: UInt64 = 0
+        /// libwebrtc's cumulative `jitterBufferDelay` (seconds) and `jitterBufferEmittedCount`;
+        /// the ratio of their deltas is the mean time audio sat in the jitter buffer.
+        public var jitterBufferDelaySeconds: Double = 0
+        public var jitterBufferEmitted: UInt64 = 0
     }
 
     public func audioReception() async -> AudioReception? {
@@ -241,6 +245,8 @@ extension NvstWebRtcBundle {
             reception.samples += number("totalSamplesReceived")
             reception.concealed += number("concealedSamples")
             reception.discarded += number("packetsDiscarded")
+            reception.jitterBufferDelaySeconds += (statistics.values["jitterBufferDelay"] as? NSNumber)?.doubleValue ?? 0
+            reception.jitterBufferEmitted += number("jitterBufferEmittedCount")
             if let ssrc = statistics.values["ssrc"] as? NSNumber { reception.ssrc = ssrc.uint32Value }
         }
         return sawAudio ? reception : nil

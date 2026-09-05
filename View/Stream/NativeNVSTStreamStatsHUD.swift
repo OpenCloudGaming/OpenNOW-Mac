@@ -44,6 +44,9 @@ extension NativeNVSTMediaStreamSurface {
                 nativeStatsStandardRow(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
                 nativeStatsStandardRow(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                // Video path (decode + present) against audio's jitter-buffer dwell: an estimate of
+                // which one reaches the viewer later, and by how much.
+                nativeStatsStandardRow(label: "A/V", value: nativeStatsAVValue, detail: nativeStatsAVDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
             }
@@ -136,6 +139,26 @@ extension NativeNVSTMediaStreamSurface {
         case .tight: return WebRTCMediaStreamTheme.warning
         case .comfortable, .unknown: return WebRTCMediaStreamTheme.textPrimary
         }
+    }
+
+    /// Video lead/lag estimate: (decode + present) − audio jitter-buffer dwell. Positive means the
+    /// picture arrives after the sound. Excludes the audio device's own output latency (~10–20 ms),
+    /// which pulls the true figure toward video-leading; an estimate, labelled as one.
+    var nativeStatsAVOffsetMilliseconds: Double? {
+        guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0, stats.decodeMilliseconds >= 0,
+              let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return nil }
+        return stats.decodeMilliseconds + render.presentLatencyMs - stats.audioJitterBufferMilliseconds
+    }
+
+    var nativeStatsAVValue: String {
+        guard let offset = nativeStatsAVOffsetMilliseconds else { return "--" }
+        return String(format: "%@%.0f", offset >= 0 ? "+" : "", offset)
+    }
+
+    var nativeStatsAVDetail: String? {
+        guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0 else { return "ms est." }
+        let lead = nativeStatsAVOffsetMilliseconds.map { $0 >= 0 ? "video late" : "audio late" } ?? ""
+        return String(format: "ms est. · audio buffer %.0f ms%@", stats.audioJitterBufferMilliseconds, lead.isEmpty ? "" : " · " + lead)
     }
 
     /// Mean decode-to-glass latency over the last second.

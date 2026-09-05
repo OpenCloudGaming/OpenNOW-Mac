@@ -303,6 +303,8 @@ struct GameplaySettingsPage: View {
                 SettingsOptionRow(title: "Maximum Bitrate", subtitle: qualityLocked ? lockedProfileSubtitle : "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setBitrateIndex)
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(title: "Color Precision", subtitle: qualityLocked ? lockedProfileSubtitle : "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setColorQualityIndex)
+                SettingsDivider(uiScale: uiScale)
+                SettingsInfoRow(label: "Decode on this Mac", value: OPNStreamPreferences.decodeAdvice(codec: viewModel.streamProfile.codec.value, resolution: viewModel.streamProfile.resolution.value, colorQualityLabel: viewModel.streamProfile.colorQuality.label, colorQuality: viewModel.streamProfile.colorQuality.value, fps: viewModel.streamProfile.fps), uiScale: uiScale)
             }
 
             SettingsCard(title: "Stream Transport", uiScale: uiScale) {

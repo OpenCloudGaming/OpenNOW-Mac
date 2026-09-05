@@ -366,6 +366,33 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         commandBuffer.commit()
     }
 
+    /// Renders the latest frame offscreen through the fill/spatial pass — what the viewer would
+    /// see at the current settings — and writes it as a JPEG. Needs no window: the autopilot's way
+    /// to look at the picture when the app is not frontmost. Returns the rendered size.
+    func writeOffscreenRenderSnapshot(to url: URL) -> CGSize? {
+        os_unfair_lock_lock(&frameLock)
+        let frame = videoFrame
+        let sourceSize = sourceFrameSize
+        os_unfair_lock_unlock(&frameLock)
+        guard let frame, let enhancementRenderer else { return nil }
+        let size = metalView.drawableSize.width >= 1 && metalView.drawableSize.height >= 1
+            ? metalView.drawableSize
+            : CGSize(width: Int(frame.width), height: Int(frame.height))
+        let resolvedSource = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize : CGSize(width: Int(frame.width), height: Int(frame.height))
+        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(), sourceSize: resolvedSource, renderer: enhancementRenderer)
+        settings.drawableSize = size
+        settings.captureEnhancedPixelBuffer = false
+        if settings.configuredTier == .off || settings.configuredTier == .metalFX || settings.configuredTier == .temporal {
+            settings.configuredTier = .spatial
+        }
+        guard let texture = enhancementRenderer.renderOffscreenSnapshot(frame, settings: settings, size: size),
+              let image = CIImage(mtlTexture: texture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else { return nil }
+        let context = CIContext(options: [.cacheIntermediates: false])
+        guard let data = context.jpegRepresentation(of: image.oriented(.downMirrored), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else { return nil }
+        do { try data.write(to: url, options: .atomic) } catch { return nil }
+        return size
+    }
+
     /// Switches how frames meet the display. Main actor: it reconfigures the layer and the
     /// display link.
     func setPresentationMode(_ mode: OPNVideoPresentationMode) {
