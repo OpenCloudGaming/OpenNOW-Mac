@@ -249,8 +249,14 @@ struct CatalogView: View {
                             .zIndex(20)
                     }
 
+                    if viewModel.isGameInfoVisible {
+                        CatalogGameInfoOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
+                            .transition(.opacity)
+                            .zIndex(17)
+                    }
+
                     if viewModel.isStorePickerVisible {
-                        CatalogStorePickerOverlay(viewModel: viewModel)
+                        CatalogStorePickerOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
                             .transition(.opacity)
                             .zIndex(18)
                     }

@@ -7,7 +7,7 @@ import SwiftUI
 
 private struct CatalogStorePickerMetrics {
     let horizontalPadding: CGFloat
-    let topInset: CGFloat
+    let contentTopInset: CGFloat
     let bottomInset: CGFloat
     let columnGap: CGFloat
     let posterWidth: CGFloat
@@ -17,7 +17,7 @@ private struct CatalogStorePickerMetrics {
     init(viewport: CGSize, scale: CGFloat) {
         let padding = OpenNOWDesign.clamped(viewport.width * 0.07, minimum: 32, maximum: 120) * scale
         horizontalPadding = min(padding, viewport.width * 0.16)
-        topInset = OpenNOWDesign.clamped(viewport.height * 0.14, minimum: 56, maximum: 128) * scale
+        contentTopInset = OpenNOWDesign.clamped(viewport.height * 0.14, minimum: 56, maximum: 128) * scale
         bottomInset = OpenNOWDesign.Spacing.xxxLarge(scale: scale)
         columnGap = OpenNOWDesign.clamped(viewport.width * 0.06, minimum: 40, maximum: 96) * scale
         posterWidth = 292 * scale
@@ -29,6 +29,9 @@ private struct CatalogStorePickerMetrics {
 
 struct CatalogStorePickerOverlay: View {
     let viewModel: CatalogViewModel
+    /// Height of the transparent titlebar the window content runs under. Controls anchored to the
+    /// top of the overlay clear it; the blurred artwork behind them does not have to.
+    var topInset: CGFloat = 0
     @Environment(\.opnUIScale) private var uiScale
     @State private var isCloseHovering = false
 
@@ -41,7 +44,7 @@ struct CatalogStorePickerOverlay: View {
 
                     HStack(alignment: .top, spacing: metrics.columnGap) {
                         CatalogStorePickerPoster(viewModel: viewModel, game: game, width: metrics.posterWidth, height: metrics.posterHeight)
-                            .padding(.top, metrics.topInset)
+                            .padding(.top, metrics.contentTopInset)
 
                         ScrollView(.vertical) {
                             VStack(alignment: .leading, spacing: 0) {
@@ -49,10 +52,10 @@ struct CatalogStorePickerOverlay: View {
                                 content(game: game)
                             }
                             .frame(width: metrics.contentWidth, alignment: .leading)
-                            .padding(.top, metrics.topInset)
+                            .padding(.top, metrics.contentTopInset)
                             .padding(.bottom, metrics.bottomInset)
                         }
-                        .scrollIndicators(.hidden)
+                        .scrollIndicators(.never)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.horizontal, metrics.horizontalPadding)
@@ -87,7 +90,7 @@ struct CatalogStorePickerOverlay: View {
         }
         .buttonStyle(.plain)
         .onHover { isCloseHovering = $0 }
-        .padding(.top, OpenNOWDesign.Spacing.medium(scale: uiScale))
+        .padding(.top, topInset + OpenNOWDesign.Spacing.xSmall(scale: uiScale))
         .padding(.trailing, OpenNOWDesign.Spacing.medium(scale: uiScale))
     }
 
@@ -134,7 +137,7 @@ struct CatalogStorePickerOverlay: View {
             manualMarkContent(game: game)
         case .success:
             successContent(game: game)
-        case .hidden:
+        case .none:
             storeSelectionContent(game: game)
         }
     }

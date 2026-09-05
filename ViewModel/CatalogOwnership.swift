@@ -53,7 +53,7 @@ extension CatalogViewModel {
                 guard let self else { return }
                 if success {
                     self.actionMessage = "Removed from favorites."
-                    self.loadFavorites()
+                    self.reloadFavoritesAfterChange()
                     self.refreshShowAllIfFavoritesFiltered()
                 } else {
                     self.favoriteGames = previousGames
@@ -74,7 +74,7 @@ extension CatalogViewModel {
                 guard let self else { return }
                 if success {
                     self.actionMessage = "Added to favorites."
-                    self.loadFavorites()
+                    self.reloadFavoritesAfterChange()
                     self.refreshShowAllIfFavoritesFiltered()
                 } else {
                     self.favoriteGames = previousGames
@@ -100,15 +100,22 @@ extension CatalogViewModel {
             actionMessage = "No alternate store is available."
             return
         }
-        ownershipFlowStage = .storeSelection
+        presentedModal = .storePicker(stage: .storeSelection)
         ownershipFlowMessage = ""
-        isStorePickerVisible = true
     }
 
     func closeStorePicker() {
-        isStorePickerVisible = false
-        ownershipFlowStage = .hidden
+        guard isStorePickerVisible else { return }
+        presentedModal = nil
         ownershipFlowMessage = ""
+    }
+
+    /// Moves the store picker to its next stage. A stage only exists while the picker is the
+    /// presented modal, so this cannot reopen a picker the user has dismissed - which is what the
+    /// old `if stage != .hidden` guards at every call site were trying to say.
+    func advanceOwnershipFlow(to stage: CatalogOwnershipFlowStage) {
+        guard isStorePickerVisible else { return }
+        presentedModal = .storePicker(stage: stage)
     }
 
     func selectGameStoreVariant(at index: Int) {
@@ -118,13 +125,13 @@ extension CatalogViewModel {
         if option.isOwned {
             let variant = selectedGame.variants[index]
             selectOwnedVariant(variant)
-            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
+            advanceOwnershipFlow(to: .success)
             ownershipFlowMessage = ""
         } else if option.hasAccess {
-            if ownershipFlowStage != .hidden { ownershipFlowStage = .success }
+            advanceOwnershipFlow(to: .success)
             ownershipFlowMessage = ""
-        } else if ownershipFlowStage != .hidden {
-            ownershipFlowStage = .manualMark
+        } else if isStorePickerVisible {
+            advanceOwnershipFlow(to: .manualMark)
             ownershipFlowMessage = ""
         }
         actionMessage = "Changed store to \(option.title)."
@@ -207,13 +214,12 @@ extension CatalogViewModel {
 
     func beginMarkSelectedVariantOwnedFlow() {
         guard let selectedGame, selectedVariant(in: selectedGame) != nil else { return }
-        ownershipFlowStage = .resyncing
-        isStorePickerVisible = true
+        presentedModal = .storePicker(stage: .resyncing)
         ownershipFlowMessage = syncingOwnershipMessage(for: selectedGame)
         let stores = CatalogAccountParsing.uniqueNonEmpty(selectedGame.variants.map(\.appStore))
         let syncableStores = stores.filter { accountStatus(forStore: $0)?.hasAccountSyncingData == true }
         guard let store = syncableStores.first else {
-            ownershipFlowStage = .storeSelection
+            advanceOwnershipFlow(to: .storeSelection)
             ownershipFlowMessage = ""
             return
         }
@@ -222,13 +228,13 @@ extension CatalogViewModel {
             self.loadAccountAndStores()
             self.loadLibrary()
             self.browseCatalog()
-            self.ownershipFlowStage = .storeSelection
+            self.advanceOwnershipFlow(to: .storeSelection)
             self.ownershipFlowMessage = ""
         }
     }
 
     func stopOwnershipResync() {
-        ownershipFlowStage = .storeSelection
+        advanceOwnershipFlow(to: .storeSelection)
         ownershipFlowMessage = ""
     }
 
@@ -242,7 +248,7 @@ extension CatalogViewModel {
             guard let self else { return }
             if success {
                 self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
-                self.ownershipFlowStage = .success
+                self.advanceOwnershipFlow(to: .success)
                 self.ownershipFlowMessage = ""
                 self.actionMessage = "Added to library."
                 self.refreshCatalogAfterOwnershipChange()

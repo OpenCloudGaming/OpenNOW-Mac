@@ -41,11 +41,26 @@ enum CatalogLaunchFlowState: Equatable {
 
 @MainActor
 enum CatalogOwnershipFlowStage: Equatable {
-    case hidden
     case resyncing
     case storeSelection
     case manualMark
     case success
+}
+
+/// Every modal that covers the whole catalog. One value rather than a boolean each: two of these
+/// on screen at once used to be expressible, and a store-picker stage used to survive the picker
+/// being dismissed. The surfaces the catalog does not own - the launch flow and the stream launch
+/// loading screen - stay on their own state machines.
+@MainActor
+enum CatalogModalOverlay: Equatable {
+    case storePicker(stage: CatalogOwnershipFlowStage)
+    case gameInfo
+    case diagnosticsUploadConfirmation
+
+    var storePickerStage: CatalogOwnershipFlowStage? {
+        guard case let .storePicker(stage) = self else { return nil }
+        return stage
+    }
 }
 
 enum CatalogMainPage: String, CaseIterable, Identifiable {
@@ -192,7 +207,6 @@ final class CatalogViewModel {
     /// Support-diagnostics generation, driven from both the About settings card and the home
     /// error banner. See CatalogDiagnostics.swift.
     var diagnosticsState = AboutDiagnosticsState.ready
-    var isDiagnosticsUploadConfirmationVisible = false
     var diagnosticsErrorContext = ""
     var actionMessage = ""
     var marqueePanels: [OPNCatalogPanelObject] = [] {
@@ -269,8 +283,7 @@ final class CatalogViewModel {
     }
     var selectedGameRevealRequest: CatalogGameRevealRequest?
     var catalogImageCacheSummary = "Calculating"
-    var isStorePickerVisible = false
-    var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
+    var presentedModal: CatalogModalOverlay?
     var ownershipFlowMessage = ""
     var queuedPatchingLaunchGameTitle = ""
     var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
@@ -588,6 +601,15 @@ final class CatalogViewModel {
         }
     }
 
+    var isStorePickerVisible: Bool { presentedModal?.storePickerStage != nil }
+
+    var isGameInfoVisible: Bool { presentedModal == .gameInfo }
+
+    var isDiagnosticsUploadConfirmationVisible: Bool { presentedModal == .diagnosticsUploadConfirmation }
+
+    /// Stage of the store picker, or nil when the picker is not the presented modal.
+    var ownershipFlowStage: CatalogOwnershipFlowStage? { presentedModal?.storePickerStage }
+
     func selectGame(_ game: OPNCatalogGameObject?) {
         let resolvedGame = game.flatMap(resolveGameForDetails) ?? game
         selectedGame = resolvedGame
@@ -595,6 +617,7 @@ final class CatalogViewModel {
         selectedVariantIndex = resolvedGame.map { Self.preferredVariantIndex(for: $0) } ?? -1
         launchMessage = ""
         actionMessage = ""
+        if isGameInfoVisible { presentedModal = nil }
     }
 
     func selectGame(_ game: OPNCatalogGameObject, inSection sectionId: String) {
@@ -604,6 +627,7 @@ final class CatalogViewModel {
         selectedVariantIndex = Self.preferredVariantIndex(for: resolvedGame)
         launchMessage = ""
         actionMessage = ""
+        if isGameInfoVisible { presentedModal = nil }
     }
 
     func toggleGameSelection(_ game: OPNCatalogGameObject, inSection sectionId: String) {
@@ -617,6 +641,18 @@ final class CatalogViewModel {
     func selectGameFromHero(_ game: OPNCatalogGameObject) {
         selectGame(game)
         requestSelectedGameReveal(for: game, sectionId: "")
+    }
+
+    /// The full game info page. It reads the current selection, so it is only meaningful while a
+    /// game is selected.
+    func showGameInfo() {
+        guard selectedGame != nil else { return }
+        presentedModal = .gameInfo
+    }
+
+    func closeGameInfo() {
+        guard isGameInfoVisible else { return }
+        presentedModal = nil
     }
 
     func closeGameDetailsFromBackground() {

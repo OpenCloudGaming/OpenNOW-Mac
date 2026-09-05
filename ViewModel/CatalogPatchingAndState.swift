@@ -36,7 +36,7 @@ extension CatalogViewModel {
     }
 
     func refreshCatalogAfterOwnershipChange() {
-        loadLibrary()
+        reloadLibraryAfterChange()
         browseCatalog()
         if let selectedGame {
             let selectedIdentity = Self.identity(for: selectedGame)

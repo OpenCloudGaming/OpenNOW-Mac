@@ -231,6 +231,7 @@ final class ControllerCatalogViewModel: ObservableObject {
             || catalog?.selectedShowAllSection != nil
             || catalog?.isLaunchFlowVisible == true
             || catalog?.isStorePickerVisible == true
+            || catalog?.isGameInfoVisible == true
     }
 
     /// Search is not in the bar, so while its overlay is up the bar keeps highlighting the

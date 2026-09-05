@@ -11,7 +11,7 @@ struct GameDetailPanel: View {
     var availableWidth: CGFloat = 0
     var viewportHeight: CGFloat = 0
     @State var activeImageIndex = 0
-    @State var isDescriptionExpanded = false
+    @State var isMoreInfoHovering = false
     @State var isHovering = false
     @State var showsActionsMenu = false
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -90,8 +90,8 @@ struct GameDetailPanel: View {
                             .padding(.top, 11)
                         detailMetadataScrollArea(game: game, panelHeight: resolvedHeight)
                             .padding(.top, 15)
-                        readMoreButton
-                            .padding(.top, 12)
+                        moreInfoButton
+                            .padding(.top, 13)
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -163,7 +163,6 @@ struct GameDetailPanel: View {
             }
             .onChange(of: game.catalogIdentity) { _, _ in
                 activeImageIndex = 0
-                isDescriptionExpanded = false
             }
         }
     }
@@ -311,40 +310,6 @@ struct GameDetailPanel: View {
         if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
     }
 
-    func detailRows(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CatalogDetailRow(label: "Publisher", value: game.publisherName)
-            CatalogDetailRow(label: "Developer", value: game.developerName)
-            CatalogDetailRow(label: "Input", value: GameDetailPresentation.inputLine(game: game, selectedVariant: selectedVariant))
-            CatalogDetailRow(label: "Players", value: GameDetailPresentation.playerLine(game: game))
-            CatalogDetailRow(label: "Release Date", value: GameDetailPresentation.releaseDateLine(game: game))
-            CatalogDetailRow(label: "Stores", value: game.storeLine)
-            CatalogDetailRow(label: "Genres", value: game.genreLine)
-        }
-    }
-
-}
-
-struct CatalogDetailRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        if !value.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 18) {
-                Text(label.uppercased())
-                    .nvidiaFont(size: 10, weight: .bold)
-                    .tracking(0.6)
-                    .foregroundStyle(.white.opacity(0.38))
-                    .frame(width: 112, alignment: .leading)
-                Text(value)
-                    .nvidiaFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.74))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
 }
 
 struct CatalogFeatureAvailabilityRow: View {

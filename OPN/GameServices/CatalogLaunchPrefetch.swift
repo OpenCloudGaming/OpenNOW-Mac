@@ -118,6 +118,15 @@ final class CatalogLaunchPrefetch {
         return attachment
     }
 
+    /// Drops one prefetched list once the user has changed the data behind it. `attach` hands a
+    /// delivered snapshot to every later caller, so without this a launch-time favorites list was
+    /// re-adopted by every reload for the rest of the session: a favorite removed in this session
+    /// came straight back on the next refresh, which made the control look dead.
+    func invalidate(_ kind: GameListKind) {
+        gameLists[kind] = nil
+        gameListStates[kind] = .idle
+    }
+
     /// Paints from the panel disk cache without a usable token. A launch whose stored session has
     /// expired has to refresh auth before it can fetch anything, which is seconds of skeleton for
     /// data that is already on disk. States stay idle so the catalog view model still runs its own

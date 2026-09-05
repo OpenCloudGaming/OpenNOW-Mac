@@ -11,16 +11,21 @@ extension CatalogViewModel {
     func presentDiagnosticsUploadConfirmation(context: String = "") {
         guard !diagnosticsState.isWorking else { return }
         diagnosticsErrorContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
-        isDiagnosticsUploadConfirmationVisible = true
+        presentedModal = .diagnosticsUploadConfirmation
     }
 
     func cancelDiagnosticsUpload() {
-        isDiagnosticsUploadConfirmationVisible = false
+        dismissDiagnosticsUploadConfirmation()
     }
 
     func confirmDiagnosticsUpload() {
-        isDiagnosticsUploadConfirmationVisible = false
+        dismissDiagnosticsUploadConfirmation()
         generateUploadedDiagnostics()
+    }
+
+    private func dismissDiagnosticsUploadConfirmation() {
+        guard isDiagnosticsUploadConfirmationVisible else { return }
+        presentedModal = nil
     }
 
     func generateUploadedDiagnostics() {

@@ -208,6 +208,18 @@ extension CatalogViewModel {
         fetchFavoritesFromNetwork()
     }
 
+    /// Reloads a list the user has just changed. The launch snapshot is dropped first, so this
+    /// goes to the network instead of adopting the state that existed before the change.
+    func reloadFavoritesAfterChange() {
+        CatalogLaunchPrefetch.shared.invalidate(.favorites)
+        loadFavorites()
+    }
+
+    func reloadLibraryAfterChange() {
+        CatalogLaunchPrefetch.shared.invalidate(.library)
+        loadLibrary()
+    }
+
     func fetchFavoritesFromNetwork() {
         gameService.fetchFavoriteGameObjects { [weak self] success, games, error in
             guard let self else { return }

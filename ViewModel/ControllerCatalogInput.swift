@@ -29,6 +29,7 @@ extension ControllerCatalogViewModel {
 
         if catalog.isLaunchFlowVisible { return handleLaunchFlowInput(command, catalog: catalog) }
         if catalog.isStorePickerVisible { return handleStorePickerInput(command, catalog: catalog) }
+        if catalog.isGameInfoVisible { return handleGameInfoInput(command, catalog: catalog) }
         return false
     }
 
@@ -49,6 +50,18 @@ extension ControllerCatalogViewModel {
         default:
             return true
         }
+    }
+
+    /// The info page is a reading surface: there is nothing on it to move between, so the pad only
+    /// dismisses it. Everything else is swallowed rather than driving the rails behind it.
+    private func handleGameInfoInput(_ command: ControllerInputCommand, catalog: CatalogViewModel) -> Bool {
+        switch command {
+        case .back, .confirm:
+            catalog.closeGameInfo()
+        default:
+            break
+        }
+        return true
     }
 
     /// The store picker owns the whole d-pad while it is up.
@@ -553,7 +566,7 @@ extension ControllerCatalogViewModel {
     private func confirmStorePickerStage() {
         guard let catalog else { return }
         switch catalog.ownershipFlowStage {
-        case .storeSelection, .hidden:
+        case .storeSelection, .none:
             guard let option = catalog.selectedPlatformOption(in: catalog.selectedGame) else { return }
             catalog.selectGameStoreVariant(at: option.variantIndex)
         case .manualMark:
