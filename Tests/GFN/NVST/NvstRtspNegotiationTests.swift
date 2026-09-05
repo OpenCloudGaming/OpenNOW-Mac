@@ -174,6 +174,17 @@ import Testing
         #expect(NvstRtspMessage.extractVideoPeer("unicast;X-GS-ServerPort=48322") == nil)
         #expect(NvstRtspMessage.extractVideoPeer(nil) == nil)
     }
+
+    @Test func videoPunchPortsCoverTheWholeServerPortRange() {
+        // Every captured seat advertises a range; the punch has to open all of it.
+        #expect(NvstRtspMessage.extractVideoPeerPorts("unicast;X-GS-ServerPort=5004-5005;source=66.22.144.48") == [5004, 5005])
+        #expect(NvstRtspMessage.extractVideoPeerPorts("unicast;X-GS-ServerPort=48322;source=10.20.30.40") == [48_322])
+        // An inverted or absurdly wide range falls back to the first port rather than spraying.
+        #expect(NvstRtspMessage.extractVideoPeerPorts("X-GS-ServerPort=5005-5004") == [5005])
+        #expect(NvstRtspMessage.extractVideoPeerPorts("X-GS-ServerPort=5000-6000") == [5000])
+        #expect(NvstRtspMessage.extractVideoPeerPorts("unicast;source=10.20.30.40").isEmpty)
+        #expect(NvstRtspMessage.extractVideoPeerPorts(nil).isEmpty)
+    }
 }
 
 @Suite struct NvstRtspSdpTests {

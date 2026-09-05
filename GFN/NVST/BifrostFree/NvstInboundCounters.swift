@@ -19,6 +19,9 @@ public struct NvstInboundCounters: Equatable, Sendable {
     public var datagramsOver1400 = 0
     public var punchesSent = 0
     public var responsesSent = 0
+    /// Datagrams per remote `ip:port`, capped at a handful of entries. Which seat port the video
+    /// actually arrives from is the one fact the punch destination has to match.
+    public var datagramsByPeer: [String: UInt64] = [:]
     /// How many datagrams each wake-up drained. Wake-ups that keep hitting the per-wake-up cap
     /// mean the socket always has a backlog and this reader, not the sender, is setting the packet
     /// rate — which is how a 22 ms-per-packet receive path went unnoticed as "a slow seat".
@@ -51,11 +54,17 @@ public struct NvstInboundCounters: Equatable, Sendable {
     }
 
     public var summary: String {
-        "in=\(total) stunReq=\(stunRequests) stunOk=\(stunSuccessResponses) stunErr=\(stunErrorResponses) dtls=\(dtls) rtp=\(rtp) other=\(other) bytes=\(bytes) punchesOut=\(punchesSent) pongsOut=\(responsesSent) rrOut=\(receiverReportsSent) rrArmed=\(receiverReportTimerArmed) rrPolls=\(receiverReportPolls) maxDatagram=\(largestDatagram) over1400=\(datagramsOver1400) peakPktPerSec=\(datagramsPerSecond.max() ?? 0) drainMs=\(drainNanoseconds / 1_000_000) processMs=\(processNanoseconds / 1_000_000) handlerMs=\(handlerNanoseconds / 1_000_000) perWake=\(datagramsPerWakeUp.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")) sendFailed=\(sendFailures)\(firstSendError == 0 ? "" : " firstErrno=\(firstSendError)")"
+        "in=\(total) stunReq=\(stunRequests) stunOk=\(stunSuccessResponses) stunErr=\(stunErrorResponses) dtls=\(dtls) rtp=\(rtp) other=\(other) bytes=\(bytes) punchesOut=\(punchesSent) pongsOut=\(responsesSent) rrOut=\(receiverReportsSent) rrArmed=\(receiverReportTimerArmed) rrPolls=\(receiverReportPolls) maxDatagram=\(largestDatagram) over1400=\(datagramsOver1400) peakPktPerSec=\(datagramsPerSecond.max() ?? 0) drainMs=\(drainNanoseconds / 1_000_000) processMs=\(processNanoseconds / 1_000_000) handlerMs=\(handlerNanoseconds / 1_000_000) perWake=\(datagramsPerWakeUp.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")) sendFailed=\(sendFailures)\(firstSendError == 0 ? "" : " firstErrno=\(firstSendError)") peers=\(datagramsByPeer.sorted { $0.value > $1.value }.map { "\($0.key)x\($0.value)" }.joined(separator: ","))"
     }
 
     /// Classifies one datagram. STUN message classes come from the two bits above the method
     /// (RFC 5389 §6): 0x000 request, 0x100 success, 0x110 error.
+    public mutating func recordPeer(_ endpoint: String) {
+        if datagramsByPeer[endpoint] != nil || datagramsByPeer.count < 6 {
+            datagramsByPeer[endpoint, default: 0] += 1
+        }
+    }
+
     public mutating func record(datagram: Data, at second: Int = -1) {
         if second >= 0, second < 3600 {
             if datagramsPerSecond.count <= second {

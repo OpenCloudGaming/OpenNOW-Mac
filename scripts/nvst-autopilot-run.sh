@@ -23,7 +23,7 @@ printf '{"url-route":"#?cmsId=%s&launchSource=External&shortName=%s&parentGameId
 before=$(/bin/ls -t "$LOGDIR" 2>/dev/null | head -1)
 start=$(date +%s)
 SHOT=${SHOT:-0}; SCRIPT=${SCRIPT:-}
-open -a "$APP" --env "OPN_NVST_AUTOPILOT_SECONDS=$SECS" --env "OPN_NVST_AUTOPILOT_SCRIPT=$SCRIPT" --env "OPN_NVST_AUTOPILOT_SNAPSHOT_DIR=$TMP" "$GFN" || { echo "open failed"; exit 3; }
+open -a "$APP" --env "OPN_NVST_ANNOUNCE_OVERRIDES=${OPN_NVST_ANNOUNCE_OVERRIDES:-}" --env "OPN_NVST_AUTOPILOT_SECONDS=$SECS" --env "OPN_NVST_AUTOPILOT_SCRIPT=$SCRIPT" --env "OPN_NVST_AUTOPILOT_SNAPSHOT_DIR=$TMP" "$GFN" || { echo "open failed"; exit 3; }
 limit=$((SECS + 150)); shot_done=0
 while pgrep -xq "OpenNOW Dev"; do
   sleep 3

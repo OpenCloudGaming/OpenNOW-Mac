@@ -260,13 +260,27 @@ extension NvstBifrostFreeTransport {
             sender.start()
             Task {
                 await self?.adoptFeedbackSender(sender)
-                // The captured client punches the video socket only once the bundle is up.
+                // Normally already punching since the ANNOUNCE-ready hook; idempotent.
                 await self?.beginVideoHolePunch()
             }
         }
     }
 
-    /// Official punches the video socket ~1 s after the bundle is up, never before.
+    /// The video punch has to be in the seat's hands before PLAY, and the official client sends
+    /// them in that order (punch, then PLAY 2 ms later). The seat binds the video destination while
+    /// it services PLAY and gives late punches only a short grace: with a Japan seat (5 ms RTT) our
+    /// bundle-gated punch landed ~70 ms after PLAY and was accepted; with US and EU seats (108 and
+    /// 256 ms RTT) it landed ~340 ms after PLAY and the seat streamed nothing for the whole session
+    /// — control, audio and RTSPS all fine, the Mjolnir socket dead silent (2026-09-05). Punching
+    /// here, straight after the ANNOUNCE answer, puts the first burst ahead of PLAY on every path.
+    func punchVideoSocketBeforePlay() async {
+        beginVideoHolePunch()
+        // Two punches of the 27 ms burst are out before PLAY leaves; same path, so they arrive first.
+        try? await Task.sleep(for: .milliseconds(60))
+    }
+
+    /// Late fallback for paths that never reach the ANNOUNCE-ready hook; `beginHolePunch` is
+    /// idempotent, so this is a no-op on the normal path.
     func scheduleVideoHolePunch() {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))

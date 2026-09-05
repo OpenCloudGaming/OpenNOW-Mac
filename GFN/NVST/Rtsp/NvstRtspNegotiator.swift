@@ -501,7 +501,8 @@ extension NvstRtspNegotiator {
             iceCredentials: iceCredentials
         )
         handoff.audioPeerPort = audioPeerPort
-        logger?("NVST SETUP ok uri=\(setup.uri) (official=\(described.officialCloudPath), bundlePort=\(reservation.bundlePort), mjolnirPort=\(reservation.mjolnirPort), peer=\(videoPeer.ip):\(videoPeer.port), srtpProfile=\(srtpProfile.rawValue), pingVersion=\(pingVersion.map(String.init) ?? "legacy"), pingPayloadBytes=\(pingPayload?.utf8.count ?? 0), iceRemote=\(remoteUfrag ?? "absent"), transport=\(setup.transport.isEmpty ? "<empty>" : setup.transport), responseHeaders=\(setup.response.headers.keys.sorted().joined(separator: ",")))")
+        handoff.videoPeerPunchPorts = NvstRtspMessage.extractVideoPeerPorts(setup.response.header("transport"))
+        logger?("NVST SETUP ok uri=\(setup.uri) (official=\(described.officialCloudPath), bundlePort=\(reservation.bundlePort), mjolnirPort=\(reservation.mjolnirPort), peer=\(videoPeer.ip):\(videoPeer.port), punchPorts=\(handoff.effectiveVideoPeerPunchPorts.map(String.init).joined(separator: ",")), srtpProfile=\(srtpProfile.rawValue), pingVersion=\(pingVersion.map(String.init) ?? "legacy"), pingPayloadBytes=\(pingPayload?.utf8.count ?? 0), iceRemote=\(remoteUfrag ?? "absent"), transport=\(setup.transport.isEmpty ? "<empty>" : setup.transport), serverTransport=\(setup.response.header("transport") ?? "<none>"), gsVersion=\(setup.response.header("x-gs-version") ?? "<none>"), responseHeaders=\(setup.response.headers.keys.sorted().joined(separator: ",")))")
         return ResolvedHandoff(handoff: handoff, localIce: localIce, remoteUfrag: remoteUfrag)
     }
 

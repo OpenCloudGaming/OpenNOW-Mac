@@ -331,6 +331,21 @@ public enum NvstRtspMessage {
         return (source, port)
     }
 
+    /// Every seat port named by `X-GS-ServerPort`. The header is a range (`5004-5005` on every
+    /// captured seat). Video has only ever been seen arriving from the first port, but the header
+    /// promises the range, and a seat answering from the second port would be dropped by a NAT that
+    /// only had the first one open — an outage indistinguishable from "the seat sent nothing".
+    /// Punching the whole range costs one datagram per port and closes that door.
+    public static func extractVideoPeerPorts(_ transport: String?) -> [UInt16] {
+        guard let transport,
+              let captured = firstCapture(in: transport, pattern: "X-GS-ServerPort=([0-9]+(?:-[0-9]+)?)") else { return [] }
+        let bounds = captured.split(separator: "-").compactMap { UInt16($0) }
+        guard let first = bounds.first else { return [] }
+        let last = bounds.count > 1 ? bounds[1] : first
+        guard last >= first, Int(last) - Int(first) < 16 else { return [first] }
+        return Array(first...last)
+    }
+
     static func firstCapture(in text: String, pattern: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)

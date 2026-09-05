@@ -114,6 +114,14 @@ public struct NVSTVideoHandoff: Equatable, Sendable {
     public let pingPayload: String
     public let mjolnirUDPPort: UInt16?
     public let iceCredentials: NVSTHandoffIceCredentials?
+    /// Seat ports the video socket punches — the whole `X-GS-ServerPort` range from SETUP.
+    /// `videoPeerPort` (the first of them) stays the destination for everything else. Empty means
+    /// the range was not advertised and only `videoPeerPort` is punched.
+    public var videoPeerPunchPorts: [UInt16] = []
+
+    public var effectiveVideoPeerPunchPorts: [UInt16] {
+        videoPeerPunchPorts.isEmpty ? [videoPeerPort] : videoPeerPunchPorts
+    }
 
     public init(clientUDPPort: UInt16,
                 videoPeerIP: String,

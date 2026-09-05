@@ -317,6 +317,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 input,
                 onVideoReady: { [weak self] handoff in
                     try await self?.startVideo(handoff: handoff, mediaReceiver: mediaReceiver)
+                },
+                onAnnounceReady: { [weak self] _ in
+                    await self?.punchVideoSocketBeforePlay()
                 }
             )
         } catch {

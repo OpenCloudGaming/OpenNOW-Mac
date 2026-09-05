@@ -173,9 +173,10 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     }
 
     /// Starts the NATT punch. Deliberately separate from `start()`: the official client binds this
-    /// socket early but does not punch it until the ICE/DTLS bundle is fully up — captured at
-    /// +1.064 s, with the first video packet arriving 143 ms later. Punching before the bundle
-    /// exists just sprays a relay that is not armed yet.
+    /// socket at SETUP but punches only after the ANNOUNCE answer (~130 ms after it in its own
+    /// log, DTLS already done on a 5 ms path), and sends PLAY 2 ms after the first punch. The seat
+    /// binds the video destination while it services PLAY, so the punch has to be ahead of PLAY:
+    /// the transport calls this from the ANNOUNCE-ready hook, before PLAY goes out.
     public func beginHolePunch() {
         guard handoff.iceCredentials != nil else { return }
         queue.async { [weak self] in
@@ -314,6 +315,7 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
             let datagram = Data(drainBuffer[0..<received])
             counterLock.lock()
             counters.record(datagram: datagram, at: Int(DispatchTime.now().uptimeNanoseconds &- startedAtNanoseconds) / 1_000_000_000)
+            counters.recordPeer("\(Self.dottedQuad(peer.sin_addr.s_addr)):\(UInt16(bigEndian: peer.sin_port))")
             counterLock.unlock()
             // Any inbound datagram means the mapping is established: the official client drops
             // from the 20 ms punch cadence to a 100 ms keepalive at that point, and holding 20 ms
@@ -461,7 +463,7 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     /// Reports whether the datagram actually left the socket. A silent `sendto` failure looks
     /// exactly like a NAT that never answers, which is the wrong diagnosis to chase.
     @discardableResult
-    private func send(_ data: Data) -> Bool {
+    private func send(_ data: Data, toPort port: UInt16? = nil) -> Bool {
         // The send path and the cancel handler's close share a lock: sends come from transport
         // threads while the close happens on the source's queue, and an unlocked `sendto` could
         // hit a descriptor that is already closed — or worse, recycled.
@@ -474,6 +476,7 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
             counterLock.unlock()
             return false
         }
+        if let port { destination.sin_port = port.bigEndian }
         let sent = data.withUnsafeBytes { bytes in
             withUnsafePointer(to: &destination) { pointer in
                 pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
@@ -572,7 +575,13 @@ extension NvstMjolnirReceiver {
             remotePassword: Data(credentials.remotePassword.utf8),
             transactionID: NvstBundleIceProbe.transactionID()
         ) else { return }
-        guard send(request) else { return }
+        // Every port of the seat's advertised `X-GS-ServerPort` range, so a sender on the second
+        // port is never filtered by a NAT that only saw the first one punched.
+        var sentAny = false
+        for port in handoff.effectiveVideoPeerPunchPorts {
+            if send(request, toPort: port) { sentAny = true }
+        }
+        guard sentAny else { return }
         counterLock.lock()
         counters.punchesSent += 1
         counterLock.unlock()
