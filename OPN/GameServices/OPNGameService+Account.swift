@@ -117,7 +117,7 @@ extension OPNGameService {
         let query = """
         query GetStoreDefinitions($locale: String!) {
           appStoreDefinitions(language: $locale) {
-            store label sortOrder smallImageUrl
+            store label sortOrder smallImageUrl largeImageUrl
             features {
               __typename
               ... on AccountLinkingSso { displayProposition supported }
@@ -185,6 +185,7 @@ extension OPNGameService {
             definition.store = safeString(storeData["store"]) ?? ""
             definition.label = safeString(storeData["label"]) ?? ""
             definition.smallImageUrl = safeString(storeData["smallImageUrl"]) ?? ""
+            definition.largeImageUrl = safeString(storeData["largeImageUrl"]) ?? ""
             definition.sortOrder = safeInt(storeData["sortOrder"])
             for featureData in storeData["features"] as? [NSDictionary] ?? [] {
                 let feature = OPNStoreFeatureInfo(type: safeString(featureData["__typename"]) ?? "", displayProposition: safeString(featureData["displayProposition"]) ?? "", supported: safeBool(featureData["supported"]))

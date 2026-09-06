@@ -72,6 +72,38 @@ import Foundation
     #expect(parsed.accountLinkingLabel == "Connect Steam")
 }
 
+@Test func storeDefinitionsWireParsingCarriesBothImageUrls() {
+    let payload: NSDictionary = [
+        "appStoreDefinitions": [
+            [
+                "store": "STEAM",
+                "label": "Steam",
+                "sortOrder": 108,
+                "smallImageUrl": "https://example.test/steam-small.svg",
+                "largeImageUrl": "https://example.test/steam-large.svg"
+            ],
+            [
+                "store": "EPIC",
+                "label": "Epic Games Store",
+                "sortOrder": 104,
+                "smallImageUrl": "https://example.test/epic-small.svg"
+            ]
+        ]
+    ]
+
+    let definitions = OPNGameService().parseStoreDefinitions(payload)
+
+    #expect(definitions.count == 2)
+    let epic = try! #require(definitions.first)
+    #expect(epic.store == "EPIC")
+    #expect(epic.smallImageUrl == "https://example.test/epic-small.svg")
+    #expect(epic.largeImageUrl.isEmpty)
+    let steam = try! #require(definitions.last)
+    #expect(steam.store == "STEAM")
+    #expect(steam.smallImageUrl == "https://example.test/steam-small.svg")
+    #expect(steam.largeImageUrl == "https://example.test/steam-large.svg")
+}
+
 @Test func subscriptionDefinitionCarriesPrimaryStore() {
     var definition = OPNSubscriptionDefinition()
     definition.subscription = "ubisoft_plus"

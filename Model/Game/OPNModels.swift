@@ -96,6 +96,7 @@ public struct OPNStoreDefinition: Equatable, Sendable {
     public var store = ""
     public var label = ""
     public var smallImageUrl = ""
+    public var largeImageUrl = ""
     public var sortOrder = 0
     public var features: [OPNStoreFeatureInfo] = []
     public var accountLinkingMetadata = OPNStoreAccountLinkingMetadata()
