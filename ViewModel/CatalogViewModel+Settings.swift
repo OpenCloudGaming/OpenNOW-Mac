@@ -37,22 +37,26 @@ extension CatalogViewModel {
     /// Games whose picture settings diverge from the global profile, newest lookup each time so a
     /// reset is reflected without a reload. The title falls back to the id when the catalog has not
     /// been browsed this session and the game is not in memory.
+    /// Reads from a view body, so the catalog is joined once per read rather than once per
+    /// override. The join allocates an array the size of the whole catalog; doing it per override
+    /// made a page that shows a handful of rows cost thousands of elements to draw.
     var streamingOverrideGames: [SettingsOverriddenGame] {
-        OPNStreamPreferences.gameProfileIdentifiers().map { appId in
-            SettingsOverriddenGame(appId: appId, title: titleForOverriddenGame(appId))
+        let identifiers = OPNStreamPreferences.gameProfileIdentifiers()
+        guard !identifiers.isEmpty else { return [] }
+        var titles: [String: String] = [:]
+        for game in catalogGames + libraryGames + favoriteGames {
+            if titles[game.id] == nil { titles[game.id] = game.title }
+            let launchAppId = game.launchAppId
+            if !launchAppId.isEmpty, titles[launchAppId] == nil { titles[launchAppId] = game.title }
+        }
+        return identifiers.map { appId in
+            SettingsOverriddenGame(appId: appId, title: titles[appId] ?? "Game \(appId)")
         }
     }
 
     func removeStreamingOverride(appId: String) {
         OPNStreamPreferences.deleteProfile(forGame: appId)
         loadSettingsPreferences()
-    }
-
-    private func titleForOverriddenGame(_ appId: String) -> String {
-        let match = (catalogGames + libraryGames + favoriteGames).first { game in
-            game.id == appId || game.launchAppId == appId
-        }
-        return match?.title ?? "Game \(appId)"
     }
 
     func setAspectIndex(_ index: Int) {

@@ -1,3 +1,5 @@
+import Darwin
+import ObjectiveC
 import QuartzCore
 import SwiftUI
 
@@ -339,14 +341,17 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
     private func reconfigure() {
         stopObserver()
         guard window != nil else { return }
+        walkInterval = Self.activeInterval
         applyDensity(targetScale: effectiveTargetScale())
         guard scale != 1 else { return }
         let observer = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, _ in
             guard let self, window != nil, window?.inLiveResize == false else { return }
             let now = CFAbsoluteTimeGetCurrent()
-            guard now - lastApplication >= 0.1 else { return }
+            guard now - lastApplication >= walkInterval else { return }
             lastApplication = now
-            applyDensity(targetScale: effectiveTargetScale())
+            // A settled window needs no correcting, and re-walking it ten times a second is pure
+            // cost. Back off while nothing changes; a page rebuild puts it straight back.
+            walkInterval = applyDensity(targetScale: effectiveTargetScale()) ? Self.activeInterval : min(walkInterval * 2, Self.settledInterval)
         }
         runLoopObserver = observer
         if let observer {
@@ -355,6 +360,10 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
     }
 
     private var lastApplication: CFAbsoluteTime = 0
+    private var walkInterval: CFTimeInterval = OpenNOWInterfaceScaleDensityView.activeInterval
+    /// How often the tree is corrected while it is still changing, and the ceiling once it is not.
+    private static let activeInterval: CFTimeInterval = 0.1
+    private static let settledInterval: CFTimeInterval = 0.8
 
     private func effectiveTargetScale() -> CGFloat {
         scale * (window?.backingScaleFactor ?? 1)
@@ -367,30 +376,48 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
         }
     }
 
-    private func applyDensity(targetScale: CGFloat) {
-        guard let root = window?.contentView?.layer else { return }
+    @discardableResult
+    private func applyDensity(targetScale: CGFloat) -> Bool {
+        guard let root = window?.contentView?.layer else { return false }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        forceContentsScale(root, targetScale: targetScale)
+        let didChange = forceContentsScale(root, targetScale: targetScale)
         CATransaction.commit()
+        return didChange
     }
 
-    private func forceContentsScale(_ layer: CALayer, targetScale: CGFloat) {
-        if layer is CAMetalLayer { return }
-        let isReRenderable = String(describing: type(of: layer)) == "CGDrawingLayer"
-        if isReRenderable, abs(layer.contentsScale - targetScale) > 0.0001 {
+    /// The layer class SwiftUI draws its vector content into, resolved once. Identifying it by
+    /// `String(describing: type(of:))` allocated a string and ran type introspection for every
+    /// layer in the window on every pass, which is most of what this walk used to cost.
+    private static let drawingLayerClass: AnyClass? = NSClassFromString("CGDrawingLayer")
+
+    /// Returns whether anything needed changing, so the caller can walk less often while the tree
+    /// is settled.
+    @discardableResult
+    private func forceContentsScale(_ layer: CALayer, targetScale: CGFloat) -> Bool {
+        if layer is CAMetalLayer { return false }
+        var didChange = false
+        if let drawingLayerClass = Self.drawingLayerClass, object_getClass(layer) === drawingLayerClass,
+           abs(layer.contentsScale - targetScale) > 0.0001 {
             layer.contentsScale = targetScale
             layer.setNeedsDisplay()
             markOwningHostingViewDirty(layer)
+            didChange = true
         }
-        layer.sublayers?.forEach { forceContentsScale($0, targetScale: targetScale) }
+        guard let sublayers = layer.sublayers else { return didChange }
+        for sublayer in sublayers where forceContentsScale(sublayer, targetScale: targetScale) {
+            didChange = true
+        }
+        return didChange
     }
 
     private func markOwningHostingViewDirty(_ layer: CALayer) {
         var current: CALayer? = layer
         while let candidate = current {
             if let view = candidate.delegate as? NSView {
-                if String(describing: type(of: view)).hasPrefix("NSHostingView<") {
+                // `strncmp` on the runtime's own name: the generic parameter makes an `is` check
+                // impossible, and describing the type would allocate on a path that runs per layer.
+                if strncmp(object_getClassName(view), "NSHostingView", 13) == 0 {
                     view.needsDisplay = true
                 }
                 return
