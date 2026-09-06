@@ -68,6 +68,44 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         }
     }
 
+    /// The last `capacity` decode times, frame-counted rather than time-windowed so it covers the
+    /// same slice of the stream regardless of frame rate.
+    ///
+    /// Exists because `Counters.total.decode / framesHandled` is a lifetime mean: one bad frame
+    /// (a session rebuild, a stall) stays baked into it forever, and choppiness from motion is a
+    /// tail problem a mean cannot show at all — measured, a mean of 15 ms sat on a stream whose
+    /// individual frames ranged 6-28 ms with the display-visible hitches at the top of that range.
+    public struct RecentDecodeTimes: Sendable, Equatable {
+        static let capacity = 256
+        private var samples: [Double] = []
+        private var writeIndex = 0
+
+        mutating func record(_ milliseconds: Double) {
+            if samples.count < Self.capacity {
+                samples.append(milliseconds)
+            } else {
+                samples[writeIndex] = milliseconds
+                writeIndex = (writeIndex + 1) % Self.capacity
+            }
+        }
+
+        /// Linear-interpolated between the two nearest ranks, so `p99` moves smoothly as new
+        /// frames arrive rather than jumping a whole sample width at a time.
+        func percentile(_ p: Double) -> Double {
+            guard !samples.isEmpty else { return -1 }
+            let sorted = samples.sorted()
+            guard sorted.count > 1 else { return sorted[0] }
+            let rank = p * Double(sorted.count - 1)
+            let low = Int(rank)
+            let high = min(low + 1, sorted.count - 1)
+            let fraction = rank - Double(low)
+            return sorted[low] + (sorted[high] - sorted[low]) * fraction
+        }
+
+        var maximum: Double { samples.max() ?? -1 }
+        var sampleCount: Int { samples.count }
+    }
+
     public struct Counters: Sendable {
         public var framesHandled: UInt64 = 0
         public var frameAcksSent = 0
@@ -88,14 +126,26 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         public var total = StageTimings()
         /// Frames still awaiting decode output at each submit, by count. See the submit path.
         public var inFlightHistogram: [Int: Int] = [:]
+        /// The last `RecentDecodeTimes.capacity` frames' decode cost, for `decodeP50Milliseconds`
+        /// etc. — see that type's doc for why the lifetime mean above isn't enough on its own.
+        public var recentDecodeTimes = RecentDecodeTimes()
 
-        /// Peak names the worst stall; mean names whether the client keeps up at all.
+        public var decodeP50Milliseconds: Double { recentDecodeTimes.percentile(0.5) }
+        public var decodeP99Milliseconds: Double { recentDecodeTimes.percentile(0.99) }
+        public var decodeMaxMilliseconds: Double { recentDecodeTimes.maximum }
+
+        /// Peak names the worst stall; mean names whether the client keeps up at all; the tail
+        /// names whether motion is hitching right now, which peak (session lifetime) and mean
+        /// (diluted by however many frames have run since) both hide.
         public var timingSummary: String {
             let frames = Double(max(1, framesHandled))
             let inFlight = inFlightHistogram.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
-            return String(format: "peak[hop=%.1f decode=%.1f ack=%.1f] mean[hop=%.2f decode=%.2f ack=%.2f]ms inFlight=%@",
+            return String(format: "peak[hop=%.1f decode=%.1f ack=%.1f] mean[hop=%.2f decode=%.2f ack=%.2f]ms"
+                          + " tail[p50=%.1f p99=%.1f max=%.1f]ms(n=%d) inFlight=%@",
                           peak.hop, peak.decode, peak.ack,
-                          total.hop / frames, total.decode / frames, total.ack / frames, inFlight)
+                          total.hop / frames, total.decode / frames, total.ack / frames,
+                          decodeP50Milliseconds, decodeP99Milliseconds, decodeMaxMilliseconds, recentDecodeTimes.sampleCount,
+                          inFlight)
         }
     }
 
@@ -526,6 +576,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         counters.framesHandled &+= 1
         counters.peak.raise(to: timings)
         counters.total.add(timings)
+        counters.recentDecodeTimes.record(timings.decode)
         let isSlow = timings.total >= Self.slowFrameMilliseconds
         if isSlow { counters.slowFrames += 1 }
         let shouldLog = isSlow && loggedSlowFrames < Self.maximumLoggedSlowFrames

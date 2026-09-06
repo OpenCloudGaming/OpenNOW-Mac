@@ -29,9 +29,15 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     /// Loss over the last poll interval, as the WebRTC path reports it: lost / (received + lost).
     /// Negative when it cannot be computed yet.
     public let packetLossPercent: Double
-    /// Mean client-side decode cost per frame. Distinct from `latencyMilliseconds`, which is the
-    /// network round trip.
+    /// Mean client-side decode cost per frame, over the whole session. Distinct from
+    /// `latencyMilliseconds`, which is the network round trip — and easy to misread as "decode
+    /// cost right now": one early stall stays baked into this lifetime mean for the rest of the
+    /// session. `decodeP99Milliseconds` is the number that answers "is it hitching right now".
     public let decodeMilliseconds: Double
+    /// The slowest 1% of decodes in roughly the last `RecentDecodeTimes.capacity` frames, not the
+    /// session lifetime. Choppiness on motion is a tail problem: a mean under budget can still miss
+    /// every frame during a spike, which this is the number that would show. -1 when unavailable.
+    public let decodeP99Milliseconds: Double
     public let bitrateMegabitsPerSecond: Double
     public let bandwidthUtilizationPercent: Double
     public let resolution: String
@@ -98,6 +104,7 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 totalPacketLoss: UInt64,
                 packetLossPercent: Double = -1,
                 decodeMilliseconds: Double = -1,
+                decodeP99Milliseconds: Double = -1,
                 bitrateMegabitsPerSecond: Double,
                 bandwidthUtilizationPercent: Double,
                 resolution: String,
@@ -134,6 +141,7 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
         self.totalPacketLoss = totalPacketLoss
         self.packetLossPercent = packetLossPercent
         self.decodeMilliseconds = decodeMilliseconds
+        self.decodeP99Milliseconds = decodeP99Milliseconds
         self.bitrateMegabitsPerSecond = bitrateMegabitsPerSecond
         self.bandwidthUtilizationPercent = bandwidthUtilizationPercent
         self.resolution = resolution

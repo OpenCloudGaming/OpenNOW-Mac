@@ -210,6 +210,7 @@ extension NvstBifrostFreeTransport {
         let decodeMilliseconds = (video?.framesHandled ?? 0) > 0
             ? (video?.total.decode ?? 0) / Double(video?.framesHandled ?? 1)
             : -1
+        let decodeP99Milliseconds = video?.decodeP99Milliseconds ?? -1
 
         // The seat's own 0x0101 statistics carry the game render rate — the number the vendored
         // client showed and this path had hardcoded to "--". (Its float at +40 looked like a
@@ -238,6 +239,7 @@ extension NvstBifrostFreeTransport {
             totalPacketLoss: stats.droppedPackets,
             packetLossPercent: lossPercent,
             decodeMilliseconds: decodeMilliseconds,
+            decodeP99Milliseconds: decodeP99Milliseconds,
             bitrateMegabitsPerSecond: instantMbps,
             bandwidthUtilizationPercent: 0,
             // What the decoder actually produced, falling back to the negotiated string until the

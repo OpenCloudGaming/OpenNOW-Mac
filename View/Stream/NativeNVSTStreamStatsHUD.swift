@@ -242,7 +242,7 @@ extension NativeNVSTMediaStreamSurface {
                 NativeNVSTStatsPanel.Group(label: "TIMING", rows: [
                     // Client-side decode cost. It used to occupy the MS box, where it read as
                     // network latency and was not one.
-                    NativeNVSTStatsPanel.Row(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor),
+                    NativeNVSTStatsPanel.Row(label: "Decode", value: nativeStatsDecodeValue, detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor),
                     // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
                     NativeNVSTStatsPanel.Row(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail),
                 ]),
@@ -266,12 +266,24 @@ extension NativeNVSTMediaStreamSurface {
         .allowsHitTesting(false)
     }
 
+    /// The headline number: the slowest 1% of recent frames, not the session mean — a mean under
+    /// budget can still hitch on every motion spike, which is exactly what this is meant to catch.
+    /// Falls back to the lifetime mean early in a session, before enough frames exist for a p99.
+    var nativeStatsDecodeValue: String {
+        guard let stats = model.latestNativeStats else { return "--" }
+        return nativeStatsMilliseconds(NativeNVSTDecodeBudget.representativeDecodeMilliseconds(for: stats))
+    }
+
     /// `ms of 8.3`: decode time against the negotiated frame interval. Over it and the seat is
-    /// already lowering the frame rate to what this Mac reports it can decode.
+    /// already lowering the frame rate to what this Mac reports it can decode. The mean rides
+    /// along in parenthesis so the two readings can't be mistaken for each other.
     var nativeStatsDecodeDetail: String {
         guard let fps = model.latestNativeStats?.negotiatedFramesPerSecond,
               let interval = NativeNVSTDecodeBudget.frameIntervalMilliseconds(framesPerSecond: fps) else { return "ms" }
-        return String(format: "ms of %.1f", interval)
+        guard let mean = model.latestNativeStats?.decodeMilliseconds, mean >= 0 else {
+            return String(format: "ms of %.1f", interval)
+        }
+        return String(format: "ms of %.1f (mean %.1f)", interval, mean)
     }
 
     var nativeDecodeBudgetColor: Color {

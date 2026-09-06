@@ -430,7 +430,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                        Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),
                        decoder?.decodedResolution ?? "-",
                        negotiatedResolution ?? "-",
-                       latestSeatStats?.gameFramesPerSecond ?? -1,
+                       Double(latestSeatStats?.gameFramesPerSecond ?? -1),
                        lastAudioJitterBufferMilliseconds))
         // Datagram-class counts answer the prior question: is anything arriving at all?
         logger?("NVST mjolnir \(receiver.inbound.summary) rcvbuf=\(receiver.receiveBufferBytes)"

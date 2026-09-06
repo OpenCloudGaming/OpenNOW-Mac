@@ -244,6 +244,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     /// `vtdecoder-callback-queue`, frame 10 of the first stream). The premise behind that call was
     /// wrong — MTKView drives `draw(in:)` from its display link on the main thread, not off it.
     ///
+    ///
     /// What the mode exists for survives the hop: the display link is paused and
     /// `displaySyncEnabled` is false, so a frame still draws the moment it decodes instead of
     /// waiting for vsync. Only main-queue scheduling is added.

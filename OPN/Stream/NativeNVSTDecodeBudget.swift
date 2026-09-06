@@ -33,9 +33,23 @@ enum NativeNVSTDecodeBudget {
         return .comfortable
     }
 
+    /// The mean hides exactly the thing choppiness is: a tail of slow frames diluted by however
+    /// many fast ones ran since. Prefer `decodeP99Milliseconds` when the pipeline has enough recent
+    /// frames to report one; the lifetime mean is the fallback for a session too young to have
+    /// filled that window, not the primary reading.
+    static func representativeDecodeMilliseconds(for snapshot: NativeNVSTPerformanceSnapshot) -> Double {
+        snapshot.decodeP99Milliseconds >= 0 ? snapshot.decodeP99Milliseconds : snapshot.decodeMilliseconds
+    }
+
+    /// Classified against the session's negotiated frame rate, not what the stream is currently
+    /// delivering. Those differ exactly when decode is the reason delivery is lower than
+    /// negotiated — the seat's frame controller backs off to match a slow decoder — so judging
+    /// decode against the already-reduced delivered rate would call a self-inflicted throttle
+    /// "comfortable" and hide the cause. `warning(for:)` reports the delivered rate alongside this
+    /// for context; it does not change what counts as over budget.
     static func level(for snapshot: NativeNVSTPerformanceSnapshot) -> Level {
         guard snapshot.available else { return .unknown }
-        return level(decodeMilliseconds: snapshot.decodeMilliseconds, framesPerSecond: snapshot.negotiatedFramesPerSecond)
+        return level(decodeMilliseconds: representativeDecodeMilliseconds(for: snapshot), framesPerSecond: snapshot.negotiatedFramesPerSecond)
     }
 
     /// The warning for an over-budget decode. Names bitrate as the lever, not the pixel format:
@@ -49,7 +63,14 @@ enum NativeNVSTDecodeBudget {
         let format = snapshot.bitstreamFormat.isEmpty ? "" : " (\(snapshot.bitstreamFormat))"
         let bitrate = snapshot.bitrateMegabitsPerSecond > 0 ? String(format: " at %.0f Mbps", snapshot.bitrateMegabitsPerSecond) : ""
         let hint = snapshot.bitstreamFormat.contains("4:4:4") ? "A lower bitrate cap, a lower frame rate, or 4:2:0 fits it." : "A lower bitrate cap or a lower frame rate fits it."
-        return String(format: "Decoding%@%@ takes %.1f ms per frame against a %.1f ms frame; the seat lowers the frame rate to match. %@",
-                      format, bitrate, snapshot.decodeMilliseconds, interval, hint)
+        // Named separately from the interval it's judged against: the negotiated rate says what
+        // decode is failing to keep up with, the delivered rate says what you are actually seeing
+        // right now, and a reader who only sees the first can mistake "marginal at 85 fps" for
+        // "broken at 120 fps".
+        let delivered = snapshot.streamFramesPerSecond >= 0
+            ? String(format: " Delivering ~%.0f fps now.", snapshot.streamFramesPerSecond)
+            : ""
+        return String(format: "Decoding%@%@ takes %.1f ms per frame against a %.1f ms frame; the seat lowers the frame rate to match. %@%@",
+                      format, bitrate, representativeDecodeMilliseconds(for: snapshot), interval, hint, delivered)
     }
 }
