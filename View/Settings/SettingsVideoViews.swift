@@ -99,7 +99,7 @@ struct VideoSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "Color Precision", subtitle: "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, uiScale: uiScale, action: viewModel.setColorQualityIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "HDR", subtitle: hdrSubtitle, isOn: viewModel.streamProfile.enableHdr, uiScale: uiScale, action: viewModel.setHDREnabled)
+            SettingsToggleRow(title: "HDR", subtitle: hdrSubtitle, isOn: viewModel.streamProfile.enableHdr, isInert: !viewModel.streamCapabilities.hdrDisplaySupported, uiScale: uiScale, action: viewModel.setHDREnabled)
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "SDR Color Space", subtitle: "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, uiScale: uiScale, action: viewModel.setSDRColorSpaceIndex)
             SettingsDivider(uiScale: uiScale)
@@ -166,7 +166,9 @@ struct VideoSettingsPage: View {
 
     /// Says which way HDR will actually go on this Mac. The toggle can be on while the display
     /// reports no extended-range headroom, in which case the session negotiates SDR and the row
-    /// would otherwise claim otherwise.
+    /// would otherwise claim otherwise. The toggle renders inert in that case rather than being
+    /// forced off: the preference is what the reader asked for, and it applies the moment a
+    /// display that can show it is attached.
     private var hdrSubtitle: String {
         guard viewModel.streamCapabilities.hdrDisplaySupported else {
             return "This display reports no HDR headroom, so sessions stay SDR."

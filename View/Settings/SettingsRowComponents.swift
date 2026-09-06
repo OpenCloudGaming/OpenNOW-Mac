@@ -126,8 +126,13 @@ struct SettingsOptionRow: View {
 /// native pill-shaped `Toggle(.switch)` (which no macOS API lets us square off).
 struct Toggle: View {
     @Binding var isOn: Bool
+    /// On, but nothing downstream can act on it: the preference is kept and the control still
+    /// takes a click, it simply stops wearing the accent that says the setting is in effect.
+    var isInert = false
     let uiScale: CGFloat
     @State private var isHovering = false
+
+    private var onColor: Color { isInert ? Color.white.opacity(0.3) : OpenNOWDesign.accent }
 
     private var trackWidth: CGFloat { 34 * uiScale }
     private var trackHeight: CGFloat { 18 * uiScale }
@@ -138,8 +143,8 @@ struct Toggle: View {
         Button { isOn.toggle() } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Rectangle()
-                    .fill(isOn ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.12 : 0.09))
-                    .overlay { Rectangle().stroke(isOn ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: 1) }
+                    .fill(isOn ? onColor : Color.white.opacity(isHovering ? 0.12 : 0.09))
+                    .overlay { Rectangle().stroke(isOn ? onColor : Color.white.opacity(0.16), lineWidth: 1) }
                 Rectangle()
                     .fill(isOn ? Color.black.opacity(0.85) : Color.white.opacity(0.72))
                     .frame(width: knobSize, height: knobSize)
@@ -152,7 +157,7 @@ struct Toggle: View {
         .opnMotion(OpenNOWDesign.Motion.toggle, value: isOn)
         .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
         .accessibilityAddTraits(.isButton)
-        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityValue(isOn ? (isInert ? "On, not in effect" : "On") : "Off")
     }
 }
 
@@ -166,6 +171,9 @@ struct SettingsToggleRow: View {
     /// short toggles whose titles already say what they do, where a permanent second line spends
     /// a third of the page's height restating them.
     var isCompact = false
+    /// The setting is on but this Mac cannot act on it. The subtitle says why; this stops the
+    /// control itself from contradicting it.
+    var isInert = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Bool) -> Void
 
@@ -189,7 +197,7 @@ struct SettingsToggleRow: View {
                 }
             }
             Spacer()
-            Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), uiScale: uiScale)
+            Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isInert: isInert, uiScale: uiScale)
         }
         .onHover { hovering in
             guard isCompact else { return }
