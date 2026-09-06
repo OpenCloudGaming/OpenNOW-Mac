@@ -105,13 +105,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) var lastPresentInterval = -1.0
     nonisolated(unsafe) var presentJitterTotalMs = 0.0
     nonisolated(unsafe) var presentJitterCount = 0
-    /// `lowestLatency` only: `draw()` is driven from the decode thread; two completions must not
-    /// enter the render pass together.
+    /// `lowestLatency` only: guards `manualDrawQueued`, so a burst of decode completions enqueues
+    /// one draw rather than one per frame.
     nonisolated(unsafe) var manualDrawLock = os_unfair_lock_s()
-    /// The same MTKView, reachable from the decode thread for the manual `draw()` call. MTKView
-    /// already invokes `draw(in:)` off the main thread from its own display link, so the render
-    /// path is written for that; this only changes who kicks it.
-    let metalViewForManualDraw: MTKView
+    /// Whether a `lowestLatency` draw is already on its way to the main actor. See
+    /// `requestManualDraw()`.
+    nonisolated(unsafe) var manualDrawQueued = false
     /// A one-shot request to write the next drawn frame — the drawable itself, after our render
     /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
     nonisolated(unsafe) var pendingRenderSnapshotURL: URL?
@@ -123,7 +122,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         self.owner = owner
         self.targetFps = min(max(Int(targetFps), 30), 240)
         metalView = MTKView(frame: frameRect, device: MTLCreateSystemDefaultDevice())
-        metalViewForManualDraw = metalView
         super.init(frame: frameRect)
 
         wantsLayer = true
@@ -235,23 +233,53 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             if pendingFrames.count > 2 { pendingFrames.removeFirst(pendingFrames.count - 2) }
         }
         os_unfair_lock_unlock(&frameLock)
-        if mode == .lowestLatency {
-            os_unfair_lock_lock(&manualDrawLock)
-            // Deliberately off the main actor: this is the decode thread kicking a draw the
-            // moment a frame lands, which is the whole point of the mode. `MTKView.draw()` is
-            // main-actor-annotated in the SDK, though MTKView itself calls `draw(in:)` from its
-            // display-link thread; the ObjC dispatch says what the annotation cannot.
-            _ = metalViewForManualDraw.perform(#selector(MTKView.draw as (MTKView) -> () -> Void))
-            os_unfair_lock_unlock(&manualDrawLock)
+        if mode == .lowestLatency { requestManualDraw() }
+    }
+
+    /// Kicks a `lowestLatency` draw from whatever thread decoded the frame.
+    ///
+    /// The draw has to land on the main actor. `draw(in:)` and the whole render path below it are
+    /// main-actor-isolated, and `-[MTKView draw]`'s ObjC thunk checks that at runtime: calling it
+    /// from the decode thread trapped in `_checkExpectedExecutor` (EXC_BREAKPOINT on the
+    /// `vtdecoder-callback-queue`, frame 10 of the first stream). The premise behind that call was
+    /// wrong — MTKView drives `draw(in:)` from its display link on the main thread, not off it.
+    ///
+    /// What the mode exists for survives the hop: the display link is paused and
+    /// `displaySyncEnabled` is false, so a frame still draws the moment it decodes instead of
+    /// waiting for vsync. Only main-queue scheduling is added.
+    ///
+    /// Coalesced, because the decode rate can exceed what the main actor draws: while a kick is
+    /// outstanding, further frames enqueue nothing. Each draw takes the newest frame through
+    /// `nextFrameToDraw()`, so a dropped kick costs nothing but a frame nobody would have seen.
+    ///
+    /// The flag clears only once `draw()` has returned, which is what makes this backpressure
+    /// rather than a queue. A draw blocks in `CAMetalLayer.nextDrawable()` whenever the drawable
+    /// pool is empty, and at a decode rate above what the display presents it usually is; clearing
+    /// the flag first let every frame that arrived during that wait enqueue another blocked draw,
+    /// measured as the main thread sitting in `semaphore_timedwait_trap` for 98% of a sample.
+    nonisolated private func requestManualDraw() {
+        os_unfair_lock_lock(&manualDrawLock)
+        let alreadyQueued = manualDrawQueued
+        manualDrawQueued = true
+        os_unfair_lock_unlock(&manualDrawLock)
+        guard !alreadyQueued else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.metalView.draw()
+                os_unfair_lock_lock(&self.manualDrawLock)
+                self.manualDrawQueued = false
+                os_unfair_lock_unlock(&self.manualDrawLock)
+            }
         }
     }
 
     func draw(in view: MTKView) {
         guard view == metalView else { return }
-        // MTKView's internal display link invokes this on a background render thread,
-        // where querying window/backingScaleFactor trips AppKit's main-thread checker.
-        // Defer the drawable-size recompute to the main actor; rendering proceeds into
-        // the current drawable and catches up a frame later.
+        // Both callers land here on the main actor: MTKView's display link, and the coalesced kick
+        // in `requestManualDraw()`. The recompute reads window/backingScaleFactor, which AppKit
+        // allows on the main thread only, so it stays behind that check rather than running
+        // wherever the caller happened to be.
         synchronizeDrawableSize()
 
         guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
