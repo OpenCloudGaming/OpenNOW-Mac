@@ -490,6 +490,7 @@ extension OPNStreamPreferences {
         static let microphoneMode = "OpenNOW.Stream.MicrophoneMode"
         static let microphoneDeviceId = "OpenNOW.Stream.MicrophoneDeviceId"
         static let surroundModeIndex = "OpenNOW.Stream.SurroundModeIndex"
+        static let headphoneSurroundEnabled = "OpenNOW.Stream.HeadphoneSurroundEnabled"
         static let entitledAudioChannelCount = "OpenNOW.Stream.EntitledAudioChannelCount"
         static let microphonePushToTalkKeyCode = "OpenNOW.Stream.MicrophonePushToTalkKeyCode"
         static let microphonePushToTalkModifierMask = "OpenNOW.Stream.MicrophonePushToTalkModifierMask"

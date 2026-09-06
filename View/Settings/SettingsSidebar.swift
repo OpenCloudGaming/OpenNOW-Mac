@@ -86,6 +86,7 @@ enum SettingsNewBadges {
     static func group(for row: OpenNOWNewSettings.Row) -> CatalogSettingsGroup {
         switch row {
         case .surroundSound: .audio
+        case .headphoneSurround: .audio
         case .sessionReadyAction: .general
         }
     }

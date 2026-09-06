@@ -59,7 +59,23 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private(set) var inputLatency: TimeInterval = 0
     private(set) var deviceOutputSampleRate = 48_000.0
     private(set) var outputIOBufferDuration: TimeInterval = 0.01
+    /// What libwebrtc renders, which the `RTCAudioDevice` protocol reads to size its playout
+    /// buffer. Above `deviceRenderChannels` when a surround stream is being rendered down here.
     private(set) var outputNumberOfChannels = 2
+    /// What the HAL unit is configured for: the output device's own channel count. Kept apart from
+    /// `outputNumberOfChannels` so a surround stream can be decoded in full and rendered down to a
+    /// stereo device, rather than never being asked for.
+    private(set) var deviceRenderChannels = 2
+    /// Interleaved multichannel buffer libwebrtc fills when the stream is wider than the device.
+    private var surroundScratch: [Int16] = []
+    var spatialUnit: AudioUnit?
+    var spatialSourceChannels = 0
+    var spatialInputScratch: [Float] = []
+    var spatialOutputScratch: [Float] = []
+    var spatialSampleTime: Double = 0
+    /// What the render callback is currently holding for the mixer to pull.
+    var pendingSpatialFrames = 0
+    var pendingSpatialChannels = 0
     private(set) var outputLatency: TimeInterval = 0
     private(set) var isInitialized = false
     private(set) var isPlayoutInitialized = false
@@ -173,19 +189,62 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             clearAudioBufferList(outputData)
             return noErr
         }
+        // Rendering down means libwebrtc fills a wider buffer than the device takes, so it cannot
+        // be given the HAL's own list.
+        guard !rendersSurroundDown else {
+            return renderSurroundDown(actionFlags: actionFlags, timestamp: timestamp, busNumber: busNumber, frameCount: frameCount, outputData: outputData, delegate: delegate)
+        }
         let status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, outputData)
         if status != noErr { clearAudioBufferList(outputData) }
         if status == noErr {
-            if outputNumberOfChannels > 2 {
-                deliverStereoTee(outputData, frameCount: frameCount)
-            } else {
-                owner?.handleGameAudioFrame(UnsafeRawPointer(outputData), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
-            }
+            deliverTee(outputData, frameCount: frameCount)
             // After the tee, never before: a Remote Co-Op guest and a recording are fed from the
             // line above and must keep hearing the game while these speakers are silent.
             if isPlayoutMuted { clearAudioBufferList(outputData) }
         }
         return status
+    }
+
+    /// True when the negotiated stream carries more channels than the output device accepts, so the
+    /// surround field has to be rendered here instead of being left unasked for.
+    var rendersSurroundDown: Bool { outputNumberOfChannels > deviceRenderChannels }
+
+    private func deliverTee(_ data: UnsafeMutablePointer<AudioBufferList>, frameCount: UInt32) {
+        if outputNumberOfChannels > 2 {
+            deliverStereoTee(data, frameCount: frameCount)
+        } else {
+            owner?.handleGameAudioFrame(UnsafeRawPointer(data), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+        }
+    }
+
+    private func renderSurroundDown(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
+                                    timestamp: UnsafePointer<AudioTimeStamp>,
+                                    busNumber: Int,
+                                    frameCount: UInt32,
+                                    outputData: UnsafeMutablePointer<AudioBufferList>,
+                                    delegate: any RTCAudioDeviceDelegate) -> OSStatus {
+        let frames = Int(frameCount)
+        let sourceChannels = outputNumberOfChannels
+        let samples = frames * sourceChannels
+        if surroundScratch.count < samples { surroundScratch = [Int16](repeating: 0, count: samples) }
+        return surroundScratch.withUnsafeMutableBufferPointer { scratch -> OSStatus in
+            guard let base = scratch.baseAddress else { clearAudioBufferList(outputData); return noErr }
+            var sourceList = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(mNumberChannels: UInt32(sourceChannels),
+                                      mDataByteSize: UInt32(samples * MemoryLayout<Int16>.size),
+                                      mData: UnsafeMutableRawPointer(base))
+            )
+            let status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, &sourceList)
+            guard status == noErr else { clearAudioBufferList(outputData); return status }
+            deliverTee(&sourceList, frameCount: frameCount)
+            if isPlayoutMuted {
+                clearAudioBufferList(outputData)
+                return noErr
+            }
+            renderDown(source: base, frames: frames, sourceChannels: sourceChannels, into: outputData)
+            return noErr
+        }
     }
 
     func captureRecording(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
@@ -279,8 +338,13 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
         if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.output_device.error", level: .warning, message: "CoreAudio set output device failed.", attributes: ["status": String(status), "device": String(outputDevice)]) }
         applyOutputBufferFrameSize(unit: unit, device: outputDevice)
-        var format = streamFormat(sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+        var format = streamFormat(sampleRate: deviceOutputSampleRate, channels: UInt32(deviceRenderChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
+        if rendersSurroundDown {
+            prepareSpatialRenderer(sampleRate: deviceOutputSampleRate, sourceChannels: outputNumberOfChannels, destinationChannels: deviceRenderChannels)
+        } else {
+            disposeSpatialRenderer()
+        }
         var callback = AURenderCallbackStruct(inputProc: coreAudioPlayoutCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         status = AudioUnitInitialize(unit)
@@ -392,6 +456,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         inputNumberOfChannels = max(1, min(2, channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput, fallback: 1)))
         let deviceOutputChannels = channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, fallback: 2)
         outputNumberOfChannels = requestedPlayoutChannels > 2 ? requestedPlayoutChannels : max(1, min(2, deviceOutputChannels))
+        deviceRenderChannels = max(1, min(outputNumberOfChannels, deviceOutputChannels))
         let preferredInputBufferDuration = delegate?.preferredInputIOBufferDuration ?? 0
         let preferredOutputBufferDuration = delegate?.preferredOutputIOBufferDuration ?? 0
         inputIOBufferDuration = preferredInputBufferDuration > 0 ? preferredInputBufferDuration : 0.01

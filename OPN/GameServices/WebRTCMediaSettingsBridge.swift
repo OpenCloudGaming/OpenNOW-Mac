@@ -73,7 +73,8 @@ func webRTCMediaProfile(from profile: OPNStreamPreferenceProfile) -> WebRTCMedia
         recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
         recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
         recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
-        surroundMode: profile.surroundMode.value
+        surroundMode: profile.surroundMode.value,
+        enableHeadphoneSurround: profile.enableHeadphoneSurround
     )
 }
 
@@ -119,7 +120,8 @@ func webRTCMediaProfile(from settings: [String: Any]) -> WebRTCMediaStreamProfil
         recordingVideoBitrateMbps: bridgeInt(settings["recordingVideoBitrateMbps"]),
         recordingAudioBitrateKbps: bridgeInt(settings["recordingAudioBitrateKbps"], fallback: 160),
         recordingEnhancedVideoEnabled: bridgeBool(settings["recordingEnhancedVideoEnabled"], fallback: true),
-        surroundMode: bridgeString(settings["surroundMode"], fallback: "auto")
+        surroundMode: bridgeString(settings["surroundMode"], fallback: "auto"),
+        enableHeadphoneSurround: bridgeBool(settings["headphoneSurround"], fallback: false)
     )
 }
 

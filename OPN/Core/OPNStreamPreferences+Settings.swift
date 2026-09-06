@@ -146,6 +146,7 @@ extension OPNStreamPreferences {
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
+    public static func saveHeadphoneSurroundEnabled(_ value: Bool) { storage.set(value, forKey: k.headphoneSurroundEnabled) }
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
@@ -284,6 +285,7 @@ extension OPNStreamPreferences {
         profile.microphoneDeviceId = string(value(dictionary, k.microphoneDeviceId), "")
         profile.surroundModeIndex = clampedInt(dictionary, k.surroundModeIndex, 0, surroundModeOptions.count)
         profile.surroundMode = surroundModeOptions[profile.surroundModeIndex]
+        profile.enableHeadphoneSurround = bool(value(dictionary, k.headphoneSurroundEnabled), false)
         profile.microphonePushToTalkKeyCode = clampedInt(dictionary, k.microphonePushToTalkKeyCode, 9, 128)
         profile.microphonePushToTalkModifierMask = normalizedPushToTalkModifierMask(keyCode: profile.microphonePushToTalkKeyCode, modifierMask: clampedInt(dictionary, k.microphonePushToTalkModifierMask, 0, 32))
         profile.microphonePushToTalkKeyLabel = microphonePushToTalkKeyLabel(profile.microphonePushToTalkKeyCode)
@@ -321,6 +323,7 @@ extension OPNStreamPreferences {
             k.recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             k.surroundModeIndex: profile.surroundModeIndex,
+            k.headphoneSurroundEnabled: profile.enableHeadphoneSurround,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             k.l4sEnabled: profile.enableL4S,
             k.hdrEnabled: profile.enableHdr,
