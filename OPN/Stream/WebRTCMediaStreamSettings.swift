@@ -125,9 +125,6 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var recordingEnhancedVideoEnabled: Bool
     /// `auto`, `stereo`, `5.1` or `7.1`; see `OPNStreamPreferences.surroundModeOptions`.
     public var surroundMode: String
-    /// Ask for the picked surround layout even against a stereo output device, and render it down
-    /// locally rather than letting the seat encode a stereo mix.
-    public var enableHeadphoneSurround: Bool
 
     public init(resolution: WebRTCMediaResolution = WebRTCMediaResolution(width: 1920, height: 1080),
                 fps: Int = 60,
@@ -168,10 +165,8 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 recordingVideoBitrateMbps: Int = 0,
                 recordingAudioBitrateKbps: Int = 160,
                 recordingEnhancedVideoEnabled: Bool = true,
-                surroundMode: String = "auto",
-                enableHeadphoneSurround: Bool = false) {
+                surroundMode: String = "auto") {
         self.surroundMode = surroundMode
-        self.enableHeadphoneSurround = enableHeadphoneSurround
         self.resolution = resolution
         self.fps = fps
         self.codec = codec
@@ -333,8 +328,7 @@ public enum WebRTCMediaStreamSettingsResolver {
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
         let negotiatedAudioChannels = audioChannelCount(surroundMode: profile.surroundMode,
                                                         deviceOutputChannels: capabilities.audioOutputChannelCount,
-                                                        entitledChannels: cloudVariables.entitledAudioChannelCount,
-                                                        headphoneSurround: profile.enableHeadphoneSurround)
+                                                        entitledChannels: cloudVariables.entitledAudioChannelCount)
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
@@ -455,26 +449,14 @@ public enum WebRTCMediaStreamSettingsResolver {
         return 2
     }
 
-    /// - Parameter headphoneSurround: lifts the output device's own channel count as a ceiling when
-    ///   that device is stereo. The surround stream is then decoded in full here and rendered down
-    ///   to the two channels, rather than asking the seat for a stereo mix and discarding the
-    ///   positional information before it is ever sent. Deliberately does not lift the ceiling for
-    ///   a 6-channel device asked for 7.1: folding 8 into 6 is a different problem, and the case
-    ///   worth solving is headphones.
-    public static func audioChannelCount(surroundMode: String,
-                                         deviceOutputChannels: Int,
-                                         entitledChannels: Int,
-                                         headphoneSurround: Bool = false) -> Int {
+    public static func audioChannelCount(surroundMode: String, deviceOutputChannels: Int, entitledChannels: Int) -> Int {
         let requested: Int = switch surroundMode.lowercased() {
         case "stereo": 2
         case "5.1": 6
         case "7.1": 8
         default: deviceOutputChannels
         }
-        // Auto asks for exactly what the device offers, so it is never lifted: picking surround on
-        // a stereo device has to be deliberate.
-        let rendersDownHere = headphoneSurround && deviceOutputChannels <= 2
-        var channels = rendersDownHere ? requested : min(requested, deviceOutputChannels)
+        var channels = min(requested, deviceOutputChannels)
         if entitledChannels > 0 { channels = min(channels, entitledChannels) }
         return supportedChannelCount(channels)
     }

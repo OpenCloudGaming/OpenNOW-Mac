@@ -65,7 +65,6 @@ enum SettingsSearchIndex {
     private static let audioEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Game Volume", .audio, "output", keywords: ["loudness", "sound", "mute"]),
         SettingsSearchEntry("Surround Sound", .audio, "output", keywords: ["5.1", "7.1", "multichannel", "spatial", "speakers"]),
-        SettingsSearchEntry("Headphone Surround", .audio, "output", keywords: ["binaural", "spatial", "headphones", "airpods", "7.1", "5.1"]),
         SettingsSearchEntry("Microphone Mode", .audio, "microphone", keywords: ["mic", "push to talk", "voice", "open mic"]),
         SettingsSearchEntry("Microphone Device", .audio, "microphone", keywords: ["mic", "input device"]),
         SettingsSearchEntry("Microphone Volume", .audio, "microphone", keywords: ["mic", "gain", "loudness"]),

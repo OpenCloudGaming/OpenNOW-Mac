@@ -326,10 +326,6 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var hdrColorSpaceOption = OPNStreamPreferences.colorSpaceOptions[0]
     public var enableL4S = false
     public var enableHdr = false
-    /// Negotiate the picked surround layout even when the output device is stereo, and render it
-    /// down here instead of asking the seat for a stereo mix. Only the listener knows they are
-    /// wearing headphones, so this is a choice rather than something detected.
-    public var enableHeadphoneSurround = false
     public var enablePowerSaver = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true

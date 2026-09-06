@@ -22,23 +22,6 @@ import Testing
         #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 8, entitledChannels: 2) == 2)
     }
 
-    @Test func headphoneSurroundLiftsOnlyAStereoDeviceAndOnlyForAnExplicitPick() {
-        // The point of the option: a stereo device stops being a ceiling, so the surround mix is
-        // asked for and rendered down here instead of never being encoded.
-        #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 2, entitledChannels: 0, headphoneSurround: true) == 8)
-        #expect(Resolver.audioChannelCount(surroundMode: "5.1", deviceOutputChannels: 2, entitledChannels: 0, headphoneSurround: true) == 6)
-        // Auto asks for what the device has, so it is never lifted into surround by this option.
-        #expect(Resolver.audioChannelCount(surroundMode: "auto", deviceOutputChannels: 2, entitledChannels: 0, headphoneSurround: true) == 2)
-        #expect(Resolver.audioChannelCount(surroundMode: "stereo", deviceOutputChannels: 2, entitledChannels: 0, headphoneSurround: true) == 2)
-        // Folding 8 into 6 is a different problem, so a real surround device keeps the old clamp.
-        #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 6, entitledChannels: 0, headphoneSurround: true) == 6)
-        // The membership still decides what the seat will send.
-        #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 2, entitledChannels: 6, headphoneSurround: true) == 6)
-        #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 2, entitledChannels: 2, headphoneSurround: true) == 2)
-        // Off is exactly today's behaviour.
-        #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 2, entitledChannels: 0) == 2)
-    }
-
     @Test func thePreferredCountKeepsTheReadersPickApartFromTheClamp() {
         // An explicit pick is reported as picked however little the device can deliver: this is
         // what lets the HUD say "Stereo (7.1 asked)" instead of reporting the clamp as the request.

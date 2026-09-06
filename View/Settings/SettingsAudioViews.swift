@@ -22,19 +22,6 @@ struct AudioSettingsPage: View {
                 OpenNOWNewSettings.acknowledge(.surroundSound)
                 viewModel.setSurroundModeIndex(index)
             }
-            if viewModel.showsHeadphoneSurroundRow {
-                SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(
-                    title: "Headphone Surround",
-                    subtitle: "Decode the full surround mix here and render it to two channels, instead of asking the server for a stereo mix. For headphones - on speakers it will sound wrong.",
-                    isOn: viewModel.streamProfile.enableHeadphoneSurround,
-                    isNew: OpenNOWNewSettings.isNew(.headphoneSurround),
-                    uiScale: uiScale
-                ) { newValue in
-                    OpenNOWNewSettings.acknowledge(.headphoneSurround)
-                    viewModel.setHeadphoneSurroundEnabled(newValue)
-                }
-            }
         }
         .settingsSection("output")
     }
