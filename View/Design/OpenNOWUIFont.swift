@@ -13,11 +13,11 @@ public enum OpenNOWUIFont {
 
     private nonisolated(unsafe) static let descriptors: [Weight: CTFontDescriptor] = {
         var result: [Weight: CTFontDescriptor] = [:]
-        result[.regular] = loadDescriptor(named: "Hybrid_Regular")
-        result[.medium] = loadDescriptor(named: "Hybrid_Medium")
-        result[.bold] = loadDescriptor(named: "Hybrid_Bold")
-        result[.semibold] = loadDescriptor(named: "Hybrid_Medium")
-        result[.black] = loadDescriptor(named: "Hybrid_Bold")
+        result[.regular] = loadDescriptor(named: "HankenGrotesk-Regular")
+        result[.medium] = loadDescriptor(named: "HankenGrotesk-Medium")
+        result[.bold] = loadDescriptor(named: "HankenGrotesk-Bold")
+        result[.semibold] = loadDescriptor(named: "HankenGrotesk-Medium")
+        result[.black] = loadDescriptor(named: "HankenGrotesk-Bold")
         return result
     }()
 
@@ -51,7 +51,7 @@ public enum OpenNOWUIFont {
     }
 
     private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
-        for subdirectory in ["Hybrid", "Resources/Hybrid", nil] as [String?] {
+        for subdirectory in ["Fonts", "Resources/Fonts", nil] as [String?] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "woff2", subdirectory: subdirectory),
                   let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
                   let descriptor = descriptors.first else { continue }

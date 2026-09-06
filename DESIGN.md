@@ -1,7 +1,7 @@
 # OpenNOW Design System
 
 Squared, panel-based dark interface echoing the GeForce NOW industrial aesthetic: flat
-surfaces, 1px strokes, a single NVIDIA green accent, and NVIDIA Sans typography. Corner
+surfaces, 1px strokes, a single NVIDIA green accent, and Hanken Grotesk typography. Corner
 radius is reserved for a small set of explicit exceptions — panels, buttons, and fields
 are always plain rectangles.
 
@@ -9,7 +9,7 @@ Token sources of truth:
 
 - App shell: `View/OpenNOWDesign.swift` (`OpenNOWDesign`), `View/Login/LoginStyles.swift`
 - Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`WebRTCMediaStreamTheme`)
-- Typography: `View/Design/OpenNOWNVIDIAFont.swift` (`OpenNOWNVIDIAFont`)
+- Typography: `View/Design/OpenNOWUIFont.swift` (`OpenNOWUIFont`)
 
 ## Colors
 
@@ -74,11 +74,12 @@ Token sources of truth:
 
 ## Typography
 
-Typeface is **NVIDIA Sans** in three weights, bundled as WOFF2 and loaded through
-`OpenNOWNVIDIAFont` (falls back to the system font at the matching weight if the
-bundle resource is unavailable). SwiftUI accessors: `.openNOWNVIDIA(size:weight:)` and
-`.nvidiaSans(size:weight:)`; the stream surface uses the file-private
-`.streamNvidia(size:weight:)`.
+Typeface is **Hanken Grotesk** (SIL Open Font License 1.1) in three weights, bundled as
+WOFF2 and loaded through `OpenNOWUIFont` (falls back to the system font at the matching
+weight if the bundle resource is unavailable). SwiftUI accessor: `.openNOWUI(size:weight:)`;
+per-surface helpers wrap it (`catalogFont`, `streamFont`, `settingsFont`, `recordingsFont`,
+`LoginStyles.uiSans`). The bundled static instances are Regular (400), Medium (500), and
+Bold (700); see `Resources/Fonts/OFL.txt` for the license.
 
 Weights: `regular`, `medium`, `bold`.
 
@@ -99,8 +100,8 @@ Weights: `regular`, `medium`, `bold`.
 
 - **Buttons**: 13–14pt bold, tracking 0.3–0.4.
 - **Text Fields**: 14pt regular.
-- Login vendor surfaces use NVIDIA Sans 14pt bold; general app-shell controls may use the
-  system font at the same sizes when the NVIDIA face is not required.
+- Login vendor surfaces use Hanken Grotesk 14pt bold; general app-shell controls may use the
+  system font at the same sizes when the Hanken Grotesk face is not required.
 
 System rounded/monospaced fonts remain only in legacy stream overlays (launch overlay,
 Twitch panel, transient message pills). Do not use them in new code.
@@ -192,11 +193,11 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
 - **Compact Row Action** (`OpenNOWCompactButtonStyle`): settings/inline row
-  actions. Height 28, NVIDIA Sans 12pt bold, 14 horizontal padding, square corners.
+  actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, square corners.
   Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
   #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
   `uiScale`; call sites never restyle the label.
-- **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black NVIDIA Sans
+- **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black Hanken Grotesk
   bold (tracking 0.3), 16 horizontal padding, square corners. Pressed: accent @ 0.78.
   Two sizes: **regular** (14pt, height 36 — login and inline CTAs) and **large**
   (15pt, height 40 — hero and game-detail primary actions, optional `minimumWidth`).
@@ -236,7 +237,7 @@ Focused (gamepad/keyboard): accent stroke at 2px. Disabled: opacity 0.46.
 
 ### Stream Dialog Button (`StreamQuitMenuButton`)
 
-Full-width rectangular button, height 38, NVIDIA Sans 12pt bold (tracking 0.4).
+Full-width rectangular button, height 38, Hanken Grotesk 12pt bold (tracking 0.4).
 
 - **Primary**: Accent background (0.82 hover), black @ 0.86 text, accent stroke.
 - **Secondary**: Row Fill background (0.14 hover), white @ 0.82 text (0.94 hover),
@@ -254,7 +255,7 @@ trigger's width when the trigger is wider, e.g. the login provider picker),
 leading-aligned to the trigger and anchored 4pt below it, no shadow. When the panel would extend past the
 window's bottom edge it constrains to the available space below and scrolls.
 Rows: full width, height 30, 12
-(Control Row) horizontal padding, NVIDIA Sans 12pt bold — Text Secondary resting,
+(Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
 Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
 checkmark. Dismisses on outside click, Escape, or selection, and closes when the
 underlying item set changes.
@@ -570,7 +571,7 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
 ### Do
 
 - Build every panel, button, field, and card as a `Rectangle` with a 1px stroke.
-- Use NVIDIA Sans on all branded and stream surfaces; keep the size/weight scale above.
+- Use Hanken Grotesk on all branded and stream surfaces; keep the size/weight scale above.
 - Pull colors from `OpenNOWDesign` / `WebRTCMediaStreamTheme` tokens; express light
   tints as white opacities from the token tables.
 - Reserve accent for primary actions, active/focused states, eyebrows, and edge bars.
