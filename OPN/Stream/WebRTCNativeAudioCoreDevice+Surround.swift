@@ -99,8 +99,14 @@ extension OPNCoreAudioRTCDevice {
         var maxFrames = UInt32(4096)
         var callback = AURenderCallbackStruct(inputProc: spatialMixerInputCallback,
                                               inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
+        // Without a layout the mixer knows how many channels arrive but not which is which, so it
+        // has nothing to place and renders silence. The order is the one the multi-channel Opus
+        // mapping produces, the same order `stereoDownmixWeights` folds.
+        var layout = AudioChannelLayout()
+        layout.mChannelLayoutTag = sourceChannels == 8 ? kAudioChannelLayoutTag_MPEG_7_1_C : kAudioChannelLayoutTag_MPEG_5_1_A
         let configured =
-            AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &inputFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)) == noErr
+            AudioUnitSetProperty(unit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, 0, &layout, UInt32(MemoryLayout<AudioChannelLayout>.size)) == noErr
+            && AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &inputFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)) == noErr
             && AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &outputFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)) == noErr
             && AudioUnitSetProperty(unit, kAudioUnitProperty_SpatialMixerOutputType, kAudioUnitScope_Global, 0, &outputType, UInt32(MemoryLayout<UInt32>.size)) == noErr
             && AudioUnitSetProperty(unit, kAudioUnitProperty_SpatializationAlgorithm, kAudioUnitScope_Input, 0, &algorithm, UInt32(MemoryLayout<UInt32>.size)) == noErr
@@ -116,9 +122,47 @@ extension OPNCoreAudioRTCDevice {
         }
         spatialUnit = unit
         spatialSourceChannels = sourceChannels
+        // This path cannot be judged by ear from here, and a mixer that renders silence would be
+        // indistinguishable from a dead stream. Push a known-loud frame through it once and keep it
+        // only if something comes back; otherwise the matrix fold takes over and audio still plays.
+        guard producesAudio(unit, sourceChannels: sourceChannels) else {
+            disposeSpatialRenderer()
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.spatial.silent", level: .warning,
+                                         message: "Spatial mixer returned silence on test render; folding surround to stereo by matrix.",
+                                         attributes: ["channels": String(sourceChannels)])
+            return
+        }
         WebRTCMediaTelemetry.capture("webrtc.native.audio.spatial.ready", level: .info,
                                      message: "Rendering surround to headphones through the spatial mixer.",
                                      attributes: ["channels": String(sourceChannels)])
+    }
+
+    /// Renders one frame of full-scale input and reports whether anything came out.
+    private func producesAudio(_ unit: AudioUnit, sourceChannels: Int) -> Bool {
+        let frames = 512
+        spatialInputScratch = [Float](repeating: 0.5, count: frames * sourceChannels)
+        spatialOutputScratch = [Float](repeating: 0, count: frames * 2)
+        pendingSpatialFrames = frames
+        pendingSpatialChannels = sourceChannels
+        defer { spatialSampleTime = 0 }
+        var loudest: Float = 0
+        spatialOutputScratch.withUnsafeMutableBufferPointer { output in
+            guard let base = output.baseAddress else { return }
+            let renderList = AudioBufferList.allocate(maximumBuffers: 2)
+            defer { free(renderList.unsafeMutablePointer) }
+            for channel in 0..<2 {
+                renderList[channel] = AudioBuffer(mNumberChannels: 1,
+                                                  mDataByteSize: UInt32(frames * MemoryLayout<Float>.size),
+                                                  mData: UnsafeMutableRawPointer(base + channel * frames))
+            }
+            var flags = AudioUnitRenderActionFlags()
+            var stamp = AudioTimeStamp()
+            stamp.mSampleTime = 0
+            stamp.mFlags = .sampleTimeValid
+            guard AudioUnitRender(unit, &flags, &stamp, 0, UInt32(frames), renderList.unsafeMutablePointer) == noErr else { return }
+            for index in 0..<(frames * 2) { loudest = max(loudest, abs(base[index])) }
+        }
+        return loudest > 0.0001
     }
 
     func disposeSpatialRenderer() {
