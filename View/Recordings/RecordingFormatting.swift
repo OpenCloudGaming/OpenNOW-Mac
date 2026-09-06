@@ -62,14 +62,14 @@ struct RecordingRightsNotice: View {
             VStack(alignment: .leading, spacing: 16 * uiScale) {
                 HStack(spacing: 12 * uiScale) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.recordingsNvidia(size: 22 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 22 * uiScale, weight: .bold))
                         .foregroundStyle(.orange)
                     Text("About Recording GeForce NOW Sessions")
-                        .font(.recordingsNvidia(size: 18 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
                 }
                 Text("Some game publishers restrict recording or broadcasting of their titles on cloud gaming services. You are responsible for complying with the terms of service of GeForce NOW, the game publisher, and any applicable store policies when recording sessions.")
-                    .font(.recordingsNvidia(size: 13 * uiScale, weight: .regular))
+                    .font(.recordingsFont(size: 13 * uiScale, weight: .regular))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineSpacing(3 * uiScale)
                     .fixedSize(horizontal: false, vertical: true)

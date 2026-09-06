@@ -40,7 +40,7 @@ struct CatalogTopBar: View {
                     .buttonStyle(.opnPressable(scale: 0.90))
                     .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                     Text(mainPageTitle)
-                        .nvidiaFont(size: 17, weight: .medium)
+                        .catalogFont(size: 17, weight: .medium)
                         .foregroundStyle(.white.opacity(0.92))
                         .frame(height: 40 * uiScale, alignment: .center)
                     Spacer()
@@ -58,7 +58,7 @@ struct CatalogTopBar: View {
                     // Only Settings earns a centred label: it names the group you are in. Recordings
                     // is a single page, so a subtitle there only repeats the title on the left.
                     Text(viewModel.selectedSettingsGroup.title)
-                        .nvidiaFont(size: 15, weight: .bold)
+                        .catalogFont(size: 15, weight: .bold)
                         .foregroundStyle(.white.opacity(0.70))
                         .tracking(1.1)
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
@@ -130,15 +130,15 @@ struct CatalogTopBar: View {
                             CatalogAccountAvatar(account: viewModel.account, size: 32 * uiScale)
                             VStack(alignment: .leading, spacing: 1 * uiScale) {
                                 Text(viewModel.account.displayName)
-                                    .nvidiaFont(size: 15, weight: .medium)
+                                    .catalogFont(size: 15, weight: .medium)
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                                 Text(viewModel.subscriptionStatus.membershipTier)
-                                    .nvidiaFont(size: 12, weight: .medium)
+                                    .catalogFont(size: 12, weight: .medium)
                                     .foregroundStyle(.white.opacity(0.78))
                             }
                             Image(systemName: "chevron.down")
-                                .nvidiaFont(size: 10, weight: .bold)
+                                .catalogFont(size: 10, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.88))
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                                 .opnMotion(OpenNOWDesign.Motion.toggle, value: showsAccountMenu)
@@ -192,11 +192,11 @@ struct CatalogTopBar: View {
     private var catalogSearchField: some View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
-                .nvidiaFont(size: 18, weight: .medium)
+                .catalogFont(size: 18, weight: .medium)
                 .foregroundStyle(.white.opacity(0.76))
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .nvidiaFont(size: 16, weight: .medium)
+                .catalogFont(size: 16, weight: .medium)
                 .foregroundStyle(.white)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
@@ -292,7 +292,7 @@ struct CatalogTopBarIconLabel: View {
 
     var body: some View {
         Image(systemName: systemName)
-            .nvidiaFont(size: 17, weight: .medium)
+            .catalogFont(size: 17, weight: .medium)
             .foregroundStyle(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.84))
             .modifier(CatalogTopBarPlate(isActive: isHovering))
             .onHover { isHovering = $0 }

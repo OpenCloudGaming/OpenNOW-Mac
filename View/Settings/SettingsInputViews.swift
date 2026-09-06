@@ -41,10 +41,10 @@ struct InputSettingsPage: View {
                     .frame(width: 4 * uiScale, height: 58 * uiScale)
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text(controllerModeEnabled ? "Controller mode is active" : "Desktop catalog mode is active")
-                        .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 18 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Controller mode replaces the catalog with a TV-style interface built for gamepads, while keeping keyboard and pointer fallback available.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -72,17 +72,17 @@ struct InputSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             HStack(alignment: .center, spacing: 12 * uiScale) {
                 Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
-                    .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 18 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                     .background(OpenNOWDesign.accent.opacity(0.12))
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
-                        .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                     Text(isAnyControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
                 }

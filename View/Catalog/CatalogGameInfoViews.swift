@@ -129,7 +129,7 @@ struct CatalogGameInfoOverlay: View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             HStack(alignment: .bottom, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
                 Text(game.title.isEmpty ? "Selected Game" : game.title)
-                    .nvidiaFont(size: 40, weight: .bold)
+                    .catalogFont(size: 40, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
@@ -140,7 +140,7 @@ struct CatalogGameInfoOverlay: View {
             FlowLayout(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { label in
                     Text(label)
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: 24 * uiScale)
@@ -162,9 +162,9 @@ struct CatalogGameInfoOverlay: View {
         return Button { viewModel.toggleFavoriteSelectedGame() } label: {
             HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 Image(systemName: favorited ? "heart.fill" : "heart")
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                 Text(favorited ? "FAVORITED" : "FAVORITE")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .tracking(0.8)
             }
             .foregroundStyle(favorited ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
@@ -186,7 +186,7 @@ struct CatalogGameInfoOverlay: View {
         let action = viewModel.actionMessage
         if !error.isEmpty || !action.isEmpty {
             Text(error.isEmpty ? action : error)
-                .nvidiaFont(size: 12, weight: .bold)
+                .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(error.isEmpty ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Semantic.destructive)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -206,7 +206,7 @@ struct CatalogGameInfoOverlay: View {
                     .lineLimit(1)
             }
         }
-        .nvidiaFont(size: 12, weight: .bold)
+        .catalogFont(size: 12, weight: .bold)
         .tracking(0.6)
         .foregroundStyle(OpenNOWDesign.Text.secondary)
     }
@@ -214,7 +214,7 @@ struct CatalogGameInfoOverlay: View {
     private var closeButton: some View {
         Button { viewModel.closeGameInfo() } label: {
             Image(systemName: "xmark")
-                .nvidiaFont(size: 13, weight: .bold)
+                .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
                 .background(Color.black.opacity(isCloseHovering ? 0.62 : 0.42))
@@ -254,13 +254,13 @@ struct CatalogGameInfoOverlay: View {
             CatalogGameInfoSection(label: "ABOUT THIS GAME", uiScale: uiScale) {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
                     Text(GameDetailPresentation.shortDescription(game: game))
-                        .nvidiaFont(size: 16, weight: .medium)
+                        .catalogFont(size: 16, weight: .medium)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                     if !longDescription.isEmpty {
                         Text(longDescription)
-                            .nvidiaFont(size: 14, weight: .medium)
+                            .catalogFont(size: 14, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Text.secondary)
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
@@ -331,7 +331,7 @@ struct CatalogGameInfoOverlay: View {
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .frame(width: 22 * uiScale, height: 22 * uiScale)
                         .background(Color.black.opacity(0.55))
@@ -359,7 +359,7 @@ struct CatalogGameInfoOverlay: View {
         if enabled {
             Button(action: action) {
                 Image(systemName: name)
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(width: 30 * uiScale, height: min(64 * uiScale, height))
                     .background(Color.black.opacity(0.72))
@@ -415,11 +415,11 @@ struct CatalogGameInfoOverlay: View {
                     }
                     VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                         Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
-                            .nvidiaFont(size: 13, weight: .bold)
+                            .catalogFont(size: 13, weight: .bold)
                             .foregroundStyle(OpenNOWDesign.Text.primary)
                         ForEach(descriptors, id: \.self) { descriptor in
                             Text(descriptor)
-                                .nvidiaFont(size: 12, weight: .medium)
+                                .catalogFont(size: 12, weight: .medium)
                                 .foregroundStyle(OpenNOWDesign.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -473,7 +473,7 @@ private struct CatalogGameInfoSection<Content: View>: View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 Text(label)
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(1.1)
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 Rectangle()
@@ -495,12 +495,12 @@ private struct CatalogGameInfoSpecRow: View {
         if !value.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
                 Text(label.uppercased())
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .tracking(0.6)
                     .foregroundStyle(OpenNOWDesign.Text.muted)
                     .frame(width: 92 * uiScale, alignment: .leading)
                 Text(value)
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -543,7 +543,7 @@ private struct CatalogGameInfoLightbox: View {
         .overlay(alignment: .topTrailing) {
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                     .background(Color.white.opacity(0.10))
@@ -557,7 +557,7 @@ private struct CatalogGameInfoLightbox: View {
         .overlay(alignment: .bottom) {
             if images.count > 1 {
                 Text("\(index + 1) / \(images.count)")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .tracking(0.8)
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -572,7 +572,7 @@ private struct CatalogGameInfoLightbox: View {
     private func arrow(name: String, delta: Int, label: String) -> some View {
         Button { move(delta) } label: {
             Image(systemName: name)
-                .nvidiaFont(size: 16, weight: .bold)
+                .catalogFont(size: 16, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 44 * uiScale, height: 64 * uiScale)
                 .background(Color.white.opacity(0.10))

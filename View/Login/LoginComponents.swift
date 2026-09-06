@@ -108,7 +108,7 @@ struct VendorSplashLoadingView: View {
                             VendorIndeterminateProgressBar()
                                 .frame(width: isCompact ? 188 : 260, height: 4)
                             Text(message)
-                                .font(.nvidiaSans(size: 13, weight: .bold))
+                                .font(.uiSans(size: 13, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
                     }
@@ -116,7 +116,7 @@ struct VendorSplashLoadingView: View {
                     if let onCancel {
                         Button(action: onCancel) {
                             Text("CANCEL")
-                                .font(.nvidiaSans(size: 13, weight: .bold))
+                                .font(.uiSans(size: 13, weight: .bold))
                                 .foregroundStyle(.white)
                                 .tracking(0.3)
                         }
@@ -341,7 +341,7 @@ struct AccountAvatar: View {
 
     var body: some View {
         Text(initials)
-            .nvidiaFont(size: size * 0.34, weight: .bold)
+            .catalogFont(size: size * 0.34, weight: .bold)
             .foregroundStyle(.black)
             .frame(width: size, height: size)
             // DESIGN.md radius exception: the login vendor icon button, at size * 0.32.

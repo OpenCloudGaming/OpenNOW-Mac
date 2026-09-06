@@ -138,11 +138,11 @@ struct SteamControllerMappingView: View {
         ) {
             HStack(spacing: 6 * uiScale) {
                 Text(savedProfile?.name ?? "Default")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
@@ -158,7 +158,7 @@ struct SteamControllerMappingView: View {
     private var nameField: some View {
         TextField("Profile name", text: draftNameBinding)
             .textFieldStyle(.plain)
-            .font(.settingsNvidia(size: 14 * uiScale))
+            .font(.settingsFont(size: 14 * uiScale))
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .tint(OpenNOWDesign.accent)
             .focused($nameFieldFocused)
@@ -181,7 +181,7 @@ struct SteamControllerMappingView: View {
         HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             if hasUnsavedChanges {
                 Text("UNSAVED CHANGES")
-                    .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.1)
                     .foregroundStyle(OpenNOWDesign.Semantic.warning)
             }
@@ -207,10 +207,10 @@ struct SteamControllerMappingView: View {
     private var noProfileMessage: some View {
         VStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             Image(systemName: "gamecontroller")
-                .font(.settingsNvidia(size: 40 * uiScale))
+                .font(.settingsFont(size: 40 * uiScale))
                 .foregroundStyle(OpenNOWDesign.Text.muted.opacity(0.5))
             Text("No profile selected")
-                .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 14 * uiScale, weight: .medium))
                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -234,7 +234,7 @@ struct SteamControllerMappingView: View {
                         backgroundColor: OpenNOWDesign.Surface.deep
                     )
                     Text("Click any control to bind it")
-                        .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.muted)
                 }
                 .padding(OpenNOWDesign.Spacing.xLarge(scale: uiScale))
@@ -283,7 +283,7 @@ struct SteamControllerMappingView: View {
                 // and stick control reads "R. Pad Click", not "R4".
                 HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                     Text(control.label)
-                        .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                         .foregroundStyle(held ? .black : OpenNOWDesign.Text.primary)
                         .fixedSize()
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
@@ -297,7 +297,7 @@ struct SteamControllerMappingView: View {
                             )
                         }
                     Text(control.category.label)
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -340,7 +340,7 @@ struct SteamControllerMappingView: View {
                 Spacer(minLength: 0)
 
                 Text("While a control is bound to a gamepad combo, L1/R1/L2/R2 in that combo land first and the rest follow a moment later so games register them as modifier + press.")
-                    .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                     .foregroundStyle(OpenNOWDesign.Text.muted)
             }
             .padding(OpenNOWDesign.Spacing.card(scale: uiScale))
@@ -386,10 +386,10 @@ private struct SteamControllerCategoryRow: View {
         Button(action: action) {
             HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                 Image(systemName: systemImage)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                     .frame(width: 16 * uiScale)
                 Text(label)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(foreground)

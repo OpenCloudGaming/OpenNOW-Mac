@@ -62,13 +62,13 @@ struct GameDetailPanel: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(alignment: .top, spacing: 12) {
                             Text(game.title.isEmpty ? "Selected Game" : game.title)
-                                .nvidiaFont(size: 30, weight: .bold)
+                                .catalogFont(size: 30, weight: .bold)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
                                 .foregroundStyle(.white.opacity(0.96))
                             Button { viewModel.toggleFavoriteSelectedGame() } label: {
                                 Image(systemName: viewModel.isFavorite(game) ? "heart.fill" : "heart")
-                                    .nvidiaFont(size: 21, weight: .bold)
+                                    .catalogFont(size: 21, weight: .bold)
                                     .foregroundStyle(.white.opacity(0.94))
                                     .frame(width: 36 * uiScale, height: 34 * uiScale)
                             }
@@ -101,7 +101,7 @@ struct GameDetailPanel: View {
 
                     Button { viewModel.selectGame(nil) } label: {
                         Image(systemName: "xmark")
-                            .nvidiaFont(size: 22, weight: .regular)
+                            .catalogFont(size: 22, weight: .regular)
                             .foregroundStyle(.white.opacity(0.90))
                             .frame(width: 40 * uiScale, height: 40 * uiScale)
                     }
@@ -178,7 +178,7 @@ struct GameDetailPanel: View {
         FlowLayout(spacing: 8) {
             ForEach(game.detailChips, id: \.self) { chip in
                 Text(chip)
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(0.4)
                     .foregroundStyle(chip == "IN LIBRARY" ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 10)
@@ -193,7 +193,7 @@ struct GameDetailPanel: View {
         HStack(spacing: 9) {
             if !game.ratingLabel.isEmpty {
                 Text(game.ratingLabel.uppercased())
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
             }
             metadataSeparator
             if game.maxOnlinePlayers > 1 { Image(systemName: "person.3.fill") }
@@ -203,7 +203,7 @@ struct GameDetailPanel: View {
             Text(game.genres.prefix(2).joined(separator: ", "))
                 .lineLimit(1)
         }
-        .nvidiaFont(size: 12, weight: .bold)
+        .catalogFont(size: 12, weight: .bold)
         .foregroundStyle(.white.opacity(0.86))
     }
 
@@ -219,10 +219,10 @@ struct GameDetailPanel: View {
                 HStack(spacing: 5) {
                     if chip == "For Premium Members" {
                         Image(systemName: "checkmark.circle.fill")
-                            .nvidiaFont(size: 10, weight: .bold)
+                            .catalogFont(size: 10, weight: .bold)
                     }
                     Text(chip)
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                 }
                 .foregroundStyle(.white.opacity(0.86))
                 .padding(.horizontal, 9)
@@ -237,7 +237,7 @@ struct GameDetailPanel: View {
         FlowLayout(spacing: 8) {
             ForEach(GameDetailPresentation.detailMetadata(game: game), id: \.self) { item in
                 Text(item.uppercased())
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(0.8)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -284,10 +284,10 @@ struct GameDetailPanel: View {
                     HStack(spacing: 7) {
                         if option.hasAccess || option.isSelected {
                             Image(systemName: option.hasAccess ? "checkmark.circle.fill" : "circle.fill")
-                                .nvidiaFont(size: 11, weight: .bold)
+                                .catalogFont(size: 11, weight: .bold)
                         }
                         Text(option.title)
-                            .nvidiaFont(size: 11, weight: .bold)
+                            .catalogFont(size: 11, weight: .bold)
                     }
                     .foregroundStyle(option.isSelected ? .black.opacity(0.88) : .white.opacity(0.82))
                     .padding(.horizontal, 11)
@@ -320,16 +320,16 @@ struct CatalogFeatureAvailabilityRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: locked ? "lock.fill" : "checkmark.circle.fill")
-                .nvidiaFont(size: 13, weight: .bold)
+                .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(.white.opacity(0.88))
                 .frame(width: 18)
             Text(title)
-                .nvidiaFont(size: 14, weight: .bold)
+                .catalogFont(size: 14, weight: .bold)
                 .foregroundStyle(.white.opacity(0.88))
                 .frame(width: 84, alignment: .leading)
                 .lineLimit(1)
             Text(message)
-                .nvidiaFont(size: 14, weight: .medium)
+                .catalogFont(size: 14, weight: .medium)
                 .foregroundStyle(.white.opacity(0.74))
                 .lineLimit(1)
             Spacer(minLength: 0)

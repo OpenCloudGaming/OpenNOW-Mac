@@ -115,7 +115,7 @@ struct RecordingCropOverlay: View {
 
     private func sizeBadge(crop: CGRect) -> some View {
         Text(viewModel.croppedOutputDescription)
-            .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+            .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
             .foregroundStyle(.black.opacity(0.86))
             .padding(.horizontal, 6 * uiScale)
             .frame(height: 18 * uiScale)

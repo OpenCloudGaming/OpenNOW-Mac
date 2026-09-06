@@ -82,7 +82,7 @@ struct CatalogStorePickerOverlay: View {
     private var closeButton: some View {
         Button { viewModel.closeStorePicker() } label: {
             Image(systemName: "xmark")
-                .nvidiaFont(size: 12, weight: .bold)
+                .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 32 * uiScale, height: 32 * uiScale)
                 .background(Color.white.opacity(isCloseHovering ? 0.16 : 0.08))
@@ -97,7 +97,7 @@ struct CatalogStorePickerOverlay: View {
     private func header(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(game.title.isEmpty ? "Selected Game" : game.title)
-                .nvidiaFont(size: 14, weight: .bold)
+                .catalogFont(size: 14, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .padding(.bottom, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
@@ -106,12 +106,12 @@ struct CatalogStorePickerOverlay: View {
                     storeInlineLabel(option: option, owned: true)
                 } else {
                     Text("PC DIGITAL VERSION")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     if viewModel.ownershipFlowStage == .manualMark, let option = selectedOption(game: game) {
                         Text("|")
-                            .nvidiaFont(size: 10, weight: .bold)
+                            .catalogFont(size: 10, weight: .bold)
                             .tracking(1.1)
                             .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         storeInlineLabel(option: option, owned: false)
@@ -144,14 +144,14 @@ struct CatalogStorePickerOverlay: View {
 
     private func stageTitle(_ title: String) -> some View {
         Text(title)
-            .nvidiaFont(size: 20, weight: .bold)
+            .catalogFont(size: 20, weight: .bold)
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.bottom, OpenNOWDesign.Spacing.small(scale: uiScale))
     }
 
     private func stageDescription(_ text: String) -> some View {
         Text(text)
-            .nvidiaFont(size: 12, weight: .medium)
+            .catalogFont(size: 12, weight: .medium)
             .foregroundStyle(OpenNOWDesign.Text.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -165,7 +165,7 @@ struct CatalogStorePickerOverlay: View {
                     .controlSize(.large)
                     .tint(OpenNOWDesign.accent)
                 Text(viewModel.ownershipFlowMessage.isEmpty ? "Syncing connected game libraries..." : viewModel.ownershipFlowMessage)
-                    .nvidiaFont(size: 12, weight: .medium)
+                    .catalogFont(size: 12, weight: .medium)
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -227,7 +227,7 @@ struct CatalogStorePickerOverlay: View {
                 stageDescription("Press CONTINUE to manually mark this game as owned only if you have this in your \(storeName) library or it may fail to launch. Don't own it?")
                 Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
                     .buttonStyle(.plain)
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
             }
             HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
@@ -251,17 +251,17 @@ struct CatalogStorePickerOverlay: View {
                 if let option { storeIconView(iconURL: option.iconURL, size: 20) }
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                     Text(CatalogStorePresentation.successAccountTitle(storeName: storeName, account: account))
-                        .nvidiaFont(size: 14, weight: .bold)
+                        .catalogFont(size: 14, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(CatalogStorePresentation.successAccountSubtitle(storeName: storeName, account: account))
-                        .nvidiaFont(size: 12, weight: .medium)
+                        .catalogFont(size: 12, weight: .medium)
                         .foregroundStyle(OpenNOWDesign.Text.secondary)
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                         Image(systemName: "checkmark.circle.fill")
-                            .nvidiaFont(size: 12, weight: .bold)
+                            .catalogFont(size: 12, weight: .bold)
                             .foregroundStyle(OpenNOWDesign.accent)
                         Text(CatalogStorePresentation.successSyncText(account: account))
-                            .nvidiaFont(size: 12, weight: .medium)
+                            .catalogFont(size: 12, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Text.secondary)
                     }
                 }
@@ -282,18 +282,18 @@ struct CatalogStorePickerOverlay: View {
         HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
             storeIconView(iconURL: option.iconURL, size: 14)
             Text(option.title)
-                .nvidiaFont(size: 11, weight: .medium)
+                .catalogFont(size: 11, weight: .medium)
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
             if owned {
                 Text(option.status.isEmpty ? "Ready" : option.status)
-                    .nvidiaFont(size: 10, weight: .medium)
+                    .catalogFont(size: 10, weight: .medium)
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                     .frame(height: 20 * uiScale)
                     .background(Color.white.opacity(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "checkmark")
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
             }
         }
@@ -313,7 +313,7 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidia(size: 14 * uiScale, weight: .bold))
+            .font(.catalogText(size: 14 * uiScale, weight: .bold))
             .tracking(0.4)
             .foregroundStyle(.black.opacity(0.88))
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
@@ -327,7 +327,7 @@ struct CatalogOwnershipSecondaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidia(size: 13 * uiScale, weight: .bold))
+            .font(.catalogText(size: 13 * uiScale, weight: .bold))
             .tracking(0.4)
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
@@ -376,7 +376,7 @@ struct CatalogStorePickerSection<Content: View>: View {
 
     private var sectionLabel: some View {
         Text(label)
-            .nvidiaFont(size: 10, weight: .bold)
+            .catalogFont(size: 10, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(OpenNOWDesign.Text.tertiary)
             .fixedSize(horizontal: true, vertical: false)
@@ -411,7 +411,7 @@ extension CatalogStorePickerRow {
         HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
             storeIcon
             Text(title)
-                .nvidiaFont(size: 13, weight: .bold)
+                .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -430,7 +430,7 @@ extension CatalogStorePickerRow {
     private var statusTag: some View {
         if !status.isEmpty {
             Text(status)
-                .nvidiaFont(size: 11, weight: .medium)
+                .catalogFont(size: 11, weight: .medium)
                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -443,7 +443,7 @@ extension CatalogStorePickerRow {
 
     private var selectedCheckmark: some View {
         Image(systemName: "checkmark")
-            .nvidiaFont(size: 12, weight: .bold)
+            .catalogFont(size: 12, weight: .bold)
             .foregroundStyle(OpenNOWDesign.accent)
             .frame(width: 18 * uiScale, height: 18 * uiScale)
             .opacity(isSelected ? 1 : 0)

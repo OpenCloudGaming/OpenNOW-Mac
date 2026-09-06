@@ -26,7 +26,7 @@ struct InterfaceSettingsPage: View {
                 }
                 SettingsDivider(uiScale: uiScale)
                 Text("Scales the catalog, settings, and in-stream HUD. Increase it on high-resolution displays (for example 5K) when the interface feels too small.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -53,7 +53,7 @@ struct InterfaceInputLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9 * uiScale) {
             Text(title.uppercased())
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.44))
             HStack(spacing: 6 * uiScale) {
@@ -78,10 +78,10 @@ struct InterfaceGlyphPill: View {
         HStack(spacing: 6 * uiScale) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
-                    .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 13 * uiScale, weight: .bold))
             }
             Text(glyph.fallbackText)
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .lineLimit(1)
         }
         .foregroundStyle(OpenNOWDesign.accent)

@@ -34,12 +34,12 @@ struct StreamOnScreenKeyboardOverlay: View {
     private var headerStrip: some View {
         HStack(spacing: 10) {
             Text("KEYBOARD")
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(width: 1, height: 14)
             Text(controller.state.echo.isEmpty ? " " : controller.state.echo)
-                .font(.streamNvidia(size: 12, weight: .medium))
+                .font(.streamFont(size: 12, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -59,7 +59,7 @@ struct StreamOnScreenKeyboardOverlay: View {
 
     private func statusBadge(_ title: String) -> some View {
         Text(title)
-            .font(.streamNvidia(size: 9, weight: .bold))
+            .font(.streamFont(size: 9, weight: .bold))
             .tracking(0.7)
             .foregroundStyle(.black.opacity(0.86))
             .padding(.horizontal, 6)
@@ -137,7 +137,7 @@ struct StreamOnScreenKeyboardOverlay: View {
                         .font(.system(size: 13, weight: .bold))
                 } else {
                     Text(key.map { StreamOSKLayout.label(for: $0, shiftLatched: state.shiftLatched, layer: state.layer) } ?? " ")
-                        .font(.streamNvidia(size: 13, weight: .bold))
+                        .font(.streamFont(size: 13, weight: .bold))
                 }
             }
             .foregroundStyle(foregroundColor(isLatchedModifier: isLatchedModifier || isActiveLayer, isPadCursor: isLeftPadCursor || isRightPadCursor))
@@ -173,7 +173,7 @@ struct StreamOnScreenKeyboardOverlay: View {
 
     private var hintFooter: some View {
         Text("A TYPE   B ⌫   X SPACE   Y SHIFT   ⏎ ENTER   PADS AIM · CLICK / L2·R2 TYPE   STEAM+X CLOSE")
-            .font(.streamNvidia(size: 9, weight: .bold))
+            .font(.streamFont(size: 9, weight: .bold))
             .tracking(0.8)
             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             .lineLimit(1)

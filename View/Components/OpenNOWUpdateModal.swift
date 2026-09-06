@@ -81,15 +81,15 @@ struct OpenNOWUpdateModal: View {
         HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(eyebrow)
-                    .font(.nvidiaSans(size: 10 * uiScale, weight: .bold))
+                    .font(.uiSans(size: 10 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.1)
                 Text(title)
-                    .font(.nvidiaSans(size: 20 * uiScale, weight: .bold))
+                    .font(.uiSans(size: 20 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.nvidiaSans(size: 12 * uiScale, weight: .medium))
+                        .font(.uiSans(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -133,7 +133,7 @@ struct OpenNOWUpdateModal: View {
 
     private func message(_ text: String) -> some View {
         Text(text)
-            .font(.nvidiaSans(size: 12 * uiScale, weight: .medium))
+            .font(.uiSans(size: 12 * uiScale, weight: .medium))
             .foregroundStyle(OpenNOWDesign.Text.secondary)
             .lineSpacing(2 * uiScale)
             .fixedSize(horizontal: false, vertical: true)
@@ -144,13 +144,13 @@ struct OpenNOWUpdateModal: View {
         VStack(alignment: .leading, spacing: 7 * uiScale) {
             HStack {
                 Text(installState == .staging ? "INSTALLING" : "DOWNLOADING")
-                    .font(.nvidiaSans(size: 10 * uiScale, weight: .bold))
+                    .font(.uiSans(size: 10 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .tracking(1.1)
                 Spacer(minLength: OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                 if let byteSummary {
                     Text(byteSummary)
-                        .font(.nvidiaSans(size: 11 * uiScale, weight: .bold))
+                        .font(.uiSans(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
             }
@@ -182,7 +182,7 @@ struct OpenNOWUpdateModal: View {
                     openURL(linkURL)
                 } label: {
                     Text(linkTitle)
-                        .font(.nvidiaSans(size: 12 * uiScale, weight: .bold))
+                        .font(.uiSans(size: 12 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(0.8)
                 }
@@ -271,7 +271,7 @@ struct OpenNOWModalCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.nvidiaSans(size: 11 * uiScale, weight: .bold))
+                .font(.uiSans(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                 .frame(width: 28 * uiScale, height: 28 * uiScale)
                 .background(isHovering ? Color.white.opacity(0.08) : Color.clear)

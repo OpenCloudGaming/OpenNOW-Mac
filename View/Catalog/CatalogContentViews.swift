@@ -319,10 +319,10 @@ struct CatalogHeroView: View {
                         CatalogHeroTitleView(viewModel: viewModel, game: game, scrimColor: scrimColor)
                         VStack(spacing: 2) {
                             Text(game.primaryStoreLabel)
-                                .nvidiaFont(size: 13, weight: .bold)
+                                .catalogFont(size: 13, weight: .bold)
                             if !game.ratingLabel.isEmpty {
                                 Text(game.ratingLabel)
-                                    .nvidiaFont(size: 13, weight: .bold)
+                                    .catalogFont(size: 13, weight: .bold)
                             }
                         }
                         .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
@@ -389,7 +389,7 @@ struct CatalogHeroTitleView: View {
 
     private var fallbackTitle: some View {
         Text(game.mallDisplayTitle)
-            .nvidiaFont(size: 52)
+            .catalogFont(size: 52)
             .tracking(8)
             .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
             .lineLimit(2)
@@ -420,19 +420,19 @@ struct CatalogBrowseControlsView: View {
             HStack(spacing: 12) {
                 if !viewModel.resultSummary.isEmpty {
                     Text(viewModel.resultSummary.uppercased())
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
                     Button("CLEAR") { viewModel.clearSearchAndFilters() }
                         .buttonStyle(.plain)
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.84))
                 }
                 OpenNOWDropdownMenu(
@@ -449,7 +449,7 @@ struct CatalogBrowseControlsView: View {
                         Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                         Image(systemName: "chevron.down")
                     }
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .frame(height: 34)
@@ -474,7 +474,7 @@ struct CatalogBrowseControlsView: View {
                                     Text((group.label.isEmpty ? group.id : group.label).uppercased())
                                     Image(systemName: "slider.horizontal.3")
                                 }
-                                .nvidiaFont(size: 11, weight: .bold)
+                                .catalogFont(size: 11, weight: .bold)
                                 .foregroundStyle(.white.opacity(0.82))
                                 .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                                 .frame(height: 32)
@@ -488,7 +488,7 @@ struct CatalogBrowseControlsView: View {
                                     Text(option.label.uppercased())
                                     Image(systemName: "xmark")
                                 }
-                                .nvidiaFont(size: 11, weight: .bold)
+                                .catalogFont(size: 11, weight: .bold)
                                 .foregroundStyle(.black.opacity(0.88))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
@@ -515,15 +515,15 @@ struct CatalogEmptyDestinationView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .nvidiaFont(size: 22, weight: .bold)
+                    .catalogFont(size: 22, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .nvidiaFont(size: 24, weight: .bold)
+                        .catalogFont(size: 24, weight: .bold)
                         .foregroundStyle(.white)
                     Text(message)
-                        .nvidiaFont(size: 14, weight: .medium)
+                        .catalogFont(size: 14, weight: .medium)
                         .foregroundStyle(.white.opacity(0.62))
                 }
             }

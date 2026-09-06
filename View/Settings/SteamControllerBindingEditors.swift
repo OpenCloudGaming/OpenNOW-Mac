@@ -17,7 +17,7 @@ extension SteamControllerMappingView {
         }()
         return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(combo.isEmpty ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.accent)
             let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale))]
             LazyVGrid(columns: columns, alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
@@ -133,11 +133,11 @@ extension SteamControllerMappingView {
             if binding.wrappedValue.mode == .mouse || binding.wrappedValue.mode == .scrollWheel {
                 HStack {
                     Text("Sensitivity")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     Spacer()
                     Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .monospacedDigit()
                 }
@@ -145,7 +145,7 @@ extension SteamControllerMappingView {
                     .tint(OpenNOWDesign.accent)
                 HStack {
                     Text("Invert Y-Axis")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     Spacer()
                     Toggle(isOn: binding.invertY, uiScale: uiScale)

@@ -63,7 +63,7 @@ struct RecordingEditorAdvancedDrawer: View {
             }
 
             Text(detail)
-                .font(.recordingsNvidia(size: 10 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
                 .foregroundStyle(detailIsNotice ? OpenNOWDesign.accent.opacity(0.80) : .white.opacity(0.46))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -95,7 +95,7 @@ struct RecordingEditorAdvancedDrawer: View {
                 Text("Append Recording")
                 Image(systemName: "chevron.down")
             }
-            .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+            .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
             .foregroundStyle(.white.opacity(0.88))
             .padding(.horizontal, 10 * uiScale)
             .frame(height: RecordingEditorMetrics.compactControlHeight * uiScale)
@@ -248,7 +248,7 @@ struct RecordingEditorSlider: View {
     var body: some View {
         HStack(spacing: 8 * uiScale) {
             Text(title)
-                .font(.recordingsNvidia(size: 10 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .frame(width: 78 * uiScale, alignment: .leading)
                 .lineLimit(1)

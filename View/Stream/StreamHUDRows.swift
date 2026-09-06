@@ -10,12 +10,12 @@ struct StreamHUDMetricCard: View {
             HStack(spacing: 6) {
                 Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
                 Text(title.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(.white.opacity(0.46))
             }
             Text(value)
-                .font(.streamNvidia(size: 12, weight: .bold))
+                .font(.streamFont(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -56,11 +56,11 @@ struct StreamHUDControllerRow: View {
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label.uppercased())
-                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                 Text(name)
-                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -68,7 +68,7 @@ struct StreamHUDControllerRow: View {
             Spacer(minLength: 6)
             batteryGauge
             Text(level >= 0 ? "\(level)%" : "—")
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .frame(width: 34, alignment: .trailing)
         }
@@ -137,11 +137,11 @@ struct StreamHUDSliderRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 Text(label)
-                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                 Spacer(minLength: 8)
                 Text(String(value))
-                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .font(.streamFont(size: 11, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                     .frame(minWidth: 28, alignment: .trailing)
             }
@@ -176,7 +176,7 @@ struct StreamHUDSegmentedRow<Value: Hashable>: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
+                .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             HStack(spacing: 6) {
@@ -207,7 +207,7 @@ private struct StreamHUDSegmentedChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(isSelected ? .black : WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
@@ -245,7 +245,7 @@ struct StreamHUDParticipantIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(color)
                 .frame(width: 22, height: 22)
                 .background(Color.white.opacity(isFocused ? 0.16 : 0.07))

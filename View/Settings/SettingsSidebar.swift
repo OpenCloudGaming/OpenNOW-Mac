@@ -118,7 +118,7 @@ struct SettingsSidebarItem: View {
                     .frame(width: 16 * uiScale, height: 16 * uiScale)
                 if showsLabel {
                     Text(group.title)
-                        .font(.settingsNvidia(size: 13 * uiScale, weight: isSelected ? .bold : .medium))
+                        .font(.settingsFont(size: 13 * uiScale, weight: isSelected ? .bold : .medium))
                         .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.6))
                         .lineLimit(1)
                     Spacer(minLength: 4 * uiScale)

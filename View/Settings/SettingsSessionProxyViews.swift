@@ -104,12 +104,12 @@ struct SessionProxySettingsPage: View {
                 HStack(spacing: 12 * uiScale) {
                     if !settings.isEnabled {
                         Text(savedSettings.isEnabled ? "Proxy still active until saved." : "Proxy off. Requests connect directly.")
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.75))
                     }
                     if !testMessage.isEmpty {
                         Text(testMessage)
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(testSucceeded ? OpenNOWDesign.accent : Color.white.opacity(0.75))
                             .fixedSize(horizontal: false, vertical: true)
                     }

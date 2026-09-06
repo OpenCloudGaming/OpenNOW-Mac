@@ -22,7 +22,7 @@ extension GameDetailPanel {
 
     func shortDescription(game: OPNCatalogGameObject) -> some View {
         Text(GameDetailPresentation.shortDescription(game: game))
-            .nvidiaFont(size: 15, weight: .medium)
+            .catalogFont(size: 15, weight: .medium)
             .foregroundStyle(.white.opacity(0.90))
             .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
@@ -35,10 +35,10 @@ extension GameDetailPanel {
         Button { viewModel.showGameInfo() } label: {
             HStack(spacing: 7) {
                 Text("READ MORE")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .tracking(0.8)
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
             }
             .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
             .padding(.horizontal, 13 * uiScale)

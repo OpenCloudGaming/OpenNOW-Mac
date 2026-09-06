@@ -13,8 +13,8 @@ enum RecordingsLayout {
 }
 
 extension Font {
-    static func recordingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func recordingsFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -132,21 +132,21 @@ struct RecordingsView: View {
             HStack(alignment: .top, spacing: 12 * uiScale) {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("RECORDINGS")
-                        .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
                         .foregroundStyle(OpenNOWDesign.accent)
                     Text("Saved Videos")
-                        .font(.recordingsNvidia(size: 25 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 25 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.96))
                     Text(librarySubtitle)
-                        .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(1)
                 }
                 Spacer()
                 Button { model.reload(showMessage: true) } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.recordingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
                         .background(Color.white.opacity(0.075))
@@ -180,9 +180,9 @@ struct RecordingsView: View {
                         Image(systemName: "arrow.up.arrow.down")
                         Text(model.sortOrder.title)
                         Image(systemName: "chevron.down")
-                            .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
+                            .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                     }
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.84))
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
@@ -193,7 +193,7 @@ struct RecordingsView: View {
                 Spacer()
 
                 Text("\(visibleRecordings.count) shown")
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.48))
             }
             .zIndex(1)
@@ -306,11 +306,11 @@ private struct RecordingMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             Text(title)
-                .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(1.0)
                 .foregroundStyle(.white.opacity(0.42))
             Text(value)
-                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -329,11 +329,11 @@ private struct RecordingSearchField: View {
     var body: some View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
-                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
-                .font(.recordingsNvidia(size: 13 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.94))
             if !text.isEmpty {
                 Button { text = "" } label: {
@@ -361,10 +361,10 @@ private struct RecordingFilterChip: View {
         Button(action: action) {
             HStack(spacing: 6 * uiScale) {
                 Image(systemName: filter.systemImage)
-                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                 Text(filter.title)
             }
-            .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+            .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
             .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.92 : 0.64))
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
@@ -398,11 +398,11 @@ private struct RecordingRow: View {
                     RecordingThumbnail(recording: recording, isSelected: isSelected, isHovering: isHovering, uiScale: uiScale)
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         Text(recording.title)
-                            .font(.recordingsNvidia(size: 14 * uiScale, weight: .bold))
+                            .font(.recordingsFont(size: 14 * uiScale, weight: .bold))
                             .foregroundStyle(.white.opacity(0.96))
                             .lineLimit(2)
                         Text(RecordingFormat.relativeDateText(recording.createdAt))
-                            .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                            .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                             .lineLimit(1)
                     }
@@ -466,14 +466,14 @@ private struct RecordingThumbnail: View {
                     .stroke(Color.black.opacity(0.35), lineWidth: 1)
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
-                .font(.recordingsNvidia(size: 19 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 19 * uiScale, weight: .bold))
                 .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
                 .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
         .frame(width: 76 * uiScale, height: 46 * uiScale)
         .overlay(alignment: .bottomTrailing) {
             Text(RecordingFormat.resolutionBadge(recording))
-                .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(.black.opacity(0.86))
                 .padding(.horizontal, 5 * uiScale)
                 .frame(height: 15 * uiScale)
@@ -555,7 +555,7 @@ private struct RecordingPill: View {
 
     var body: some View {
         Text(text)
-            .font(.recordingsNvidia(size: 9 * uiScale, weight: .bold))
+            .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
             .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.62))
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)

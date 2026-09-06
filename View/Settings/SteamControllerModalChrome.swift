@@ -53,11 +53,11 @@ struct SteamControllerModalHeader: View {
         HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(eyebrow)
-                    .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.1)
                     .foregroundStyle(OpenNOWDesign.accent)
                 Text(title)
-                    .font(.settingsNvidia(size: 20 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 20 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.primary)
             }
             Spacer(minLength: OpenNOWDesign.Spacing.xSmall(scale: uiScale))
@@ -77,7 +77,7 @@ struct SteamControllerEyebrow: View {
 
     var body: some View {
         Text(text)
-            .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 10 * uiScale, weight: .bold))
             .tracking(1.1)
             .foregroundStyle(OpenNOWDesign.Text.tertiary)
     }
@@ -104,10 +104,10 @@ struct SteamControllerChip: View {
             HStack(spacing: 6 * uiScale) {
                 if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.settingsNvidia(size: (fontSize - 1) * uiScale, weight: .bold))
+                        .font(.settingsFont(size: (fontSize - 1) * uiScale, weight: .bold))
                 }
                 Text(label)
-                    .font(.settingsNvidia(size: fontSize * uiScale, weight: .bold))
+                    .font(.settingsFont(size: fontSize * uiScale, weight: .bold))
                     .lineLimit(1)
             }
             .foregroundStyle(foreground)

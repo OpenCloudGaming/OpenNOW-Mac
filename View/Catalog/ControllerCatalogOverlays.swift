@@ -54,18 +54,18 @@ struct ControllerSearchOverlay: View {
     private var searchField: some View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
-                .nvidiaFont(size: 18, weight: .bold)
+                .catalogFont(size: 18, weight: .bold)
                 .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accent : .white.opacity(0.62))
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .nvidiaFont(size: 20, weight: .medium)
+                .catalogFont(size: 20, weight: .medium)
                 .foregroundStyle(.white)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
                 Button("CLEAR", action: { viewModel.searchQuery = "" })
                     .buttonStyle(.plain)
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
             }
         }
@@ -104,9 +104,9 @@ struct ControllerSearchOverlay: View {
         } label: {
             HStack(spacing: 8 * uiScale) {
                 Image(systemName: "arrow.up.arrow.down")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                 Text("SORT: \(sortLabel.uppercased())")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .tracking(0.6)
             }
             .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.82))
@@ -130,10 +130,10 @@ struct ControllerSearchOverlay: View {
             HStack(spacing: 8 * uiScale) {
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                 }
                 Text("\(group.label.uppercased()): \(label.uppercased())")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .tracking(0.6)
             }
             .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OpenNOWDesign.accent : .white.opacity(0.82)))
@@ -153,9 +153,9 @@ struct ControllerSearchOverlay: View {
         } label: {
             HStack(spacing: 6 * uiScale) {
                 Image(systemName: "xmark.circle.fill")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                 Text("CLEAR FILTERS")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(0.6)
             }
             .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.72))
@@ -257,10 +257,10 @@ struct ControllerSearchPickerOverlay: View {
                                 Button { select(index) } label: {
                                     HStack(spacing: 13 * uiScale) {
                                         Image(systemName: isApplied(option) ? "checkmark.circle.fill" : "circle")
-                                            .nvidiaFont(size: 13, weight: .bold)
+                                            .catalogFont(size: 13, weight: .bold)
                                             .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                         Text(option.label)
-                                            .nvidiaFont(size: 14, weight: .bold)
+                                            .catalogFont(size: 14, weight: .bold)
                                             .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.88))
                                             .lineLimit(1)
                                         Spacer(minLength: 0)
@@ -319,7 +319,7 @@ struct ControllerGameDetailOverlay: View {
                     ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
                     detailMetadata
                     Text(detailDescription)
-                        .nvidiaFont(size: 18, weight: .medium)
+                        .catalogFont(size: 18, weight: .medium)
                         .foregroundStyle(.white.opacity(0.82))
                         .lineSpacing(4)
                         .lineLimit(5)
@@ -330,9 +330,9 @@ struct ControllerGameDetailOverlay: View {
                             Button { perform(action) } label: {
                                 HStack(spacing: 9 * uiScale) {
                                     Image(systemName: action.icon)
-                                        .nvidiaFont(size: 14, weight: .bold)
+                                        .catalogFont(size: 14, weight: .bold)
                                     Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
-                                        .nvidiaFont(size: 12, weight: .bold)
+                                        .catalogFont(size: 12, weight: .bold)
                                         .tracking(0.8)
                                 }
                                 .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
@@ -436,12 +436,12 @@ struct ControllerActionMenuOverlay: View {
                                             .frame(width: 28 * uiScale)
                                     } else {
                                         Image(systemName: item.icon)
-                                            .nvidiaFont(size: 15, weight: .bold)
+                                            .catalogFont(size: 15, weight: .bold)
                                             .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .frame(width: 28 * uiScale)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
-                                        .nvidiaFont(size: 15, weight: .bold)
+                                        .catalogFont(size: 15, weight: .bold)
                                         .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
                                         .lineLimit(1)
                                     Spacer(minLength: 0)

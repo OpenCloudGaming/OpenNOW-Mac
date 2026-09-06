@@ -80,16 +80,16 @@ struct RemoteCoOpSetupWizard: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 HStack(spacing: 8 * uiScale) {
                     Text("Remote Co-Op Setup")
-                        .font(.settingsNvidia(size: 19 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 19 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer(minLength: 0)
                     Text("STEP \(stepIndex + 1) OF \(steps.count)")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.4))
                 }
                 Text("Nothing here is permanent - every setting it touches stays editable afterwards from the cards below.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -112,7 +112,7 @@ struct RemoteCoOpSetupWizard: View {
             HStack(spacing: 10 * uiScale) {
                 if tailscaleDetected {
                     Text("Tailscale detected on this Mac")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                 }
                 Spacer(minLength: 0)
@@ -204,12 +204,12 @@ struct RemoteCoOpSetupWizard: View {
             VStack(alignment: .leading, spacing: 10 * uiScale) {
                 HStack(spacing: 7 * uiScale) {
                     Text("\u{2713}")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(.black)
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
                         .background(OpenNOWDesign.accent)
                     Text(advice.headline)
-                        .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
@@ -221,29 +221,29 @@ struct RemoteCoOpSetupWizard: View {
                                 .foregroundStyle(.white.opacity(0.68))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     }
                 }
 
                 if applied {
                     Text("Transport set to \(advice.transportMode.label).")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                 } else if outstanding.isEmpty {
                     Text(advice.needsNothing
                          ? "Nothing else to do - press Apply to set the transport mode."
                          : "Everything this needs is already configured - press Apply to set the transport mode.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Still to finish")
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                             .foregroundStyle(.white.opacity(0.82))
                         ForEach(Array(outstanding.enumerated()), id: \.offset) { _, todo in
                             Text("\u{2022} " + todo)
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.62))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -282,7 +282,7 @@ struct RemoteCoOpSetupWizard: View {
 
     func stepHeading(_ title: String) -> some View {
         Text(title)
-            .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 15 * uiScale, weight: .bold))
             .foregroundStyle(.white)
     }
 
@@ -290,10 +290,10 @@ struct RemoteCoOpSetupWizard: View {
         Button(action: select) {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
-                    .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                     .foregroundStyle(isSelected ? .white : .white.opacity(0.78))
                 Text(detail)
-                    .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -312,12 +312,12 @@ struct RemoteCoOpSetupWizard: View {
         VStack(alignment: .leading, spacing: 8 * uiScale) {
             HStack(spacing: 7 * uiScale) {
                 Text("\(number)")
-                    .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(.black)
                     .frame(width: 18 * uiScale, height: 18 * uiScale)
                     .background(OpenNOWDesign.accent)
                 Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(.white)
             }
             ForEach(Array(options.enumerated()), id: \.offset) { index, option in
@@ -328,10 +328,10 @@ struct RemoteCoOpSetupWizard: View {
                             .frame(width: 3 * uiScale)
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(option.0)
-                                .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                                 .foregroundStyle(option.2 ? .white : .white.opacity(0.78))
                             Text(option.1)
-                                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.5))
                                 .fixedSize(horizontal: false, vertical: true)
                         }

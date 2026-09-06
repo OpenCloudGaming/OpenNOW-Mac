@@ -75,11 +75,11 @@ struct WhatsNewCard: View {
             } label: {
                 HStack(spacing: 10 * uiScale) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.44))
                         .frame(width: 12 * uiScale)
                     Text(entry.version.isEmpty ? entry.summary.tagName : entry.version)
-                        .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.88))
                     if entry.version == SettingsAppMetadata.version {
                         WhatsNewBadge(title: "INSTALLED", tone: .neutral, uiScale: uiScale)
@@ -87,11 +87,11 @@ struct WhatsNewCard: View {
                     Spacer(minLength: 8 * uiScale)
                     if let publishedAt = entry.publishedAt {
                         Text(OpenNOWUpdateFormat.releaseDate(publishedAt))
-                            .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.44))
                     }
                     Text("\(entry.notes.entryCount)")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.34))
                         .frame(minWidth: 18 * uiScale, alignment: .trailing)
                 }
@@ -114,12 +114,12 @@ struct WhatsNewCard: View {
             VStack(alignment: .leading, spacing: 3 * uiScale) {
                 HStack(spacing: 8 * uiScale) {
                     Text(release.version)
-                        .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                     WhatsNewBadge(title: "AVAILABLE", tone: .accent, uiScale: uiScale)
                 }
                 Text(availableSubtitle(release))
-                    .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.54))
             }
             Spacer(minLength: 10 * uiScale)
@@ -140,7 +140,7 @@ struct WhatsNewCard: View {
 
     private func statusText(_ text: String) -> some View {
         Text(text)
-            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
             .foregroundStyle(.white.opacity(0.54))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +176,7 @@ private struct WhatsNewBadge: View {
 
     var body: some View {
         Text(title)
-            .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 9 * uiScale, weight: .bold))
             .foregroundStyle(tone == .accent ? .black : .white.opacity(0.62))
             .tracking(0.8)
             .padding(.horizontal, 7 * uiScale)

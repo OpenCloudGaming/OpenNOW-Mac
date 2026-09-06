@@ -217,13 +217,13 @@ struct CatalogShowAllEmptySearchView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .nvidiaFont(size: 34, weight: .bold)
+                .catalogFont(size: 34, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.accent.opacity(0.84))
             Text("No matching games")
-                .nvidiaFont(size: 18, weight: .bold)
+                .catalogFont(size: 18, weight: .bold)
                 .foregroundStyle(.white.opacity(0.88))
             Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Try searching by title, genre, store, publisher, input type, rating, or tag." : "No metadata matched \"\(query)\".")
-                .nvidiaFont(size: 13, weight: .medium)
+                .catalogFont(size: 13, weight: .medium)
                 .foregroundStyle(.white.opacity(0.58))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)

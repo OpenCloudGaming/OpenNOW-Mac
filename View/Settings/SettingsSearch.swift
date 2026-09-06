@@ -170,18 +170,18 @@ struct SettingsSearchField: View {
     var body: some View {
         HStack(spacing: 8 * uiScale) {
             Image(systemName: "magnifyingglass")
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(isFocused ? 0.72 : 0.42))
             TextField("Search settings", text: $query)
                 .textFieldStyle(.plain)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
                 .focused($isFocused)
                 .onSubmit { isFocused = false }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark")
-                        .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.5))
                         .contentShape(Rectangle())
                 }
@@ -210,7 +210,7 @@ struct SettingsSearchResults: View {
         VStack(alignment: .leading, spacing: 2 * uiScale) {
             if results.isEmpty {
                 Text("No setting matches \u{201C}\(query)\u{201D}.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14 * uiScale)
@@ -235,11 +235,11 @@ struct SettingsSearchResultRow: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3 * uiScale) {
                 Text(entry.title)
-                    .font(.settingsNvidia(size: 12.5 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12.5 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(isHovering ? 1 : 0.88))
                     .lineLimit(1)
                 Text(SettingsSearchIndex.location(of: entry))
-                    .font(.settingsNvidia(size: 10.5 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 10.5 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
             }

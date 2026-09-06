@@ -12,7 +12,7 @@ struct SettingsRegionRow: View {
             VStack(alignment: .leading, spacing: 8 * uiScale) {
                 HStack(alignment: .top, spacing: 8 * uiScale) {
                     Text(SettingsRegionName.shortName(for: option))
-                        .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                         .foregroundStyle(selected ? .white : .white.opacity(0.90))
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
@@ -60,7 +60,7 @@ struct RegionLatencyBadge: View {
                 .fill(indicatorColor)
                 .frame(width: 6 * uiScale, height: 6 * uiScale)
             Text(latencyText)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(selected ? OpenNOWDesign.accent : .white.opacity(0.74))
                 .lineLimit(1)
         }

@@ -55,11 +55,11 @@ struct CatalogMainMenuPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("GEFORCE NOW")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(1.4)
                     .foregroundStyle(OpenNOWDesign.accent)
                 Text("OpenNOW Menu")
-                    .nvidiaFont(size: 20, weight: .bold)
+                    .catalogFont(size: 20, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
             .padding(.horizontal, 22 * uiScale)
@@ -217,11 +217,11 @@ struct CatalogAccountDropdownPanel: View {
                 CatalogAccountAvatar(account: viewModel.account, size: 44 * uiScale)
                 VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(viewModel.account.displayName)
-                        .nvidiaFont(size: 15, weight: .medium)
+                        .catalogFont(size: 15, weight: .medium)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(viewModel.subscriptionStatus.membershipTier.uppercased())
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
@@ -239,7 +239,7 @@ struct CatalogAccountDropdownPanel: View {
 
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
                 Text("ACCOUNTS")
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.42))
                     .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -344,19 +344,19 @@ struct CatalogAccountDropdownRow: View {
                         Rectangle()
                             .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
                         Image(systemName: systemImage)
-                            .nvidiaFont(size: 13, weight: .bold)
+                            .catalogFont(size: 13, weight: .bold)
                             .foregroundStyle(iconColor)
                     }
                     .frame(width: 30 * uiScale, height: 30 * uiScale)
                 }
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(title)
-                        .nvidiaFont(size: 14, weight: .bold)
+                        .catalogFont(size: 14, weight: .bold)
                         .foregroundStyle(titleColor)
                         .lineLimit(1)
                     if let subtitle {
                         Text(subtitle)
-                            .nvidiaFont(size: 11, weight: .medium)
+                            .catalogFont(size: 11, weight: .medium)
                             .foregroundStyle(.white.opacity(0.52))
                             .lineLimit(1)
                     }
@@ -403,7 +403,7 @@ struct CatalogMainMenuSectionLabel: View {
 
     var body: some View {
         Text(title)
-            .nvidiaFont(size: 10, weight: .bold)
+            .catalogFont(size: 10, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(.white.opacity(0.42))
             .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -423,12 +423,12 @@ struct CatalogMainMenuPlaytimeCard: View {
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
                         .foregroundStyle(.white.opacity(0.46))
                     Spacer(minLength: 0)
                     Text(status.membershipTier.uppercased())
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
@@ -436,11 +436,11 @@ struct CatalogMainMenuPlaytimeCard: View {
                         .background(OpenNOWDesign.accent)
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
-                    .nvidiaFont(size: 22, weight: .bold)
+                    .catalogFont(size: 22, weight: .bold)
                     .foregroundStyle((activeSession != nil || status.isAvailable) ? .white.opacity(0.95) : .white.opacity(0.56))
                     .lineLimit(1)
                 Text(activeSession?.usageText ?? status.usageText)
-                    .nvidiaFont(size: 11, weight: .medium)
+                    .catalogFont(size: 11, weight: .medium)
                     .foregroundStyle(.white.opacity(0.56))
                     .lineLimit(1)
             }
@@ -500,7 +500,7 @@ struct CatalogMainMenuRow: View {
                             .scaleEffect((compact ? 0.72 : 0.82) * uiScale)
                     } else {
                         Image(systemName: systemImage)
-                            .nvidiaFont(size: compact ? 12 : 14, weight: .bold)
+                            .catalogFont(size: compact ? 12 : 14, weight: .bold)
                             .foregroundStyle(iconColor)
                     }
                 }
@@ -508,12 +508,12 @@ struct CatalogMainMenuRow: View {
 
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(title)
-                        .nvidiaFont(size: compact ? 12 : 14, weight: .bold)
+                        .catalogFont(size: compact ? 12 : 14, weight: .bold)
                         .foregroundStyle(titleColor)
                         .lineLimit(1)
                     if !subtitle.isEmpty {
                         Text(subtitle)
-                            .nvidiaFont(size: 11, weight: .medium)
+                            .catalogFont(size: 11, weight: .medium)
                             .foregroundStyle(.white.opacity(0.52))
                             .lineLimit(1)
                     }

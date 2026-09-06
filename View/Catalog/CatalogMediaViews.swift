@@ -71,7 +71,7 @@ struct CatalogImageFallback: View {
                 SkeletonBlock()
             } else {
                 Image(systemName: "play.rectangle.fill")
-                    .nvidiaFont(size: 34, weight: .bold)
+                    .catalogFont(size: 34, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
@@ -98,7 +98,7 @@ struct CatalogMessageView: View {
                 Rectangle()
                     .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
-                    .nvidiaFont(size: 15, weight: .bold)
+                    .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
             }
             .frame(width: 36, height: 36)
@@ -106,12 +106,12 @@ struct CatalogMessageView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.90))
                     .fixedSize(horizontal: false, vertical: true)
                 if let hint = presentation.hint {
                     Text(hint)
-                        .nvidiaFont(size: 12, weight: .medium)
+                        .catalogFont(size: 12, weight: .medium)
                         .foregroundStyle(.white.opacity(0.60))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -120,7 +120,7 @@ struct CatalogMessageView: View {
             if let details = presentation.technicalDetails {
                 Button { copy(details) } label: {
                     Text(copiedDetails ? "COPIED" : "COPY DETAILS")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .foregroundStyle(.white.opacity(0.76))
                         .tracking(0.7)
                         .padding(.horizontal, 10)
@@ -133,7 +133,7 @@ struct CatalogMessageView: View {
             if let diagnosticsState, let onGenerateDiagnostics {
                 Button(action: onGenerateDiagnostics) {
                     Text(Self.diagnosticsTitle(for: diagnosticsState))
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
@@ -148,7 +148,7 @@ struct CatalogMessageView: View {
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(.white.opacity(0.62))
                         .frame(width: 28, height: 28)
                         .background(Color.white.opacity(0.065))
@@ -359,7 +359,7 @@ struct CatalogRatingBadge: View {
     private var fallbackBadge: some View {
         VStack(spacing: 0) {
             Text(game.ratingLabel.uppercased())
-                .font(.nvidiaSans(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
+                .font(.uiSans(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
@@ -370,11 +370,11 @@ struct CatalogRatingBadge: View {
                 .minimumScaleFactor(0.65)
             Spacer(minLength: 0)
             Text(game.ratingSystemName.isEmpty ? "CONTENT RATED" : "CONTENT RATED BY")
-                .font(.nvidiaSans(size: 5.5, weight: .black))
+                .font(.uiSans(size: 5.5, weight: .black))
                 .foregroundStyle(.black)
                 .lineLimit(1)
             Text(game.ratingSystemName.isEmpty ? "" : game.ratingSystemName.uppercased())
-                .font(.nvidiaSans(size: 9, weight: .black))
+                .font(.uiSans(size: 9, weight: .black))
                 .foregroundStyle(.black)
                 .padding(.bottom, 4)
         }

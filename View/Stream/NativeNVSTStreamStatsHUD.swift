@@ -76,12 +76,12 @@ struct NativeNVSTStatsPanel: View {
     private var titleBar: some View {
         HStack(spacing: 8) {
             Text("STREAM STATS")
-                .font(.streamNvidia(size: 9, weight: .bold))
+                .font(.streamFont(size: 9, weight: .bold))
                 .tracking(1.4)
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
             Spacer(minLength: 6)
             Text(transport)
-                .font(.streamNvidia(size: 9, weight: .bold))
+                .font(.streamFont(size: 9, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 .padding(.horizontal, 6)
@@ -115,16 +115,16 @@ struct NativeNVSTStatsPanel: View {
         VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(hero.value)
-                    .font(.streamNvidia(size: 25, weight: .bold))
+                    .font(.streamFont(size: 25, weight: .bold))
                     .foregroundStyle(hero.color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 Text(hero.unit)
-                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .font(.streamFont(size: 10, weight: .bold))
                     .foregroundStyle(hero.color.opacity(0.7))
             }
             Text(hero.label)
-                .font(.streamNvidia(size: 9, weight: .bold))
+                .font(.streamFont(size: 9, weight: .bold))
                 .tracking(0.9)
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                 .lineLimit(1)
@@ -143,7 +143,7 @@ struct NativeNVSTStatsPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(group.label)
-                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .font(.streamFont(size: 9, weight: .bold))
                     .tracking(1.2)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                 Rectangle()
@@ -190,21 +190,21 @@ struct NativeNVSTStatsPanel: View {
 
     private func rowLabel(_ label: String) -> some View {
         Text(label)
-            .font(.streamNvidia(size: 10, weight: .medium))
+            .font(.streamFont(size: 10, weight: .medium))
             .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
             .lineLimit(1)
     }
 
     private func rowValue(_ value: String, color: Color) -> some View {
         Text(value)
-            .font(.streamNvidia(size: 11, weight: .bold))
+            .font(.streamFont(size: 11, weight: .bold))
             .foregroundStyle(color)
             .lineLimit(1)
     }
 
     private func rowDetail(_ detail: String) -> some View {
         Text(detail)
-            .font(.streamNvidia(size: 9, weight: .medium))
+            .font(.streamFont(size: 9, weight: .medium))
             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
     }
 }

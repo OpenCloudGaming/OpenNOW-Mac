@@ -64,10 +64,10 @@ struct RemoteCoOpRelayWizard: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6 * uiScale) {
             Text("Set Up Relay")
-                .font(.settingsNvidia(size: 19 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 19 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
             Text("A relay lets guests play from networks that block direct connections - schools, libraries, cafes. It is free for 1,000 GB a month, and only guests who actually need it use any of that.")
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -78,12 +78,12 @@ struct RemoteCoOpRelayWizard: View {
             ForEach(Step.allCases, id: \.rawValue) { entry in
                 HStack(spacing: 6 * uiScale) {
                     Text("\(entry.rawValue + 1)")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(entry.rawValue <= stepIndex ? .black : .white.opacity(0.5))
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
                         .background(entry.rawValue <= stepIndex ? OpenNOWDesign.accent : Color.white.opacity(0.1))
                     Text(entry.title)
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(entry.rawValue == stepIndex ? .white : .white.opacity(0.42))
                 }
@@ -115,10 +115,10 @@ struct RemoteCoOpRelayWizard: View {
             callout("Skipping this is the usual reason setup fails later. Cloudflare reports an unsubscribed account as an authorization failure, which looks exactly like a token problem.")
             if let url = Self.cloudflareRealtimeURL {
                 Link("Open Cloudflare Realtime", destination: url)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
             }
             Text("Prefer not to put a card down? Tailscale covers the same blocked-network case for free, with no Cloudflare account at all - each guest just installs it and joins your tailnet. Close this and see the README.")
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -138,7 +138,7 @@ struct RemoteCoOpRelayWizard: View {
             callout("Newer accounts list Cloudflare Calls as Cloudflare Realtime. Same permission, renamed.")
             if let url = Self.cloudflareAPITokensURL {
                 Link("Open the API token page", destination: url)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
             }
         }
     }
@@ -146,14 +146,14 @@ struct RemoteCoOpRelayWizard: View {
     private var finishStep: some View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             Text("Paste the token Cloudflare showed you. OpenNOW finds your account and creates the TURN key itself. The token is stored in your keychain and never travels with an invite.")
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
             wizardField(title: "Cloudflare API Token", text: $apiTokenDraft, secure: true, placeholder: "Paste the token")
 
             if !viewModel.remoteCoOpTURNSetupMessage.isEmpty {
                 Text(viewModel.remoteCoOpTURNSetupMessage)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(credentials.canRelay ? OpenNOWDesign.accent : .white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -164,13 +164,13 @@ struct RemoteCoOpRelayWizard: View {
                 showingManualKey.toggle()
             }
             .buttonStyle(.plain)
-            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
             .foregroundStyle(OpenNOWDesign.accent)
 
             if showingManualKey {
                 VStack(alignment: .leading, spacing: 10 * uiScale) {
                     Text("Make one at Realtime > TURN in the dashboard and paste both halves. It works identically; only the making of it differs. Cloudflare shows the token once, at creation.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
                     wizardField(title: "TURN Key ID", text: $keyIDDraft, secure: false, placeholder: "Key ID")
@@ -184,7 +184,7 @@ struct RemoteCoOpRelayWizard: View {
         HStack(spacing: 10 * uiScale) {
             if credentials.canRelay {
                 Text("Relay ready")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
             }
             Spacer(minLength: 0)
@@ -228,10 +228,10 @@ struct RemoteCoOpRelayWizard: View {
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 7 * uiScale) {
             Text("\u{2022}")
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.4))
             Text(text)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -240,16 +240,16 @@ struct RemoteCoOpRelayWizard: View {
     private func permissionRow(_ name: String, _ level: String, _ why: String) -> some View {
         HStack(alignment: .top, spacing: 8 * uiScale) {
             Text(name)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 132 * uiScale, alignment: .leading)
             Text(level)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 6 * uiScale)
                 .background(OpenNOWDesign.accent)
             Text(why)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.52))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -259,7 +259,7 @@ struct RemoteCoOpRelayWizard: View {
         HStack(alignment: .top, spacing: 10 * uiScale) {
             Rectangle().fill(OpenNOWDesign.accent).frame(width: 3 * uiScale)
             Text(text)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -270,7 +270,7 @@ struct RemoteCoOpRelayWizard: View {
     private func wizardField(title: String, text: Binding<String>, secure: Bool, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 4 * uiScale) {
             Text(title)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.82))
             Group {
                 if secure {
@@ -280,7 +280,7 @@ struct RemoteCoOpRelayWizard: View {
                 }
             }
             .textFieldStyle(.plain)
-            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
             .foregroundStyle(.white)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 30 * uiScale)

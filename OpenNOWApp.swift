@@ -13,7 +13,7 @@ struct OpenNOWApp: App {
         OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
         Task.detached(priority: .userInitiated) {
-            OpenNOWNVIDIAFont.prepare()
+            OpenNOWUIFont.prepare()
             VendorResourceImage.prewarm()
         }
         OpenNOWLog.info(.app, "OpenNOW application initializing")

@@ -22,11 +22,11 @@ struct SettingsInfoRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
             Text(label.uppercased())
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.44))
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "-" : value)
-                .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(2)
             Spacer(minLength: 0)
@@ -78,7 +78,7 @@ struct SettingsOptionRow: View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(subtitle)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -93,7 +93,7 @@ struct SettingsOptionRow: View {
                         action(index)
                     } label: {
                         Text(options[index])
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                             .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
                             .padding(.horizontal, 12 * uiScale)
                             .frame(height: 32 * uiScale)
@@ -191,7 +191,7 @@ struct SettingsToggleRow: View {
                 SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
                 if showsSubtitle {
                     Text(subtitle)
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -238,17 +238,17 @@ private struct SettingsFieldRow<Field: View>: View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(.white)
                 Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsLabelColumn(uiScale: uiScale)
             field(Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
-                .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 36 * uiScale)
@@ -345,7 +345,7 @@ struct SettingsSliderRow: View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(valueText)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.accent)
         }
     }
@@ -374,7 +374,7 @@ struct SettingsActionButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(foregroundColor)
                 .tracking(0.8)
                 .padding(.horizontal, 14 * uiScale)
@@ -420,11 +420,11 @@ struct SettingsStatusPill: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 3 * uiScale) {
             Text(title.uppercased())
-                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.42))
                 .tracking(0.8)
             Text(value.isEmpty ? "-" : value)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.66))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -447,7 +447,7 @@ struct SettingsMessageView: View {
             Image(systemName: systemImage)
                 .foregroundStyle(OpenNOWDesign.accent)
             Text(message)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.78))
             Spacer()
         }

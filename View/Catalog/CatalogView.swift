@@ -105,24 +105,24 @@ enum CatalogVendorLayout {
 }
 
 extension Font {
-    static func nvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func catalogText(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }
 
-struct NvidiaFontModifier: ViewModifier {
+struct CatalogFontModifier: ViewModifier {
     @Environment(\.opnUIScale) private var uiScale
     let size: CGFloat
-    let weight: OpenNOWNVIDIAFont.Weight
+    let weight: OpenNOWUIFont.Weight
 
     func body(content: Content) -> some View {
-        content.font(OpenNOWNVIDIAFont.font(size: size * uiScale, weight: weight))
+        content.font(OpenNOWUIFont.font(size: size * uiScale, weight: weight))
     }
 }
 
 extension View {
-    func nvidiaFont(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> some View {
-        modifier(NvidiaFontModifier(size: size, weight: weight))
+    func catalogFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> some View {
+        modifier(CatalogFontModifier(size: size, weight: weight))
     }
 }
 

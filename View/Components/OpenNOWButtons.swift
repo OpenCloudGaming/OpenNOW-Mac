@@ -45,7 +45,7 @@ struct OpenNOWModalSecondaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(OpenNOWNVIDIAFont.font(size: 13 * uiScale, weight: .bold))
+            .font(OpenNOWUIFont.font(size: 13 * uiScale, weight: .bold))
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .tracking(0.3)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
@@ -66,7 +66,7 @@ struct OpenNOWCompactButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(OpenNOWNVIDIAFont.font(size: 12 * uiScale, weight: .bold))
+            .font(OpenNOWUIFont.font(size: 12 * uiScale, weight: .bold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 28 * uiScale)

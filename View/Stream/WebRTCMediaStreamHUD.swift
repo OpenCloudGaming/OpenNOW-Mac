@@ -110,13 +110,13 @@ extension WebRTCMediaStreamSurface {
     func statsCompactBox(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.streamNvidia(size: 22, weight: .bold))
+                .font(.streamFont(size: 22, weight: .bold))
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity)
             Text(label)
-                .font(.streamNvidia(size: 9, weight: .bold))
+                .font(.streamFont(size: 9, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
         }
@@ -140,17 +140,17 @@ extension WebRTCMediaStreamSurface {
     func statsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.streamNvidia(size: 10, weight: .medium))
+                .font(.streamFont(size: 10, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
             Text(value)
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(color)
                 .lineLimit(1)
             if let detail {
                 Text(detail)
-                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .font(.streamFont(size: 10, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                     .lineLimit(1)
             }
@@ -162,18 +162,18 @@ extension WebRTCMediaStreamSurface {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("GFN")
-                        .font(.streamNvidia(size: 11, weight: .bold))
+                        .font(.streamFont(size: 11, weight: .bold))
                         .tracking(1.4)
                         .foregroundStyle(WebRTCMediaStreamTheme.accent)
                     Text("HUD")
-                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .font(.streamFont(size: 20, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Button(action: { setUnifiedHUDVisible(false) }) {
                     Image(systemName: "xmark")
-                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .font(.streamFont(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.82))
                         .frame(width: 32, height: 32)
                         .background(Color.white.opacity(0.08))
@@ -184,7 +184,7 @@ extension WebRTCMediaStreamSurface {
             }
 
             Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                .font(.streamNvidia(size: 13, weight: .medium))
+                .font(.streamFont(size: 13, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -227,7 +227,7 @@ extension WebRTCMediaStreamSurface {
             if let sessionLimit, sessionLimit.remainingSeconds(at: context.date) <= 30 {
                 VStack(spacing: 16) {
                     Text("FREE SESSION ENDS IN")
-                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .font(.streamFont(size: 12, weight: .bold))
                         .tracking(2.2)
                         .foregroundStyle(WebRTCMediaStreamTheme.accent)
                     Text(sessionLimitCountdownText(at: context.date))
@@ -235,7 +235,7 @@ extension WebRTCMediaStreamSurface {
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                     Text("Save progress now. GeForce NOW may close this session when the timer reaches zero.")
-                        .font(.streamNvidia(size: 13, weight: .medium))
+                        .font(.streamFont(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 420)
@@ -260,7 +260,7 @@ extension WebRTCMediaStreamSurface {
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 Text(Date(), style: .time)
-                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .font(.streamFont(size: 11, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                     .lineLimit(1)
@@ -268,7 +268,7 @@ extension WebRTCMediaStreamSurface {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(Date(), style: .time))
             Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                 .lineLimit(1)
@@ -379,7 +379,7 @@ extension WebRTCMediaStreamSurface {
             }
             if !networkWarningText.isEmpty {
                 Text(networkWarningText)
-                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.warning)
                     .lineLimit(2)
             }
@@ -400,10 +400,10 @@ extension WebRTCMediaStreamSurface {
         hudSection(label: "CO-OP", spacing: 8) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Not available on this transport")
-                    .font(.streamNvidia(size: 14, weight: .bold))
+                    .font(.streamFont(size: 14, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 Text("Remote Co-Op needs the Native NVST transport, which is where the host can share decoded frames without paying for them twice. Switch in Settings > Streaming and relaunch.")
-                    .font(.streamNvidia(size: 12, weight: .medium))
+                    .font(.streamFont(size: 12, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

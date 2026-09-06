@@ -24,7 +24,7 @@ struct SettingsRowTitle: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8 * uiScale) {
             Text(title)
-                .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
             if isNew { OpenNOWNewTag(uiScale: uiScale) }
         }
@@ -39,7 +39,7 @@ struct SettingsCardTag: View {
 
     var body: some View {
         Text(text)
-            .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
@@ -57,7 +57,7 @@ struct OpenNOWNewTag: View {
 
     var body: some View {
         Text("NEW")
-            .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(.black)
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
@@ -82,7 +82,7 @@ struct OpenNOWBetaTag: View {
 
     var body: some View {
         Text("BETA")
-            .font(.settingsNvidia(size: (compact ? 8 : 9) * uiScale, weight: .bold))
+            .font(.settingsFont(size: (compact ? 8 : 9) * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(foreground)
             .padding(.leading, leadingPadding * uiScale)

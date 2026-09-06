@@ -273,11 +273,11 @@ private struct ControllerHeader: View {
         HStack(spacing: 16 * uiScale) {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("GEFORCE NOW")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.6)
                 Text(headerTitle)
-                    .nvidiaFont(size: 24, weight: .bold)
+                    .catalogFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
             }
             Spacer(minLength: 0)
@@ -315,9 +315,9 @@ private struct ControllerDeviceLabel: View {
     var body: some View {
         HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
             Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
-                .nvidiaFont(size: 9, weight: .bold)
+                .catalogFont(size: 9, weight: .bold)
             Text(text)
-                .nvidiaFont(size: 10, weight: .bold)
+                .catalogFont(size: 10, weight: .bold)
                 .tracking(1.1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -346,7 +346,7 @@ private struct ControllerDesktopModeButton: View {
     var body: some View {
         Button(action: exit) {
             Image(systemName: "macwindow")
-                .nvidiaFont(size: 13, weight: .bold)
+                .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.Text.primary)
                 .frame(width: 40 * uiScale, height: 34 * uiScale)
                 .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.08))
@@ -385,9 +385,9 @@ private struct ControllerNavigationBar: View {
                         Button { select(item) } label: {
                             HStack(spacing: 9 * uiScale) {
                                 Image(systemName: item.icon)
-                                    .nvidiaFont(size: 14, weight: .bold)
+                                    .catalogFont(size: 14, weight: .bold)
                                 Text(item.title.uppercased())
-                                    .nvidiaFont(size: 12, weight: .bold)
+                                    .catalogFont(size: 12, weight: .bold)
                                     .tracking(0.8)
                             }
                             .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.78))
@@ -522,10 +522,10 @@ private struct ControllerSearchEntryBar: View {
         Button(action: open) {
             HStack(spacing: 12 * uiScale) {
                 Image(systemName: "magnifyingglass")
-                    .nvidiaFont(size: 15, weight: .bold)
+                    .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
                 Text("Search")
-                    .nvidiaFont(size: 14, weight: .medium)
+                    .catalogFont(size: 14, weight: .medium)
                     .foregroundStyle(isFocused ? .black.opacity(0.82) : .white.opacity(0.62))
                     .lineLimit(1)
                 Spacer(minLength: 0)

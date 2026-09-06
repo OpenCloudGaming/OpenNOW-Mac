@@ -38,7 +38,7 @@ struct RecordingEditorControl<Label: View>: View {
     var body: some View {
         Button(action: action) {
             label()
-                .font(.recordingsNvidia(size: fontSize * uiScale, weight: .bold))
+                .font(.recordingsFont(size: fontSize * uiScale, weight: .bold))
                 .foregroundStyle(foreground)
                 .padding(.horizontal, width == nil ? horizontalPadding * uiScale : 0)
                 .frame(width: width.map { $0 * uiScale }, height: height * uiScale)

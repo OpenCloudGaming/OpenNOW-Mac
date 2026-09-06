@@ -77,10 +77,10 @@ struct StoreConnectionsOverview: View {
         HStack(alignment: .center, spacing: 14 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text("Library ownership sync")
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Connected stores can sync library ownership before launch.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
             }
             Spacer(minLength: 0)
@@ -109,10 +109,10 @@ struct StoreConnectionRow: View {
             StoreIcon(asset: iconAsset, imageURL: iconURL, connected: isConnected, uiScale: uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(displayName)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(isConnected ? .white : .white.opacity(0.86))
                 Text(statusText(account))
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(isConnected ? .white.opacity(0.62) : .white.opacity(0.44))
             }
             Spacer(minLength: 12 * uiScale)
@@ -228,7 +228,7 @@ struct StoreLocalIconImage: View {
                 .opacity(connected ? 1 : 0.68)
         } else {
             Image(systemName: "link")
-                .font(.settingsNvidia(size: 17, weight: .bold))
+                .font(.settingsFont(size: 17, weight: .bold))
                 .foregroundStyle(connected ? OpenNOWDesign.accent : .white.opacity(0.56))
         }
     }

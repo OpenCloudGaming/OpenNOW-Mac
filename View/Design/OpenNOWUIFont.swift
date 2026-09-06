@@ -2,7 +2,7 @@ import AppKit
 @preconcurrency import CoreText
 import SwiftUI
 
-public enum OpenNOWNVIDIAFont {
+public enum OpenNOWUIFont {
     public enum Weight: Hashable, Sendable {
         case regular
         case medium
@@ -13,11 +13,11 @@ public enum OpenNOWNVIDIAFont {
 
     private nonisolated(unsafe) static let descriptors: [Weight: CTFontDescriptor] = {
         var result: [Weight: CTFontDescriptor] = [:]
-        result[.regular] = loadDescriptor(named: "NVIDIASans_W_Rg")
-        result[.medium] = loadDescriptor(named: "NVIDIASans_W_Md")
-        result[.bold] = loadDescriptor(named: "NVIDIASans_W_Bd")
-        result[.semibold] = loadDescriptor(named: "NVIDIASans_W_Md")
-        result[.black] = loadDescriptor(named: "NVIDIASans_W_Bd")
+        result[.regular] = loadDescriptor(named: "Hybrid_Regular")
+        result[.medium] = loadDescriptor(named: "Hybrid_Medium")
+        result[.bold] = loadDescriptor(named: "Hybrid_Bold")
+        result[.semibold] = loadDescriptor(named: "Hybrid_Medium")
+        result[.black] = loadDescriptor(named: "Hybrid_Bold")
         return result
     }()
 
@@ -51,7 +51,7 @@ public enum OpenNOWNVIDIAFont {
     }
 
     private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
-        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+        for subdirectory in ["Hybrid", "Resources/Hybrid", nil] as [String?] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "woff2", subdirectory: subdirectory),
                   let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
                   let descriptor = descriptors.first else { continue }
@@ -62,7 +62,7 @@ public enum OpenNOWNVIDIAFont {
 }
 
 public extension Font {
-    static func openNOWNVIDIA(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func openNOWUI(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }

@@ -155,7 +155,7 @@ struct SettingsSubheading: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 10 * uiScale, weight: .bold))
             .tracking(1.0)
             .foregroundStyle(.white.opacity(0.44))
     }

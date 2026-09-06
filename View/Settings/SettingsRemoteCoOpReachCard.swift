@@ -21,7 +21,7 @@ extension RemoteCoOpSettingsPage {
                         showingSetupWizard = true
                     }
                     Text("Answers two questions about where your guests will be and configures what that implies. Start here if you are not sure which of the below you need.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -46,7 +46,7 @@ extension RemoteCoOpSettingsPage {
                     }
                     reachGlossary(term: "Hosted Signaling", meaning: "Covers the case a tunnel cannot: this Mac itself unreachable, on carrier-grade NAT or a cafe network. Both sides connect outward to a channel instead - but only to let a guest join. It does not carry video; a guest whose network blocks a direct connection still needs a relay. Optional, and only used by a guest whose invite needs it.")
                 }
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,16 +58,16 @@ extension RemoteCoOpSettingsPage {
                     HStack(alignment: .top, spacing: 12 * uiScale) {
                         VStack(alignment: .leading, spacing: 4 * uiScale) {
                             Text(route.situation)
-                                .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                                 .foregroundStyle(.white)
                             Text(route.requirement)
-                                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.58))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8 * uiScale)
                         Text(route.status)
-                            .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                             .tracking(0.6)
                             .foregroundStyle(route.ready ? OpenNOWDesign.accent : .white.opacity(0.45))
                             .fixedSize()
@@ -100,7 +100,7 @@ extension RemoteCoOpSettingsPage {
     func reachGlossary(term: String, meaning: String) -> some View {
         VStack(alignment: .leading, spacing: 3 * uiScale) {
             Text(term.uppercased())
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(OpenNOWDesign.accent)
             Text(meaning)

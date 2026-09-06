@@ -167,18 +167,18 @@ struct RecordingTimelineView: View {
             HStack(spacing: 8 * uiScale) {
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(item.segment.recording.title)
-                        .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
                     Text("\(recordingEditorDurationText(item.segment.startSeconds)) - \(recordingEditorDurationText(item.segment.endSeconds))")
-                        .font(.recordingsNvidia(size: 9 * uiScale, weight: .medium))
+                        .font(.recordingsFont(size: 9 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.52))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if isSelected {
                     Text("KEEP")
-                        .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
                         .foregroundStyle(.black.opacity(0.82))
                         .padding(.horizontal, 5 * uiScale)
                         .frame(height: 15 * uiScale)
@@ -268,7 +268,7 @@ struct RecordingTimelineView: View {
     private func cutMarker(x: CGFloat, isRemovedRange: Bool) -> some View {
         VStack(spacing: 1 * uiScale) {
             Image(systemName: isRemovedRange ? "scissors" : "arrow.left.and.right")
-                .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(.black.opacity(0.86))
                 .frame(width: 14 * uiScale, height: 12 * uiScale)
                 .background(isRemovedRange ? RecordingsLayout.danger : OpenNOWDesign.accent)
@@ -309,7 +309,7 @@ struct RecordingTimelineView: View {
                     // ("0:11 0:11 0:12 0:12") at exactly the zoom where the sub-second detail is
                     // the reason to be there.
                     Text(step < 1 ? recordingEditorPreciseTimeText(seconds) : recordingEditorDurationText(seconds))
-                        .font(.recordingsNvidia(size: 8 * uiScale, weight: .bold))
+                        .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.42))
                         .fixedSize()
                         .offset(x: x + 3 * uiScale, y: 0)

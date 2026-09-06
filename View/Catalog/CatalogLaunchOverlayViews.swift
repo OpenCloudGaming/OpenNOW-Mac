@@ -75,7 +75,7 @@ struct VendorLaunchProgressCard: View {
         VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(progressTitle)
-                    .font(.nvidia(size: 18, weight: .bold))
+                    .font(.catalogText(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 VendorIndeterminateProgressBar()
                     .frame(height: 4)
@@ -143,7 +143,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
                 }
 
                 Text("AD · \(playback.countdownText)")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .padding(.vertical, 7)
@@ -155,11 +155,11 @@ struct VendorEmbeddedSessionAdPlayer: View {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(ad.title)
-                        .nvidiaFont(size: 13, weight: .bold)
+                        .catalogFont(size: 13, weight: .bold)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text("Sponsored message required before your free-tier session continues")
-                        .nvidiaFont(size: 11, weight: .medium)
+                        .catalogFont(size: 11, weight: .medium)
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
                 }
@@ -168,7 +168,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
 
                 HStack(spacing: 9) {
                     Image(systemName: volume <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(.nvidiaSans(size: 12, weight: .semibold))
+                        .font(.uiSans(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.72))
                     Slider(value: $volume, in: 0...1)
                         .frame(width: 140)
@@ -230,7 +230,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 Spacer()
                 Button { } label: {
                     Text("LAUNCH STATUS")
-                        .nvidiaFont(size: 10, weight: .bold)
+                        .catalogFont(size: 10, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(1.4)
                 }
@@ -243,11 +243,11 @@ struct VendorLaunchPanel<Content: View>: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title.uppercased())
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.2)
                 Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
-                    .nvidiaFont(size: 28, weight: .bold)
+                    .catalogFont(size: 28, weight: .bold)
                     .foregroundStyle(.white)
                     .lineLimit(2)
             }
@@ -274,16 +274,16 @@ struct VendorLaunchStepHeader: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Text(index)
-                .nvidiaFont(size: 12, weight: .bold)
+                .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(.black)
                 .frame(width: 26, height: 26)
                 .background(OpenNOWDesign.accent)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .nvidiaFont(size: 16, weight: .bold)
+                    .catalogFont(size: 16, weight: .bold)
                     .foregroundStyle(.white)
                 Text(message)
-                    .nvidiaFont(size: 12, weight: .medium)
+                    .catalogFont(size: 12, weight: .medium)
                     .foregroundStyle(.white.opacity(0.70))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -298,11 +298,11 @@ struct VendorLaunchSessionRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label.uppercased())
-                .nvidiaFont(size: 10, weight: .bold)
+                .catalogFont(size: 10, weight: .bold)
                 .foregroundStyle(.white.opacity(0.48))
                 .frame(width: 130, alignment: .leading)
             Text(value.isEmpty ? "-" : value)
-                .nvidiaFont(size: 13, weight: .medium)
+                .catalogFont(size: 13, weight: .medium)
                 .foregroundStyle(.white.opacity(0.86))
                 .lineLimit(1)
         }
@@ -320,10 +320,10 @@ struct VendorLaunchInlineMessage: View {
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 Text(presentation.title)
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                 if let hint = presentation.hint {
                     Text(hint)
-                        .nvidiaFont(size: 11, weight: .medium)
+                        .catalogFont(size: 11, weight: .medium)
                         .foregroundStyle(.white.opacity(0.62))
                 }
             }
@@ -339,7 +339,7 @@ struct VendorLaunchInlineMessage: View {
 struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .nvidiaFont(size: 12, weight: .bold)
+            .catalogFont(size: 12, weight: .bold)
             .foregroundStyle(.black)
             .tracking(0.8)
             .padding(.horizontal, 18)
@@ -351,7 +351,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
 struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .nvidiaFont(size: 12, weight: .bold)
+            .catalogFont(size: 12, weight: .bold)
             .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.86))
             .tracking(0.8)
             .padding(.horizontal, 16)

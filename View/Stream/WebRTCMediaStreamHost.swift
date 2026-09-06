@@ -109,7 +109,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                     VStack(spacing: 8) {
                         Text(title)
-                            .font(.nvidia(size: compact ? 24 : 32, weight: .bold))
+                            .font(.catalogText(size: compact ? 24 : 32, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
@@ -120,7 +120,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                                 .frame(width: 6, height: 6)
                                 .shadow(color: OpenNOWDesign.accent, radius: 6)
                             Text(stage.uppercased())
-                                .font(.nvidia(size: 11, weight: .bold))
+                                .font(.catalogText(size: 11, weight: .bold))
                                 .tracking(1.5)
                                 .foregroundStyle(.white.opacity(0.72))
                         }
@@ -128,7 +128,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                     if let queuePosition, queuePosition > 0 {
                         Text("Position \(queuePosition)")
-                            .font(.nvidia(size: 13, weight: .bold))
+                            .font(.catalogText(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, OpenNOWDesign.Spacing.contentVertical)
                             .frame(height: 32)
@@ -138,7 +138,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                     if let cancelAction {
                         Button("Cancel", action: cancelAction)
-                            .font(.nvidia(size: 13, weight: .bold))
+                            .font(.catalogText(size: 13, weight: .bold))
                             .buttonStyle(.plain)
                             .foregroundStyle(.white.opacity(0.88))
                             .padding(.horizontal, OpenNOWDesign.Spacing.medium)

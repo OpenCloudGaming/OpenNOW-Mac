@@ -16,10 +16,10 @@ struct ServerLocationSettingsPage: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("Cloudmatch Region")
-                        .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Automatic chooses the best measured OpenNOW route.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
                 Spacer(minLength: 12 * uiScale)
@@ -52,14 +52,14 @@ struct UnavailableRegionPrompt: View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             HStack(alignment: .top, spacing: 10 * uiScale) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.nvidiaSans(size: 15 * uiScale, weight: .bold))
+                    .font(.uiSans(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(Color.orange)
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Selected Region Unavailable")
-                        .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("CloudMatch no longer advertises the selected route. Keep it for one more launch attempt, or switch to Automatic.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                     Text(regionUrl)
                         .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))

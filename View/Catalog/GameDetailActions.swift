@@ -21,7 +21,7 @@ extension GameDetailPanel {
 
             Button { showsActionsMenu.toggle() } label: {
                 Image(systemName: "ellipsis")
-                    .nvidiaFont(size: 15, weight: .bold)
+                    .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(.white.opacity(0.88))
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
                     .background(Color.white.opacity(0.08))
@@ -93,7 +93,7 @@ extension GameDetailPanel {
                                 .frame(width: 16 * uiScale, height: 16 * uiScale)
                         }
                         Text(option.title)
-                            .nvidiaFont(size: 12, weight: .bold)
+                            .catalogFont(size: 12, weight: .bold)
                     }
                     .foregroundStyle(.white.opacity(0.92))
                     .frame(height: 28 * uiScale)
@@ -110,7 +110,7 @@ extension GameDetailPanel {
                     .fill(hasAccess ? OpenNOWDesign.accent : Color.white.opacity(0.42))
                     .frame(width: 6, height: 6)
                 Text(hasAccess ? "Ready" : "Not Owned")
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(.white.opacity(hasAccess ? 0.86 : 0.66))
             }
             .frame(height: 28 * uiScale)
@@ -125,12 +125,12 @@ extension GameDetailPanel {
     func accessMessage(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(accessBody(game: game))
-                .nvidiaFont(size: 13, weight: .medium)
+                .catalogFont(size: 13, weight: .medium)
                 .foregroundStyle(.white.opacity(0.76))
                 .fixedSize(horizontal: false, vertical: true)
             if showsStoreConfigurationHint(game: game) {
                 Text("Configure stores from Connections.")
-                    .nvidiaFont(size: 12, weight: .medium)
+                    .catalogFont(size: 12, weight: .medium)
                     .foregroundStyle(.white.opacity(0.52))
             }
         }

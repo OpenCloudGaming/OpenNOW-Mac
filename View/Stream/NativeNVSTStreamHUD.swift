@@ -12,11 +12,11 @@ extension NativeNVSTMediaStreamSurface {
             VStack(spacing: 14) {
                 ProgressView().controlSize(.large).tint(WebRTCMediaStreamTheme.accent)
                 Text("CONNECTION INTERRUPTED")
-                    .font(.streamNvidia(size: 16, weight: .bold))
+                    .font(.streamFont(size: 16, weight: .bold))
                     .tracking(1.4)
                     .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 Text("Waiting for a usable network path. OpenNOW will resume the same GeForce NOW session automatically.")
-                    .font(.streamNvidia(size: 12, weight: .medium))
+                    .font(.streamFont(size: 12, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 380)
@@ -31,7 +31,7 @@ extension NativeNVSTMediaStreamSurface {
 
     var nativeTransientStreamMessageOverlay: some View {
         Text(model.transientStreamMessage)
-            .font(.streamNvidia(size: 12, weight: .bold))
+            .font(.streamFont(size: 12, weight: .bold))
             .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -297,7 +297,7 @@ extension NativeNVSTMediaStreamSurface {
             }
             if !nativeNetworkWarningText.isEmpty {
                 Text(nativeNetworkWarningText)
-                    .font(.streamNvidia(size: 11, weight: .medium))
+                    .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.warning)
                     .lineLimit(2)
             }
@@ -310,16 +310,16 @@ extension NativeNVSTMediaStreamSurface {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.remoteCoOpTitle)
-                            .font(.streamNvidia(size: 14, weight: .bold))
+                            .font(.streamFont(size: 14, weight: .bold))
                             .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         Text(model.remoteCoOpSubtitle)
-                            .font(.streamNvidia(size: 11, weight: .medium))
+                            .font(.streamFont(size: 11, weight: .medium))
                             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Text(model.remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
-                        .font(.streamNvidia(size: 9, weight: .bold))
+                        .font(.streamFont(size: 9, weight: .bold))
                         .tracking(0.7)
                         .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
                         .padding(.horizontal, 8)
@@ -366,7 +366,7 @@ extension NativeNVSTMediaStreamSurface {
                         HStack(spacing: 6) {
                             nativeHUDDetailRow(label: "App Guests", value: address)
                             Image(systemName: "doc.on.doc")
-                                .font(.streamNvidia(size: 9, weight: .bold))
+                                .font(.streamFont(size: 9, weight: .bold))
                                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                         }
                     }
@@ -378,7 +378,7 @@ extension NativeNVSTMediaStreamSurface {
                 }
                 if !model.remoteCoOpMessage.isEmpty {
                     Text(model.remoteCoOpMessage)
-                        .font(.streamNvidia(size: 11, weight: .medium))
+                        .font(.streamFont(size: 11, weight: .medium))
                         .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                         .lineLimit(1)
                 }
@@ -402,11 +402,11 @@ extension NativeNVSTMediaStreamSurface {
                 .fill(participant.connectionState == .connected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning)
                 .frame(width: 7, height: 7)
             Text(participant.displayName)
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
             Spacer(minLength: 8)
             Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.label)
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             if participant.connectionState == .connected {
                 nativeHUDRemoteCoOpQualityMenu(participant)
@@ -443,10 +443,10 @@ extension NativeNVSTMediaStreamSurface {
         if participant.connectionState == .connected, let stats = model.remoteCoOpDeliveryStats[participant.id] {
             HStack(spacing: 6) {
                 Image(systemName: stats.isAtBest ? "checkmark.circle" : "arrow.down.circle")
-                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .font(.streamFont(size: 9, weight: .bold))
                     .foregroundStyle(stats.isAtBest ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.warning)
                 Text(stats.summary)
-                    .font(.streamNvidia(size: 10, weight: .medium))
+                    .font(.streamFont(size: 10, weight: .medium))
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -476,7 +476,7 @@ extension NativeNVSTMediaStreamSurface {
             }
         } label: {
             Text(participant.qualityPreset?.label ?? "Auto")
-                .font(.streamNvidia(size: 10, weight: .bold))
+                .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(participant.qualityPreset == nil ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.accent)
         }
         .menuStyle(.borderlessButton)
@@ -555,11 +555,11 @@ extension NativeNVSTMediaStreamSurface {
     func nativeHUDDetailRow(label: String, value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
+                .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -574,11 +574,11 @@ extension NativeNVSTMediaStreamSurface {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("STREAM PAUSED")
-                        .font(.streamNvidia(size: 10, weight: .bold))
+                        .font(.streamFont(size: 10, weight: .bold))
                         .tracking(1.1)
                         .foregroundStyle(WebRTCMediaStreamTheme.accent)
                     Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .font(.streamFont(size: 20, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -593,7 +593,7 @@ extension NativeNVSTMediaStreamSurface {
                     .frame(height: 1)
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                        .font(.streamNvidia(size: 12, weight: .medium))
+                        .font(.streamFont(size: 12, weight: .medium))
                         .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {

@@ -41,7 +41,7 @@ extension RemoteCoOpSetupWizard {
             case .hostedSignaling: hostedSignalingFields
             case .vpnAlreadyRunning:
                 Text("Transport will be set to Direct - a VPN or tailnet route already reaches this Mac, so STUN would only reveal your public address for nothing.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.54))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -82,7 +82,7 @@ extension RemoteCoOpSetupWizard {
             )
             if !viewModel.remoteCoOpAblyKeyMessage.isEmpty {
                 Text(viewModel.remoteCoOpAblyKeyMessage)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)
             }
             if viewModel.remoteCoOpAblyKey.isUsable {
@@ -116,13 +116,13 @@ extension RemoteCoOpSetupWizard {
             switch relayCredentials.provider {
             case .none:
                 Text("Pick a provider above to continue - the relay is what carries video when a guest's network refuses a direct connection.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.54))
                     .fixedSize(horizontal: false, vertical: true)
             case .cloudflare:
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(relayCredentials.canRelay ? "Cloudflare relay configured." : "Free tier: 1,000 GB a month. The guided setup handles the Cloudflare side in three steps.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
                     SettingsActionButton(title: relayCredentials.canRelay ? "RUN SETUP AGAIN" : "GUIDED SETUP", uiScale: uiScale) {
@@ -164,7 +164,7 @@ extension RemoteCoOpSetupWizard {
                 action: viewModel.setRemoteCoOpStaticRelayPassword
             )
             Text("ExpressTURN gives 1,000 GB a month with no card.")
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.44))
         }
     }

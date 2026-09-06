@@ -46,14 +46,14 @@ struct CatalogRailView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(section.title)
-                    .nvidiaFont(size: 20, weight: .medium)
+                    .catalogFont(size: 20, weight: .medium)
                     .foregroundStyle(.white.opacity(0.96))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
-                        .nvidiaFont(size: 13, weight: .bold)
+                        .catalogFont(size: 13, weight: .bold)
                         .foregroundStyle(.white.opacity(0.92))
                 }
             }
@@ -182,12 +182,12 @@ struct CatalogDestinationGridView: View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             HStack(alignment: .lastTextBaseline, spacing: 20 * uiScale) {
                 Text(section.title)
-                    .nvidiaFont(size: 24, weight: .bold)
+                    .catalogFont(size: 24, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
                     .accessibilityAddTraits(.isHeader)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
                         .tracking(0.8)
                 }
@@ -268,10 +268,10 @@ struct CatalogSeeMoreTile: View {
         Button(action: action) {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
-                    .nvidiaFont(size: 34, weight: .bold)
+                    .catalogFont(size: 34, weight: .bold)
                     .foregroundStyle(.white.opacity(0.82))
                 Text(title.uppercased())
-                    .nvidiaFont(size: 16, weight: .medium)
+                    .catalogFont(size: 16, weight: .medium)
                     .foregroundStyle(.white.opacity(0.88))
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
@@ -308,17 +308,17 @@ struct CatalogPanelActionTile: View {
                 VStack(alignment: .leading, spacing: 5) {
                     if !tile.subtitle.isEmpty {
                         Text(tile.subtitle.uppercased())
-                            .nvidiaFont(size: 10, weight: .bold)
+                            .catalogFont(size: 10, weight: .bold)
                             .tracking(0.8)
                             .foregroundStyle(OpenNOWDesign.accent)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
-                        .nvidiaFont(size: 17, weight: .bold)
+                        .catalogFont(size: 17, weight: .bold)
                         .foregroundStyle(.white)
                         .lineLimit(2)
                     Text(actionLabel)
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .tracking(0.7)
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 10)
@@ -366,11 +366,11 @@ struct VendorActiveSessionHomeBanner: View {
 
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("SESSION ACTIVE")
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.2)
                 Text(title)
-                    .nvidiaFont(size: 14, weight: .bold)
+                    .catalogFont(size: 14, weight: .bold)
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -402,7 +402,7 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .nvidiaFont(size: 11, weight: .bold)
+            .catalogFont(size: 11, weight: .bold)
             .foregroundStyle(primary ? .black : .white.opacity(0.86))
             .tracking(0.8)
             .padding(.horizontal, 14)

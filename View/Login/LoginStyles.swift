@@ -1,8 +1,8 @@
 import SwiftUI
 
 extension Font {
-    static func nvidiaSans(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func uiSans(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -12,7 +12,7 @@ struct LoginTextFieldStyle: TextFieldStyle {
 
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
-            .font(.nvidiaSans(size: 14 * uiScale, weight: .regular))
+            .font(.uiSans(size: 14 * uiScale, weight: .regular))
             .foregroundStyle(.white)
             .tint(OpenNOWDesign.accent)
             .padding(.horizontal, 16 * uiScale)
@@ -28,7 +28,7 @@ struct LoginTextFieldStyle: TextFieldStyle {
 struct PrimaryLoginButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: 14, weight: .bold))
+            .font(.uiSans(size: 14, weight: .bold))
             .foregroundStyle(.black)
             .tracking(0.4)
             .padding(.vertical, 14)
@@ -53,7 +53,7 @@ struct VendorGetInButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: size.fontSize * uiScale, weight: .bold))
+            .font(.uiSans(size: size.fontSize * uiScale, weight: .bold))
             .foregroundStyle(.black)
             .tracking(0.3)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
@@ -69,7 +69,7 @@ struct SecondaryLoginButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: compact ? 13 : 14, weight: .bold))
+            .font(.uiSans(size: compact ? 13 : 14, weight: .bold))
             .foregroundStyle(.white)
             .tracking(0.3)
             .padding(.horizontal, compact ? 14 : 16)

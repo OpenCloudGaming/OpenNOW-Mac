@@ -24,8 +24,8 @@ enum WebRTCMediaStreamTheme {
 }
 
 extension Font {
-    static func streamNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func streamFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -42,7 +42,7 @@ struct StreamHUDActionRow: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.streamNvidia(size: 15, weight: .bold))
+                .font(.streamFont(size: 15, weight: .bold))
                 .foregroundStyle(iconColor)
                 .frame(width: 42, height: 38)
                 .background(rowBackground)
@@ -181,7 +181,7 @@ struct StreamQuitMenuButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.streamNvidia(size: 12, weight: .bold))
+                .font(.streamFont(size: 12, weight: .bold))
                 .tracking(0.4)
                 .foregroundStyle(foregroundColor)
                 .frame(maxWidth: .infinity)
@@ -251,13 +251,13 @@ struct StreamHUDDropdown: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
+                .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Button { isExpanded.toggle() } label: {
                 HStack(spacing: 6) {
                     Text(selectedTitle)
-                        .font(.streamNvidia(size: 12, weight: .bold))
+                        .font(.streamFont(size: 12, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
@@ -357,7 +357,7 @@ private struct StreamHUDDropdownRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(title)
-                    .font(.streamNvidia(size: 12, weight: .bold))
+                    .font(.streamFont(size: 12, weight: .bold))
                     .foregroundStyle(isSelected ? WebRTCMediaStreamTheme.accent : (isHovering ? WebRTCMediaStreamTheme.textPrimary : WebRTCMediaStreamTheme.textSecondary))
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -396,11 +396,11 @@ struct StreamUnifiedSidebar<Content: View>: View {
                     // eyebrow above it says which panel this is, matching the stats panel's header.
                     VStack(alignment: .leading, spacing: 1) {
                         Text("STREAM HUD")
-                            .font(.streamNvidia(size: 9, weight: .bold))
+                            .font(.streamFont(size: 9, weight: .bold))
                             .tracking(1.4)
                             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                         Text(title)
-                            .font(.streamNvidia(size: 14, weight: .bold))
+                            .font(.streamFont(size: 14, weight: .bold))
                             .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -408,7 +408,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
                     Spacer(minLength: 0)
                     Button(action: closeAction) {
                         Image(systemName: "xmark")
-                            .font(.streamNvidia(size: 11, weight: .bold))
+                            .font(.streamFont(size: 11, weight: .bold))
                             .foregroundStyle(.white.opacity(0.82))
                             .frame(width: 28, height: 28)
                             .background(Color.white.opacity(0.08))
@@ -429,7 +429,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
                 }
                 Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
                 Text(WebRTCMediaStreamCommand.shortcutGuide)
-                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .font(.streamFont(size: 10, weight: .bold))
                     .tracking(0.8)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                     .lineLimit(1)
@@ -473,7 +473,7 @@ struct StreamHUDSection<Content: View>: View {
         VStack(alignment: .leading, spacing: spacing) {
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .font(.streamFont(size: 10, weight: .bold))
                     .tracking(1.1)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                 if showsBetaTag { OpenNOWBetaTag(uiScale: 1, prominent: true) }
@@ -482,7 +482,7 @@ struct StreamHUDSection<Content: View>: View {
             content
             if let caption, !caption.isEmpty {
                 Text(caption)
-                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .font(.streamFont(size: 10, weight: .bold))
                     .foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
                     .lineLimit(1)
                     .truncationMode(.tail)

@@ -33,10 +33,10 @@ struct SystemSettingsPage: View {
                 HStack(alignment: .top, spacing: 18 * uiScale) {
                     VStack(alignment: .leading, spacing: 10 * uiScale) {
                         Text(systemSummaryTitle)
-                            .font(.settingsNvidia(size: 22 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 22 * uiScale, weight: .bold))
                             .foregroundStyle(.white)
                         Text(systemSummaryDetail)
-                            .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.62))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
@@ -80,10 +80,10 @@ struct SystemSettingsPage: View {
             HStack(alignment: .center, spacing: 12 * uiScale) {
                     VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text("Identifiers and endpoint paths are masked by default.")
-                            .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                             .foregroundStyle(.white)
                         Text("Reveal only when collecting support information locally.")
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.56))
                     }
                     Spacer()
@@ -158,11 +158,11 @@ struct SystemHealthBadge: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             Text(title)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(positive ? .black : .white.opacity(0.88))
                 .tracking(1.1)
             Text(subtitle)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(positive ? .black.opacity(0.74) : .white.opacity(0.54))
                 .lineLimit(2)
         }
@@ -187,15 +187,15 @@ struct SystemCapabilityRow: View {
                 .frame(width: 4 * uiScale, height: 42 * uiScale)
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(.white)
                 Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.56))
             }
             Spacer(minLength: 0)
             Text(value.uppercased())
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.56))
                 .tracking(0.8)
                 .padding(.horizontal, 10 * uiScale)

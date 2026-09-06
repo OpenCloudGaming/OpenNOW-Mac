@@ -18,7 +18,7 @@ struct CatalogLegacyTransportNotice: View {
                 Rectangle()
                     .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: "sparkles")
-                    .nvidiaFont(size: 15, weight: .bold)
+                    .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
             }
             .frame(width: 36 * uiScale, height: 36 * uiScale)
@@ -27,10 +27,10 @@ struct CatalogLegacyTransportNotice: View {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 HStack(spacing: 8 * uiScale) {
                     Text("You are streaming over WebRTC")
-                        .nvidiaFont(size: 13, weight: .bold)
+                        .catalogFont(size: 13, weight: .bold)
                         .foregroundStyle(.white.opacity(0.92))
                     Text("LEGACY")
-                        .nvidiaFont(size: 9, weight: .bold)
+                        .catalogFont(size: 9, weight: .bold)
                         .tracking(0.9)
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 6 * uiScale)
@@ -38,7 +38,7 @@ struct CatalogLegacyTransportNotice: View {
                         .background(OpenNOWDesign.accent)
                 }
                 Text("New work goes to the Native transport: Remote Co-Op hosting, HDR, 10-bit 4:4:4, 120 fps, controller rumble. WebRTC keeps streaming and keeps getting fixes, but no new features.")
-                    .nvidiaFont(size: 12, weight: .medium)
+                    .catalogFont(size: 12, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -46,7 +46,7 @@ struct CatalogLegacyTransportNotice: View {
 
             Button { viewModel.switchToNativeTransportFromNotice() } label: {
                 Text("USE NATIVE")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .tracking(0.8)
                     .foregroundStyle(.black.opacity(0.88))
                     .padding(.horizontal, 14 * uiScale)
@@ -58,7 +58,7 @@ struct CatalogLegacyTransportNotice: View {
 
             Button { viewModel.dismissLegacyTransportNotice() } label: {
                 Image(systemName: "xmark")
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .foregroundStyle(.white.opacity(isHoveringDismiss ? 0.92 : 0.60))
                     .frame(width: 30 * uiScale, height: 30 * uiScale)
                     .background(Color.white.opacity(isHoveringDismiss ? 0.12 : 0.065))

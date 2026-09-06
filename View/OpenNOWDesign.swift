@@ -108,20 +108,20 @@ enum OpenNOWDesign {
         static func panel(scale: CGFloat) -> CGFloat { basePanel * scale }
     }
 
-    /// Type roles for the app. `label`/`body` use NVIDIA Sans (brand voice);
+    /// Type roles for the app. `label`/`body` use the app's UI sans (brand voice);
     /// `mono` is reserved for machine readouts (telemetry, counters, codes) so
     /// numerals stay column-aligned while they tick.
     enum Typography {
         static func display(size: CGFloat, scale: CGFloat = 1) -> Font {
-            .nvidiaSans(size: size * scale, weight: .black)
+            .uiSans(size: size * scale, weight: .black)
         }
 
-        static func label(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWNVIDIAFont.Weight = .bold) -> Font {
-            .nvidiaSans(size: size * scale, weight: weight)
+        static func label(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWUIFont.Weight = .bold) -> Font {
+            .uiSans(size: size * scale, weight: weight)
         }
 
-        static func body(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-            .nvidiaSans(size: size * scale, weight: weight)
+        static func body(size: CGFloat, scale: CGFloat = 1, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+            .uiSans(size: size * scale, weight: weight)
         }
 
         static func mono(size: CGFloat, scale: CGFloat = 1, weight: Font.Weight = .bold) -> Font {

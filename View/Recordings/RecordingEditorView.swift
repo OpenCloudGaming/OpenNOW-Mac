@@ -94,7 +94,7 @@ struct RecordingEditorView: View {
         HStack(spacing: 2 * uiScale) {
             if let window = viewModel.timelineWindowDescription {
                 Text(window)
-                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent.opacity(0.80))
                     .fixedSize()
                     .padding(.trailing, 2 * uiScale)
@@ -139,13 +139,13 @@ struct RecordingEditorView: View {
     private var timecodeReadout: some View {
         HStack(spacing: 4 * uiScale) {
             Text(recordingEditorPreciseTimeText(playheadSeconds))
-                .font(.recordingsNvidia(size: 13 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
             Text("/")
-                .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.30))
             Text(recordingEditorPreciseTimeText(previewDurationSeconds))
-                .font(.recordingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.48))
         }
         .monospacedDigit()

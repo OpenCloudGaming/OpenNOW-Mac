@@ -96,7 +96,7 @@ struct CatalogRailSkeletonView: View {
             HStack {
                 if let title {
                     Text(title)
-                        .nvidiaFont(size: 20, weight: .medium)
+                        .catalogFont(size: 20, weight: .medium)
                         .foregroundStyle(.white.opacity(0.96))
                         .accessibilityAddTraits(.isHeader)
                 } else {

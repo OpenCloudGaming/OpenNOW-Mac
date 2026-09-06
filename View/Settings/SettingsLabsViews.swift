@@ -19,7 +19,7 @@ struct LabsSettingsPage: View {
         SettingsStack(spacing: 16 * uiScale) {
             SettingsCard(title: "In Flight", badge: .experimental, uiScale: uiScale) {
                 Text("Each of these is off by default and may change, misbehave or disappear. Turning one on is a request to be surprised.")
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(OpenNOWLabs.flags) { flag in
@@ -62,10 +62,10 @@ struct LabsEmptyState: View {
             illustration
             VStack(spacing: 10 * uiScale) {
                 Text("Nothing in flight")
-                    .font(.settingsNvidia(size: 22 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 22 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.94))
                 Text("New experimental features land here first, behind a switch, before they ship to everyone. Look in now and then to try one early.")
-                    .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 14 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.60))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -87,7 +87,7 @@ struct LabsEmptyState: View {
                 .stroke(OpenNOWDesign.accent.opacity(0.22), lineWidth: 1)
                 .frame(width: 132 * uiScale, height: 132 * uiScale)
             Image(systemName: "flask.fill")
-                .font(.settingsNvidia(size: 48 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 48 * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
             bubbles
         }

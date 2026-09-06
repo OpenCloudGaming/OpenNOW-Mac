@@ -21,13 +21,13 @@ struct SteamControllerBindingRecorder: View {
             HStack(spacing: 6 * uiScale) {
                 if isRecording {
                     Image(systemName: "keyboard")
-                        .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     Text("Press a key… (Esc to cancel)")
                 } else {
                     Text(currentLabel)
                 }
             }
-            .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+            .font(.settingsFont(size: 11 * uiScale, weight: .bold))
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity)
             .frame(height: 32 * uiScale)

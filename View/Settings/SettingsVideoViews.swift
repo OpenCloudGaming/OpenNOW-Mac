@@ -53,16 +53,16 @@ struct VideoSettingsPage: View {
     private func overrideList(_ overrides: [SettingsOverriddenGame]) -> some View {
         VStack(alignment: .leading, spacing: 10 * uiScale) {
             Text("Per-game overrides")
-                .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
             Text("These games ignore the upscaling, pillarbox and frame pacing settings above and use their own.")
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(overrides) { game in
                 HStack(spacing: 12 * uiScale) {
                     Text(game.title)
-                        .font(.settingsNvidia(size: 13 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(1)
                     Spacer(minLength: 8 * uiScale)
@@ -144,10 +144,10 @@ struct VideoSettingsPage: View {
                     .frame(width: 4 * uiScale, height: 48 * uiScale)
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("Restore default streaming settings")
-                        .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.56))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -207,10 +207,10 @@ struct StreamingProfileOverview: View {
             HStack(alignment: .center, spacing: 14 * uiScale) {
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text("Active streaming profile")
-                        .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("These values are sent to OpenNOW when a new stream starts.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
                 Spacer(minLength: 0)
@@ -238,11 +238,11 @@ struct StreamingProfileMetricTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7 * uiScale) {
             Text(label.uppercased())
-                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "-" : value)
-                .font(.settingsNvidia(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
+                .font(.settingsFont(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
                 .foregroundStyle(emphasized ? OpenNOWDesign.accent : .white.opacity(0.86))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)

@@ -114,11 +114,11 @@ extension WebRTCMediaStreamSurface {
     func settingsRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
+                .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -205,11 +205,11 @@ extension WebRTCMediaStreamSurface {
     func statsRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .font(.streamNvidia(size: 11, weight: .medium))
+                .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer()
             Text(value)
-                .font(.streamNvidia(size: 11, weight: .bold))
+                .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
         }
     }

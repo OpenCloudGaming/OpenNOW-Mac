@@ -22,11 +22,11 @@ struct ControllerHeroBillboard: View {
                 LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 9 * uiScale) {
                     Text("NOW PLAYING IN THE CLOUD")
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .tracking(1.6)
                         .foregroundStyle(OpenNOWDesign.accent)
                     Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                        .nvidiaFont(size: height < 260 ? 31 : 36, weight: .bold)
+                        .catalogFont(size: height < 260 ? 31 : 36, weight: .bold)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
@@ -37,7 +37,7 @@ struct ControllerHeroBillboard: View {
                         if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
                     }
                     Text(heroDescription(game))
-                        .nvidiaFont(size: 13, weight: .medium)
+                        .catalogFont(size: 13, weight: .medium)
                         .foregroundStyle(.white.opacity(0.74))
                         .lineLimit(height < 260 ? 1 : 2)
                         .frame(maxWidth: 650 * uiScale, alignment: .leading)
@@ -82,18 +82,18 @@ struct ControllerGameRail: View {
         VStack(alignment: .leading, spacing: (layout.compactHeight ? 10 : 12) * uiScale) {
             HStack(alignment: .firstTextBaseline, spacing: 12 * uiScale) {
                 Text(section.title)
-                    .nvidiaFont(size: isFocused ? 24 : 21, weight: .bold)
+                    .catalogFont(size: isFocused ? 24 : 21, weight: .bold)
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
                 if !section.isPlaceholder {
                     Text("\(section.games.count) games".uppercased())
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
                 }
                 Spacer(minLength: 0)
                 if canShowAll, !section.isPlaceholder {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
-                        .nvidiaFont(size: 12, weight: .bold)
+                        .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.82))
                 }
             }
@@ -237,16 +237,16 @@ struct ControllerGameTile: View, Equatable {
                     HStack(spacing: 8 * uiScale) {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
-                                .nvidiaFont(size: 12, weight: .bold)
+                                .catalogFont(size: 12, weight: .bold)
                                 .foregroundStyle(OpenNOWDesign.accent)
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .nvidiaFont(size: 16, weight: .bold)
+                            .catalogFont(size: 16, weight: .bold)
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     }
                     Text(subtitle)
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(.white.opacity(0.62))
                         .lineLimit(1)
                 }
@@ -287,11 +287,11 @@ struct ControllerEmbeddedPage<Content: View>: View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.4)
                 Text(subtitle)
-                    .nvidiaFont(size: 15, weight: .medium)
+                    .catalogFont(size: 15, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
             }
             .frame(width: layout.contentWidth, alignment: .leading)

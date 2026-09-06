@@ -80,11 +80,11 @@ extension WebRTCMediaStreamSurface {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("STREAM PAUSED")
-                        .font(.streamNvidia(size: 10, weight: .bold))
+                        .font(.streamFont(size: 10, weight: .bold))
                         .tracking(1.1)
                         .foregroundStyle(WebRTCMediaStreamTheme.accent)
                     Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .font(.streamFont(size: 20, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -99,7 +99,7 @@ extension WebRTCMediaStreamSurface {
                     .frame(height: 1)
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                        .font(.streamNvidia(size: 12, weight: .medium))
+                        .font(.streamFont(size: 12, weight: .medium))
                         .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {

@@ -17,11 +17,11 @@ struct ControllerOverlayHeader: View {
         HStack(alignment: .top, spacing: 16 * uiScale) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
-                    .nvidiaFont(size: 27, weight: .bold)
+                    .catalogFont(size: 27, weight: .bold)
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(subtitle)
-                    .nvidiaFont(size: 14, weight: .medium)
+                    .catalogFont(size: 14, weight: .medium)
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(2)
             }
@@ -29,12 +29,12 @@ struct ControllerOverlayHeader: View {
             HStack(spacing: 8 * uiScale) {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
-                    .nvidiaFont(size: 11, weight: .bold)
+                    .catalogFont(size: 11, weight: .bold)
                     .foregroundStyle(.white.opacity(0.62))
             }
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .nvidiaFont(size: 16, weight: .bold)
+                    .catalogFont(size: 16, weight: .bold)
                     .foregroundStyle(.white.opacity(0.80))
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
                     .background(Color.white.opacity(0.08))
@@ -52,7 +52,7 @@ struct ControllerOverlaySectionTitle: View {
 
     var body: some View {
         Text(title.uppercased())
-            .nvidiaFont(size: 12, weight: .bold)
+            .catalogFont(size: 12, weight: .bold)
             .tracking(1.1)
             .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
     }
@@ -66,7 +66,7 @@ struct ControllerMetadataPill: View {
 
     var body: some View {
         Text(text.uppercased())
-            .nvidiaFont(size: 11, weight: .bold)
+            .catalogFont(size: 11, weight: .bold)
             .tracking(0.7)
             .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
             .padding(.horizontal, 10 * uiScale)
@@ -86,12 +86,12 @@ struct ControllerDetailRow: View {
         if !value.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
                 Text(label.uppercased())
-                    .nvidiaFont(size: 10, weight: .bold)
+                    .catalogFont(size: 10, weight: .bold)
                     .tracking(0.7)
                     .foregroundStyle(.white.opacity(0.42))
                     .frame(width: 96 * uiScale, alignment: .leading)
                 Text(value)
-                    .nvidiaFont(size: 13, weight: .bold)
+                    .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(2)
             }
@@ -123,7 +123,7 @@ struct ControllerHintBar: View {
             }
             Spacer(minLength: 0)
             Text(glyphs.usesControllerGlyphs ? "Controller mode" : "Keyboard fallback")
-                .nvidiaFont(size: 11, weight: .bold)
+                .catalogFont(size: 11, weight: .bold)
                 .foregroundStyle(.white.opacity(0.38))
                 .tracking(0.8)
                 .lineLimit(1)
@@ -152,7 +152,7 @@ struct ControllerHintItem: View {
                 }
             }
             Text(title)
-                .nvidiaFont(size: 10, weight: .bold)
+                .catalogFont(size: 10, weight: .bold)
                 .foregroundStyle(.white.opacity(0.64))
                 .tracking(0.5)
         }
@@ -193,11 +193,11 @@ struct ControllerGlyphPill: View {
         HStack(spacing: (compact ? 0 : 5) * uiScale) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
-                    .nvidiaFont(size: compact ? 11 : 12, weight: .bold)
+                    .catalogFont(size: compact ? 11 : 12, weight: .bold)
             }
             if shouldShowText {
                 Text(glyph.fallbackText)
-                    .nvidiaFont(size: compact ? 0 : 9, weight: .bold)
+                    .catalogFont(size: compact ? 0 : 9, weight: .bold)
                     .lineLimit(1)
             }
         }
@@ -229,7 +229,7 @@ struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.down.symbolName)
             Image(systemName: glyphs.right.symbolName)
         }
-        .nvidiaFont(size: 11, weight: .bold)
+        .catalogFont(size: 11, weight: .bold)
         .foregroundStyle(OpenNOWDesign.accent)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 22 * uiScale)

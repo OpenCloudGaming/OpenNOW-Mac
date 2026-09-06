@@ -185,10 +185,10 @@ struct SteamControllerDiagramView: View {
             shape.stroke(pressed ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
             HStack(spacing: 4) {
                 Text(label)
-                    .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
                 Text("\(Int(value * 100))%")
-                    .font(.settingsNvidia(size: 10 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                     .foregroundStyle(pressed ? OpenNOWDesign.accent.opacity(0.8) : OpenNOWDesign.Text.muted)
                     .monospacedDigit()
             }
@@ -204,7 +204,7 @@ struct SteamControllerDiagramView: View {
                         .stroke(pressed ? OpenNOWDesign.accent.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
                 )
             Text(label)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
         }
     }
@@ -246,7 +246,7 @@ struct SteamControllerDiagramView: View {
                 .fill(pressed ? OpenNOWDesign.accent : Color.white.opacity(0.05))
                 .overlay(Circle().stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.18), lineWidth: 1))
             Text(label)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? .black : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(27), height: art(27))
@@ -264,7 +264,7 @@ struct SteamControllerDiagramView: View {
                         .stroke(pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(0.16), lineWidth: 1)
                 )
             Text(label)
-                .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? .black : OpenNOWDesign.Text.muted)
                 .rotationEffect(.degrees(-rotation))
         }
@@ -278,7 +278,7 @@ struct SteamControllerDiagramView: View {
             Capsule()
                 .stroke(pressed ? OpenNOWDesign.accent.opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: icon)
-                .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(30), height: art(14))
@@ -319,7 +319,7 @@ struct SteamControllerDiagramView: View {
             Capsule()
                 .stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
             Image(systemName: "ellipsis")
-                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(38), height: art(15))
@@ -371,7 +371,7 @@ struct SteamControllerDiagramView: View {
                     style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                 )
             Text(control.label)
-                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
         }
         .frame(width: art(30), height: art(15))

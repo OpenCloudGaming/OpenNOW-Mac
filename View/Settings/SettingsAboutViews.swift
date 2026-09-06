@@ -27,10 +27,10 @@ struct AboutSettingsPage: View {
                     VStack(alignment: .leading, spacing: 12 * uiScale) {
                         HStack(alignment: .firstTextBaseline, spacing: 10 * uiScale) {
                             Text(SettingsAppMetadata.displayName)
-                                .font(.settingsNvidia(size: 25 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 25 * uiScale, weight: .bold))
                                 .foregroundStyle(.white)
                             Text("UNOFFICIAL CLIENT SHELL")
-                                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                                 .foregroundStyle(.black)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
@@ -38,7 +38,7 @@ struct AboutSettingsPage: View {
                                 .background(OpenNOWDesign.accent)
                         }
                         Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
-                            .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
@@ -69,7 +69,7 @@ struct AboutSettingsPage: View {
                         OpenNOWAppDelegate.requestApplicationUpdateCheck()
                     }
                     Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                 }
             }
@@ -84,7 +84,7 @@ struct AboutSettingsPage: View {
                         viewModel.clearCatalogImageCache()
                     }
                     Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                 }
             }
@@ -101,11 +101,11 @@ struct AboutSettingsPage: View {
                         }
                         .disabled(viewModel.diagnosticsState.isWorking)
                         Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
-                            .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                     }
                     Text(viewModel.diagnosticsState.message)
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(viewModel.diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.62))
                 }
             }
@@ -171,7 +171,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
                         Rectangle()
                             .fill(OpenNOWDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
-                            .font(.settingsNvidia(size: 18 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 18 * uiScale, weight: .bold))
                             .foregroundStyle(OpenNOWDesign.accent)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
@@ -179,10 +179,10 @@ struct DiagnosticsUploadConfirmationDialog: View {
 
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
-                            .font(.settingsNvidia(size: 19 * uiScale, weight: .bold))
+                            .font(.settingsFont(size: 19 * uiScale, weight: .bold))
                             .foregroundStyle(.white)
                         Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
-                            .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -193,7 +193,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
                         .fill(OpenNOWDesign.accent)
                         .frame(width: 4 * uiScale, height: 42 * uiScale)
                     Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -232,7 +232,7 @@ struct SettingsDialogButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(tone == .primary ? .black : .white.opacity(0.82))
                 .tracking(0.8)
                 .padding(.horizontal, 14 * uiScale)
@@ -302,11 +302,11 @@ struct AboutStatusPill: View {
     var body: some View {
         HStack(spacing: 6 * uiScale) {
             Text(title.uppercased())
-                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.44))
                 .tracking(0.8)
             Text(value.isEmpty ? "Unknown" : value)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.86))
                 .lineLimit(1)
         }
@@ -329,19 +329,19 @@ struct AboutDetailRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             Text(label.uppercased())
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.44))
                 .tracking(0.5)
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "Unavailable" : value)
-                .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.84))
                 .lineLimit(2)
                 .textSelection(.enabled)
             Spacer(minLength: 0)
             Button { copy(copyValue) } label: {
                 Text(copiedKey == label ? "COPIED" : "COPY")
-                    .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     .foregroundStyle(copyDisabled ? .white.opacity(0.28) : .white.opacity(0.74))
                     .tracking(0.7)
                     .padding(.horizontal, 10 * uiScale)

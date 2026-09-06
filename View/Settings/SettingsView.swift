@@ -11,8 +11,8 @@ enum SettingsVendorLayout {
 }
 
 extension Font {
-    static func settingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
-        OpenNOWNVIDIAFont.font(size: size, weight: weight)
+    static func settingsFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
+        OpenNOWUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -386,7 +386,7 @@ struct SettingsTabItem: View {
                     .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(isHovering ? 0.72 : 0.5))
                     .frame(width: 15 * uiScale, height: 15 * uiScale)
                 Text(title)
-                    .font(.settingsNvidia(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
+                    .font(.settingsFont(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
                     .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.58))
                     .lineLimit(1)
                     .fixedSize()
@@ -598,14 +598,14 @@ struct SettingsHeader: View {
             HStack(alignment: .bottom, spacing: 18 * uiScale) {
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(title.uppercased())
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(1.5)
                     Text(title)
-                        .font(.settingsNvidia(size: 34 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 34 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text(subtitle)
-                        .font(.settingsNvidia(size: 14 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 14 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 Spacer(minLength: 24 * uiScale)

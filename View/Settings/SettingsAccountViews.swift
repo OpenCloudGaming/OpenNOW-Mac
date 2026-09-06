@@ -22,11 +22,11 @@ struct AccountSettingsPage: View {
                     VStack(alignment: .leading, spacing: 12 * uiScale) {
                         HStack(alignment: .firstTextBaseline, spacing: 10 * uiScale) {
                             Text(account.displayName)
-                                .font(.settingsNvidia(size: 25 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 25 * uiScale, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Text(account.membershipTier.uppercased())
-                                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                                 .foregroundStyle(.black)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
@@ -34,7 +34,7 @@ struct AccountSettingsPage: View {
                                 .background(OpenNOWDesign.accent)
                         }
                         Text(accountSummaryText)
-                            .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
+                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
@@ -84,10 +84,10 @@ struct AccountSettingsPage: View {
             HStack(alignment: .center, spacing: 12 * uiScale) {
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Personal account details are masked by default.")
-                        .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
+                        .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Reveal only when validating account state on your own machine.")
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(.white.opacity(0.56))
                 }
                 Spacer()
@@ -187,12 +187,12 @@ struct AccountHealthBadge: View {
                     .fill(positive ? OpenNOWDesign.accent : Color.orange)
                     .frame(width: 7 * uiScale, height: 7 * uiScale)
                 Text(title)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.88))
                     .tracking(1.1)
             }
             Text(subtitle)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(2)
         }
@@ -214,7 +214,7 @@ struct SettingsRevealButton: View {
     var body: some View {
         Button(action: action) {
             Text(revealed ? "HIDE DETAILS" : "REVEAL DETAILS")
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(revealed ? .black : .white.opacity(isHovering ? 0.94 : 0.82))
                 .tracking(0.8)
                 .padding(.horizontal, 13 * uiScale)
@@ -277,11 +277,11 @@ struct AccountStatusTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8 * uiScale) {
             Text(label.uppercased())
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "Unknown" : value)
-                .font(.settingsNvidia(size: 16 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 16 * uiScale, weight: .bold))
                 .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.78))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -306,10 +306,10 @@ struct AccountEmptyState: View {
                 .frame(width: 4 * uiScale, height: 44 * uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
                 Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
             }
             Spacer(minLength: 0)
@@ -329,11 +329,11 @@ struct SettingsStatisticTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8 * uiScale) {
             Text(label.uppercased())
-                .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.44))
             Text(value.isEmpty ? "-" : value)
-                .font(.settingsNvidia(size: (emphasized ? 24 : 19) * uiScale, weight: .bold))
+                .font(.settingsFont(size: (emphasized ? 24 : 19) * uiScale, weight: .bold))
                 .foregroundStyle(emphasized ? OpenNOWDesign.accent : .white.opacity(0.90))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)

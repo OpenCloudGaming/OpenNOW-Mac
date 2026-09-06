@@ -20,13 +20,13 @@ struct OpenNOWDropdownRow: View {
         Button(action: action) {
             HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 Text(title)
-                    .nvidiaFont(size: 12, weight: .bold)
+                    .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .nvidiaFont(size: 11, weight: .bold)
+                        .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(OpenNOWDesign.accent)
                 }
             }

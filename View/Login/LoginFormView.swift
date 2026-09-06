@@ -98,13 +98,13 @@ struct LoginFormView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
-                    .font(.nvidiaSans(size: 11, weight: .bold))
+                    .font(.uiSans(size: 11, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.4)
                     .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 
                 Text("Get In. Game On.")
-                    .font(.nvidiaSans(size: headlineSize, weight: .bold))
+                    .font(.uiSans(size: headlineSize, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
                     .padding(.bottom, OpenNOWDesign.Spacing.medium)
@@ -202,12 +202,12 @@ private struct ProviderCard: View {
             HStack(spacing: OpenNOWDesign.Spacing.small) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider.title)
-                        .font(.nvidiaSans(size: 14, weight: .bold))
+                        .font(.uiSans(size: 14, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                     if !provider.loginProviderCode.isEmpty {
                         Text(provider.loginProviderCode)
-                            .font(.nvidiaSans(size: 11, weight: .regular))
+                            .font(.uiSans(size: 11, weight: .regular))
                             .foregroundStyle(OpenNOWDesign.Text.tertiary)
                             .lineLimit(1)
                     }
@@ -217,7 +217,7 @@ private struct ProviderCard: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.nvidiaSans(size: 12, weight: .bold))
+                        .font(.uiSans(size: 12, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                 }
             }
@@ -246,7 +246,7 @@ private struct VendorContentString: View {
                 .frame(width: 8, height: 8)
                 .padding(.top, OpenNOWDesign.Spacing.xxSmall)
             Text(text)
-                .font(.nvidiaSans(size: 14, weight: .regular))
+                .font(.uiSans(size: 14, weight: .regular))
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -273,7 +273,7 @@ private struct SignInModal: View {
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
                 HStack(alignment: .top) {
                     Text(modalTitle)
-                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .font(.uiSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                     Spacer(minLength: OpenNOWDesign.Spacing.small)
                     ModalCloseButton(action: onClose)
@@ -323,18 +323,18 @@ private struct SignInModal: View {
             if let banner = signInRequestBanner {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall) {
                     Text(banner.label)
-                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .font(.uiSans(size: 11, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(0.8)
                     Text(banner.message)
-                        .font(.nvidiaSans(size: 13, weight: .regular))
+                        .font(.uiSans(size: 13, weight: .regular))
                         .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                     if viewModel.canCancelReauthentication {
                         Button("Keep using the current account", action: onClose)
                             .buttonStyle(.plain)
-                            .font(.nvidiaSans(size: 12, weight: .bold))
+                            .font(.uiSans(size: 12, weight: .bold))
                             .foregroundStyle(OpenNOWDesign.accent)
                     }
                 }
@@ -346,7 +346,7 @@ private struct SignInModal: View {
 
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
                 Text("SERVICE PROVIDER")
-                    .font(.nvidiaSans(size: 11, weight: .bold))
+                    .font(.uiSans(size: 11, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .tracking(0.8)
 
@@ -362,7 +362,7 @@ private struct SignInModal: View {
 
                 if viewModel.isLoadingProviders {
                     Text("Loading provider list...")
-                        .font(.nvidiaSans(size: 12, weight: .regular))
+                        .font(.uiSans(size: 12, weight: .regular))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
@@ -383,7 +383,7 @@ private struct SignInModal: View {
                 viewModel.launchDeviceCodeThroughTermsGate()
             } label: {
                 Text("BROWSER SIGN-IN")
-                    .font(.nvidiaSans(size: 12, weight: .bold))
+                    .font(.uiSans(size: 12, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(0.8)
             }
@@ -394,16 +394,16 @@ private struct SignInModal: View {
             if !viewModel.deviceCodeUserCode.isEmpty {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
                     Text("ENTER THIS CODE IN YOUR BROWSER")
-                        .font(.nvidiaSans(size: 11, weight: .bold))
+                        .font(.uiSans(size: 11, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .tracking(0.8)
                     Text(viewModel.deviceCodeUserCode)
-                        .font(.nvidiaSans(size: 22, weight: .bold))
+                        .font(.uiSans(size: 22, weight: .bold))
                         .monospacedDigit()
                         .tracking(1.6)
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(viewModel.deviceCodeVerificationURI)
-                        .font(.nvidiaSans(size: 12, weight: .regular))
+                        .font(.uiSans(size: 12, weight: .regular))
                         .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .lineLimit(2)
                 }
@@ -411,7 +411,7 @@ private struct SignInModal: View {
 
             if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                 Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
-                    .font(.nvidiaSans(size: 13, weight: .regular))
+                    .font(.uiSans(size: 13, weight: .regular))
                     .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accent : .orange)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -428,7 +428,7 @@ private struct ModalCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.nvidiaSans(size: 11, weight: .bold))
+                .font(.uiSans(size: 11, weight: .bold))
                 .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                 .frame(width: 28, height: 28)
                 .background(isHovering ? Color.white.opacity(0.08) : Color.clear)
@@ -454,15 +454,15 @@ private struct TermsOfUseDialog: View {
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
                 HStack(spacing: OpenNOWDesign.Spacing.small) {
                     Image(systemName: "doc.text.magnifyingglass")
-                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .font(.uiSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                     Text("GeForce NOW Terms of Use")
-                        .font(.nvidiaSans(size: 20, weight: .bold))
+                        .font(.uiSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
 
                 Text("OpenNOW is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
-                    .font(.nvidiaSans(size: 13, weight: .regular))
+                    .font(.uiSans(size: 13, weight: .regular))
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -470,10 +470,10 @@ private struct TermsOfUseDialog: View {
                 if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                         Image(systemName: "link")
-                            .font(.nvidiaSans(size: 11, weight: .bold))
+                            .font(.uiSans(size: 11, weight: .bold))
                             .foregroundStyle(OpenNOWDesign.accent)
                         Link("Read the full GeForce NOW Terms of Use", destination: touURL)
-                            .font(.nvidiaSans(size: 13, weight: .bold))
+                            .font(.uiSans(size: 13, weight: .bold))
                             .foregroundStyle(OpenNOWDesign.accent)
                     }
                 }
@@ -501,7 +501,7 @@ private struct TermsOfUseDialog: View {
 private struct VendorTermsDeclineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: 13, weight: .bold))
+            .font(.uiSans(size: 13, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 36)

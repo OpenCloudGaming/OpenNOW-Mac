@@ -123,7 +123,7 @@ struct RemoteCoOpGuestView: View {
                     }
                     if viewModel.statsVisible, let stats = viewModel.stats {
                         Text([viewModel.connectedHostName, stats.overlayText].compactMap { $0 }.joined(separator: "  ·  "))
-                            .nvidiaFont(size: 11 * uiScale, weight: .medium)
+                            .catalogFont(size: 11 * uiScale, weight: .medium)
                             .monospacedDigit()
                             .foregroundStyle(OpenNOWDesign.Text.primary)
                             .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -146,10 +146,10 @@ struct RemoteCoOpGuestView: View {
                 .font(.system(size: 40 * uiScale))
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
             Text("Join Remote Co-Op")
-                .nvidiaFont(size: 22 * uiScale, weight: .semibold)
+                .catalogFont(size: 22 * uiScale, weight: .semibold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
             Text(viewModel.statusText)
-                .nvidiaFont(size: 13 * uiScale)
+                .catalogFont(size: 13 * uiScale)
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
             if viewModel.hosts.isEmpty {
                 ProgressView()
@@ -164,7 +164,7 @@ struct RemoteCoOpGuestView: View {
                             HStack {
                                 Image(systemName: "desktopcomputer")
                                 Text(host.name)
-                                    .nvidiaFont(size: 14 * uiScale, weight: .medium)
+                                    .catalogFont(size: 14 * uiScale, weight: .medium)
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
@@ -192,7 +192,7 @@ struct RemoteCoOpGuestView: View {
         if !viewModel.recentAddresses.isEmpty {
             VStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
                 Text("Recent")
-                    .nvidiaFont(size: 11 * uiScale, weight: .medium)
+                    .catalogFont(size: 11 * uiScale, weight: .medium)
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 ForEach(viewModel.recentAddresses, id: \.self) { address in
                     HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
@@ -204,7 +204,7 @@ struct RemoteCoOpGuestView: View {
                                     .truncationMode(.middle)
                                 Spacer(minLength: 0)
                             }
-                            .nvidiaFont(size: 12 * uiScale, weight: .medium)
+                            .catalogFont(size: 12 * uiScale, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Text.secondary)
                             .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                             .frame(width: 260 * uiScale, height: 26 * uiScale, alignment: .leading)
@@ -214,7 +214,7 @@ struct RemoteCoOpGuestView: View {
                         .buttonStyle(.opnPressable(scale: 0.98))
                         Button { viewModel.forgetRecentAddress(address) } label: {
                             Image(systemName: "xmark")
-                                .nvidiaFont(size: 10 * uiScale, weight: .bold)
+                                .catalogFont(size: 10 * uiScale, weight: .bold)
                                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
                                 .frame(width: 20 * uiScale, height: 26 * uiScale)
                         }
@@ -232,12 +232,12 @@ struct RemoteCoOpGuestView: View {
     private var manualAddressField: some View {
         VStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
             Text("Or connect by address or invite link")
-                .nvidiaFont(size: 12 * uiScale, weight: .medium)
+                .catalogFont(size: 12 * uiScale, weight: .medium)
                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
             HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 TextField("100.101.102.103 or https://…", text: $viewModel.manualAddress)
                     .textFieldStyle(.plain)
-                    .nvidiaFont(size: 13 * uiScale)
+                    .catalogFont(size: 13 * uiScale)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                     .frame(width: 260 * uiScale, height: 28 * uiScale)
@@ -249,7 +249,7 @@ struct RemoteCoOpGuestView: View {
                     .disabled(viewModel.manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             Text("A Tailscale address or MagicDNS name works here, as does the invite link the host copied — use the link if they are behind a tunnel. Bonjour only reaches your local network.")
-                .nvidiaFont(size: 11 * uiScale)
+                .catalogFont(size: 11 * uiScale)
                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340 * uiScale)
@@ -263,11 +263,11 @@ struct RemoteCoOpGuestView: View {
                 .font(.system(size: 32 * uiScale))
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
             Text(viewModel.statusText)
-                .nvidiaFont(size: 15 * uiScale, weight: .medium)
+                .catalogFont(size: 15 * uiScale, weight: .medium)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
             if viewModel.phase == .waitingForApproval, waitingElapsed > 0 {
                 Text(waitingElapsed < 60 ? "\(waitingElapsed)s" : "\(waitingElapsed / 60)m \(waitingElapsed % 60)s")
-                    .nvidiaFont(size: 12 * uiScale, weight: .medium)
+                    .catalogFont(size: 12 * uiScale, weight: .medium)
                     .monospacedDigit()
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
@@ -289,7 +289,7 @@ struct RemoteCoOpGuestView: View {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                 Text("Leave")
             }
-            .nvidiaFont(size: 11 * uiScale, weight: .medium)
+            .catalogFont(size: 11 * uiScale, weight: .medium)
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
@@ -338,7 +338,7 @@ struct RemoteCoOpGuestView: View {
                     Image(systemName: "slider.horizontal.3")
                     Text(viewModel.participant?.guestRequestedQualityPreset?.label ?? "Quality")
                 }
-                .nvidiaFont(size: 11 * uiScale, weight: .medium)
+                .catalogFont(size: 11 * uiScale, weight: .medium)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                 .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
@@ -364,7 +364,7 @@ struct RemoteCoOpGuestView: View {
         HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
             Image(systemName: "gamecontroller")
             Text("No controller detected — connect one to play. Guests cannot use a keyboard or mouse.")
-                .nvidiaFont(size: 11 * uiScale, weight: .medium)
+                .catalogFont(size: 11 * uiScale, weight: .medium)
         }
         .foregroundStyle(OpenNOWDesign.Text.primary)
         .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -379,10 +379,10 @@ struct RemoteCoOpGuestView: View {
                 .font(.system(size: 32 * uiScale))
                 .foregroundStyle(OpenNOWDesign.Semantic.destructive)
             Text("Couldn't join")
-                .nvidiaFont(size: 17 * uiScale, weight: .semibold)
+                .catalogFont(size: 17 * uiScale, weight: .semibold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
             Text(reason)
-                .nvidiaFont(size: 13 * uiScale)
+                .catalogFont(size: 13 * uiScale)
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380 * uiScale)

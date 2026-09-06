@@ -28,7 +28,7 @@ struct OpenNOWReleaseNotesView: View {
         VStack(alignment: .leading, spacing: metrics.sectionSpacing * uiScale) {
             if notes.isEmpty {
                 Text("No release notes were provided.")
-                    .font(.nvidiaSans(size: metrics.entrySize * uiScale, weight: .medium))
+                    .font(.uiSans(size: metrics.entrySize * uiScale, weight: .medium))
                     .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
 
@@ -60,7 +60,7 @@ struct OpenNOWReleaseNotesView: View {
                     expandedSectionIDs.insert(section.id)
                 } label: {
                     Text("+\(hiddenCount) MORE")
-                        .font(.nvidiaSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
+                        .font(.uiSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.accent)
                         .tracking(0.7)
                 }
@@ -78,12 +78,12 @@ struct OpenNOWReleaseNotesView: View {
                     .frame(width: 3 * uiScale, height: 12 * uiScale)
             }
             Text(section.title.uppercased())
-                .font(.nvidiaSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
+                .font(.uiSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .tracking(1.1)
             Spacer(minLength: OpenNOWDesign.Spacing.xSmall(scale: uiScale))
             Text("\(section.entries.count)")
-                .font(.nvidiaSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
+                .font(.uiSans(size: metrics.eyebrowSize * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.Text.muted)
         }
     }
@@ -96,7 +96,7 @@ struct OpenNOWReleaseNotesView: View {
                 .padding(.top, (metrics.entrySize * 0.5) * uiScale)
 
             Text(entry.attributedText)
-                .font(.nvidiaSans(size: metrics.entrySize * uiScale, weight: .medium))
+                .font(.uiSans(size: metrics.entrySize * uiScale, weight: .medium))
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .tint(OpenNOWDesign.accent)
                 .lineSpacing(2 * uiScale)
@@ -118,7 +118,7 @@ struct OpenNOWReleaseNotesView: View {
 
     private func paragraphText(_ paragraph: String) -> some View {
         Text(OpenNOWReleaseNotesFormatter.attributedText(paragraph))
-            .font(.nvidiaSans(size: metrics.entrySize * uiScale, weight: .medium))
+            .font(.uiSans(size: metrics.entrySize * uiScale, weight: .medium))
             .foregroundStyle(OpenNOWDesign.Text.secondary)
             .tint(OpenNOWDesign.accent)
             .lineSpacing(2 * uiScale)
@@ -167,7 +167,7 @@ private struct ReleaseNoteChip: View {
 
     private var chipLabel: some View {
         Text(label)
-            .font(.nvidiaSans(size: size * uiScale, weight: .bold))
+            .font(.uiSans(size: size * uiScale, weight: .bold))
             .foregroundStyle(isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
             .tracking(0.7)
             .lineLimit(1)

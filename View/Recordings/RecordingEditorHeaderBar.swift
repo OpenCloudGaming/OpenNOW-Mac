@@ -57,7 +57,7 @@ struct RecordingEditorHeaderBar: View {
                 .accessibilityLabel("Export progress")
                 .accessibilityValue("\(Int(viewModel.exportProgress * 100)) percent")
             Text("Exporting \(Int(viewModel.exportProgress * 100))%")
-                .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(.white.opacity(0.72))
                 .monospacedDigit()
                 .fixedSize()
@@ -71,7 +71,7 @@ struct RecordingEditorHeaderBar: View {
         HStack(spacing: 12 * uiScale) {
             HStack(spacing: 7 * uiScale) {
                 Text("QUICK EDIT")
-                    .font(.recordingsNvidia(size: 10 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.4)
                     .foregroundStyle(OpenNOWDesign.accent)
                 OpenNOWBetaTag(uiScale: uiScale, prominent: true)
@@ -80,7 +80,7 @@ struct RecordingEditorHeaderBar: View {
             statusLine
             TextField("New clip title", text: coalescedUndoable(\.outputTitle, token: "outputTitle"))
                 .textFieldStyle(.plain)
-                .font(.recordingsNvidia(size: 13 * uiScale, weight: .medium))
+                .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.95))
                 .padding(.horizontal, 10 * uiScale)
                 // Matches the buttons beside it; 34 against their 36 read as a misaligned field.
@@ -134,30 +134,30 @@ struct RecordingEditorHeaderBar: View {
         HStack(spacing: 8 * uiScale) {
             if let errorMessage = viewModel.errorMessage {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(RecordingsLayout.danger)
                 Text(errorMessage)
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(RecordingsLayout.danger.opacity(0.92))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let hint = viewModel.hint {
                 Image(systemName: "info.circle.fill")
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
                 Text(hint)
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.76))
                     .lineLimit(1)
             } else {
                 Text(exportSummary)
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .medium))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(0.52))
                     .lineLimit(1)
             }
             if let markSummary = viewModel.markedRangeDescription {
                 Text(markSummary)
-                    .font(.recordingsNvidia(size: 11 * uiScale, weight: .bold))
+                    .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                     .foregroundStyle(RecordingsLayout.danger.opacity(0.92))
                     .fixedSize()
             }
