@@ -150,6 +150,28 @@ import Testing
         #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(0) == 2)
     }
 
+    /// The HUD is the only place a listener can confirm what the seat actually sent, so it has to
+    /// name the negotiated layout, and say what was asked for when the two differ.
+    @Test func theHudNamesTheNegotiatedLayoutAndFlagsAShortfall() {
+        func snapshot(negotiated: Int, requested: Int) -> NativeNVSTPerformanceSnapshot {
+            NativeNVSTPerformanceSnapshot(
+                available: true, gameFramesPerSecond: 0, streamFramesPerSecond: 0,
+                latencyMilliseconds: 0, jitterMilliseconds: 0, frameLoss: 0, totalFrameLoss: 0,
+                packetLoss: 0, totalPacketLoss: 0, bitrateMegabitsPerSecond: 0,
+                bandwidthUtilizationPercent: 0, resolution: "", codec: "", serverLocation: "",
+                audioChannelCount: negotiated, requestedAudioChannelCount: requested
+            )
+        }
+        #expect(snapshot(negotiated: 6, requested: 6).audioFormatSummary == "5.1")
+        #expect(snapshot(negotiated: 8, requested: 8).audioFormatSummary == "7.1")
+        #expect(snapshot(negotiated: 2, requested: 2).audioFormatSummary == "Stereo")
+        // A request the seat did not honour reads as what arrived, plus what was asked.
+        #expect(snapshot(negotiated: 2, requested: 6).audioFormatSummary == "Stereo (5.1 asked)")
+        #expect(snapshot(negotiated: 6, requested: 8).audioFormatSummary == "5.1 (7.1 asked)")
+        // Nothing negotiated yet is not a claim about the layout.
+        #expect(snapshot(negotiated: 0, requested: 6).audioFormatSummary == "-")
+    }
+
     @Test func theSubscriptionFeatureMapsToAChannelCount() {
         let service = OPNGameService()
         #expect(service.entitledAudioChannelCount(features: nil) == 0)
