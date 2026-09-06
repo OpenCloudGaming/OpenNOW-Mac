@@ -455,13 +455,21 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
         let width = collectionView.frame.width
         let columns = max(2, Int((width + spacing) / (minTileWidth + spacing)))
         let totalSpacing = CGFloat(max(columns - 1, 0)) * spacing
-        let itemWidth = floor(max(width - totalSpacing, minTileWidth * 2) / CGFloat(columns))
+        // Hover grows a tile about its centre, and the scroll view clips anything that leaves the
+        // grid: the top row lost the slice above it and the outer columns lost their outer edge.
+        // The grid keeps that much room around itself, sized from the growth it has to absorb.
+        let growth = CatalogShowAllLayout.tileScaleFactor - 1
+        let unpaddedItemWidth = max(width - totalSpacing, minTileWidth * 2) / CGFloat(columns)
+        let horizontalInset = ceil(unpaddedItemWidth * growth / 2)
+        let availableWidth = max(width - horizontalInset * 2, minTileWidth * 2)
+        let itemWidth = floor(max(availableWidth - totalSpacing, minTileWidth * 2) / CGFloat(columns))
         let itemHeight = floor(itemWidth * 9 / 16)
+        let verticalInset = ceil(itemHeight * growth / 2)
         let itemSize = NSSize(width: itemWidth, height: itemHeight)
         let itemCount = collectionView.numberOfItems(inSection: 0)
 
-        var x: CGFloat = 0
-        var y: CGFloat = 0
+        var x: CGFloat = horizontalInset
+        var y: CGFloat = verticalInset
         var itemCountInRow = 0
         var maxContentHeight: CGFloat = 0
 
@@ -474,7 +482,7 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
 
             itemCountInRow += 1
             if itemCountInRow == columns {
-                x = 0
+                x = horizontalInset
                 y += itemSize.height + spacing
                 itemCountInRow = 0
             } else {
@@ -504,7 +512,7 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
             }
         }
 
-        contentSizeValue = NSSize(width: width, height: maxContentHeight)
+        contentSizeValue = NSSize(width: width, height: maxContentHeight + verticalInset)
     }
 
     override var collectionViewContentSize: NSSize { contentSizeValue }
@@ -563,9 +571,9 @@ enum CatalogShowAllLayout {
     /// The rails' tray height, not a second one: a search result and a home tile are the same
     /// component and the bar was 12pt shorter here.
     static let cardTrayHeight = CatalogVendorLayout.cardTrayHeight(scale: 1)
-    /// Deliberately gentler than the rails' 1.12. A rail can raise the hovered tile above its
-    /// neighbours; this grid is an NSCollectionView, where each item is its own layer and the
-    /// enlarged tile cannot be reordered over the one beside it.
+    /// Deliberately gentler than the rails'. A rail spaces its tiles apart; this grid is an
+    /// NSCollectionView, where each item is its own layer and the enlarged tile can neither be
+    /// reordered over the one beside it nor draw outside the scroll view that clips it.
     static let tileScaleFactor: CGFloat = 1.04
     /// The home rails' tray token, not a second near-black of its own: the two trays sat side by
     /// side across a search and did not match.

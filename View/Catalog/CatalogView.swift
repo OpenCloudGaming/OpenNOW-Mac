@@ -9,7 +9,10 @@ enum CatalogVendorLayout {
     static let appBarBackground = OpenNOWDesign.Surface.appBar
     static let mallSurface = OpenNOWDesign.Surface.app
     static let tileTray = OpenNOWDesign.Surface.tileTray
-    static let tileScaleFactor: CGFloat = 1.12
+    /// Hover growth stops just short of the neighbouring tile's artwork: a tile is 352pt wide in a
+    /// 368pt slot, so anything past 192/176 = 1.09 crosses into the tile beside it, which a rail
+    /// cannot order around (a `LazyHStack` paints its children in index order and ignores `zIndex`).
+    static let tileScaleFactor: CGFloat = 1.08
     static let heroAspectRatio: CGFloat = 0.3229
     static let detailPanelAspectRatio: CGFloat = 0.3229
 
