@@ -45,6 +45,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
 | 🔔 **Session ready** | Queue in the background: pick a system notification or have OpenNOW come to the front the moment your seat is ready. |
+| 🔎 **Settings you can find** | Eight destinations named for what they hold, and a search that answers the word you know: type 5.1, black bars or vsync and it lands on the setting. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app - catalog, details, settings - from the pad. Never reach for the mouse. |
 | 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |
@@ -102,7 +103,7 @@ WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - 
 - **Microphone on NVST** - when the seat offers bundle mic in DESCRIBE (every current seat does), the bundle carries a send-only Opus mic section exactly like the official client, driven by push-to-talk / voice-activity / mute / the volume slider. Verified live on 2026-09-03: game audio and voice chat together on a fresh session. Seats on NVST's legacy RTSP mic transport are not supported yet and report that when the mic is enabled. Settings → Audio has a local microphone test either way.
 - **Session recording** - ⌘R captures decode frames and game audio straight off the native pipeline.
 
-Enable it in **Settings → Stream Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
+Enable it in **Settings → Network → Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
 
 The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md).
 
@@ -115,7 +116,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.
-- **Built-in tester** - Settings → Steam Controller Test shows every button, axis, and pad live.
+- **Built-in tester** - Settings → Input → Steam Controller shows every button, axis, and pad live.
 - **Lizard mode off** - the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 
 ![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)

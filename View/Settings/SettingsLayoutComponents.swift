@@ -122,8 +122,10 @@ struct SettingsColumns<Leading: View, Trailing: View>: View {
     }
 }
 
-// MARK: - Section bar
+// MARK: - Card anchors
 
+/// A card a search result can name and scroll to. Nothing draws these; the title is what a result
+/// shows as its location, and the id is what the page scrolls to.
 struct SettingsSection: Identifiable, Equatable {
     let id: String
     let title: String

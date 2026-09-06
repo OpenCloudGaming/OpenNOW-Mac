@@ -154,9 +154,9 @@ struct SettingsStack<Content: View>: View {
     @ViewBuilder let content: Content
 
     /// Always eager. A lazy stack does not build a card until it scrolls into view, so it has no
-    /// identity to scroll to and both the section bar and a search result silently did nothing for
-    /// anything below the fold. A settings page is a handful of cards, so laziness bought little and
-    /// cost the two ways of jumping around one.
+    /// identity to scroll to and a search result silently did nothing for any card below the fold.
+    /// A settings page is a handful of cards, so laziness bought little and cost the one way of
+    /// jumping straight to a setting.
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) { content }
     }
