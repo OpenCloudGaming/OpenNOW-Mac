@@ -87,7 +87,7 @@ struct VideoSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "Aspect Ratio", subtitle: "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, uiScale: uiScale, action: viewModel.setAspectIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsMenuRow(title: "Resolution", subtitle: "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, uiScale: uiScale, action: viewModel.setResolutionIndex)
+            SettingsOptionRow(title: "Resolution", subtitle: "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, uiScale: uiScale, action: viewModel.setResolutionIndex)
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "Frame Rate", subtitle: "Limited by the active display refresh rate.", options: OPNStreamPreferences.fpsOptions.map { "\($0) FPS" }, selectedIndex: viewModel.streamProfile.fpsIndex, enabled: OPNStreamPreferences.fpsOptions.map { OPNStreamPreferences.fpsSupported($0, capabilities: viewModel.streamCapabilities) }, uiScale: uiScale, action: viewModel.setFpsIndex)
         }
@@ -118,7 +118,7 @@ struct VideoSettingsPage: View {
 
     private var bandwidthCard: some View {
         SettingsCard(title: "Bandwidth", uiScale: uiScale) {
-            SettingsMenuRow(title: "Maximum Bitrate", subtitle: "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, uiScale: uiScale, action: viewModel.setBitrateIndex)
+            SettingsOptionRow(title: "Maximum Bitrate", subtitle: "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, uiScale: uiScale, action: viewModel.setBitrateIndex)
             SettingsDivider(uiScale: uiScale)
             SettingsInfoRow(label: "Estimated Data Use", value: estimatedDataUsage, uiScale: uiScale)
         }

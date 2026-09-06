@@ -464,6 +464,7 @@ struct SettingsContent: View {
                 )
                 if sections.count > 1 {
                     SettingsSectionBar(sections: sections, activeID: activeSectionID, uiScale: uiScale) { id in
+                        activeSectionID = id
                         withAnimation(.easeOut(duration: 0.20)) { proxy.scrollTo(id, anchor: .top) }
                     }
                 }

@@ -150,15 +150,14 @@ struct ControllerFocusIdentity {
 /// are actually on screen need to exist. Pad control turns that off: traversal order is collected
 /// from the rows that rendered, so under a controller every row has to be present to be reachable.
 struct SettingsStack<Content: View>: View {
-    @Environment(\.controllerFocusActive) private var isPadActive
     let spacing: CGFloat
     @ViewBuilder let content: Content
 
+    /// Always eager. A lazy stack does not build a card until it scrolls into view, so it has no
+    /// identity to scroll to and both the section bar and a search result silently did nothing for
+    /// anything below the fold. A settings page is a handful of cards, so laziness bought little and
+    /// cost the two ways of jumping around one.
     var body: some View {
-        if isPadActive {
-            VStack(alignment: .leading, spacing: spacing) { content }
-        } else {
-            LazyVStack(alignment: .leading, spacing: spacing) { content }
-        }
+        VStack(alignment: .leading, spacing: spacing) { content }
     }
 }

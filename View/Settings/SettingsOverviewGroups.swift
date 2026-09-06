@@ -10,6 +10,9 @@ struct AccountSettingsGroup: View {
 
     static let sections: [SettingsSection] = [
         SettingsSection("membership", "Membership"),
+        SettingsSection("playtime", "Playtime"),
+        SettingsSection("profile", "Profile"),
+        SettingsSection("session", "Session"),
         SettingsSection("stores", "Stores"),
     ]
 

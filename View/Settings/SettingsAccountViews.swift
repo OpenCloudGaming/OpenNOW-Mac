@@ -53,7 +53,9 @@ struct AccountSettingsPage: View {
             // two cards held different amounts and so ended at different heights, which read as a
             // layout accident rather than a choice, and squeezed the value columns of both.
             profilePrivacyCard
+                .settingsSection("profile")
             sessionCard
+                .settingsSection("session")
 
             SettingsCard(title: "Playtime Statistics", uiScale: uiScale) {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
@@ -73,6 +75,7 @@ struct AccountSettingsPage: View {
                     }
                 }
             }
+            .settingsSection("playtime")
         }
     }
 

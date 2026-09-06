@@ -4,6 +4,16 @@ import SwiftUI
 /// feature behind it is. Small enough to read as a footnote on the control they qualify, never as a
 /// second title competing with it.
 
+/// Letter-spacing is applied after every glyph including the last, so a tracked label sits left of
+/// centre inside a padded box unless the trailing padding gives that space back. Tracking scales
+/// with the interface like the padding it is subtracted from; mixing the two only looks right at
+/// 1.0.
+enum SettingsTagMetrics {
+    static let tracking: CGFloat = 0.7
+    static let horizontalPadding: CGFloat = 4
+    static var trailingPadding: CGFloat { horizontalPadding - tracking }
+}
+
 /// A row title with its optional NEW tag riding alongside, so every row kind renders the tag the
 /// same way.
 struct SettingsRowTitle: View {
@@ -30,9 +40,10 @@ struct SettingsCardTag: View {
     var body: some View {
         Text(text)
             .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
-            .tracking(0.7)
+            .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
-            .padding(.horizontal, 4 * uiScale)
+            .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
+            .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
             .background(OpenNOWDesign.accent.opacity(0.12))
             .accessibilityLabel(text.capitalized)
@@ -47,9 +58,10 @@ struct OpenNOWNewTag: View {
     var body: some View {
         Text("NEW")
             .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
-            .tracking(0.7)
+            .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(.black)
-            .padding(.horizontal, 4 * uiScale)
+            .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
+            .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
             .background(OpenNOWDesign.accent)
             .accessibilityLabel("New setting")
@@ -71,13 +83,16 @@ struct OpenNOWBetaTag: View {
     var body: some View {
         Text("BETA")
             .font(.settingsNvidia(size: (compact ? 8 : 9) * uiScale, weight: .bold))
-            .tracking(0.7)
+            .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(foreground)
-            .padding(.horizontal, (compact ? 4 : 5) * uiScale)
+            .padding(.leading, leadingPadding * uiScale)
+            .padding(.trailing, (leadingPadding - SettingsTagMetrics.tracking) * uiScale)
             .padding(.vertical, 2 * uiScale)
             .background(background)
             .accessibilityLabel("Beta")
     }
+
+    private var leadingPadding: CGFloat { compact ? 4 : 5 }
 
     private var foreground: Color {
         if prominent { return .black }

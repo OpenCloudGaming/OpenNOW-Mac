@@ -371,13 +371,6 @@ with a white @ 0.10 border, active is accent @ 0.12 with an accent @ 0.34 border
 Rendered only when a destination has more than one section. Cards opt in with `.settingsSection(_:)`,
 which supplies both the scroll identity the chip jumps to and the position that highlights it.
 
-### Settings Menu Row (`SettingsMenuRow`)
-
-The option row for five or more values, or values too long for chips. The label keeps its 250 column
-and the value is a 32-high dropdown trigger, 12 horizontal padding, white @ 0.07 fill, white @ 0.12
-border, opening `OpenNOWDropdownMenu`. A pad never opens the panel: left/right step the value and
-confirm advances it, exactly as on `SettingsOptionRow`.
-
 ### Settings Disclosure Card (`SettingsDisclosureCard`)
 
 A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a
@@ -423,7 +416,10 @@ beta - one unsettled card in a settled tab is a card badge, not a destination ta
 ### Tags (`OpenNOWBetaTag`, `OpenNOWNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking
-0.7, 4pt horizontal / 2pt vertical padding, square corners. **BETA** is accent text on a 12 % accent
+0.7, 4pt leading / 3.3pt trailing / 2pt vertical padding, square corners. The trailing padding is
+short by exactly the tracking, because letter-spacing is applied after the last glyph too and an
+even 4/4 leaves the label sitting left of centre in its box. Tracking scales with the interface like
+the padding it is subtracted from. **BETA** is accent text on a 12 % accent
 tint (compact) for shipped-but-rough features. **NEW** is black text on solid accent for a setting
 added in the current release; rows opt in with `isNew:` and declare their release in
 `OpenNOWNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
