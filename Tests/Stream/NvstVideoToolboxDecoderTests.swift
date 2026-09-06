@@ -272,6 +272,29 @@ extension NvstVideoToolboxDecoderTests {
         #expect(eight444 == [kCVPixelFormatType_444YpCbCr8BiPlanarFullRange, fallback])
     }
 
+    /// Every surface the decoder can be asked for must be drawn by our own Metal path unless it is
+    /// 8-bit 4:2:0 or BGRA. WebRTC's `RTCMTLI420Renderer` fallback has no `toI420` case for any
+    /// other layout and draws an unfilled buffer — the flat green screen 8-bit 4:4:4 showed.
+    @Test func everyNonNV12DecoderSurfaceTakesTheCustomRenderPath() {
+        typealias Format = NvstVideoToolboxDecoder.BitstreamFormat
+        for chroma in [Format.Chroma.yuv420, .yuv422, .yuv444] {
+            for bitDepth in [8, 10] {
+                let format = Format(bitDepth: bitDepth, chroma: chroma)
+                for surface in NvstVideoToolboxDecoder.preferredOutputPixelFormats(for: format) {
+                    let isNV12 = surface == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                    #expect(OPNVideoTextureSource.requiresCustomRenderPath(surface) == !isNV12,
+                            "\(NvstVideoToolboxDecoder.pixelFormatName(surface)) for \(format.summary)")
+                    #expect(OPNVideoTextureSource.isSupportedBiPlanarFormat(surface),
+                            "\(NvstVideoToolboxDecoder.pixelFormatName(surface)) must bind as two planes")
+                }
+            }
+        }
+        #expect(!OPNVideoTextureSource.requiresCustomRenderPath(kCVPixelFormatType_32BGRA))
+        #expect(OPNVideoTextureSource.nativeRenderTierLabel(kCVPixelFormatType_444YpCbCr8BiPlanarFullRange) == "Native 4:4:4")
+        #expect(OPNVideoTextureSource.nativeRenderTierLabel(kCVPixelFormatType_444YpCbCr10BiPlanarFullRange) == "Native 10-bit 4:4:4")
+        #expect(OPNVideoTextureSource.nativeRenderTierLabel(kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) == "Native 10-bit")
+    }
+
     @Test func pixelFormatNamesAreTheFourCharacterCodes() {
         #expect(NvstVideoToolboxDecoder.pixelFormatName(kCVPixelFormatType_420YpCbCr10BiPlanarFullRange) == "xf20")
         #expect(NvstVideoToolboxDecoder.pixelFormatName(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) == "420f")

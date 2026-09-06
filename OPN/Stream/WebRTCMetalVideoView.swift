@@ -80,8 +80,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) var enhancementOverrideLock = os_unfair_lock_s()
     nonisolated(unsafe) var frameLock = os_unfair_lock_s()
     nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
-    nonisolated(unsafe) var cachedIsTenBitBiPlanar = false
-    nonisolated(unsafe) private var pixelFormatCached = false
+    /// True when WebRTC's built-in renderers cannot draw the latest surface (any bi-planar layout
+    /// other than 8-bit 4:2:0) and the frame has to go through our own Metal path even with
+    /// enhancement off. Re-read whenever the surface format changes, not once per session: a
+    /// decoder rebuild can move between 4:2:0 and 4:4:4 at a keyframe without changing size.
+    nonisolated(unsafe) var cachedRequiresCustomRenderPath = false
     /// The drawable format and transfer function the latest frame wants. Re-read on every frame:
     /// a stream can switch to 10-bit or HDR at a keyframe without changing size, which is the only
     /// event the older per-size cache above keyed on.
@@ -194,7 +197,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         guard size.width > 0, size.height > 0 else { return }
         os_unfair_lock_lock(&frameLock)
         sourceFrameSize = size
-        pixelFormatCached = false
         os_unfair_lock_unlock(&frameLock)
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -212,11 +214,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             output = Self.desiredOutput(for: buffer.pixelBuffer)
         }
         os_unfair_lock_lock(&frameLock)
-        if !pixelFormatCached, let buffer = frame.buffer as? RTCCVPixelBuffer {
+        if let buffer = frame.buffer as? RTCCVPixelBuffer {
             let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
-            cachedPixelFormat = format
-            cachedIsTenBitBiPlanar = OPNVideoTextureSource.isTenBitBiPlanarFormat(format)
-            pixelFormatCached = true
+            if format != cachedPixelFormat {
+                cachedPixelFormat = format
+                cachedRequiresCustomRenderPath = OPNVideoTextureSource.requiresCustomRenderPath(format)
+            }
         }
         if let output {
             desiredOutputFormat = output.0
@@ -285,7 +288,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
         let frame = next.frame
-        let snapshot = (frame, next.serial, next.sourceSize, next.tenBit)
+        let snapshot = (frame, next.serial, next.sourceSize, next.requiresCustomRenderPath)
         if applyOutputFormatIfNeeded(next.output.0, transfer: next.output.1) { return }
         attachPresentedHandler(receivedAt: next.receivedAt)
 
@@ -304,11 +307,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             return
         }
 
-        let tenBitFrame = snapshot.3
-        if tenBitFrame {
+        // 10-bit, 4:2:2 and 4:4:4 surfaces never reach WebRTC's renderers: its NV12 renderer
+        // binds only 8-bit 4:2:0 and its I420 fallback cannot convert anything else, so they are
+        // drawn by our own pass even with every enhancement off.
+        let customSurface = snapshot.3
+        if customSurface {
             setCustomDrawableRenderingEnabled(true)
         }
-        if tenBitFrame, renderTenBitFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
+        if customSurface, renderCustomSurfaceFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
             captureDrawableIfRequested()
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
@@ -479,8 +485,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return false
     }
 
-    private func renderTenBitFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
+    /// Draws a surface WebRTC's renderers cannot (10-bit, 4:2:2, 4:4:4) through the enhancement
+    /// renderer's plain spatial pass: no sharpening, no denoise, just the YCbCr conversion and the
+    /// pillarbox fill the user asked for.
+    private func renderCustomSurfaceFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
+        let surfaceFormat = (frame.buffer as? RTCCVPixelBuffer).map { CVPixelBufferGetPixelFormatType($0.pixelBuffer) } ?? 0
         let settings = enhancementSettings
         settings.configuredTier = .spatial
         let enhancement = localVideoEnhancement()
@@ -498,13 +508,13 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         let result = enhancementResult
         if enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result) {
-            diagnostics.pixelFormat = result.pixelFormat.isEmpty ? "P010" : result.pixelFormat
-            diagnostics.renderMode = "P010"
+            diagnostics.pixelFormat = result.pixelFormat.isEmpty ? OPNVideoTextureSource.pixelFormatName(surfaceFormat) : result.pixelFormat
+            diagnostics.renderMode = "BiPlanar"
             diagnostics.frameSource = result.frameSource.isEmpty ? "CVPixelBuffer" : result.frameSource
             diagnostics.renderPath = result.renderPath.isEmpty ? "OPNMetalSpatialUpscalerSwift" : result.renderPath
             diagnostics.fallback = result.fallbackReason
             diagnostics.enhancementConfiguredTier = "Off"
-            diagnostics.enhancementActiveTier = "Native 10-bit"
+            diagnostics.enhancementActiveTier = OPNVideoTextureSource.nativeRenderTierLabel(surfaceFormat)
             diagnostics.enhancementFallbackReason = result.tierFallbackReason
             diagnostics.sourceResolution = result.sourceResolution.isEmpty ? diagnostics.sourceResolution : result.sourceResolution
             diagnostics.drawableResolution = result.drawableResolution.isEmpty ? diagnostics.drawableResolution : result.drawableResolution
@@ -516,7 +526,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
             return true
         }
-        diagnostics.fallback = result.fallbackReason.isEmpty ? "P010 renderer unavailable" : result.fallbackReason
+        diagnostics.fallback = result.fallbackReason.isEmpty ? "\(OPNVideoTextureSource.pixelFormatName(surfaceFormat)) renderer unavailable" : result.fallbackReason
         enhancementDroppedFrameCount = result.droppedFrames
         return false
     }

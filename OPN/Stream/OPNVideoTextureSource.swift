@@ -245,6 +245,39 @@ final class OPNVideoTextureSource: NSObject {
         }
     }
 
+    /// Whether a decoded surface must go through our own Metal path rather than WebRTC's built-in
+    /// renderers. `RTCMTLNV12Renderer` binds only 8-bit 4:2:0 and `RTCMTLRGBRenderer` only BGRA;
+    /// everything else falls to `RTCMTLI420Renderer`, whose `RTCCVPixelBuffer toI420` has no case
+    /// for any other layout and hands back an unfilled buffer — every pixel Y=0 Cb=0 Cr=0, which
+    /// draws as a flat green screen. 8-bit 4:2:2 and 4:4:4 surfaces hit that; so does every
+    /// 10-bit one. `OPNVideoTextureSource` binds them all directly.
+    static func requiresCustomRenderPath(_ format: OSType) -> Bool {
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+            return false
+        default:
+            return isSupportedBiPlanarFormat(format)
+        }
+    }
+
+    /// The HUD's render tier for a surface drawn by our own path with enhancement off:
+    /// `Native 10-bit`, `Native 4:4:4`, `Native 10-bit 4:4:4`.
+    static func nativeRenderTierLabel(_ format: OSType) -> String {
+        var parts = ["Native"]
+        if isTenBitBiPlanarFormat(format) { parts.append("10-bit") }
+        switch format {
+        case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_422YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_422YpCbCr10BiPlanarFullRange:
+            parts.append("4:2:2")
+        case kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_444YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_444YpCbCr10BiPlanarFullRange:
+            parts.append("4:4:4")
+        default:
+            break
+        }
+        return parts.joined(separator: " ")
+    }
+
     static func isTenBitBiPlanarFormat(_ format: OSType) -> Bool {
         switch format {
         case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,

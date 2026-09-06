@@ -196,17 +196,17 @@ extension OPNMetalVideoView {
 
     /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
     /// its queue oldest first; the other modes hand out the newest frame once.
-    func nextFrameToDraw() -> (frame: RTCVideoFrame, serial: UInt64, sourceSize: CGSize, tenBit: Bool, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
+    func nextFrameToDraw() -> (frame: RTCVideoFrame, serial: UInt64, sourceSize: CGSize, requiresCustomRenderPath: Bool, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
         let output = (desiredOutputFormat, desiredTransfer)
         if presentationMode == .smooth {
             guard !pendingFrames.isEmpty else { return nil }
             let next = pendingFrames.removeFirst()
-            return (next.frame, next.serial, sourceFrameSize, cachedIsTenBitBiPlanar, output, next.receivedAt)
+            return (next.frame, next.serial, sourceFrameSize, cachedRequiresCustomRenderPath, output, next.receivedAt)
         }
         guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
-        return (frame, frameSerial, sourceFrameSize, cachedIsTenBitBiPlanar, output, latestFrameReceivedAt)
+        return (frame, frameSerial, sourceFrameSize, cachedRequiresCustomRenderPath, output, latestFrameReceivedAt)
     }
 
     /// Hooks the drawable every render path is about to present (MTKView hands the same one to
