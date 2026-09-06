@@ -60,6 +60,11 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     /// asked for. Surround is the one setting whose outcome a listener cannot verify by looking, so
     /// when these disagree the HUD says both: a 5.1 request answered in stereo is a fact worth
     /// seeing rather than a silent disappointment.
+    ///
+    /// `requestedAudioChannelCount` is the reader's own choice, taken before the output device and
+    /// the membership clamp it - not the count the bundle went on to ask the seat for. Those two
+    /// differ exactly when a 7.1 pick is dropped locally against a stereo device, which is the case
+    /// nothing else on screen would report.
     public let audioChannelCount: Int
     public let requestedAudioChannelCount: Int
 

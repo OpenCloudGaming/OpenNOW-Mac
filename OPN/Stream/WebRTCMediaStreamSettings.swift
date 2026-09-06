@@ -430,6 +430,25 @@ public enum WebRTCMediaStreamSettingsResolver {
     /// what the default output device can play — libwebrtc cannot fold a 6- or 8-channel decode
     /// down to stereo, so a surround stream on a stereo device would be silence — nor what the
     /// membership streams. Anything under 6 is stereo; there is no 4-channel format on the wire.
+    /// What the reader asked for, before the output device or the membership gets a say. "Auto"
+    /// has no opinion of its own, so it resolves to whatever the device offers and can never be
+    /// short-changed; an explicit 5.1 or 7.1 can be, and that difference is the whole point of
+    /// keeping this separate from the negotiated count.
+    public static func preferredAudioChannelCount(surroundMode: String, deviceOutputChannels: Int) -> Int {
+        switch surroundMode.lowercased() {
+        case "stereo": 2
+        case "5.1": 6
+        case "7.1": 8
+        default: supportedChannelCount(deviceOutputChannels)
+        }
+    }
+
+    private static func supportedChannelCount(_ channels: Int) -> Int {
+        if channels >= 8 { return 8 }
+        if channels >= 6 { return 6 }
+        return 2
+    }
+
     public static func audioChannelCount(surroundMode: String, deviceOutputChannels: Int, entitledChannels: Int) -> Int {
         let requested: Int = switch surroundMode.lowercased() {
         case "stereo": 2
@@ -439,9 +458,7 @@ public enum WebRTCMediaStreamSettingsResolver {
         }
         var channels = min(requested, deviceOutputChannels)
         if entitledChannels > 0 { channels = min(channels, entitledChannels) }
-        if channels >= 8 { return 8 }
-        if channels >= 6 { return 6 }
-        return 2
+        return supportedChannelCount(channels)
     }
 
     private static func resolvedColorQuality(_ colorQuality: String, codec: String) -> String {

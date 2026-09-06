@@ -257,7 +257,7 @@ extension NvstBifrostFreeTransport {
             audioJitterBufferMilliseconds: audioJitterBufferMilliseconds,
             audioOutputLatencyMilliseconds: bundle?.audioOutputLatencySeconds.map { $0 * 1000 } ?? -1,
             audioChannelCount: bundle?.audioChannelCount ?? 0,
-            requestedAudioChannelCount: configuredAudioChannelCount
+            requestedAudioChannelCount: preferredAudioChannelCount
         )
     }
     // Session-peak tracker for the NVST SESSION SUMMARY line (see logCounters).
