@@ -92,27 +92,27 @@ struct VideoSettingsPage: View {
     /// touched: every row below is locked while a preset other than Custom is selected.
     private var displayCard: some View {
         SettingsCard(title: "Display", uiScale: uiScale) {
-            SettingsOptionRow(title: "Quality Preset", subtitle: "Balanced, Competitive and Cinematic write every value below. Custom edits them.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, uiScale: uiScale, action: viewModel.setStreamingQualityProfileIndex)
+            SettingsOptionRow(title: "Quality Preset", subtitle: "Balanced, Competitive, Data Saver and Cinematic write every value below. Editing any of them switches to Custom.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, uiScale: uiScale, action: viewModel.setStreamingQualityProfileIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "Aspect Ratio", subtitle: qualityLocked ? lockedProfileSubtitle : "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setAspectIndex)
+            SettingsOptionRow(title: "Aspect Ratio", subtitle: "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, uiScale: uiScale, action: viewModel.setAspectIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsMenuRow(title: "Resolution", subtitle: qualityLocked ? lockedProfileSubtitle : "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setResolutionIndex)
+            SettingsMenuRow(title: "Resolution", subtitle: "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, uiScale: uiScale, action: viewModel.setResolutionIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "Frame Rate", subtitle: qualityLocked ? lockedProfileSubtitle : "Limited by the active display refresh rate.", options: OPNStreamPreferences.fpsOptions.map { "\($0) FPS" }, selectedIndex: viewModel.streamProfile.fpsIndex, enabled: OPNStreamPreferences.fpsOptions.map { OPNStreamPreferences.fpsSupported($0, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setFpsIndex)
+            SettingsOptionRow(title: "Frame Rate", subtitle: "Limited by the active display refresh rate.", options: OPNStreamPreferences.fpsOptions.map { "\($0) FPS" }, selectedIndex: viewModel.streamProfile.fpsIndex, enabled: OPNStreamPreferences.fpsOptions.map { OPNStreamPreferences.fpsSupported($0, capabilities: viewModel.streamCapabilities) }, uiScale: uiScale, action: viewModel.setFpsIndex)
         }
     }
 
     private var colourCard: some View {
         SettingsCard(title: "Codec & Colour", uiScale: uiScale) {
-            SettingsOptionRow(title: "Codec", subtitle: qualityLocked ? lockedProfileSubtitle : "Unavailable hardware codecs are disabled.", options: OPNStreamPreferences.codecOptions.map(\.label), selectedIndex: viewModel.streamProfile.codecIndex, enabled: OPNStreamPreferences.codecOptions.map { OPNStreamPreferences.codecSupported($0, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setCodecIndex)
+            SettingsOptionRow(title: "Codec", subtitle: "Unavailable hardware codecs are disabled.", options: OPNStreamPreferences.codecOptions.map(\.label), selectedIndex: viewModel.streamProfile.codecIndex, enabled: OPNStreamPreferences.codecOptions.map { OPNStreamPreferences.codecSupported($0, capabilities: viewModel.streamCapabilities) }, uiScale: uiScale, action: viewModel.setCodecIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "Color Precision", subtitle: qualityLocked ? lockedProfileSubtitle : "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setColorQualityIndex)
+            SettingsOptionRow(title: "Color Precision", subtitle: "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, uiScale: uiScale, action: viewModel.setColorQualityIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "HDR", subtitle: hdrSubtitle, isOn: viewModel.streamProfile.enableHdr, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setHDREnabled)
+            SettingsToggleRow(title: "HDR", subtitle: hdrSubtitle, isOn: viewModel.streamProfile.enableHdr, uiScale: uiScale, action: viewModel.setHDREnabled)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "SDR Color Space", subtitle: qualityLocked ? lockedProfileSubtitle : "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setSDRColorSpaceIndex)
+            SettingsOptionRow(title: "SDR Color Space", subtitle: "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, uiScale: uiScale, action: viewModel.setSDRColorSpaceIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "HDR Color Space", subtitle: qualityLocked ? lockedProfileSubtitle : "Requested HDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.hdrColorSpaceIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setHDRColorSpaceIndex)
+            SettingsOptionRow(title: "HDR Color Space", subtitle: "Requested HDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.hdrColorSpaceIndex, uiScale: uiScale, action: viewModel.setHDRColorSpaceIndex)
             SettingsDivider(uiScale: uiScale)
             // What this Mac will actually do with the codec and colour above. It sits with them
             // rather than in a hardware report on another tab, because it is the answer to the
@@ -127,7 +127,7 @@ struct VideoSettingsPage: View {
 
     private var bandwidthCard: some View {
         SettingsCard(title: "Bandwidth", uiScale: uiScale) {
-            SettingsMenuRow(title: "Maximum Bitrate", subtitle: qualityLocked ? lockedProfileSubtitle : "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setBitrateIndex)
+            SettingsMenuRow(title: "Maximum Bitrate", subtitle: "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, uiScale: uiScale, action: viewModel.setBitrateIndex)
             SettingsDivider(uiScale: uiScale)
             SettingsInfoRow(label: "Estimated Data Use", value: estimatedDataUsage, uiScale: uiScale)
         }
@@ -135,13 +135,13 @@ struct VideoSettingsPage: View {
 
     private var advancedCard: some View {
         SettingsDisclosureCard(title: "Advanced", summary: "Cloud G-Sync, HUD stream, colour fallback, power saver", storageKey: "video-advanced", uiScale: uiScale) {
-            SettingsToggleRow(title: "Cloud G-Sync", subtitle: qualityLocked ? lockedProfileSubtitle : "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isLocked: qualityLocked, isCompact: true, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
+            SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isCompact: true, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: qualityLocked ? lockedProfileSubtitle : "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isLocked: qualityLocked, isCompact: true, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
+            SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isCompact: true, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "HUD Stream", subtitle: qualityLocked ? lockedProfileSubtitle : "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, isLocked: qualityLocked, uiScale: uiScale, action: viewModel.setHudStreamingModeIndex)
+            SettingsOptionRow(title: "HUD Stream", subtitle: "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, uiScale: uiScale, action: viewModel.setHudStreamingModeIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Power Saver", subtitle: qualityLocked ? lockedProfileSubtitle : "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, isLocked: qualityLocked, isCompact: true, uiScale: uiScale, action: viewModel.setPowerSaverEnabled)
+            SettingsToggleRow(title: "Power Saver", subtitle: "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, isCompact: true, uiScale: uiScale, action: viewModel.setPowerSaverEnabled)
         }
     }
 
@@ -169,23 +169,14 @@ struct VideoSettingsPage: View {
         }
     }
 
-    private var qualityLocked: Bool {
-        !viewModel.streamingQualityProfileAllowsCustomization
-    }
-
     private var streamingProfileMode: String {
         viewModel.streamProfile.allowsStreamingCustomization ? "Custom" : "\(viewModel.streamProfile.streamingQualityProfileOption.label) preset"
-    }
-
-    private var lockedProfileSubtitle: String {
-        "Managed by the \(viewModel.streamProfile.streamingQualityProfileOption.label) quality profile. Select Custom to edit."
     }
 
     /// Says which way HDR will actually go on this Mac. The toggle can be on while the display
     /// reports no extended-range headroom, in which case the session negotiates SDR and the row
     /// would otherwise claim otherwise.
     private var hdrSubtitle: String {
-        if qualityLocked { return lockedProfileSubtitle }
         guard viewModel.streamCapabilities.hdrDisplaySupported else {
             return "This display reports no HDR headroom, so sessions stay SDR."
         }

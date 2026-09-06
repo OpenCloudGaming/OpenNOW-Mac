@@ -30,16 +30,22 @@ extension EnvironmentValues {
 }
 
 enum SettingsLayoutMetrics {
-    /// Two 460pt cards plus the gutter between them, in unscaled points. Below this the page is a
-    /// single column, which is what the 640pt window floor and a 2.0 interface scale both produce.
-    static let twoColumnMinimumWidth: CGFloat = 980
+    /// Two 460pt cards plus the 16pt gutter between them, in unscaled points.
+    static let twoColumnMinimumWidth: CGFloat = 936
+
+    /// The page's own horizontal padding, which the measured width still carries and the cards
+    /// never see. Counting it would let a page split into two columns 28pt narrower than the
+    /// threshold promises.
+    static let pageHorizontalPadding: CGFloat = 28
 
     /// A card narrower than this cannot hold a 250pt label column beside its control.
     static let narrowRowWidth: CGFloat = 600
 
+    /// - Parameter contentWidth: the measured width of the scroll view, padding included.
     static func allowsTwoColumns(contentWidth: CGFloat, uiScale: CGFloat) -> Bool {
         guard uiScale > 0 else { return false }
-        return contentWidth / uiScale >= twoColumnMinimumWidth
+        let cardWidth = contentWidth / uiScale - pageHorizontalPadding * 2
+        return cardWidth >= twoColumnMinimumWidth
     }
 }
 
@@ -66,6 +72,9 @@ struct SettingsColumns<Leading: View, Trailing: View>: View {
                 column { leading() }
                 column { trailing() }
             }
+            // Half the page each: a row inside these columns no longer has room for its label
+            // beside its control, whatever the window is doing.
+            .environment(\.opnSettingsNarrowRows, true)
         } else {
             VStack(alignment: .leading, spacing: 16 * uiScale) {
                 leading()

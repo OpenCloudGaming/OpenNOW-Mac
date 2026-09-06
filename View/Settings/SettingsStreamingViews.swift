@@ -5,7 +5,11 @@ import SwiftUI
 struct ServerLocationSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    private let regionColumns = [GridItem(.adaptive(minimum: 138, maximum: 220), spacing: 10)]
+    /// Tile widths scale with the interface like the rows around them; a fixed grid kept 138pt
+    /// tiles beside type that had grown by half.
+    private var regionColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 138 * uiScale, maximum: 220 * uiScale), spacing: 10 * uiScale)]
+    }
 
     var body: some View {
         SettingsCard(title: "Server Location", uiScale: uiScale) {

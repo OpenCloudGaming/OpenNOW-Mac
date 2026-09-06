@@ -12,7 +12,7 @@ struct SessionProxySettingsPage: View {
     @State private var testSucceeded = false
 
     var body: some View {
-        SettingsCard(title: "Session Proxy", uiScale: uiScale) {
+        SettingsCard(title: "Session Proxy", badge: .beta, uiScale: uiScale) {
             SettingsToggleRow(
                 title: "Session Proxy",
                 subtitle: "Route GeForce NOW catalog requests, and optionally session creation and queue requests, through a proxy. Streaming and signaling traffic always connects directly.",

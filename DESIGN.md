@@ -347,6 +347,51 @@ or INSTALLING eyebrow, an 11pt bold byte readout, and a 3px progress bar — det
 Rectangles (accent over #FFFFFF @ 0.10), or `VendorIndeterminateProgressBar` when the server
 sends no content length. Buttons and the close control disable for the duration.
 
+### Settings Destination Rail (`SettingsSidebar`)
+
+The desktop Settings navigation: a 208-wide column of 36-high rows, 14 horizontal padding, 16pt
+glyph then a 13pt label. Selected is accent @ 0.12 fill with a 3-wide accent bar on the leading
+edge; hover is white @ 0.05. Below 900pt of window width per interface scale the labels drop and
+the rail narrows to 60, glyphs only, each row keeping its title as a tooltip. The rail is desktop
+only: controller mode renders `SettingsTabBar` instead, because its shell already carries a
+horizontal row of destination pills and pad focus is a single top-to-bottom list.
+
+### Settings Card Columns (`SettingsColumns`)
+
+Two independent card columns, 16 gutter, above 936pt of card width per interface scale (the page's
+28 horizontal padding is subtracted before the comparison); one column below that, and always one
+column under pad focus. Columns are independent, not a grid: a grid row stretches to its taller
+card and leaves a hole whenever a pair differs. Cards inside the columns get
+`opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
+
+### Settings Section Bar (`SettingsSectionBar`)
+
+A page's own card names as 26-high chips, 11 horizontal padding, 8 apart: resting is white @ 0.045
+with a white @ 0.10 border, active is accent @ 0.12 with an accent @ 0.34 border and accent text.
+Rendered only when a destination has more than one section. Cards opt in with `.settingsSection(_:)`,
+which supplies both the scroll identity the chip jumps to and the position that highlights it.
+
+### Settings Menu Row (`SettingsMenuRow`)
+
+The option row for five or more values, or values too long for chips. The label keeps its 250 column
+and the value is a 32-high dropdown trigger, 12 horizontal padding, white @ 0.07 fill, white @ 0.12
+border, opening `OpenNOWDropdownMenu`. A pad never opens the panel: left/right step the value and
+confirm advances it, exactly as on `SettingsOptionRow`.
+
+### Settings Disclosure Card (`SettingsDisclosureCard`)
+
+A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a
+block most readers never open: an advanced set, a diagnostics dump, a statistics panel. The header is
+itself a focusable row, so a pad can open the card; without that every setting inside it is reachable
+only with a pointer.
+
+### Settings Card Badge (`SettingsCardBadge`, `SettingsCardTag`)
+
+`SettingsCard(title:badge:uiScale:)` renders BETA or EXPERIMENTAL beside the card title, 8pt bold,
+tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card. A destination in
+`SettingsTabBar.betaGroups` wears the tag in the rail instead, and only when every card on it is
+beta - one unsettled card in a settled tab is a card badge, not a destination tag.
+
 ### Tags (`OpenNOWBetaTag`, `OpenNOWNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking

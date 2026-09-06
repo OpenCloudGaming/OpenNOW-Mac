@@ -140,11 +140,15 @@ struct SettingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
     @StateObject private var focus = ControllerSettingsFocusModel()
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var windowWidth: CGFloat = 0
 
     private static let tabBarFocusID = "settings-tabs"
 
-    private var isPadDriven: Bool { controllerPageCommand != nil }
+    /// Read from the preference, not from having received a pad command: `controllerPageCommand` is
+    /// nil until the first press, so keying the layout off it drew the desktop sidebar inside the
+    /// controller shell and then swapped it out under the reader's first input.
+    private var isPadDriven: Bool { controllerModeEnabled }
 
     var body: some View {
         Group {
@@ -610,6 +614,7 @@ struct SettingsContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SettingsSurfaceBackground())
         .environment(\.opnSettingsWideLayout, usesTwoColumns)
+        .environment(\.opnSettingsNarrowRows, usesNarrowRows)
         }
     }
 
@@ -619,6 +624,15 @@ struct SettingsContent: View {
     private var usesTwoColumns: Bool {
         guard !isPadFocusActive else { return false }
         return SettingsLayoutMetrics.allowsTwoColumns(contentWidth: contentWidth, uiScale: uiScale)
+    }
+
+    /// At the window floor the 250pt label column leaves an option row's chips too little room and
+    /// they wrap into three lines, so the control moves under its label instead. `SettingsColumns`
+    /// raises this again for its own cards, which are half a page wide whatever the window is.
+    private var usesNarrowRows: Bool {
+        guard contentWidth > 0, uiScale > 0 else { return false }
+        let pageWidth = contentWidth / uiScale - SettingsLayoutMetrics.pageHorizontalPadding * 2
+        return pageWidth < SettingsLayoutMetrics.narrowRowWidth
     }
 
     /// The section the reader is in: the last one whose top has passed the top of the viewport,

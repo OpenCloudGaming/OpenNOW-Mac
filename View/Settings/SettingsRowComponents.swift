@@ -90,6 +90,10 @@ struct SettingsCollapsibleCard<Content: View>: View {
         self.content = content()
     }
 
+    /// The header is a focusable row in its own right. Without it a pad walks straight past a
+    /// collapsed card, and every setting folded inside it is reachable only with a pointer.
+    @State private var focusIdentity = ControllerFocusIdentity()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { isExpanded.toggle() } label: {
@@ -117,6 +121,11 @@ struct SettingsCollapsibleCard<Content: View>: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .controllerFocusable(
+                focusIdentity,
+                activate: { isExpanded.toggle() },
+                adjust: { delta in isExpanded = delta > 0 }
+            )
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
                     content

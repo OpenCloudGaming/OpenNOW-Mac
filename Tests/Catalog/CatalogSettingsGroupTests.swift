@@ -71,6 +71,16 @@ import Foundation
     #expect(SettingsContent.activeSection(marks: atRest, sections: sections) == "a")
 }
 
+/// Switching to Custom must not itself rewrite the values, or the edit that triggered the switch
+/// would be overwritten by the preset it was escaping.
+@MainActor @Test func theCustomProfileWritesNoPresetValues() {
+    #expect(OPNStreamPreferences.streamingQualityPreset(for: CatalogViewModel.customStreamingProfileIndex) == nil)
+    // Every named preset does write values, which is why an edit under one has to leave it first.
+    for index in 1..<OPNStreamPreferences.streamingQualityProfileOptions.count {
+        #expect(OPNStreamPreferences.streamingQualityPreset(for: index) != nil, "preset \(index) writes nothing")
+    }
+}
+
 /// Two columns are a wide-window affordance, and never one a gamepad has to walk.
 @Test func twoColumnsNeedRealWidthForTheReadersInterfaceScale() {
     #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 1400, uiScale: 1.0))
@@ -79,6 +89,18 @@ import Foundation
     #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 1400, uiScale: 1.5))
     #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 2400, uiScale: 1.5))
     #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 640, uiScale: 1.0))
+    // A zero or negative scale must not divide its way into a two-column layout.
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 4000, uiScale: 0))
+}
+
+/// The threshold describes the width the cards get, not the width of the window around them.
+@Test func theColumnThresholdExcludesThePagePadding() {
+    let padding = SettingsLayoutMetrics.pageHorizontalPadding * 2
+    let exact = SettingsLayoutMetrics.twoColumnMinimumWidth + padding
+    #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: exact, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: exact - 1, uiScale: 1.0))
+    // A page wide enough for two columns is never also narrow enough to stack its rows.
+    #expect(SettingsLayoutMetrics.twoColumnMinimumWidth > SettingsLayoutMetrics.narrowRowWidth)
 }
 
 /// A long service sentence belongs in the access line, not in a chip beside the title.
