@@ -374,21 +374,62 @@ actor CatalogImageCache {
         try? context.save()
     }
 
-    private static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> (image: NSImage, decodedByteCount: Int)? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
-            return nil
+    static func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> (image: NSImage, decodedByteCount: Int)? {
+        if let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+            ]
+            if let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                return (image, cgImage.bytesPerRow * cgImage.height)
+            }
         }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
-        ]
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return nil
+        return rasterizedVectorImage(from: data, maxPixelSize: maxPixelSize)
+    }
+
+    /// ImageIO has no SVG decoder, but the store-definition and rating endpoints serve their small
+    /// icons as `image/svg+xml`. `NSImage(data:)` does decode SVG, so rasterize through a bitmap
+    /// rep instead. Vector sources are resolution-independent, so the intrinsic size is scaled up
+    /// for retina headroom rather than merely clamped down to `maxPixelSize`.
+    private static func rasterizedVectorImage(from data: Data, maxPixelSize: CGFloat) -> (image: NSImage, decodedByteCount: Int)? {
+        guard let vectorImage = NSImage(data: data) else { return nil }
+        var intrinsicSize = vectorImage.size
+        var largestArea: CGFloat = 0
+        for representation in vectorImage.representations {
+            let size = representation.size
+            let area = size.width * size.height
+            if size.width > 0, size.height > 0, area > largestArea {
+                largestArea = area
+                intrinsicSize = size
+            }
         }
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        return (image, cgImage.bytesPerRow * cgImage.height)
+        guard intrinsicSize.width > 0, intrinsicSize.height > 0 else { return nil }
+        let vectorUpscaleLimit: CGFloat = 8
+        let scale = min(vectorUpscaleLimit, maxPixelSize / max(intrinsicSize.width, intrinsicSize.height))
+        let pixelWidth = max(1, Int((intrinsicSize.width * scale).rounded()))
+        let pixelHeight = max(1, Int((intrinsicSize.height * scale).rounded()))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        vectorImage.draw(in: NSRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let cgImage = bitmap.cgImage else { return nil }
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: pixelWidth, height: pixelHeight))
+        return (image, bitmap.bytesPerRow * pixelHeight)
     }
 
     private struct StoredImage {
