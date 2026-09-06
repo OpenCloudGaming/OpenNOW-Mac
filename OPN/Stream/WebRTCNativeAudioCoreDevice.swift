@@ -67,7 +67,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     /// stereo device, rather than never being asked for.
     private(set) var deviceRenderChannels = 2
     /// Interleaved multichannel buffer libwebrtc fills when the stream is wider than the device.
-    private var surroundScratch: [Int16] = []
+    var surroundScratch: [Int16] = []
     var spatialUnit: AudioUnit?
     var spatialSourceChannels = 0
     var spatialInputScratch: [Float] = []
@@ -203,48 +203,6 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             if isPlayoutMuted { clearAudioBufferList(outputData) }
         }
         return status
-    }
-
-    /// True when the negotiated stream carries more channels than the output device accepts, so the
-    /// surround field has to be rendered here instead of being left unasked for.
-    var rendersSurroundDown: Bool { outputNumberOfChannels > deviceRenderChannels }
-
-    private func deliverTee(_ data: UnsafeMutablePointer<AudioBufferList>, frameCount: UInt32) {
-        if outputNumberOfChannels > 2 {
-            deliverStereoTee(data, frameCount: frameCount)
-        } else {
-            owner?.handleGameAudioFrame(UnsafeRawPointer(data), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
-        }
-    }
-
-    private func renderSurroundDown(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
-                                    timestamp: UnsafePointer<AudioTimeStamp>,
-                                    busNumber: Int,
-                                    frameCount: UInt32,
-                                    outputData: UnsafeMutablePointer<AudioBufferList>,
-                                    delegate: any RTCAudioDeviceDelegate) -> OSStatus {
-        let frames = Int(frameCount)
-        let sourceChannels = outputNumberOfChannels
-        let samples = frames * sourceChannels
-        if surroundScratch.count < samples { surroundScratch = [Int16](repeating: 0, count: samples) }
-        return surroundScratch.withUnsafeMutableBufferPointer { scratch -> OSStatus in
-            guard let base = scratch.baseAddress else { clearAudioBufferList(outputData); return noErr }
-            var sourceList = AudioBufferList(
-                mNumberBuffers: 1,
-                mBuffers: AudioBuffer(mNumberChannels: UInt32(sourceChannels),
-                                      mDataByteSize: UInt32(samples * MemoryLayout<Int16>.size),
-                                      mData: UnsafeMutableRawPointer(base))
-            )
-            let status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, &sourceList)
-            guard status == noErr else { clearAudioBufferList(outputData); return status }
-            deliverTee(&sourceList, frameCount: frameCount)
-            if isPlayoutMuted {
-                clearAudioBufferList(outputData)
-                return noErr
-            }
-            renderDown(source: base, frames: frames, sourceChannels: sourceChannels, into: outputData)
-            return noErr
-        }
     }
 
     func captureRecording(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
@@ -515,7 +473,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         )
     }
 
-    private func clearAudioBufferList(_ bufferList: UnsafeMutablePointer<AudioBufferList>?) {
+    func clearAudioBufferList(_ bufferList: UnsafeMutablePointer<AudioBufferList>?) {
         guard let bufferList else { return }
         for buffer in UnsafeMutableAudioBufferListPointer(bufferList) where buffer.mData != nil && buffer.mDataByteSize > 0 {
             memset(buffer.mData, 0, Int(buffer.mDataByteSize))

@@ -5,6 +5,7 @@
 import AudioToolbox
 import CoreAudio
 import Foundation
+@preconcurrency import WebRTC
 
 extension OPNCoreAudioRTCDevice {
     /// 2, 6 or 8; anything else is stereo, matching what the SDP can express.
@@ -78,6 +79,48 @@ extension OPNCoreAudioRTCDevice {
 /// matrix fold stands behind it, because this runs on the audio render thread and a stream that
 /// plays correctly without spatialisation beats one that does not play at all.
 extension OPNCoreAudioRTCDevice {
+    /// True when the negotiated stream carries more channels than the output device accepts, so the
+    /// surround field has to be rendered here instead of being left unasked for.
+    var rendersSurroundDown: Bool { outputNumberOfChannels > deviceRenderChannels }
+
+    func deliverTee(_ data: UnsafeMutablePointer<AudioBufferList>, frameCount: UInt32) {
+        if outputNumberOfChannels > 2 {
+            deliverStereoTee(data, frameCount: frameCount)
+        } else {
+            owner?.handleGameAudioFrame(UnsafeRawPointer(data), frameCount: frameCount, sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
+        }
+    }
+
+    func renderSurroundDown(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
+                                    timestamp: UnsafePointer<AudioTimeStamp>,
+                                    busNumber: Int,
+                                    frameCount: UInt32,
+                                    outputData: UnsafeMutablePointer<AudioBufferList>,
+                                    delegate: any RTCAudioDeviceDelegate) -> OSStatus {
+        let frames = Int(frameCount)
+        let sourceChannels = outputNumberOfChannels
+        let samples = frames * sourceChannels
+        if surroundScratch.count < samples { surroundScratch = [Int16](repeating: 0, count: samples) }
+        return surroundScratch.withUnsafeMutableBufferPointer { scratch -> OSStatus in
+            guard let base = scratch.baseAddress else { clearAudioBufferList(outputData); return noErr }
+            var sourceList = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(mNumberChannels: UInt32(sourceChannels),
+                                      mDataByteSize: UInt32(samples * MemoryLayout<Int16>.size),
+                                      mData: UnsafeMutableRawPointer(base))
+            )
+            let status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, &sourceList)
+            guard status == noErr else { clearAudioBufferList(outputData); return status }
+            deliverTee(&sourceList, frameCount: frameCount)
+            if isPlayoutMuted {
+                clearAudioBufferList(outputData)
+                return noErr
+            }
+            renderDown(source: base, frames: frames, sourceChannels: sourceChannels, into: outputData)
+            return noErr
+        }
+    }
+
     func prepareSpatialRenderer(sampleRate: Double, sourceChannels: Int, destinationChannels: Int) {
         disposeSpatialRenderer()
         guard destinationChannels == 2, sourceChannels == 6 || sourceChannels == 8 else { return }
