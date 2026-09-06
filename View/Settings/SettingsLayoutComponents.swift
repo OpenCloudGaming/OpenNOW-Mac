@@ -314,6 +314,22 @@ struct SettingsMenuRow: View {
     }
 }
 
+// MARK: - Subheading
+
+/// Names a block inside a card, where a second `SettingsCard` would read as a separate object and
+/// spend a header's worth of height saying so. Quieter than a card title by design.
+struct SettingsSubheading: View {
+    let title: String
+    let uiScale: CGFloat
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
+            .tracking(1.0)
+            .foregroundStyle(.white.opacity(0.44))
+    }
+}
+
 // MARK: - Label column
 
 private struct SettingsLabelColumn: ViewModifier {

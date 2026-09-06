@@ -4,16 +4,38 @@ import Foundation
 
 // The settings tab list, and which of its pages carry their own chrome.
 
-@Test func everySettingsGroupIsVisible() {
-    // Remote Co-Op used to be filtered out until its alpha was opted into. Nothing is conditional
-    // now, and the tab bar and the pad's navigation read the same list.
-    #expect(CatalogSettingsGroup.visibleCases() == CatalogSettingsGroup.allCases)
+@MainActor @Test func onlyLabsIsConditionalAndOnlyWhileSomethingIsInFlight() {
+    // A destination that is usually empty teaches people to skip it, so Labs exists only while a
+    // feature is on trial. Everything else is always drawn, and the rail and the pad read the same
+    // list - iterating `allCases` in one place and a filtered list in the other is what let the pad
+    // land on a tab that was not drawn.
+    let visible = CatalogSettingsGroup.visibleCases()
+    #expect(visible.contains(.labs) == OpenNOWLabs.hasFlags)
+    #expect(visible.filter { $0 != .labs } == CatalogSettingsGroup.allCases.filter { $0 != .labs })
+    if !OpenNOWLabs.hasFlags {
+        #expect(visible == CatalogSettingsGroup.allCases.dropLast())
+    }
+}
+
+/// A flag has to say what it turns on and when it went on trial, or nobody can judge whether to
+/// risk it or whether it has been forgotten.
+@MainActor @Test func everyLabsFlagIntroducesItself() {
+    for flag in OpenNOWLabs.flags {
+        #expect(!flag.id.isEmpty)
+        #expect(!flag.title.isEmpty, "\(flag.id) has no title")
+        #expect(!flag.summary.isEmpty, "\(flag.id) does not say what it does")
+        #expect(!flag.since.isEmpty, "\(flag.id) does not say when it went on trial")
+        #expect(flag.storageKey.hasPrefix("OpenNOW.Labs."), "\(flag.id) stores itself outside the Labs namespace")
+    }
+    #expect(Set(OpenNOWLabs.flags.map(\.id)).count == OpenNOWLabs.flags.count, "two flags share an id")
+    // A retired flag reads as off rather than trapping.
+    #expect(!OpenNOWLabs.isEnabled(id: "a-flag-that-was-removed"))
 }
 
 @Test func theTabsAreTheSevenConcernsAndNothingElse() {
     // One destination per concern. A tab that only ever showed an empty state trained people to
     // ignore it, and a tab per vendor subsystem split HDR, audio and input across three places.
-    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .recording, .network, .remoteCoOp, .general])
+    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .recording, .network, .remoteCoOp, .general, .labs])
 }
 
 @Test func everySettingsGroupNamesItself() {
@@ -44,6 +66,7 @@ import Foundation
         (.recording, RecordingSettingsGroup.sections),
         (.network, NetworkSettingsGroup.sections),
         (.general, GeneralSettingsGroup.sections),
+        // Labs carries one section, so its bar is hidden; it is checked by the flag test instead.
     ]
     for (group, sections) in sectioned {
         #expect(sections.count > 1, "\(group.rawValue) has no section map")

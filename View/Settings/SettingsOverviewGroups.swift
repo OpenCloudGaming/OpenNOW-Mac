@@ -82,7 +82,7 @@ struct GeneralSettingsGroup: View {
         + [
             SettingsSection("discord", "Discord"),
             SettingsSection("about", "About"),
-            SettingsSection("system", "System"),
+            SettingsSection("system", "This Mac"),
         ]
 
     var body: some View {

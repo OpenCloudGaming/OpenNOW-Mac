@@ -575,6 +575,7 @@ struct SettingsContent: View {
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
         case .general: GeneralSettingsGroup.sections
+        case .labs: LabsSettingsPage.sections
         }
     }
 
@@ -596,6 +597,8 @@ struct SettingsContent: View {
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
+        case .labs:
+            LabsSettingsPage(uiScale: uiScale)
         }
     }
 }

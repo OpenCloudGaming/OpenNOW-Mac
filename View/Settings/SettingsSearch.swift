@@ -154,6 +154,7 @@ enum SettingsSearchIndex {
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
         case .general: GeneralSettingsGroup.sections
+        case .labs: LabsSettingsPage.sections
         }
     }
 }

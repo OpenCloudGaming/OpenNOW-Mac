@@ -385,6 +385,24 @@ block most readers never open: an advanced set, a diagnostics dump, a statistics
 itself a focusable row, so a pad can open the card; without that every setting inside it is reachable
 only with a pointer.
 
+### Settings Subheading (`SettingsSubheading`)
+
+Names a block inside a card: 10pt bold, tracking 1.0, white @ 0.44, with the block's own content
+below it. Use it instead of a second `SettingsCard` when the blocks belong to one subject and a
+card each would read as separate objects and spend a header of height saying so. The folded system
+report is the reference case.
+
+### Settings Labs (`LabsSettingsPage`, `OpenNOWLabs`)
+
+Features on trial live on their own destination, which exists only while `OpenNOWLabs.flags` is
+non-empty - `CatalogSettingsGroup.visibleCases()` drops it otherwise. A destination that is usually
+empty teaches people to skip it, which is what happened to the tab this replaces. Each flag names
+itself, says what it turns on and when it went on trial, and stores itself under
+`OpenNOW.Labs.<id>`. The card carries the EXPERIMENTAL badge.
+
+A card that belongs to its own destination's subject but is not finished keeps its badge there
+instead; the badge marks maturity in place, and is not a substitute for a home.
+
 ### Settings Search (`SettingsSearchField`, `SettingsSearchResults`)
 
 A 30-high field at the top of the destination rail, 10 horizontal padding, white @ 0.07 fill, white

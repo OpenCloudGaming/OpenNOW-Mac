@@ -20,7 +20,7 @@ struct InterfaceSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Display", uiScale: uiScale) {
+            SettingsCard(title: "Interface", uiScale: uiScale) {
                 SettingsSliderRow(title: "Interface Scale", valueText: "\(Int((uiScaleStorage * 100).rounded()))%", value: uiScaleStorage, range: OpenNOWInterfacePreferences.uiScaleRange, step: 0.05, uiScale: uiScale) { scale in
                     uiScaleStorage = scale
                 }

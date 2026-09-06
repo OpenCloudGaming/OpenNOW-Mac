@@ -96,15 +96,17 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case network
     case remoteCoOp
     case general
+    case labs
 
     var id: String { rawValue }
 
-    /// Every tab. Remote Co-Op used to be filtered out until its alpha was opted into; it ships to
-    /// everyone now, so nothing is conditional. Kept as a function so the sidebar and pad navigation
-    /// still read the same list - iterating `allCases` in one place and a filtered list in the other
-    /// is what let the pad land on a tab that was not drawn.
-    static func visibleCases() -> [CatalogSettingsGroup] {
-        allCases
+    /// The destinations that exist right now. Labs is the only conditional one: it appears while a
+    /// feature is on trial and is absent otherwise, because the tab it replaces stood empty long
+    /// enough to teach people to skip it. Kept as a function so the sidebar and pad navigation read
+    /// the same list - iterating `allCases` in one place and a filtered list in the other is what
+    /// let the pad land on a tab that was not drawn.
+    @MainActor static func visibleCases() -> [CatalogSettingsGroup] {
+        allCases.filter { $0 != .labs || OpenNOWLabs.hasFlags }
     }
 
     var title: String {
@@ -117,6 +119,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "Network"
         case .remoteCoOp: return "Remote Co-Op"
         case .general: return "General"
+        case .labs: return "Labs"
         }
     }
 
@@ -129,7 +132,8 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .recording: return "What Command-R writes to disk, and where to find it afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
-        case .general: return "Interface, recording, updates, privacy, and this Mac's capabilities."
+        case .general: return "Interface, alerts, Discord, updates, privacy, and what this Mac can do."
+        case .labs: return "Features on trial. Off by default, and liable to change or vanish."
         }
     }
 
@@ -143,6 +147,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "network"
         case .remoteCoOp: return "person.2.fill"
         case .general: return "gearshape.2.fill"
+        case .labs: return "flask.fill"
         }
     }
 }
