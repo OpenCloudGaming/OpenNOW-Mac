@@ -364,13 +364,6 @@ column under pad focus. Columns are independent, not a grid: a grid row stretche
 card and leaves a hole whenever a pair differs. Cards inside the columns get
 `opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
 
-### Settings Section Bar (`SettingsSectionBar`)
-
-A page's own card names as 26-high chips, 11 horizontal padding, 8 apart: resting is white @ 0.045
-with a white @ 0.10 border, active is accent @ 0.12 with an accent @ 0.34 border and accent text.
-Rendered only when a destination has more than one section. Cards opt in with `.settingsSection(_:)`,
-which supplies both the scroll identity the chip jumps to and the position that highlights it.
-
 ### Settings Disclosure Card (`SettingsDisclosureCard`)
 
 A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a
@@ -402,7 +395,7 @@ instead; the badge marks maturity in place, and is not a substitute for a home.
 A 30-high field at the top of the destination rail, 10 horizontal padding, white @ 0.07 fill, white
 @ 0.12 border that becomes accent @ 0.44 while focused. Two characters start a search; the results
 take the rail's place until the field is cleared. Each result is a 12.5pt title over a 10.5pt
-`Destination › Section` line, with the same 3-wide accent leading edge the rail rows use on hover.
+`Destination › Card` line, from the section names each destination declares, with the same 3-wide accent leading edge the rail rows use on hover.
 Desktop only: it is absent from the icons-only rail and from controller mode, where nothing on
 screen may be unreachable by a pad.
 

@@ -137,89 +137,12 @@ struct SettingsSection: Identifiable, Equatable {
     }
 }
 
-/// Where a section starts, measured in the page's coordinate space so the bar can tell which one
-/// the reader is looking at.
-struct SettingsSectionMark: Equatable {
-    let id: String
-    let minY: CGFloat
-}
-
-struct SettingsSectionMarksKey: PreferenceKey {
-    static let defaultValue: [SettingsSectionMark] = []
-
-    static func reduce(value: inout [SettingsSectionMark], nextValue: () -> [SettingsSectionMark]) {
-        value.append(contentsOf: nextValue())
-    }
-}
-
-let settingsPageCoordinateSpace = "opn-settings-page"
-
 extension View {
-    /// Marks a card as the start of a named section: gives it the scroll identity the bar jumps to
-    /// and publishes its position so the bar can highlight it.
-    func settingsSection(_ id: String) -> some View {
-        self
-            .id(id)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: SettingsSectionMarksKey.self,
-                        value: [SettingsSectionMark(id: id, minY: proxy.frame(in: .named(settingsPageCoordinateSpace)).minY)]
-                    )
-                }
-            }
-    }
-}
-
-/// The section names of the current tab, as a row of chips that jump to their card. A map for a
-/// page that would otherwise be a single long scroll.
-struct SettingsSectionBar: View {
-    @State private var focusIdentity = ControllerFocusIdentity()
-    let sections: [SettingsSection]
-    let activeID: String?
-    let uiScale: CGFloat
-    let action: (String) -> Void
-
-    var body: some View {
-        SettingsFlowLayout(spacing: 8 * uiScale) {
-            ForEach(sections) { section in
-                chip(section)
-            }
-        }
-        // One focus entry for the whole bar: left/right step between sections and jump to them,
-        // which is what the bar is for. Per-chip entries would put a row of them between the header
-        // and the first setting on every page.
-        .controllerFocusable(
-            focusIdentity,
-            activate: { step(1) },
-            adjust: { delta in step(delta) }
-        )
-    }
-
-    private func step(_ delta: Int) {
-        guard !sections.isEmpty else { return }
-        let current = sections.firstIndex { $0.id == activeID } ?? 0
-        let next = (current + delta + sections.count) % sections.count
-        action(sections[next].id)
-    }
-
-    private func chip(_ section: SettingsSection) -> some View {
-        let isActive = section.id == activeID
-        return Button { action(section.id) } label: {
-            Text(section.title)
-                .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                .tracking(0.6)
-                .foregroundStyle(isActive ? OpenNOWDesign.accent : .white.opacity(0.58))
-                .padding(.horizontal, 11 * uiScale)
-                .frame(height: 26 * uiScale)
-                .background(isActive ? OpenNOWDesign.accent.opacity(0.12) : Color.white.opacity(0.045))
-                .overlay {
-                    Rectangle().strokeBorder(isActive ? OpenNOWDesign.accent.opacity(0.34) : Color.white.opacity(0.10), lineWidth: 1)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isActive ? .isSelected : [])
+    /// Marks a card as the start of a named section: gives it the scroll identity a search result
+    /// jumps to. Nothing draws a section; the names exist so a result can say which card it lives
+    /// in, and the identity exists so it can be scrolled to.
+    func settingsSection(_ identifier: String) -> some View {
+        self.id(identifier)
     }
 }
 

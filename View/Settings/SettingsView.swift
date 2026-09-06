@@ -441,7 +441,6 @@ struct SettingsContent: View {
     @Environment(\.controllerFocusActive) private var isPadFocusActive
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var contentWidth: CGFloat = 0
-    @State private var activeSectionID: String?
 
     var body: some View {
         if viewModel.selectedSettingsGroup.isEmptyStatePage {
@@ -462,12 +461,6 @@ struct SettingsContent: View {
                     subtitle: viewModel.selectedSettingsGroup.subtitle,
                     uiScale: uiScale
                 )
-                if sections.count > 1 {
-                    SettingsSectionBar(sections: sections, activeID: activeSectionID, uiScale: uiScale) { id in
-                        activeSectionID = id
-                        withAnimation(.easeOut(duration: 0.20)) { proxy.scrollTo(id, anchor: .top) }
-                    }
-                }
                 if !viewModel.errorMessage.isEmpty {
                     SettingsMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill", uiScale: uiScale)
                 }
@@ -499,15 +492,11 @@ struct SettingsContent: View {
                 }
             }
         }
-        .coordinateSpace(name: settingsPageCoordinateSpace)
         .onPreferenceChange(SettingsContentWidthKey.self) { width in
             // A destination change rebuilds the measured subtree and republishes zero for a frame.
             // Taking it would collapse a wide page to one column and then reflow it back.
             guard width > 0 else { return }
             contentWidth = width
-        }
-        .onPreferenceChange(SettingsSectionMarksKey.self) { marks in
-            activeSectionID = Self.activeSection(marks: marks, sections: sections) ?? activeSectionID
         }
         .onAppear { jumpToPendingSection(proxy) }
         .onChange(of: viewModel.pendingSettingsSectionID) { _, _ in jumpToPendingSection(proxy) }
@@ -540,7 +529,6 @@ struct SettingsContent: View {
             return
         }
         viewModel.pendingSettingsSectionID = nil
-        activeSectionID = pending
         withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
     }
 
@@ -559,17 +547,6 @@ struct SettingsContent: View {
     /// raises this again for its own cards, which are half a page wide whatever the window is.
     private var usesNarrowRows: Bool {
         SettingsLayoutMetrics.usesNarrowRows(cardWidth: contentWidth, uiScale: uiScale)
-    }
-
-    /// The section the reader is in: the last one whose top has passed the top of the viewport,
-    /// falling back to the first while the page is still at rest.
-    static func activeSection(marks: [SettingsSectionMark], sections: [SettingsSection]) -> String? {
-        guard !sections.isEmpty else { return nil }
-        let order = sections.map(\.id)
-        let passed = marks
-            .filter { order.contains($0.id) && $0.minY <= 1 }
-            .max { lhs, rhs in lhs.minY < rhs.minY }
-        return passed?.id ?? marks.filter { order.contains($0.id) }.min { $0.minY < $1.minY }?.id
     }
 
     private var sections: [SettingsSection] {

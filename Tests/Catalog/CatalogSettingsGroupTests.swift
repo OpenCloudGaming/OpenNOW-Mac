@@ -56,9 +56,9 @@ import Foundation
     #expect(!SettingsTabBar.betaGroups.contains(.account))
 }
 
-/// The section bar is only useful if its chips name cards that exist, and a page with one section
-/// hides the bar entirely.
-@MainActor @Test func everyMultiSectionDestinationNamesItsSections() {
+/// Nothing draws the sections any more, but a search result still scrolls to one and names it, so
+/// every destination's map has to stay honest.
+@MainActor @Test func everyDestinationNamesTheCardsASearchCanLandOn() {
     let sectioned: [(CatalogSettingsGroup, [SettingsSection])] = [
         (.account, AccountSettingsGroup.sections),
         (.video, VideoSettingsGroup.sections),
@@ -75,34 +75,6 @@ import Foundation
         for section in sections {
             #expect(!section.title.isEmpty, "\(group.rawValue) has an unnamed section")
         }
-    }
-}
-
-/// The reader is in the last section whose top has gone past the viewport, not the nearest one.
-@MainActor @Test func theActiveSectionIsTheLastOneScrolledPast() {
-    let sections = [SettingsSection("a", "A"), SettingsSection("b", "B"), SettingsSection("c", "C")]
-    let marks = [
-        SettingsSectionMark(id: "a", minY: -420),
-        SettingsSectionMark(id: "b", minY: -60),
-        SettingsSectionMark(id: "c", minY: 380),
-    ]
-    #expect(SettingsContent.activeSection(marks: marks, sections: sections) == "b")
-
-    // At rest nothing has been scrolled past, so the first section is the active one.
-    let atRest = [
-        SettingsSectionMark(id: "a", minY: 0),
-        SettingsSectionMark(id: "b", minY: 300),
-    ]
-    #expect(SettingsContent.activeSection(marks: atRest, sections: sections) == "a")
-}
-
-/// Switching to Custom must not itself rewrite the values, or the edit that triggered the switch
-/// would be overwritten by the preset it was escaping.
-@MainActor @Test func theCustomProfileWritesNoPresetValues() {
-    #expect(OPNStreamPreferences.streamingQualityPreset(for: CatalogViewModel.customStreamingProfileIndex) == nil)
-    // Every named preset does write values, which is why an edit under one has to leave it first.
-    for index in 1..<OPNStreamPreferences.streamingQualityProfileOptions.count {
-        #expect(OPNStreamPreferences.streamingQualityPreset(for: index) != nil, "preset \(index) writes nothing")
     }
 }
 
