@@ -385,6 +385,15 @@ block most readers never open: an advanced set, a diagnostics dump, a statistics
 itself a focusable row, so a pad can open the card; without that every setting inside it is reachable
 only with a pointer.
 
+### Settings Search (`SettingsSearchField`, `SettingsSearchResults`)
+
+A 30-high field at the top of the destination rail, 10 horizontal padding, white @ 0.07 fill, white
+@ 0.12 border that becomes accent @ 0.44 while focused. Two characters start a search; the results
+take the rail's place until the field is cleared. Each result is a 12.5pt title over a 10.5pt
+`Destination › Section` line, with the same 3-wide accent leading edge the rail rows use on hover.
+Desktop only: it is absent from the icons-only rail and from controller mode, where nothing on
+screen may be unreachable by a pad.
+
 ### Settings Card Badge (`SettingsCardBadge`, `SettingsCardTag`)
 
 `SettingsCard(title:badge:uiScale:)` renders BETA or EXPERIMENTAL beside the card title, 8pt bold,

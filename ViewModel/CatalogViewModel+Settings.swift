@@ -8,6 +8,10 @@ struct SettingsOverriddenGame: Identifiable, Equatable {
 
 @MainActor
 extension CatalogViewModel {
+    var isFreeTierAccount: Bool {
+        subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
+    }
+
     var streamingQualityProfileAllowsCustomization: Bool {
         streamProfile.allowsStreamingCustomization
     }

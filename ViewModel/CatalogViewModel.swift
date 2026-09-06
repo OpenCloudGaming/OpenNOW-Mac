@@ -160,6 +160,10 @@ final class CatalogViewModel {
     /// Raised once when an edit under a named quality preset moved the profile to Custom, so the
     /// page can say so rather than leave the preset silently changing under the reader.
     var didSwitchToCustomStreamingProfile = false
+    /// The card a search result asked for. Set with the destination, cleared by the page once it has
+    /// scrolled there - the page cannot scroll until it exists, and it does not exist until the
+    /// destination has changed.
+    var pendingSettingsSectionID: String?
     var searchQuery = "" {
         didSet {
             invalidateDerivedCatalogCaches()
@@ -283,10 +287,6 @@ final class CatalogViewModel {
     let account: LoginAccount
     let session: LoginSession
     let onRefreshAuth: () async -> Bool
-
-    var isFreeTierAccount: Bool {
-        subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
-    }
 
     private var hasLoaded = false
     var browseGeneration = 0
