@@ -140,14 +140,41 @@ struct SettingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
     @StateObject private var focus = ControllerSettingsFocusModel()
+    @State private var windowWidth: CGFloat = 0
 
     private static let tabBarFocusID = "settings-tabs"
 
+    private var isPadDriven: Bool { controllerPageCommand != nil }
+
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
-                .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
-            SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+        Group {
+            if isPadDriven {
+                // Controller mode already stacks a header and a row of destination pills above this
+                // page. A second, vertical list of destinations beside them would be a rail inside a
+                // rail, and the pad's focus order is a single top-to-bottom list, so the strip is
+                // both the lighter and the navigable choice there.
+                VStack(spacing: 0) {
+                    SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
+                        .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
+                    SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    SettingsSidebar(
+                        selection: $viewModel.selectedSettingsGroup,
+                        groups: visibleGroups,
+                        uiScale: uiScale,
+                        showsLabels: windowWidth <= 0 || windowWidth / max(uiScale, 0.01) >= SettingsSidebar.labelMinimumWidth
+                    )
+                    SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+                }
+                .background {
+                    GeometryReader { window in
+                        Color.clear.preference(key: SettingsWindowWidthKey.self, value: window.size.width)
+                    }
+                }
+                .onPreferenceChange(SettingsWindowWidthKey.self) { windowWidth = $0 }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.controllerSettingsFocus, focus)
@@ -209,6 +236,132 @@ struct SettingsSurfaceBackground: View {
             LinearGradient(colors: [OpenNOWDesign.accent.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
             LinearGradient(colors: [.black.opacity(0.22), .clear, .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing)
         }
+    }
+}
+
+/// The desktop destination list: every tab visible at once, down the left edge, matching the rail
+/// the reader just came from in the catalog. It replaces a horizontal strip that overflowed at nine
+/// tabs and faded its ends, hiding the very destinations it existed to show.
+struct SettingsSidebar: View {
+    @Binding var selection: CatalogSettingsGroup
+    let groups: [CatalogSettingsGroup]
+    let uiScale: CGFloat
+
+    /// Below this window width the labels are dropped and the rail becomes a column of glyphs, so a
+    /// narrow window spends its width on the settings rather than on their names.
+    static let labelMinimumWidth: CGFloat = 900
+
+    let showsLabels: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2 * uiScale) {
+            ForEach(groups) { group in
+                item(group)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 14 * uiScale)
+        .frame(width: (showsLabels ? 208 : 60) * uiScale, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(SettingsVendorLayout.sidebar)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1)
+        }
+    }
+
+    private func item(_ group: CatalogSettingsGroup) -> some View {
+        SettingsSidebarItem(
+            group: group,
+            isSelected: selection == group,
+            showsLabel: showsLabels,
+            showsBetaTag: SettingsTabBar.betaGroups.contains(group),
+            newCount: SettingsNewBadges.count(in: group),
+            uiScale: uiScale
+        ) {
+            selection = group
+        }
+    }
+}
+
+struct SettingsWindowWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// How many settings in a tab still wear the NEW tag, so a reader who never opens that tab still
+/// learns something arrived in it.
+enum SettingsNewBadges {
+    static func group(for row: OpenNOWNewSettings.Row) -> CatalogSettingsGroup {
+        switch row {
+        case .surroundSound: .audio
+        case .sessionReadyAction: .general
+        }
+    }
+
+    @MainActor static func count(in group: CatalogSettingsGroup) -> Int {
+        OpenNOWNewSettings.Row.allCases
+            .filter { self.group(for: $0) == group && OpenNOWNewSettings.isNew($0) }
+            .count
+    }
+}
+
+struct SettingsSidebarItem: View {
+    let group: CatalogSettingsGroup
+    let isSelected: Bool
+    let showsLabel: Bool
+    let showsBetaTag: Bool
+    let newCount: Int
+    let uiScale: CGFloat
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10 * uiScale) {
+                Image(systemName: group.icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(isHovering ? 0.72 : 0.5))
+                    .frame(width: 16 * uiScale, height: 16 * uiScale)
+                if showsLabel {
+                    Text(group.title)
+                        .font(.settingsNvidia(size: 13 * uiScale, weight: isSelected ? .bold : .medium))
+                        .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.6))
+                        .lineLimit(1)
+                    Spacer(minLength: 4 * uiScale)
+                    if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
+                    if newCount > 0 { OpenNOWNewTag(uiScale: uiScale * 0.85) }
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 14 * uiScale)
+            .frame(height: 36 * uiScale)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(isSelected ? OpenNOWDesign.accent : .clear)
+                    .frame(width: 3 * uiScale)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(showsLabel ? "" : group.title)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+        }
+        .accessibilityLabel(group.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var background: Color {
+        if isSelected { return OpenNOWDesign.accent.opacity(0.12) }
+        return isHovering ? Color.white.opacity(0.05) : .clear
     }
 }
 
@@ -334,9 +487,10 @@ struct SettingsTabViewportKey: PreferenceKey {
 }
 
 extension SettingsTabBar {
-    /// Shipped but still settling. Network carries the session proxy, whose routing behaviour is
-    /// still changing (the catalog/session scope split landed 2026-09-05).
-    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp, .network]
+    /// A tab wears the tag only when everything on it is beta. Network no longer qualifies: its
+    /// server location and transport rows are settled and only the session proxy card is still
+    /// moving, so that card carries its own badge instead of tagging the whole destination.
+    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp]
 }
 
 struct SettingsTabItem: View {
@@ -399,14 +553,12 @@ struct SettingsContent: View {
     /// The row the pad currently has focus on; the page scrolls to keep it visible.
     var focusedID: String?
 
+    @Environment(\.controllerFocusActive) private var isPadFocusActive
+    @State private var contentWidth: CGFloat = 0
+    @State private var activeSectionID: String?
+
     var body: some View {
-        if viewModel.selectedSettingsGroup.isEmptyStatePage {
-            page
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(SettingsSurfaceBackground())
-        } else {
-            scrollingPage
-        }
+        scrollingPage
     }
 
     private var scrollingPage: some View {
@@ -418,6 +570,11 @@ struct SettingsContent: View {
                     subtitle: viewModel.selectedSettingsGroup.subtitle,
                     uiScale: uiScale
                 )
+                if sections.count > 1 {
+                    SettingsSectionBar(sections: sections, activeID: activeSectionID, uiScale: uiScale) { id in
+                        withAnimation(.easeOut(duration: 0.20)) { proxy.scrollTo(id, anchor: .top) }
+                    }
+                }
                 if !viewModel.errorMessage.isEmpty {
                     SettingsMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill", uiScale: uiScale)
                 }
@@ -431,6 +588,16 @@ struct SettingsContent: View {
             .padding(.bottom, 48 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .coordinateSpace(name: settingsPageCoordinateSpace)
+        .background {
+            GeometryReader { viewport in
+                Color.clear.preference(key: SettingsContentWidthKey.self, value: viewport.size.width)
+            }
+        }
+        .onPreferenceChange(SettingsContentWidthKey.self) { contentWidth = $0 }
+        .onPreferenceChange(SettingsSectionMarksKey.self) { marks in
+            activeSectionID = Self.activeSection(marks: marks, sections: sections) ?? activeSectionID
+        }
         // A fresh scroll view per tab: the offset from a long page would otherwise
         // survive the switch and park a shorter page's viewport past its content.
         .id(viewModel.selectedSettingsGroup)
@@ -442,30 +609,66 @@ struct SettingsContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SettingsSurfaceBackground())
+        .environment(\.opnSettingsWideLayout, usesTwoColumns)
+        }
+    }
+
+    /// Two columns only when the page is genuinely wide for the reader's interface scale, and never
+    /// under a gamepad: focus order is a single list sorted by vertical position, so a second column
+    /// would interleave with the first and up/down would jump between them.
+    private var usesTwoColumns: Bool {
+        guard !isPadFocusActive else { return false }
+        return SettingsLayoutMetrics.allowsTwoColumns(contentWidth: contentWidth, uiScale: uiScale)
+    }
+
+    /// The section the reader is in: the last one whose top has passed the top of the viewport,
+    /// falling back to the first while the page is still at rest.
+    static func activeSection(marks: [SettingsSectionMark], sections: [SettingsSection]) -> String? {
+        guard !sections.isEmpty else { return nil }
+        let order = sections.map(\.id)
+        let passed = marks
+            .filter { order.contains($0.id) && $0.minY <= 1 }
+            .max { lhs, rhs in lhs.minY < rhs.minY }
+        return passed?.id ?? marks.filter { order.contains($0.id) }.min { $0.minY < $1.minY }?.id
+    }
+
+    private var sections: [SettingsSection] {
+        switch viewModel.selectedSettingsGroup {
+        case .account: AccountSettingsGroup.sections
+        case .video: VideoSettingsGroup.sections
+        case .audio: AudioSettingsPage.sections
+        case .input: InputSettingsGroup.sections
+        case .network: NetworkSettingsGroup.sections
+        case .remoteCoOp: []
+        case .general: GeneralSettingsGroup.sections
         }
     }
 
     @ViewBuilder private var page: some View {
         switch viewModel.selectedSettingsGroup {
         case .account:
-            AccountSettingsPage(viewModel: viewModel)
-        case .streaming:
-            StreamingSettingsGroup(viewModel: viewModel)
+            AccountSettingsGroup(viewModel: viewModel)
+        case .video:
+            VideoSettingsGroup(viewModel: viewModel)
+        case .audio:
+            AudioSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        case .input:
+            InputSettingsGroup(viewModel: viewModel)
         case .network:
             NetworkSettingsGroup(viewModel: viewModel)
-        case .connections:
-            ConnectionsSettingsGroup(viewModel: viewModel)
-        case .controller:
-            SteamControllerSettingsPage(uiScale: uiScale)
         case .remoteCoOp:
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
-        case .experimental:
-            ExperimentalFeaturesSettingsPage(uiScale: uiScale)
-        case .about:
-            AboutSettingsGroup(viewModel: viewModel, uiScale: uiScale)
         }
+    }
+}
+
+struct SettingsContentWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

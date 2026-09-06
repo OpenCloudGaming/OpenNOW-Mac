@@ -1,13 +1,51 @@
 import Foundation
 
+struct SettingsOverriddenGame: Identifiable, Equatable {
+    var id: String { appId }
+    let appId: String
+    let title: String
+}
+
 @MainActor
 extension CatalogViewModel {
     var streamingQualityProfileAllowsCustomization: Bool {
         streamProfile.allowsStreamingCustomization
     }
 
+    /// Called before every profiled setting is written. A named preset owns those values, so
+    /// editing one under a preset used to be dropped on the floor: the control moved, the setting
+    /// did not, and nothing said why. The edit now takes the profile to Custom and applies, which
+    /// is what reaching for the control meant.
+    @discardableResult
     func canEditStreamingQualitySettings() -> Bool {
-        streamingQualityProfileAllowsCustomization
+        guard !streamingQualityProfileAllowsCustomization else { return true }
+        OPNStreamPreferences.saveStreamingQualityProfileIndex(Self.customStreamingProfileIndex)
+        didSwitchToCustomStreamingProfile = true
+        return true
+    }
+
+    /// Index of the Custom entry in `OPNStreamPreferences.streamingQualityProfileOptions`.
+    static let customStreamingProfileIndex = 0
+
+    /// Games whose picture settings diverge from the global profile, newest lookup each time so a
+    /// reset is reflected without a reload. The title falls back to the id when the catalog has not
+    /// been browsed this session and the game is not in memory.
+    var streamingOverrideGames: [SettingsOverriddenGame] {
+        OPNStreamPreferences.gameProfileIdentifiers().map { appId in
+            SettingsOverriddenGame(appId: appId, title: titleForOverriddenGame(appId))
+        }
+    }
+
+    func removeStreamingOverride(appId: String) {
+        OPNStreamPreferences.deleteProfile(forGame: appId)
+        loadSettingsPreferences()
+    }
+
+    private func titleForOverriddenGame(_ appId: String) -> String {
+        let match = (catalogGames + libraryGames + favoriteGames).first { game in
+            game.id == appId || game.launchAppId == appId
+        }
+        return match?.title ?? "Game \(appId)"
     }
 
     func setAspectIndex(_ index: Int) {
@@ -77,6 +115,8 @@ extension CatalogViewModel {
     }
 
     func setStreamingQualityProfileIndex(_ index: Int) {
+        // Choosing a preset by hand answers the notice, whichever way it goes.
+        didSwitchToCustomStreamingProfile = false
         OPNStreamPreferences.saveStreamingQualityProfileIndex(index)
         loadSettingsPreferences()
     }

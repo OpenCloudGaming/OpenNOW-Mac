@@ -2,13 +2,30 @@ import AppKit
 import CryptoKit
 import SwiftUI
 
+/// The annotation a card's header carries: how finished the feature behind it is.
+enum SettingsCardBadge {
+    /// Shipped, still settling. Scope is the card, not the whole tab.
+    case beta
+    /// Off by default, on trial. Promoted to `beta` or removed.
+    case experimental
+
+    var text: String {
+        switch self {
+        case .beta: "BETA"
+        case .experimental: "EXPERIMENTAL"
+        }
+    }
+}
+
 struct SettingsCard<Content: View>: View {
     let title: String
+    let badge: SettingsCardBadge?
     let uiScale: CGFloat
     private let content: Content
 
-    init(title: String, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
+    init(title: String, badge: SettingsCardBadge? = nil, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.badge = badge
         self.uiScale = uiScale
         self.content = content()
     }
@@ -23,6 +40,9 @@ struct SettingsCard<Content: View>: View {
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(.white.opacity(0.68))
                     .tracking(1.1)
+                if let badge {
+                    SettingsCardTag(text: badge.text, uiScale: uiScale)
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 18 * uiScale)
@@ -163,18 +183,48 @@ struct SettingsOptionRow: View {
     let uiScale: CGFloat
     let action: (Int) -> Void
 
+    @Environment(\.opnSettingsNarrowRows) private var isNarrow
+
     var body: some View {
-        HStack(alignment: .top, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
-                Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
-                    .fixedSize(horizontal: false, vertical: true)
+        layout
+        .controllerFocusable(
+            focusIdentity,
+            activate: { guard !isLocked else { return }; cycleOption(1) },
+            adjust: { delta in guard !isLocked else { return }; cycleOption(delta) }
+        )
+    }
+
+    /// Side by side when the container can hold the label column, stacked when it cannot - inside a
+    /// masonry column or at the minimum window width the 250pt label leaves the chips too little
+    /// room and they wrap into three rows.
+    @ViewBuilder private var layout: some View {
+        if isNarrow {
+            VStack(alignment: .leading, spacing: 8 * uiScale) {
+                label
+                chips
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
-            SettingsFlowLayout(spacing: 8 * uiScale) {
-                ForEach(options.indices, id: \.self) { index in
+        } else {
+            HStack(alignment: .top, spacing: 18 * uiScale) {
+                label
+                    .frame(width: 250 * uiScale, alignment: .leading)
+                chips
+            }
+        }
+    }
+
+    private var label: some View {
+        VStack(alignment: .leading, spacing: 5 * uiScale) {
+            SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
+            Text(subtitle)
+                .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var chips: some View {
+        SettingsFlowLayout(spacing: 8 * uiScale) {
+            ForEach(options.indices, id: \.self) { index in
                     let optionEnabled = !isLocked && (enabled.indices.contains(index) ? enabled[index] : true)
                     Button { action(index) } label: {
                         Text(options[index])
@@ -189,13 +239,7 @@ struct SettingsOptionRow: View {
                     .disabled(!optionEnabled)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .controllerFocusable(
-            focusIdentity,
-            activate: { guard !isLocked else { return }; cycleOption(1) },
-            adjust: { delta in guard !isLocked else { return }; cycleOption(delta) }
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Walks to the next selectable option, skipping any the page has disabled.
@@ -257,19 +301,38 @@ struct SettingsToggleRow: View {
     let isOn: Bool
     var isLocked = false
     var isNew = false
+    /// One line instead of two: the subtitle appears on hover or under pad focus. For the many
+    /// short toggles whose titles already say what they do, where a permanent second line spends
+    /// a third of the page's height restating them.
+    var isCompact = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Bool) -> Void
+
+    @State private var isHovering = false
+    @Environment(\.controllerFocusedRowID) private var focusedRowID
+
+    private var showsSubtitle: Bool {
+        guard isCompact else { return true }
+        return isHovering || focusedRowID == focusIdentity.id
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
-                Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                if showsSubtitle {
+                    Text(subtitle)
+                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer()
             Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isLocked: isLocked, uiScale: uiScale)
+        }
+        .onHover { hovering in
+            guard isCompact else { return }
+            withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
         .controllerFocusable(
             focusIdentity,
@@ -590,68 +653,3 @@ struct SettingsFlowLayout: Layout {
 /// One component rather than three inline `Text`s: it appears on the Settings tab, in the stream
 /// HUD and on the Home entry point, and three copies would drift in colour and casing the way the
 /// relay rows already did.
-/// A row title with its optional NEW tag riding alongside, so every row kind renders the tag the
-/// same way.
-struct SettingsRowTitle: View {
-    let title: String
-    let isLocked: Bool
-    let isNew: Bool
-    let uiScale: CGFloat
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8 * uiScale) {
-            Text(title)
-                .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
-            if isNew { OpenNOWNewTag(uiScale: uiScale) }
-        }
-    }
-}
-
-/// Marks a setting added in the current release. Solid accent so it reads at a glance next to
-/// the quieter tinted BETA tag; it disappears once the setting is used or the next release ships.
-struct OpenNOWNewTag: View {
-    let uiScale: CGFloat
-
-    var body: some View {
-        Text("NEW")
-            .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
-            .tracking(0.7)
-            .foregroundStyle(.black)
-            .padding(.horizontal, 4 * uiScale)
-            .padding(.vertical, 2 * uiScale)
-            .background(OpenNOWDesign.accent)
-            .accessibilityLabel("New setting")
-    }
-}
-
-struct OpenNOWBetaTag: View {
-    let uiScale: CGFloat
-    /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
-    /// Settings wants the quieter treatment.
-    var prominent = false
-    /// Rides along inside another control - a tab, a row title - where the tag is an annotation on
-    /// something else and must not outweigh it.
-    var compact = false
-
-    var body: some View {
-        Text("BETA")
-            .font(.settingsNvidia(size: (compact ? 8 : 9) * uiScale, weight: .bold))
-            .tracking(0.7)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, (compact ? 4 : 5) * uiScale)
-            .padding(.vertical, 2 * uiScale)
-            .background(background)
-            .accessibilityLabel("Beta")
-    }
-
-    private var foreground: Color {
-        if prominent { return .black }
-        return compact ? OpenNOWDesign.accent.opacity(0.72) : OpenNOWDesign.accent
-    }
-
-    private var background: Color {
-        if prominent { return OpenNOWDesign.accent }
-        return OpenNOWDesign.accent.opacity(compact ? 0.12 : 0.16)
-    }
-}

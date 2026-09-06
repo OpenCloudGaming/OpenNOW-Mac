@@ -76,6 +76,15 @@ struct UnavailableRegionPrompt: View {
     }
 }
 
+extension ResolutionUpscalingSettingsPage {
+    static let sections: [SettingsSection] = [
+        SettingsSection("upscaling", "Upscaling"),
+        SettingsSection("presentation", "Presentation"),
+        SettingsSection("pillarbox", "Pillarbox"),
+        SettingsSection("enhancement", "Enhancement"),
+    ]
+}
+
 struct ResolutionUpscalingSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
@@ -100,10 +109,12 @@ struct ResolutionUpscalingSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsSliderRow(title: "Noise Reduction", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, uiScale: uiScale, action: viewModel.setUpscalingDenoise)
             }
+            .settingsSection("upscaling")
 
             SettingsCard(title: "Presentation", uiScale: uiScale) {
                 SettingsOptionRow(title: "Frame Pacing", subtitle: presentationModeSubtitle, options: OPNStreamPreferences.presentationModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.presentationModeIndex, uiScale: uiScale, action: viewModel.setPresentationModeIndex)
             }
+            .settingsSection("presentation")
 
             SettingsCard(title: "Pillarbox", uiScale: uiScale) {
                 SettingsOptionRow(title: "Pillarbox Fill", subtitle: "Repaints the black bars GeForce NOW bakes into 16:9-only titles on wider displays.", options: OPNPillarboxFillMode.pickerCases.map(\.label), selectedIndex: OPNPillarboxFillMode.pickerCases.firstIndex(of: viewModel.streamProfile.pillarboxFillMode) ?? 0, uiScale: uiScale, action: { index in viewModel.setPillarboxFillModeIndex(OPNPillarboxFillMode.pickerCases[index].rawValue) })
@@ -112,6 +123,7 @@ struct ResolutionUpscalingSettingsPage: View {
                     SettingsSliderRow(title: "Edge Dimming", valueText: "\(viewModel.streamProfile.pillarboxFillDim)%", value: Double(viewModel.streamProfile.pillarboxFillDim), range: 0...100, uiScale: uiScale, action: viewModel.setPillarboxFillDim)
                 }
             }
+            .settingsSection("pillarbox")
 
             SettingsCard(title: "Image Enhancement", uiScale: uiScale) {
                 SettingsOptionRow(title: "Prefilter Mode", subtitle: "Applies GFN-style prefiltering before presentation.", options: OPNStreamPreferences.prefilterModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.prefilterModeIndex, uiScale: uiScale, action: viewModel.setPrefilterModeIndex)
@@ -120,6 +132,7 @@ struct ResolutionUpscalingSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsSliderRow(title: "Prefilter Denoise", valueText: "\(viewModel.streamProfile.prefilterDenoise)", value: Double(viewModel.streamProfile.prefilterDenoise), range: 0...10, uiScale: uiScale, action: viewModel.setPrefilterDenoise)
             }
+            .settingsSection("enhancement")
         }
     }
 }

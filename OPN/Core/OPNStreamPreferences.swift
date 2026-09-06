@@ -403,6 +403,13 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
+    /// Every game that carries its own overrides, so the settings page can show what is diverging
+    /// from the global profile and let it be undone. Nothing else enumerates them, and a per-game
+    /// profile that cannot be found again is a setting nobody can take back.
+    public static func gameProfileIdentifiers() -> [String] {
+        mutableGameProfilesDictionary().keys.sorted()
+    }
+
     public static func profileExists(forGame appId: String) -> Bool {
         gameProfileDictionary(for: appId) != nil
     }

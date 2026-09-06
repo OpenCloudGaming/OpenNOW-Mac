@@ -89,22 +89,17 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 
 enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
-    case streaming
+    case video
+    case audio
+    case input
     case network
-    case connections
-    case controller
     case remoteCoOp
     case general
-    case experimental
-    case about
 
     var id: String { rawValue }
 
-    /// Remote Co-Op is alpha-gated, so its tab only exists once the alpha has been opted into in
-    /// Experimental. This mirrors how its settings card used to be hidden inside Gameplay - the
-    /// feature became a tab, not more discoverable.
     /// Every tab. Remote Co-Op used to be filtered out until its alpha was opted into; it ships to
-    /// everyone now, so nothing is conditional. Kept as a function so the tab bar and pad navigation
+    /// everyone now, so nothing is conditional. Kept as a function so the sidebar and pad navigation
     /// still read the same list - iterating `allCases` in one place and a filtered list in the other
     /// is what let the pad land on a tab that was not drawn.
     static func visibleCases() -> [CatalogSettingsGroup] {
@@ -114,49 +109,36 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .account: return "Account"
-        case .streaming: return "Streaming"
+        case .video: return "Video"
+        case .audio: return "Audio"
+        case .input: return "Input"
         case .network: return "Network"
-        case .connections: return "Connections"
-        case .controller: return "Controller"
         case .remoteCoOp: return "Remote Co-Op"
         case .general: return "General"
-        case .experimental: return "Experimental"
-        case .about: return "About"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .account: return "Membership, profile, and current NVIDIA session details."
-        case .streaming: return "Tune streaming quality, server location, and MetalFX upscaling."
-        case .network: return "Route GeForce NOW requests through a proxy. Stream traffic always connects directly."
-        case .connections: return "Manage store accounts and Twitch broadcast settings."
-        case .controller: return "Steam Controller support, permissions, input testing, and mapping."
-        case .remoteCoOp: return "Invite a friend into your session from a browser. Alpha."
-        case .general: return "Interface mode and display scale."
-        case .experimental: return "Unfinished and in-development features. Expect rough edges."
-        case .about: return "OpenNOW Mac runtime, system capability, and service identifiers."
+        case .account: return "Membership, playtime, connected stores, and the current NVIDIA session."
+        case .video: return "Resolution, frame rate, codec, colour, and the picture the stream arrives with."
+        case .audio: return "Game output, surround, and the microphone the stream sends."
+        case .input: return "Mouse, keyboard, and every controller OpenNOW speaks to."
+        case .network: return "Server location, stream transport, and proxy routing."
+        case .remoteCoOp: return "Invite a friend into your session from a browser."
+        case .general: return "Interface, recording, updates, privacy, and this Mac's capabilities."
         }
-    }
-
-    /// True for a page that is nothing but an empty state. It names itself, so the standard
-    /// page header above it would be a second, competing title, and there is nothing to scroll.
-    /// Remove the case from here the moment the page has content again.
-    var isEmptyStatePage: Bool {
-        self == .experimental
     }
 
     var icon: String {
         switch self {
         case .account: return "person.crop.circle.fill"
-        case .streaming: return "play.tv.fill"
+        case .video: return "play.tv.fill"
+        case .audio: return "speaker.wave.2.fill"
+        case .input: return "gamecontroller.fill"
         case .network: return "network"
-        case .connections: return "link"
-        case .controller: return "gamecontroller.fill"
         case .remoteCoOp: return "person.2.fill"
         case .general: return "gearshape.2.fill"
-        case .experimental: return "flask.fill"
-        case .about: return "info.circle.fill"
         }
     }
 }
@@ -175,6 +157,9 @@ final class CatalogViewModel {
     var selectedCatalogDestination = CatalogDestination.home
     var selectedShowAllSection: CatalogSectionModel? = nil
     var selectedSettingsGroup = CatalogSettingsGroup.account
+    /// Raised once when an edit under a named quality preset moved the profile to Custom, so the
+    /// page can say so rather than leave the preset silently changing under the reader.
+    var didSwitchToCustomStreamingProfile = false
     var searchQuery = "" {
         didSet {
             invalidateDerivedCatalogCaches()
