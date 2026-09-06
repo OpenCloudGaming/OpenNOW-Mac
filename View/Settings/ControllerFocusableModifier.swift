@@ -143,19 +143,40 @@ struct ControllerFocusIdentity {
     init() { id = UUID().uuidString }
 }
 
+private struct SettingsEagerStackKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Forces the page to build every card this frame. Set only while a jump is outstanding: a
+    /// card that has not been built has no identity, so `scrollTo` would silently do nothing for
+    /// exactly the results worth searching for.
+    var opnSettingsEagerStack: Bool {
+        get { self[SettingsEagerStackKey.self] }
+        set { self[SettingsEagerStackKey.self] = newValue }
+    }
+}
+
 /// The vertical stack a settings page is built from.
 ///
-/// Lazy by default: a page like Streaming is seven cards and roughly forty rows, and building all
-/// of them the instant its tab is picked is what makes the switch feel heavy - only the cards that
-/// are actually on screen need to exist. Pad control turns that off: traversal order is collected
-/// from the rows that rendered, so under a controller every row has to be present to be reachable.
+/// Lazy by default: a page like Video is eleven cards and roughly forty rows, and building all of
+/// them the instant its tab is picked is what makes the switch feel heavy - only the cards that
+/// are actually on screen need to exist. SwiftUI builds and lays out on the main thread, so that
+/// work is the freeze; there is nowhere else for it to go.
+///
+/// Two things turn laziness off. Pad control, because traversal order is collected from the rows
+/// that rendered, so every row has to be present to be reachable. And an outstanding jump, because
+/// an unbuilt card has no identity for `scrollTo` to find - that one lasts a single transaction,
+/// which is what keeps a search result working without charging every tab switch for it.
 struct SettingsStack<Content: View>: View {
-    @Environment(\.controllerFocusActive) private var isPadActive
     let spacing: CGFloat
     @ViewBuilder let content: Content
 
+    @Environment(\.controllerFocusActive) private var isPadFocusActive
+    @Environment(\.opnSettingsEagerStack) private var isEager
+
     var body: some View {
-        if isPadActive {
+        if isPadFocusActive || isEager {
             VStack(alignment: .leading, spacing: spacing) { content }
         } else {
             LazyVStack(alignment: .leading, spacing: spacing) { content }

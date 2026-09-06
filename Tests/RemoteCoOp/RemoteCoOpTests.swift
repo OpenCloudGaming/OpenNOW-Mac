@@ -37,11 +37,11 @@ struct RemoteCoOpTests {
         }
     }
 
-    /// Every tab is drawn now. The filtered list existed only for the alpha gate, and the tab bar and
-    /// pad navigation both read this - a mismatch is what let the pad land on a tab nobody drew.
-    @Test("every settings tab is visible")
-    func everySettingsTabIsVisible() {
-        #expect(CatalogSettingsGroup.visibleCases() == CatalogSettingsGroup.allCases)
+    /// Remote Co-Op is drawn unconditionally now. The filtered list survives for Labs, which exists
+    /// only while a feature is on trial, and the rail and pad navigation both read it - a mismatch is
+    /// what let the pad land on a tab nobody drew.
+    @MainActor @Test("Remote Co-Op is always a destination")
+    func remoteCoOpIsAlwaysADestination() {
         #expect(CatalogSettingsGroup.visibleCases().contains(.remoteCoOp))
     }
 

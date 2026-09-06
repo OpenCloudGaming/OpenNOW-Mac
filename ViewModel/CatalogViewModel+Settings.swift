@@ -1,13 +1,62 @@
 import Foundation
 
+struct SettingsOverriddenGame: Identifiable, Equatable {
+    var id: String { appId }
+    let appId: String
+    let title: String
+}
+
 @MainActor
 extension CatalogViewModel {
+    var isFreeTierAccount: Bool {
+        subscriptionStatus.isAvailable && subscriptionStatus.isFreeTierAccount
+    }
+
     var streamingQualityProfileAllowsCustomization: Bool {
         streamProfile.allowsStreamingCustomization
     }
 
+    /// Called before every profiled setting is written. A named preset owns those values, so
+    /// editing one under a preset used to be dropped on the floor: the control moved, the setting
+    /// did not, and nothing said why. The edit now takes the profile to Custom and applies, which
+    /// is what reaching for the control meant.
+    @discardableResult
     func canEditStreamingQualitySettings() -> Bool {
-        streamingQualityProfileAllowsCustomization
+        // Read what is stored, not `streamProfile`: that snapshot is republished by a detached task
+        // and lags a preset change, so an edit made in the gap would take the early exit and then be
+        // overwritten when the preset was re-applied.
+        guard OPNStreamPreferences.loadProfile().streamingQualityProfileIndex != Self.customStreamingProfileIndex else { return true }
+        OPNStreamPreferences.saveStreamingQualityProfileIndex(Self.customStreamingProfileIndex)
+        didSwitchToCustomStreamingProfile = true
+        return true
+    }
+
+    /// Index of the Custom entry in `OPNStreamPreferences.streamingQualityProfileOptions`.
+    static let customStreamingProfileIndex = 0
+
+    /// Games whose picture settings diverge from the global profile, newest lookup each time so a
+    /// reset is reflected without a reload. The title falls back to the id when the catalog has not
+    /// been browsed this session and the game is not in memory.
+    /// Reads from a view body, so the catalog is joined once per read rather than once per
+    /// override. The join allocates an array the size of the whole catalog; doing it per override
+    /// made a page that shows a handful of rows cost thousands of elements to draw.
+    var streamingOverrideGames: [SettingsOverriddenGame] {
+        let identifiers = OPNStreamPreferences.gameProfileIdentifiers()
+        guard !identifiers.isEmpty else { return [] }
+        var titles: [String: String] = [:]
+        for game in catalogGames + libraryGames + favoriteGames {
+            if titles[game.id] == nil { titles[game.id] = game.title }
+            let launchAppId = game.launchAppId
+            if !launchAppId.isEmpty, titles[launchAppId] == nil { titles[launchAppId] = game.title }
+        }
+        return identifiers.map { appId in
+            SettingsOverriddenGame(appId: appId, title: titles[appId] ?? "Game \(appId)")
+        }
+    }
+
+    func removeStreamingOverride(appId: String) {
+        OPNStreamPreferences.deleteProfile(forGame: appId)
+        loadSettingsPreferences()
     }
 
     func setAspectIndex(_ index: Int) {
@@ -77,6 +126,8 @@ extension CatalogViewModel {
     }
 
     func setStreamingQualityProfileIndex(_ index: Int) {
+        // Choosing a preset by hand answers the notice, whichever way it goes.
+        didSwitchToCustomStreamingProfile = false
         OPNStreamPreferences.saveStreamingQualityProfileIndex(index)
         loadSettingsPreferences()
     }
@@ -596,6 +647,7 @@ extension CatalogViewModel {
     }
 
     func restoreStreamingProfileDefaults() {
+        didSwitchToCustomStreamingProfile = false
         OPNStreamPreferences.restoreStreamingProfileDefaults()
         actionMessage = "Streaming profile defaults restored."
         loadSettingsPreferences()

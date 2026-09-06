@@ -185,6 +185,8 @@ extension NvstBifrostFreeTransport {
             clock.start()
             installBundleHandlers(bundle, sender: sender, logger: logger)
             self.bundle = bundle
+            logger?("NVST audio format channels=\(bundle.audioChannelCount) requested=\(configuredAudioChannelCount)"
+                    + " layout=\(NativeNVSTPerformanceSnapshot.audioLayoutName(bundle.audioChannelCount))")
             let microphone = bundle.microphoneNegotiation
             microphoneNegotiated = microphone.negotiated
             microphoneSenderSsrc = microphone.senderSsrc

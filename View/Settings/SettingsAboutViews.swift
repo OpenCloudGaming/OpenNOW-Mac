@@ -318,6 +318,7 @@ struct AboutStatusPill: View {
 }
 
 struct AboutDetailRow: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let label: String
     let value: String
     let copyValue: String
@@ -350,6 +351,7 @@ struct AboutDetailRow: View {
             }
             .buttonStyle(.plain)
             .disabled(copyDisabled)
+            .controllerFocusable(focusIdentity, activate: { copy(copyValue) })
         }
     }
 

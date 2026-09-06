@@ -16,23 +16,6 @@ extension Font {
     }
 }
 
-extension Color {
-    init(settingsHex hex: String) {
-        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        let packed = digits.count == 6 ? UInt64(digits, radix: 16) ?? 0 : 0
-        self.init(red: Double((packed >> 16) & 0xFF) / 255, green: Double((packed >> 8) & 0xFF) / 255, blue: Double(packed & 0xFF) / 255)
-    }
-
-    var settingsHexString: String {
-        let color = NSColor(self).usingColorSpace(.sRGB) ?? .black
-        // Converting a wide-gamut pick (the P3 wheel) into sRGB is colorimetric and
-        // can land outside 0...1. Unclamped, that formats to more than six hex digits
-        // and the stored value is rejected back to black.
-        func channel(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
-        return String(format: "#%02X%02X%02X", channel(color.redComponent), channel(color.greenComponent), channel(color.blueComponent))
-    }
-}
-
 struct SettingsAccountSnapshot: Sendable {
     let displayName: String
     let membershipTier: String
@@ -140,14 +123,49 @@ struct SettingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
     @StateObject private var focus = ControllerSettingsFocusModel()
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @State private var windowWidth: CGFloat = 0
 
     private static let tabBarFocusID = "settings-tabs"
 
+    /// Read from the preference, not from having received a pad command: `controllerPageCommand` is
+    /// nil until the first press, so keying the layout off it drew the desktop sidebar inside the
+    /// controller shell and then swapped it out under the reader's first input.
+    private var isPadDriven: Bool { controllerModeEnabled }
+
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
-                .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
-            SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+        Group {
+            if isPadDriven {
+                // Controller mode already stacks a header and a row of destination pills above this
+                // page. A second, vertical list of destinations beside them would be a rail inside a
+                // rail, and the pad's focus order is a single top-to-bottom list, so the strip is
+                // both the lighter and the navigable choice there.
+                VStack(spacing: 0) {
+                    SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
+                        .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
+                    SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    SettingsSidebar(
+                        selection: $viewModel.selectedSettingsGroup,
+                        groups: visibleGroups,
+                        uiScale: uiScale,
+                        showsLabels: windowWidth <= 0 || windowWidth / max(uiScale, 0.01) >= SettingsSidebar.labelMinimumWidth,
+                        onSelectSearchResult: { entry in
+                            viewModel.selectedSettingsGroup = entry.group
+                            viewModel.pendingSettingsSectionID = entry.sectionID
+                        }
+                    )
+                    SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+                }
+                .background {
+                    GeometryReader { window in
+                        Color.clear.preference(key: SettingsWindowWidthKey.self, value: window.size.width)
+                    }
+                }
+                .onPreferenceChange(SettingsWindowWidthKey.self) { windowWidth = $0 }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.controllerSettingsFocus, focus)
@@ -164,7 +182,10 @@ struct SettingsView: View {
             focus.setActive(true)
             apply(pageCommand.command)
         }
-        .onChange(of: viewModel.selectedSettingsGroup) { _, _ in focus.focus(Self.tabBarFocusID) }
+        .onChange(of: viewModel.selectedSettingsGroup) { _, _ in
+            focus.focus(Self.tabBarFocusID)
+            viewModel.didSwitchToCustomStreamingProfile = false
+        }
     }
 
     /// Up/down walk the tab bar and the focusable rows as one list, left/right act on whatever is
@@ -334,9 +355,10 @@ struct SettingsTabViewportKey: PreferenceKey {
 }
 
 extension SettingsTabBar {
-    /// Shipped but still settling. Network carries the session proxy, whose routing behaviour is
-    /// still changing (the catalog/session scope split landed 2026-09-05).
-    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp, .network]
+    /// A tab wears the tag only when everything on it is beta. Network no longer qualifies: its
+    /// server location and transport rows are settled and only the session proxy card is still
+    /// moving, so that card carries its own badge instead of tagging the whole destination.
+    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp]
 }
 
 struct SettingsTabItem: View {
@@ -399,6 +421,12 @@ struct SettingsContent: View {
     /// The row the pad currently has focus on; the page scrolls to keep it visible.
     var focusedID: String?
 
+    @Environment(\.controllerFocusActive) private var isPadFocusActive
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @State private var contentWidth: CGFloat = 0
+    /// True for the frames a search jump needs every card present. See `SettingsStack`.
+    @State private var isJumping = false
+
     var body: some View {
         if viewModel.selectedSettingsGroup.isEmptyStatePage {
             page
@@ -424,13 +452,40 @@ struct SettingsContent: View {
                 if !viewModel.actionMessage.isEmpty {
                     SettingsMessageView(message: viewModel.actionMessage, systemImage: "checkmark.circle.fill", uiScale: uiScale)
                 }
+                // Preset-managed rows live on more than one destination, so the notice belongs to
+                // the page frame rather than to Video: L4S is on Network, and an explanation the
+                // reader has to go looking for on another tab explains nothing.
+                if viewModel.didSwitchToCustomStreamingProfile {
+                    SettingsMessageView(
+                        message: "Switched to the Custom quality profile so your edit could apply. Pick a preset again to go back to its values.",
+                        systemImage: "slider.horizontal.3",
+                        uiScale: uiScale
+                    )
+                }
                 page
             }
             .padding(.horizontal, 28 * uiScale)
             .padding(.top, 28 * uiScale)
             .padding(.bottom, 48 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Measured inside the padding, so this is the width a card actually gets - the scroll
+            // view's own frame still carries the padding and, when scrollers are set to always
+            // show, the width of the scroller too.
+            .background {
+                GeometryReader { cards in
+                    Color.clear.preference(key: SettingsContentWidthKey.self, value: cards.size.width)
+                }
+            }
         }
+        .onPreferenceChange(SettingsContentWidthKey.self) { width in
+            // A destination change rebuilds the measured subtree and republishes zero for a frame.
+            // Taking it would collapse a wide page to one column and then reflow it back.
+            guard width > 0 else { return }
+            contentWidth = width
+        }
+        .onAppear { jumpToPendingSection(proxy) }
+        .onChange(of: viewModel.pendingSettingsSectionID) { _, _ in jumpToPendingSection(proxy) }
+        .environment(\.opnSettingsEagerStack, isJumping)
         // A fresh scroll view per tab: the offset from a long page would otherwise
         // survive the switch and park a shorter page's viewport past its content.
         .id(viewModel.selectedSettingsGroup)
@@ -442,30 +497,94 @@ struct SettingsContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SettingsSurfaceBackground())
+        .environment(\.opnSettingsWideLayout, usesTwoColumns)
+        .environment(\.opnSettingsNarrowRows, usesNarrowRows)
+        .environment(\.opnSettingsCardWidth, contentWidth)
+        }
+    }
+
+    /// Takes a search result to its card. Never waits for the card to report its position: a card
+    /// below the fold has not been built, so it publishes nothing, and waiting on that mark is
+    /// waiting forever for exactly the results worth searching for. `scrollTo` reaches a lazily
+    /// built child by identity, which is what `.settingsSection(_:)` gives it.
+    private func jumpToPendingSection(_ proxy: ScrollViewProxy) {
+        guard let pending = viewModel.pendingSettingsSectionID else { return }
+        guard sections.contains(where: { $0.id == pending }) else {
+            // The destination changed but its page has not been swapped in yet; the new page's
+            // `onAppear` picks the jump up.
+            return
+        }
+        viewModel.pendingSettingsSectionID = nil
+        // Build every card for this jump, scroll once they exist, then let the page go lazy again.
+        // Scrolling in the same transaction that asks for the cards would aim at a card that is
+        // still not there.
+        isJumping = true
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
+            DispatchQueue.main.async { isJumping = false }
+        }
+    }
+
+    /// Two columns only when the page is genuinely wide for the reader's interface scale, and never
+    /// under a gamepad: focus order is a single list sorted by vertical position, so a second column
+    /// would interleave with the first and up/down would jump between them.
+    private var usesTwoColumns: Bool {
+        // Same signal the rail uses. Keying this off pad focus alone meant a controller-mode page
+        // opened in two columns and reflowed to one on the reader's first press.
+        guard !controllerModeEnabled, !isPadFocusActive else { return false }
+        return SettingsLayoutMetrics.allowsTwoColumns(cardWidth: contentWidth, uiScale: uiScale)
+    }
+
+    /// At the window floor the 250pt label column leaves an option row's chips too little room and
+    /// they wrap into three lines, so the control moves under its label instead. `SettingsColumns`
+    /// raises this again for its own cards, which are half a page wide whatever the window is.
+    private var usesNarrowRows: Bool {
+        SettingsLayoutMetrics.usesNarrowRows(cardWidth: contentWidth, uiScale: uiScale)
+    }
+
+    private var sections: [SettingsSection] {
+        switch viewModel.selectedSettingsGroup {
+        case .account: AccountSettingsGroup.sections
+        case .video: VideoSettingsGroup.sections
+        case .audio: AudioSettingsPage.sections
+        case .input: InputSettingsGroup.sections
+        case .recording: RecordingSettingsGroup.sections
+        case .network: NetworkSettingsGroup.sections
+        case .remoteCoOp: []
+        case .general: GeneralSettingsGroup.sections
+        case .labs: LabsSettingsPage.sections
         }
     }
 
     @ViewBuilder private var page: some View {
         switch viewModel.selectedSettingsGroup {
         case .account:
-            AccountSettingsPage(viewModel: viewModel)
-        case .streaming:
-            StreamingSettingsGroup(viewModel: viewModel)
+            AccountSettingsGroup(viewModel: viewModel)
+        case .video:
+            VideoSettingsGroup(viewModel: viewModel)
+        case .audio:
+            AudioSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        case .input:
+            InputSettingsGroup(viewModel: viewModel)
+        case .recording:
+            RecordingSettingsGroup(viewModel: viewModel)
         case .network:
             NetworkSettingsGroup(viewModel: viewModel)
-        case .connections:
-            ConnectionsSettingsGroup(viewModel: viewModel)
-        case .controller:
-            SteamControllerSettingsPage(uiScale: uiScale)
         case .remoteCoOp:
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
-        case .experimental:
-            ExperimentalFeaturesSettingsPage(uiScale: uiScale)
-        case .about:
-            AboutSettingsGroup(viewModel: viewModel, uiScale: uiScale)
+        case .labs:
+            LabsSettingsPage(uiScale: uiScale)
         }
+    }
+}
+
+struct SettingsContentWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

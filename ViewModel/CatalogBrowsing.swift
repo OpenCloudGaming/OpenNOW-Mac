@@ -90,6 +90,7 @@ extension CatalogViewModel {
     func showSettings(_ group: CatalogSettingsGroup = .account) {
         selectedMainPage = .settings
         selectedSettingsGroup = group
+        didSwitchToCustomStreamingProfile = false
         loadSettingsPreferences()
     }
 

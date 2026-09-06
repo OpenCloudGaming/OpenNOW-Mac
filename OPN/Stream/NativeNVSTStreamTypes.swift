@@ -56,6 +56,36 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let audioOutputLatencyMilliseconds: Double
     /// The seat's GPU as named by the session response ("NVIDIA GeForce RTX 4080"); the rig.
     public let serverGPU: String
+    /// Playback channels the bundle's audio section actually decodes, and the count the session
+    /// asked for. Surround is the one setting whose outcome a listener cannot verify by looking, so
+    /// when these disagree the HUD says both: a 5.1 request answered in stereo is a fact worth
+    /// seeing rather than a silent disappointment.
+    ///
+    /// `requestedAudioChannelCount` is the reader's own choice, taken before the output device and
+    /// the membership clamp it - not the count the bundle went on to ask the seat for. Those two
+    /// differ exactly when a 7.1 pick is dropped locally against a stereo device, which is the case
+    /// nothing else on screen would report.
+    public let audioChannelCount: Int
+    public let requestedAudioChannelCount: Int
+
+    /// How the negotiated audio reads: the layout, and the one it was asked for when the seat
+    /// answered with something else.
+    public var audioFormatSummary: String {
+        guard audioChannelCount > 0 else { return "-" }
+        let negotiated = Self.audioLayoutName(audioChannelCount)
+        guard requestedAudioChannelCount > 0, requestedAudioChannelCount != audioChannelCount else { return negotiated }
+        return "\(negotiated) (\(Self.audioLayoutName(requestedAudioChannelCount)) asked)"
+    }
+
+    public static func audioLayoutName(_ channels: Int) -> String {
+        switch channels {
+        case 8: "7.1"
+        case 6: "5.1"
+        case 2: "Stereo"
+        case 1: "Mono"
+        default: "\(channels) ch"
+        }
+    }
 
     public init(available: Bool,
                 gameFramesPerSecond: Double,
@@ -80,7 +110,11 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
                 targetBitrateMegabitsPerSecond: Double = -1,
                 serverGPU: String = "",
                 audioJitterBufferMilliseconds: Double = -1,
-                audioOutputLatencyMilliseconds: Double = -1) {
+                audioOutputLatencyMilliseconds: Double = -1,
+                audioChannelCount: Int = 0,
+                requestedAudioChannelCount: Int = 0) {
+        self.audioChannelCount = audioChannelCount
+        self.requestedAudioChannelCount = requestedAudioChannelCount
         self.audioJitterBufferMilliseconds = audioJitterBufferMilliseconds
         self.audioOutputLatencyMilliseconds = audioOutputLatencyMilliseconds
         self.serverGPU = serverGPU

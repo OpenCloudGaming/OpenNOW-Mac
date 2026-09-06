@@ -39,6 +39,10 @@ extension NativeNVSTMediaStreamSurface {
                 // the HUD rather than from the diagnostic log.
                 nativeStatsStandardRow(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor)
                 nativeStatsStandardRow(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail, color: WebRTCMediaStreamTheme.textPrimary)
+                // The channel layout the bundle actually decodes. Surround is the one setting whose
+                // outcome cannot be confirmed by looking at the stream, and the seat, not the
+                // client, has the last word on it.
+                nativeStatsStandardRow(label: "Audio", value: nativeStatsAudioValue, detail: nativeStatsAudioDetail, color: nativeStatsAudioColor)
                 // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
                 nativeStatsStandardRow(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail, color: WebRTCMediaStreamTheme.textPrimary)
                 // Video path (decode + present) against audio's jitter-buffer dwell: an estimate of
@@ -128,6 +132,26 @@ extension NativeNVSTMediaStreamSurface {
         case .tight: return WebRTCMediaStreamTheme.warning
         case .comfortable, .unknown: return WebRTCMediaStreamTheme.textPrimary
         }
+    }
+
+    private var nativeStatsAudioValue: String {
+        model.latestNativeStats?.audioFormatSummary ?? "-"
+    }
+
+    private var nativeStatsAudioDetail: String? {
+        guard let stats = model.latestNativeStats, stats.audioChannelCount > 0 else { return nil }
+        return "Opus"
+    }
+
+    /// Amber when the seat answered with fewer channels than the session asked for: the setting did
+    /// not take, and nothing else on screen would say so.
+    private var nativeStatsAudioColor: Color {
+        guard let stats = model.latestNativeStats, stats.audioChannelCount > 0,
+              stats.requestedAudioChannelCount > 0,
+              stats.requestedAudioChannelCount != stats.audioChannelCount else {
+            return WebRTCMediaStreamTheme.textPrimary
+        }
+        return WebRTCMediaStreamTheme.warning
     }
 
     /// Video lead/lag estimate: (decode + present) − audio jitter-buffer dwell. Positive means the

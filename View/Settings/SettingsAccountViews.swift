@@ -47,12 +47,15 @@ struct AccountSettingsPage: View {
                     AccountHealthBadge(title: accountHealthTitle, subtitle: accountHealthSubtitle, positive: accountHealthPositive, uiScale: uiScale)
                 }
             }
+            .settingsSection("membership")
 
             // Full width, one under the other, like every other settings page. Side by side the
             // two cards held different amounts and so ended at different heights, which read as a
             // layout accident rather than a choice, and squeezed the value columns of both.
             profilePrivacyCard
+                .settingsSection("profile")
             sessionCard
+                .settingsSection("session")
 
             SettingsCard(title: "Playtime Statistics", uiScale: uiScale) {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
@@ -72,6 +75,7 @@ struct AccountSettingsPage: View {
                     }
                 }
             }
+            .settingsSection("playtime")
         }
     }
 
@@ -201,6 +205,7 @@ struct AccountHealthBadge: View {
 }
 
 struct SettingsRevealButton: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let revealed: Bool
     let uiScale: CGFloat
     let action: () -> Void
@@ -219,6 +224,7 @@ struct SettingsRevealButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .controllerFocusable(focusIdentity, activate: action)
     }
 }
 

@@ -10,7 +10,26 @@ struct SystemSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Readiness", uiScale: uiScale) {
+            readinessCard
+            SettingsDisclosureCard(
+                title: "This Mac",
+                summary: systemHealthTitle,
+                storageKey: "system-report",
+                uiScale: uiScale
+            ) {
+                displayCard
+                SettingsDivider(uiScale: uiScale)
+                decodeCard
+                SettingsDivider(uiScale: uiScale)
+                identifiersCard
+            }
+        }
+    }
+
+    /// The one line worth seeing without asking: whether this Mac can stream what the settings ask
+    /// of it. Everything behind it is a report, read once when something is wrong.
+    private var readinessCard: some View {
+        SettingsCard(title: "Readiness", uiScale: uiScale) {
                 HStack(alignment: .top, spacing: 18 * uiScale) {
                     VStack(alignment: .leading, spacing: 10 * uiScale) {
                         Text(systemSummaryTitle)
@@ -30,26 +49,35 @@ struct SystemSettingsPage: View {
                     SystemHealthBadge(title: systemHealthTitle, subtitle: systemHealthSubtitle, positive: systemHealthPositive, uiScale: uiScale)
                 }
             }
+    }
 
-            SettingsCard(title: "Display", uiScale: uiScale) {
-                SettingsFlowLayout(spacing: 10 * uiScale) {
+    private var displayCard: some View {
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            SettingsSubheading(title: "Display", uiScale: uiScale)
+            SettingsFlowLayout(spacing: 10 * uiScale) {
                     SettingsStatisticTile(label: "Resolution", value: displaySummary, emphasized: true, uiScale: uiScale)
                     SettingsStatisticTile(label: "Refresh", value: refreshRateText, uiScale: uiScale)
                     SettingsStatisticTile(label: "DPI", value: dpiText, uiScale: uiScale)
-                    SettingsStatisticTile(label: "HDR", value: viewModel.streamCapabilities.hdrDisplaySupported ? "Ready" : "Unavailable", uiScale: uiScale)
-                }
+                SettingsStatisticTile(label: "HDR", value: viewModel.streamCapabilities.hdrDisplaySupported ? "Ready" : "Unavailable", uiScale: uiScale)
             }
+        }
+    }
 
-            SettingsCard(title: "Video Decode", uiScale: uiScale) {
-                VStack(spacing: 10 * uiScale) {
+    private var decodeCard: some View {
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            SettingsSubheading(title: "Video Decode", uiScale: uiScale)
+            VStack(spacing: 10 * uiScale) {
                     SystemCapabilityRow(title: "H.264", subtitle: "Baseline stream compatibility", value: viewModel.streamCapabilities.h264HardwareDecodeSupported ? "Hardware" : "Software", positive: viewModel.streamCapabilities.h264HardwareDecodeSupported, uiScale: uiScale)
                     SystemCapabilityRow(title: "HEVC", subtitle: "Efficient high-quality streaming", value: viewModel.streamCapabilities.h265HardwareDecodeSupported ? "Supported" : "Unavailable", positive: viewModel.streamCapabilities.h265HardwareDecodeSupported, uiScale: uiScale)
                     SystemCapabilityRow(title: "AV1", subtitle: "Next-generation low-bitrate streaming", value: viewModel.streamCapabilities.av1HardwareDecodeSupported ? "Supported" : "Unavailable", positive: viewModel.streamCapabilities.av1HardwareDecodeSupported, uiScale: uiScale)
-                }
             }
+        }
+    }
 
-            SettingsCard(title: "Device & Route", uiScale: uiScale) {
-                HStack(alignment: .center, spacing: 12 * uiScale) {
+    private var identifiersCard: some View {
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            SettingsSubheading(title: "Device & Route", uiScale: uiScale)
+            HStack(alignment: .center, spacing: 12 * uiScale) {
                     VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text("Identifiers and endpoint paths are masked by default.")
                             .font(.settingsNvidia(size: 14 * uiScale, weight: .bold))
@@ -64,8 +92,7 @@ struct SystemSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 AboutDetailRow(label: "Device ID", value: displayedDeviceId, copyValue: viewModel.session.deviceId, copiedKey: $copiedKey, copyDisabled: viewModel.session.deviceId.isEmpty, uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
-                AboutDetailRow(label: "Current Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey, uiScale: uiScale)
-            }
+            AboutDetailRow(label: "Current Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey, uiScale: uiScale)
         }
     }
 

@@ -580,7 +580,7 @@ struct CatalogEmptyDestinationView: View {
         case .home:
             viewModel.refresh()
         case .library:
-            viewModel.showSettings(.connections)
+            viewModel.showSettings(.account)
         case .favorites:
             viewModel.showCatalogDestination(.home)
         }

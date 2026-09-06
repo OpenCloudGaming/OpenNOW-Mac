@@ -294,6 +294,12 @@ final class NativeNVSTHostViewModel: ObservableObject {
             configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
             configuredColorQuality: resolvedStreamSettings.colorQuality,
             configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
+            // Auto resolves against the negotiated count, so it can never read as short-changed;
+            // an explicit 5.1 or 7.1 ignores that argument and reports what was actually picked.
+            preferredAudioChannelCount: WebRTCMediaStreamSettingsResolver.preferredAudioChannelCount(
+                surroundMode: resolvedStreamSettings.surroundMode,
+                deviceOutputChannels: resolvedStreamSettings.audioChannelCount
+            ),
             logger: { message in
                 WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
                 diagnosticLog.append(message)

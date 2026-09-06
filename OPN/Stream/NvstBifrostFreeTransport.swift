@@ -237,6 +237,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// decodes and what the ANNOUNCE asks the seat to encode.
     let configuredAudioChannelCount: Int
 
+    /// The reader's own surround pick, before the output device and the membership clamp it. Only
+    /// the HUD reads this, so it can say a 7.1 choice was dropped against a stereo device rather
+    /// than reporting the stereo it settled for as if that had been the request.
+    let preferredAudioChannelCount: Int
+
     public init(pixelBufferSink: PixelBufferSink? = nil,
                 configuredFps: Int? = nil,
                 configuredMaxBitrateKbps: Int? = nil,
@@ -246,6 +251,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterModel: Int? = nil,
                 configuredColorQuality: String? = nil,
                 configuredAudioChannelCount: Int = 2,
+                preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
                 remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
@@ -261,6 +267,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
         self.configuredAudioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(configuredAudioChannelCount)
+        self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
         self.controlTimeout = controlTimeout
     }

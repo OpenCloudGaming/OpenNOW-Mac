@@ -22,6 +22,38 @@ import Testing
         #expect(Resolver.audioChannelCount(surroundMode: "7.1", deviceOutputChannels: 8, entitledChannels: 2) == 2)
     }
 
+    @Test func thePreferredCountKeepsTheReadersPickApartFromTheClamp() {
+        // An explicit pick is reported as picked however little the device can deliver: this is
+        // what lets the HUD say "Stereo (7.1 asked)" instead of reporting the clamp as the request.
+        #expect(Resolver.preferredAudioChannelCount(surroundMode: "7.1", deviceOutputChannels: 2) == 8)
+        #expect(Resolver.preferredAudioChannelCount(surroundMode: "5.1", deviceOutputChannels: 2) == 6)
+        #expect(Resolver.preferredAudioChannelCount(surroundMode: "stereo", deviceOutputChannels: 8) == 2)
+        // Auto has no opinion, so it can never read as short-changed whatever the device offers.
+        for channels in [2, 6, 8] {
+            #expect(Resolver.preferredAudioChannelCount(surroundMode: "auto", deviceOutputChannels: channels)
+                    == Resolver.audioChannelCount(surroundMode: "auto", deviceOutputChannels: channels, entitledChannels: 0))
+        }
+    }
+
+    @Test func theHudNamesTheAskedLayoutOnlyWhenItDiffers() {
+        #expect(snapshot(negotiated: 2, preferred: 8).audioFormatSummary == "Stereo (7.1 asked)")
+        #expect(snapshot(negotiated: 6, preferred: 8).audioFormatSummary == "5.1 (7.1 asked)")
+        #expect(snapshot(negotiated: 8, preferred: 8).audioFormatSummary == "7.1")
+        #expect(snapshot(negotiated: 2, preferred: 2).audioFormatSummary == "Stereo")
+    }
+
+    private func snapshot(negotiated: Int, preferred: Int) -> NativeNVSTPerformanceSnapshot {
+        NativeNVSTPerformanceSnapshot(
+            available: true,
+            gameFramesPerSecond: 0, streamFramesPerSecond: 0,
+            latencyMilliseconds: 0, jitterMilliseconds: 0,
+            frameLoss: 0, totalFrameLoss: 0, packetLoss: 0, totalPacketLoss: 0,
+            bitrateMegabitsPerSecond: 0, bandwidthUtilizationPercent: 0,
+            resolution: "", codec: "", serverLocation: "",
+            audioChannelCount: negotiated, requestedAudioChannelCount: preferred
+        )
+    }
+
     @Test func resolvedSettingsCarryTheChannelCountAndMode() {
         let resolved = Resolver.resolve(
             profile: WebRTCMediaStreamProfile(surroundMode: "5.1"),
@@ -148,6 +180,28 @@ import Testing
         #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(8) == 8)
         #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(4) == 2)
         #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(0) == 2)
+    }
+
+    /// The HUD is the only place a listener can confirm what the seat actually sent, so it has to
+    /// name the negotiated layout, and say what was asked for when the two differ.
+    @Test func theHudNamesTheNegotiatedLayoutAndFlagsAShortfall() {
+        func snapshot(negotiated: Int, requested: Int) -> NativeNVSTPerformanceSnapshot {
+            NativeNVSTPerformanceSnapshot(
+                available: true, gameFramesPerSecond: 0, streamFramesPerSecond: 0,
+                latencyMilliseconds: 0, jitterMilliseconds: 0, frameLoss: 0, totalFrameLoss: 0,
+                packetLoss: 0, totalPacketLoss: 0, bitrateMegabitsPerSecond: 0,
+                bandwidthUtilizationPercent: 0, resolution: "", codec: "", serverLocation: "",
+                audioChannelCount: negotiated, requestedAudioChannelCount: requested
+            )
+        }
+        #expect(snapshot(negotiated: 6, requested: 6).audioFormatSummary == "5.1")
+        #expect(snapshot(negotiated: 8, requested: 8).audioFormatSummary == "7.1")
+        #expect(snapshot(negotiated: 2, requested: 2).audioFormatSummary == "Stereo")
+        // A request the seat did not honour reads as what arrived, plus what was asked.
+        #expect(snapshot(negotiated: 2, requested: 6).audioFormatSummary == "Stereo (5.1 asked)")
+        #expect(snapshot(negotiated: 6, requested: 8).audioFormatSummary == "5.1 (7.1 asked)")
+        // Nothing negotiated yet is not a claim about the layout.
+        #expect(snapshot(negotiated: 0, requested: 6).audioFormatSummary == "-")
     }
 
     @Test func theSubscriptionFeatureMapsToAChannelCount() {

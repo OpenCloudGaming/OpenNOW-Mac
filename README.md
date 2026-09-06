@@ -21,7 +21,7 @@
 
 <br>
 
-<img src="docs/screenshots/catalog.png" alt="OpenNOW catalog with GFN Thursday, Top Sellers, and Free-to-Play rails">
+<img src="docs/screenshots/catalog.png" alt="OpenNOW catalog: rotating hero banner, GFN Thursday rail, and a My Library rail with ownership and membership badges">
 
 </div>
 
@@ -39,12 +39,13 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | 🖥️ **Built for ultrawide** | 21:9 up to 5120×2160 and 32:9 up to 5120×1440, HEVC and AV1, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
 | 🔼 **Upscaling, on both transports** | Off, Spatial, or MetalFX, targeting 2K/4K/5K, with live Clarity and Noise Reduction sliders - gamepad-navigable, same on WebRTC and native NVST. [More ↓](#upscaling) |
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
-| ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. |
+| ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. [More ↓](#record-your-runs) |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
 | 🔔 **Session ready** | Queue in the background: pick a system notification or have OpenNOW come to the front the moment your seat is ready. |
+| 🔎 **Settings you can find** | Nine destinations named for what they hold, and a search that answers the word you know: type 5.1, black bars or vsync and it lands on the setting. [More ↓](#settings-you-can-find) |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app - catalog, details, settings - from the pad. Never reach for the mouse. |
 | 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |
@@ -61,7 +62,7 @@ Requires macOS 15.6 or later and your own GeForce NOW account.
 
 Pick your shape, then your resolution - 16:9, 16:10, 21:9, or 32:9. The wide end tops out at **5120×2160** on 21:9 and **5120×1440** on 32:9, all at 30/60/120/240 fps. HEVC carries true 5K streams where H.264 hardware decode runs out of headroom, and **AV1** leans in whenever bandwidth is the bottleneck, decoded in hardware on M3-and-later Apple silicon. 10-bit 4:2:0/4:4:4 colour is there when the codec supports it, HDR10 rides a 10-bit HEVC stream straight to an EDR drawable on both transports, and any codec your Mac can't decode greys itself out instead of failing mid-session.
 
-![Streaming quality settings: aspect ratio, resolution, frame rate, codec, bitrate, and colour precision](docs/screenshots/streaming-quality.png)
+![Video settings: quality preset, aspect ratio, resolution and frame rate; codec, colour precision, HDR and colour space; maximum bitrate, with a measured per-frame decode budget for this Mac](docs/screenshots/streaming-quality.png)
 
 ### No more black bars
 
@@ -102,7 +103,7 @@ WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - 
 - **Microphone on NVST** - when the seat offers bundle mic in DESCRIBE (every current seat does), the bundle carries a send-only Opus mic section exactly like the official client, driven by push-to-talk / voice-activity / mute / the volume slider. Verified live on 2026-09-03: game audio and voice chat together on a fresh session. Seats on NVST's legacy RTSP mic transport are not supported yet and report that when the mic is enabled. Settings → Audio has a local microphone test either way.
 - **Session recording** - ⌘R captures decode frames and game audio straight off the native pipeline.
 
-Enable it in **Settings → Stream Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
+Enable it in **Settings → Network → Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
 
 The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md).
 
@@ -115,7 +116,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.
-- **Built-in tester** - Settings → Steam Controller Test shows every button, axis, and pad live.
+- **Built-in tester** - Settings → Input → Steam Controller shows every button, axis, and pad live.
 - **Lizard mode off** - the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 
 ![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)
@@ -163,6 +164,22 @@ Struct layouts for all three formats are documented in SDL's [`controller_struct
 
 </details>
 
+## Record Your Runs
+
+⌘R starts and stops a local capture on either transport - frames come straight off the decode path and game audio off the stream, so nothing is re-encoded from the screen and no Screen Recording permission is involved. Recordings land in a browsable library with search, sort, and resolution filters.
+
+![Recordings library beside the Quick Edit timeline: a saved Streets of Rage 4 capture, its 5120x2160 thumbnail and size, and a filmstrip timeline with trim, split, and set in/out controls](docs/screenshots/recordings.png)
+
+**Quick Edit** is opt-in and non-destructive - trim the ends, split and cut a middle section, join what is left, then save as a new video. The advanced pass adds crop, rotate, flip, speed, and audio. The original file is never rewritten.
+
+## Settings You Can Find
+
+Nine destinations named for what they hold - Account, Video, Audio, Input, Recording, Network, Remote Co-Op, General, and Labs - down a sidebar that shows all of them at once. Settings that arrived recently wear a **NEW** tag until you have seen them, so a new option in a tab you never open still announces itself.
+
+![OpenNOW Audio settings: the destination sidebar with search, and Output and Microphone cards holding game volume, surround mode, microphone mode, device, volume, and a local microphone test](docs/screenshots/settings-audio.png)
+
+Search answers the word you already know rather than the one the setting is filed under: type `5.1`, `black bars`, or `vsync` and it lands on the row, in whichever tab it lives.
+
 ## Build from Source
 
 ```sh
@@ -183,7 +200,8 @@ swift test --scratch-path .build/shared
 **Layout**
 
 - `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `OpenNOWApp.swift` - macOS app entry point and application delegate
+- `OpenNOWApp.swift` - macOS app entry point
+- `App` - application delegate and app-lifecycle wiring
 - `Resources` - bundled images, fonts, and store icon assets
 - `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state for login, catalog, controller catalog, and recordings
@@ -194,7 +212,7 @@ swift test --scratch-path .build/shared
 
 **Packages**
 
-The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
+The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all six production directories - those three plus `App`, `View`, and `ViewModel`.
 
 **Focused test runs**
 

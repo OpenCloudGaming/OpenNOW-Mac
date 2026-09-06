@@ -74,17 +74,32 @@ final class ControllerInputRouter: NSObject, ObservableObject {
     private let thumbstickRepeatInterval: TimeInterval = 0.18
     private let thumbstickDeadzone: Float = 0.45
 
-    override init() {
+    /// An observing router reports connection state and glyphs without ever touching a
+    /// controller's handlers. `GCController` exposes one handler slot per element for the whole
+    /// process, so a router that only wants to draw the right button glyph would otherwise
+    /// overwrite the handlers of whichever router is actually driving navigation.
+    nonisolated private let observesOnly: Bool
+
+    /// The controllers this router installed handlers on, held weakly so a disconnected pad is
+    /// not kept alive. Only these are cleared, so one router cannot silence another's.
+    nonisolated(unsafe) private let configuredControllers = NSHashTable<GCController>.weakObjects()
+
+    init(observesOnly: Bool = false) {
+        self.observesOnly = observesOnly
         super.init()
         installNotifications()
         refreshControllers()
-        GCController.startWirelessControllerDiscovery(completionHandler: nil)
+        if !observesOnly {
+            GCController.startWirelessControllerDiscovery(completionHandler: nil)
+        }
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        GCController.stopWirelessControllerDiscovery()
-        Self.clearHandlersForConnectedControllers()
+        if !observesOnly {
+            GCController.stopWirelessControllerDiscovery()
+        }
+        clearConfiguredHandlers()
     }
 
     func sendKeyboardCommand(_ command: ControllerInputCommand) {
@@ -113,7 +128,7 @@ final class ControllerInputRouter: NSObject, ObservableObject {
     }
 
     private func refreshControllers() {
-        Self.clearHandlersForConnectedControllers()
+        clearConfiguredHandlers()
         let controllers = GCController.controllers()
         isControllerConnected = !controllers.isEmpty
         activeController = controllers.first
@@ -123,17 +138,20 @@ final class ControllerInputRouter: NSObject, ObservableObject {
         refreshGlyphs()
     }
 
-    nonisolated private static func clearHandlersForConnectedControllers() {
-        for controller in GCController.controllers() {
+    nonisolated private func clearConfiguredHandlers() {
+        for controller in configuredControllers.allObjects {
             controller.extendedGamepad?.valueChangedHandler = nil
             controller.extendedGamepad?.dpad.valueChangedHandler = nil
             controller.extendedGamepad?.leftThumbstick.valueChangedHandler = nil
             controller.microGamepad?.valueChangedHandler = nil
             controller.microGamepad?.dpad.valueChangedHandler = nil
         }
+        configuredControllers.removeAllObjects()
     }
 
     private func configureHandlers(for controller: GCController) {
+        guard !observesOnly else { return }
+        configuredControllers.add(controller)
         if let gamepad = controller.extendedGamepad {
             configureButton(gamepad.buttonA, command: .confirm, controller: controller)
             configureButton(gamepad.buttonB, command: .back, controller: controller)

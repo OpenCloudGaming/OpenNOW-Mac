@@ -347,10 +347,72 @@ or INSTALLING eyebrow, an 11pt bold byte readout, and a 3px progress bar — det
 Rectangles (accent over #FFFFFF @ 0.10), or `VendorIndeterminateProgressBar` when the server
 sends no content length. Buttons and the close control disable for the duration.
 
+### Settings Destination Rail (`SettingsSidebar`)
+
+The desktop Settings navigation: a 208-wide column of 36-high rows, 14 horizontal padding, 16pt
+glyph then a 13pt label. Selected is accent @ 0.12 fill with a 3-wide accent bar on the leading
+edge; hover is white @ 0.05. Below 900pt of window width per interface scale the labels drop and
+the rail narrows to 60, glyphs only, each row keeping its title as a tooltip. The rail is desktop
+only: controller mode renders `SettingsTabBar` instead, because its shell already carries a
+horizontal row of destination pills and pad focus is a single top-to-bottom list.
+
+### Settings Card Columns (`SettingsColumns`)
+
+Two independent card columns, 16 gutter, above `narrowRowWidth * 2 + gutter` of card width per
+interface scale - derived rather than picked, so a split never produces columns too narrow to hold a
+row's label beside its control, which would be the one-column layout at half the measure one column below that, and always one column under pad focus. Columns are independent, not a grid: a grid row stretches to its taller
+card and leaves a hole whenever a pair differs. Cards inside the columns get
+`opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
+
+### Settings Disclosure Card (`SettingsDisclosureCard`)
+
+A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a
+block most readers never open: an advanced set, a diagnostics dump, a statistics panel. The header is
+itself a focusable row, so a pad can open the card; without that every setting inside it is reachable
+only with a pointer.
+
+### Settings Subheading (`SettingsSubheading`)
+
+Names a block inside a card: 10pt bold, tracking 1.0, white @ 0.44, with the block's own content
+below it. Use it instead of a second `SettingsCard` when the blocks belong to one subject and a
+card each would read as separate objects and spend a header of height saying so. The folded system
+report is the reference case.
+
+### Settings Labs (`LabsSettingsPage`, `OpenNOWLabs`)
+
+Features on trial live on their own destination, always drawn so people can learn where to look.
+With `OpenNOWLabs.flags` empty the page is its own empty state: a 132 accent-ringed flask with three
+bubbles at its neck over "Nothing in flight", centred in the pane. That state names itself, so
+`isEmptyStatePage` drops the page header and the scroll view for it - two titles would compete.
+Each flag names itself, says what it turns on and when it went on trial, and stores itself under
+`OpenNOW.Labs.<id>`. The card carries the EXPERIMENTAL badge.
+
+A card that belongs to its own destination's subject but is not finished keeps its badge there
+instead; the badge marks maturity in place, and is not a substitute for a home.
+
+### Settings Search (`SettingsSearchField`, `SettingsSearchResults`)
+
+A 30-high field at the top of the destination rail, 10 horizontal padding, white @ 0.07 fill, white
+@ 0.12 border that becomes accent @ 0.44 while focused. Two characters start a search; the results
+take the rail's place until the field is cleared. Each result is a 12.5pt title over a 10.5pt
+`Destination › Card` line, from the section names each destination declares, with the same 3-wide accent leading edge the rail rows use on hover.
+Desktop only: it is absent from the icons-only rail and from controller mode, where nothing on
+screen may be unreachable by a pad.
+
+### Settings Card Badge (`SettingsCardBadge`, `SettingsCardTag`)
+
+`SettingsCard(title:badge:uiScale:)` renders BETA or EXPERIMENTAL beside the card title, 8pt bold,
+tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card. A destination in
+`SettingsTabBar.betaGroups` wears the tag in the rail instead, and only when every card on it is
+beta - one unsettled card in a settled tab is a card badge, not a destination tag.
+
 ### Tags (`OpenNOWBetaTag`, `OpenNOWNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking
-0.7, 4pt horizontal / 2pt vertical padding, square corners. **BETA** is accent text on a 12 % accent
+0.7, 4pt leading / 3.3pt trailing / 2pt vertical padding, square corners. The trailing padding is
+short by exactly the tracking, because letter-spacing is applied after the last glyph too and an
+even 4/4 leaves the label sitting left of centre in its box. Tracking scales with the interface like
+the padding it is subtracted from. **BETA** is accent text on a 12 % accent
 tint (compact) for shipped-but-rough features. **NEW** is black text on solid accent for a setting
 added in the current release; rows opt in with `isNew:` and declare their release in
 `OpenNOWNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
