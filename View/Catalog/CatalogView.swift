@@ -182,10 +182,11 @@ struct CatalogView: View {
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in
-                    let topInset = min(max(streamWindowTopInset, 0), proxy.size.height)
-                    let contentHeight = max(proxy.size.height - topInset, 0)
-                    let streamSize = streamContentSize(availableWidth: proxy.size.width, availableHeight: contentHeight, topInset: topInset)
-                    VStack(spacing: 0) {
+                    StreamStageLayout(
+                        viewport: proxy.size,
+                        topInset: streamWindowTopInset,
+                        aspectRatio: CGFloat(viewModel.streamProfile.aspectRatio)
+                    ) { _ in
                         WebRTCMediaStreamView(
                             configuration: streamConfiguration,
                             onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
@@ -197,11 +198,7 @@ struct CatalogView: View {
                             }
                         )
                         .id(streamConfiguration.id)
-                        .frame(width: streamSize.width, height: streamSize.height)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .background(Color.black)
                 }
                 .background(WindowTopInsetReader { streamWindowTopInset = $0 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -299,21 +296,6 @@ struct CatalogView: View {
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
-    }
-
-    func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat, topInset: CGFloat) -> CGSize {
-        guard topInset > 0, availableWidth > 0, availableHeight > 0 else {
-            return CGSize(width: availableWidth, height: availableHeight)
-        }
-        let aspectRatio = CGFloat(viewModel.streamProfile.aspectRatio)
-        guard aspectRatio.isFinite, aspectRatio > 0 else {
-            return CGSize(width: availableWidth, height: availableHeight)
-        }
-        let heightForFullWidth = availableWidth / aspectRatio
-        if heightForFullWidth <= availableHeight {
-            return CGSize(width: availableWidth, height: heightForFullWidth)
-        }
-        return CGSize(width: availableHeight * aspectRatio, height: availableHeight)
     }
 
     private func updateWindowTitleForActiveStream() {

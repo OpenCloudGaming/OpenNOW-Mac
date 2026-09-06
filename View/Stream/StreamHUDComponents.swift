@@ -392,11 +392,19 @@ struct StreamUnifiedSidebar<Content: View>: View {
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
-                    Text(title)
-                        .font(.streamNvidia(size: 12, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    // The game's name is what the dock is about, so it carries the weight; the
+                    // eyebrow above it says which panel this is, matching the stats panel's header.
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("STREAM HUD")
+                            .font(.streamNvidia(size: 9, weight: .bold))
+                            .tracking(1.4)
+                            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                        Text(title)
+                            .font(.streamNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     Spacer(minLength: 0)
                     Button(action: closeAction) {
                         Image(systemName: "xmark")

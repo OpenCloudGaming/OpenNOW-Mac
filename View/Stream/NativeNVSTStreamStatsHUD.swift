@@ -1,60 +1,67 @@
 //  The floating stats overlay and the formatters behind it. Its colour thresholds and number
 //  formatting are its own, and none of it is reachable from the HUD's controls.
 //
+//  The panel is a header band, three hero readings, and then the detail rows grouped by what they
+//  describe - network, video, timing, audio, session. Fifteen equally weighted rows in one column
+//  read as a wall of text: nothing said which number to look at first, and nothing said that
+//  "Jitter" and "Present" are not the same kind of measurement. Grouping costs one 9pt label per
+//  group and keeps every figure the flat list carried.
+//
+//  Detail strings are the second reason: A/V's audio-buffer breakdown and Colour's format chain do
+//  not fit beside their value, and a single-line row truncated them away. Each row is a
+//  `ViewThatFits` that keeps the detail inline while it fits and drops it onto its own trailing
+//  line when it does not, so nothing is lost at any width.
+//
+//  `NativeNVSTStatsPanel` takes formatted strings and colours rather than the live snapshot, so
+//  the whole panel renders offscreen from sample values - every threshold colour and every
+//  wrapping detail can be looked at without a running session.
+//
 
 import SwiftUI
 
-extension NativeNVSTMediaStreamSurface {
-    var nativeStatsHUD: some View {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        let streamFramesPerSecond = model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
-        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
-        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 0) {
-                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), label: "GAME FPS", color: nativeGameFPSColor(target: streamFramesPerSecond))
-                nativeStatsVerticalDivider
-                nativeStatsCompactBox(value: nativeStatsWholeNumber(streamFramesPerSecond), label: "STREAM FPS", color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsVerticalDivider
-                nativeStatsCompactBox(value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), label: "MS", color: nativeLatencyColor)
-            }
-            .frame(height: 48)
+struct NativeNVSTStatsPanel: View {
+    /// One of the three headline readings across the top.
+    struct Hero: Identifiable {
+        let label: String
+        let value: String
+        let unit: String
+        let color: Color
+        var id: String { label }
+    }
 
-            nativeStatsHorizontalDivider
+    struct Row: Identifiable {
+        let label: String
+        let value: String
+        var detail: String?
+        var color: Color = WebRTCMediaStreamTheme.textPrimary
+        var id: String { label }
+    }
 
-            VStack(alignment: .leading, spacing: 5) {
-                nativeStatsStandardRow(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
-                // Percent over the last interval, matching what the WebRTC HUD shows; the running
-                // count stays alongside it as the detail.
-                nativeStatsStandardRow(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
-                nativeStatsStandardRow(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms", color: WebRTCMediaStreamTheme.textPrimary)
-                // Client-side decode cost. It used to occupy the MS box, where it read as network
-                // latency and was not one.
-                nativeStatsStandardRow(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor)
-                nativeStatsStandardRow(label: "Transport", value: "Native NVST", detail: nil, color: OpenNOWDesign.accent)
-                nativeStatsStandardRow(label: "Resolution", value: resolution, detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Codec", value: codec, detail: nativeStatsDecoderDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from
-                // the HUD rather than from the diagnostic log.
-                nativeStatsStandardRow(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor)
-                nativeStatsStandardRow(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                // The channel layout the bundle actually decodes. Surround is the one setting whose
-                // outcome cannot be confirmed by looking at the stream, and the seat, not the
-                // client, has the last word on it.
-                nativeStatsStandardRow(label: "Audio", value: nativeStatsAudioValue, detail: nativeStatsAudioDetail, color: nativeStatsAudioColor)
-                // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
-                nativeStatsStandardRow(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                // Video path (decode + present) against audio's jitter-buffer dwell: an estimate of
-                // which one reaches the viewer later, and by how much.
-                nativeStatsStandardRow(label: "A/V", value: nativeStatsAVValue, detail: nativeStatsAVDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail, color: WebRTCMediaStreamTheme.textPrimary)
-                nativeStatsStandardRow(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+    struct Group: Identifiable {
+        let label: String
+        let rows: [Row]
+        var id: String { label }
+    }
+
+    /// Wide enough that only the longest two details (A/V, Colour) ever take the wrapped layout.
+    static let width: CGFloat = 296
+
+    let transport: String
+    let heroes: [Hero]
+    let groups: [Group]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            titleBar
+            heroRow
+            // No rule between groups: the hairline that carries each group's label already
+            // separates it from the one above, and two lines a few points apart read as a mistake.
+            ForEach(groups) { group in
+                groupView(group)
             }
         }
-        .padding(10)
-        .frame(width: 264, alignment: .topLeading)
-        .background(Color.black.opacity(0.90))
+        .frame(width: Self.width, alignment: .topLeading)
+        .background(WebRTCMediaStreamTheme.panel.opacity(0.94))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(WebRTCMediaStreamTheme.accent)
@@ -62,59 +69,201 @@ extension NativeNVSTMediaStreamSurface {
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
-        .padding([.top, .trailing], OpenNOWDesign.Spacing.small)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .allowsHitTesting(false)
     }
 
-    func nativeStatsCompactBox(value: String, label: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.streamNvidia(size: 22, weight: .bold))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
-            Text(label)
+    /// The transport used to be a row of its own reading "Native NVST" on every native session.
+    /// It is a property of the whole panel, so it sits in the header as a badge instead.
+    private var titleBar: some View {
+        HStack(spacing: 8) {
+            Text("STREAM STATS")
                 .font(.streamNvidia(size: 9, weight: .bold))
-                .tracking(0.8)
+                .tracking(1.4)
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+            Spacer(minLength: 6)
+            Text(transport)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(WebRTCMediaStreamTheme.accent.opacity(0.14))
+                .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.5), lineWidth: 1))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WebRTCMediaStreamTheme.appBar)
+    }
+
+    private var heroRow: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(heroes.enumerated()), id: \.element.id) { index, hero in
+                if index > 0 {
+                    Rectangle()
+                        .fill(.white.opacity(0.18))
+                        .frame(width: 1)
+                }
+                heroBox(hero)
+            }
+        }
+        .frame(height: 54)
+    }
+
+    /// The reading, its unit, and a status bar along the bottom edge in the same colour - these
+    /// three are the ones read at a glance, mid-game, without stopping to parse a label.
+    private func heroBox(_ hero: Hero) -> some View {
+        VStack(spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(hero.value)
+                    .font(.streamNvidia(size: 25, weight: .bold))
+                    .foregroundStyle(hero.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(hero.unit)
+                    .font(.streamNvidia(size: 10, weight: .bold))
+                    .foregroundStyle(hero.color.opacity(0.7))
+            }
+            Text(hero.label)
+                .font(.streamNvidia(size: 9, weight: .bold))
+                .tracking(0.9)
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white.opacity(0.055))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(hero.color.opacity(0.8))
+                .frame(height: 2)
+        }
     }
 
-    var nativeStatsVerticalDivider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.18))
-            .frame(width: 1)
-            .padding(.vertical, 4)
-    }
-
-    var nativeStatsHorizontalDivider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.18))
-            .frame(height: 1)
-    }
-
-    func nativeStatsStandardRow(label: String, value: String, detail: String?, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.streamNvidia(size: 10, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.streamNvidia(size: 10, weight: .bold))
-                .foregroundStyle(color)
-                .lineLimit(1)
-            if let detail {
-                Text(detail)
-                    .font(.streamNvidia(size: 10, weight: .medium))
+    /// A group label, a hairline carrying it across the panel, and the group's rows.
+    private func groupView(_ group: Group) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(group.label)
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(1.2)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                    .lineLimit(1)
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(group.rows) { row in
+                    rowView(row)
+                }
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    /// Inline while the detail fits; label and value on one line with the detail beneath, trailing
+    /// aligned, when it does not. `ViewThatFits` falls back to its last child when nothing fits,
+    /// which is the wrapped layout - so the longest details wrap rather than truncate.
+    private func rowView(_ row: Row) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                rowLabel(row.label)
+                Spacer(minLength: 10)
+                rowValue(row.value, color: row.color)
+                if let detail = row.detail { rowDetail(detail) }
+            }
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: 6) {
+                    rowLabel(row.label)
+                    Spacer(minLength: 10)
+                    rowValue(row.value, color: row.color)
+                }
+                if let detail = row.detail {
+                    rowDetail(detail)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private func rowLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.streamNvidia(size: 10, weight: .medium))
+            .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+            .lineLimit(1)
+    }
+
+    private func rowValue(_ value: String, color: Color) -> some View {
+        Text(value)
+            .font(.streamNvidia(size: 11, weight: .bold))
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+
+    private func rowDetail(_ detail: String) -> some View {
+        Text(detail)
+            .font(.streamNvidia(size: 9, weight: .medium))
+            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+    }
+}
+
+extension NativeNVSTMediaStreamSurface {
+    var nativeStatsHUD: some View {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let streamFramesPerSecond = model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
+        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
+        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
+        return NativeNVSTStatsPanel(
+            transport: "NATIVE NVST",
+            heroes: [
+                NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
+                NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: WebRTCMediaStreamTheme.textPrimary),
+                NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
+            ],
+            groups: [
+                NativeNVSTStatsPanel.Group(label: "NETWORK", rows: [
+                    NativeNVSTStatsPanel.Row(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor),
+                    // Percent over the last interval, matching what the WebRTC HUD shows; the
+                    // running count stays alongside it as the detail.
+                    NativeNVSTStatsPanel.Row(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor),
+                    NativeNVSTStatsPanel.Row(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail),
+                    NativeNVSTStatsPanel.Row(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms"),
+                ]),
+                NativeNVSTStatsPanel.Group(label: "VIDEO", rows: [
+                    NativeNVSTStatsPanel.Row(label: "Resolution", value: resolution),
+                    NativeNVSTStatsPanel.Row(label: "Codec", value: codec, detail: nativeStatsDecoderDetail),
+                    // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed
+                    // from the HUD rather than from the diagnostic log.
+                    NativeNVSTStatsPanel.Row(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor),
+                    NativeNVSTStatsPanel.Row(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail),
+                ]),
+                NativeNVSTStatsPanel.Group(label: "TIMING", rows: [
+                    // Client-side decode cost. It used to occupy the MS box, where it read as
+                    // network latency and was not one.
+                    NativeNVSTStatsPanel.Row(label: "Decode", value: nativeStatsMilliseconds(model.latestNativeStats?.decodeMilliseconds), detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor),
+                    // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
+                    NativeNVSTStatsPanel.Row(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail),
+                ]),
+                NativeNVSTStatsPanel.Group(label: "AUDIO", rows: [
+                    // The channel layout the bundle actually decodes. Surround is the one setting
+                    // whose outcome cannot be confirmed by looking at the stream, and the seat,
+                    // not the client, has the last word on it.
+                    NativeNVSTStatsPanel.Row(label: "Format", value: nativeStatsAudioValue, detail: nativeStatsAudioDetail, color: nativeStatsAudioColor),
+                    // Video path (decode + present) against audio's jitter-buffer dwell: an
+                    // estimate of which one reaches the viewer later, and by how much.
+                    NativeNVSTStatsPanel.Row(label: "A/V", value: nativeStatsAVValue, detail: nativeStatsAVDetail),
+                ]),
+                NativeNVSTStatsPanel.Group(label: "SESSION", rows: [
+                    NativeNVSTStatsPanel.Row(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail),
+                    NativeNVSTStatsPanel.Row(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--")),
+                ]),
+            ]
+        )
+        .padding([.top, .trailing], OpenNOWDesign.Spacing.small)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(false)
     }
 
     /// `ms of 8.3`: decode time against the negotiated frame interval. Over it and the seat is
