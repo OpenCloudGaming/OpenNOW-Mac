@@ -62,7 +62,9 @@ extension OPNCoreAudioRTCDevice {
                 mNumberBuffers: 1,
                 mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(frames * 2 * MemoryLayout<Int16>.size), mData: UnsafeMutableRawPointer(destinationBase))
             )
-            owner?.handleGameAudioFrame(UnsafeRawPointer(&teeList), frameCount: frameCount, sampleRate: sampleRate, channels: 2)
+            withUnsafePointer(to: &teeList) { teeListPointer in
+                owner?.handleGameAudioFrame(UnsafeRawPointer(teeListPointer), frameCount: frameCount, sampleRate: sampleRate, channels: 2)
+            }
         }
     }
 }

@@ -136,7 +136,7 @@ enum SettingsSearchIndex {
     }
 
     /// Where a result says it lives, for the line under its title.
-    static func location(of entry: SettingsSearchEntry) -> String {
+    @MainActor static func location(of entry: SettingsSearchEntry) -> String {
         guard let sectionID = entry.sectionID,
               let section = sections(for: entry.group).first(where: { $0.id == sectionID }) else {
             return entry.group.title
@@ -144,7 +144,7 @@ enum SettingsSearchIndex {
         return "\(entry.group.title) › \(section.title)"
     }
 
-    static func sections(for group: CatalogSettingsGroup) -> [SettingsSection] {
+    @MainActor static func sections(for group: CatalogSettingsGroup) -> [SettingsSection] {
         switch group {
         case .account: AccountSettingsGroup.sections
         case .video: VideoSettingsGroup.sections
