@@ -56,7 +56,8 @@ struct InterfaceSettingsPage: View {
             }
 
             SettingsCard(title: "Session Ready", uiScale: uiScale) {
-                SettingsOptionRow(title: "When the Stream Is Ready", subtitle: "While OpenNOW is in the background and a queued or provisioning session becomes ready: post a system notification, or bring OpenNOW to the front automatically.", options: OpenNOWSessionReadyAction.Mode.allCases.map(\.label), selectedIndex: selectedSessionReadyActionIndex, uiScale: uiScale) { index in
+                SettingsOptionRow(title: "When the Stream Is Ready", subtitle: "While OpenNOW is in the background and a queued or provisioning session becomes ready: post a system notification, or bring OpenNOW to the front automatically.", options: OpenNOWSessionReadyAction.Mode.allCases.map(\.label), selectedIndex: selectedSessionReadyActionIndex, isNew: OpenNOWNewSettings.isNew(.sessionReadyAction), uiScale: uiScale) { index in
+                    OpenNOWNewSettings.acknowledge(.sessionReadyAction)
                     let mode = OpenNOWSessionReadyAction.Mode.allCases[index]
                     sessionReadyActionRawValue = mode.rawValue
                     if mode == .notification { OpenNOWSessionReadyAction.prepareAuthorizationIfNeeded() }

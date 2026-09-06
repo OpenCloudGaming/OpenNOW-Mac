@@ -400,7 +400,10 @@ struct GameplaySettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for OpenNOW streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, uiScale: uiScale, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
                 SettingsDivider(uiScale: uiScale)
-                SettingsOptionRow(title: "Surround Sound", subtitle: viewModel.surroundModeSubtitle, options: OPNStreamPreferences.surroundModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.surroundModeIndex, uiScale: uiScale, action: viewModel.setSurroundModeIndex)
+                SettingsOptionRow(title: "Surround Sound", subtitle: viewModel.surroundModeSubtitle, options: OPNStreamPreferences.surroundModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.surroundModeIndex, isNew: OpenNOWNewSettings.isNew(.surroundSound), uiScale: uiScale) { index in
+                    OpenNOWNewSettings.acknowledge(.surroundSound)
+                    viewModel.setSurroundModeIndex(index)
+                }
                 SettingsDivider(uiScale: uiScale)
                 SettingsMicrophoneTestRow(active: viewModel.microphoneTestActive, level: viewModel.microphoneTestLevel, message: viewModel.microphoneTestMessage, uiScale: uiScale, action: viewModel.toggleMicrophoneTest)
             }

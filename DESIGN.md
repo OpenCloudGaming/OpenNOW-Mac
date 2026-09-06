@@ -347,6 +347,14 @@ or INSTALLING eyebrow, an 11pt bold byte readout, and a 3px progress bar — det
 Rectangles (accent over #FFFFFF @ 0.10), or `VendorIndeterminateProgressBar` when the server
 sends no content length. Buttons and the close control disable for the duration.
 
+### Tags (`OpenNOWBetaTag`, `OpenNOWNewTag`)
+
+Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking
+0.7, 4pt horizontal / 2pt vertical padding, square corners. **BETA** is accent text on a 12 % accent
+tint (compact) for shipped-but-rough features. **NEW** is black text on solid accent for a setting
+added in the current release; rows opt in with `isNew:` and declare their release in
+`OpenNOWNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
+
 ### What's New Card (Settings → About)
 
 `SettingsCard` holding release history (`View/Settings/SettingsWhatsNewViews.swift`). When an

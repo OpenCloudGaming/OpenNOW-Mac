@@ -159,15 +159,14 @@ struct SettingsOptionRow: View {
     let selectedIndex: Int
     var enabled: [Bool] = []
     var isLocked = false
+    var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
+                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
                 Text(subtitle)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
@@ -257,15 +256,14 @@ struct SettingsToggleRow: View {
     let subtitle: String
     let isOn: Bool
     var isLocked = false
+    var isNew = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Bool) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
+                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
                 Text(subtitle)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
@@ -380,15 +378,14 @@ struct SettingsSliderRow: View {
     let range: ClosedRange<Double>
     var step = 1.0
     var isLocked = false
+    var isNew = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Double) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
+                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
                 Text(valueText)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent.opacity(isLocked ? 0.48 : 1))
@@ -593,6 +590,41 @@ struct SettingsFlowLayout: Layout {
 /// One component rather than three inline `Text`s: it appears on the Settings tab, in the stream
 /// HUD and on the Home entry point, and three copies would drift in colour and casing the way the
 /// relay rows already did.
+/// A row title with its optional NEW tag riding alongside, so every row kind renders the tag the
+/// same way.
+struct SettingsRowTitle: View {
+    let title: String
+    let isLocked: Bool
+    let isNew: Bool
+    let uiScale: CGFloat
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8 * uiScale) {
+            Text(title)
+                .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
+            if isNew { OpenNOWNewTag(uiScale: uiScale) }
+        }
+    }
+}
+
+/// Marks a setting added in the current release. Solid accent so it reads at a glance next to
+/// the quieter tinted BETA tag; it disappears once the setting is used or the next release ships.
+struct OpenNOWNewTag: View {
+    let uiScale: CGFloat
+
+    var body: some View {
+        Text("NEW")
+            .font(.settingsNvidia(size: 8 * uiScale, weight: .bold))
+            .tracking(0.7)
+            .foregroundStyle(.black)
+            .padding(.horizontal, 4 * uiScale)
+            .padding(.vertical, 2 * uiScale)
+            .background(OpenNOWDesign.accent)
+            .accessibilityLabel("New setting")
+    }
+}
+
 struct OpenNOWBetaTag: View {
     let uiScale: CGFloat
     /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
