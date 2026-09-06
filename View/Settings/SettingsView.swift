@@ -424,6 +424,8 @@ struct SettingsContent: View {
     @Environment(\.controllerFocusActive) private var isPadFocusActive
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var contentWidth: CGFloat = 0
+    /// True for the frames a search jump needs every card present. See `SettingsStack`.
+    @State private var isJumping = false
 
     var body: some View {
         if viewModel.selectedSettingsGroup.isEmptyStatePage {
@@ -483,6 +485,7 @@ struct SettingsContent: View {
         }
         .onAppear { jumpToPendingSection(proxy) }
         .onChange(of: viewModel.pendingSettingsSectionID) { _, _ in jumpToPendingSection(proxy) }
+        .environment(\.opnSettingsEagerStack, isJumping)
         // A fresh scroll view per tab: the offset from a long page would otherwise
         // survive the switch and park a shorter page's viewport past its content.
         .id(viewModel.selectedSettingsGroup)
@@ -512,7 +515,14 @@ struct SettingsContent: View {
             return
         }
         viewModel.pendingSettingsSectionID = nil
-        withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
+        // Build every card for this jump, scroll once they exist, then let the page go lazy again.
+        // Scrolling in the same transaction that asks for the cards would aim at a card that is
+        // still not there.
+        isJumping = true
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
+            DispatchQueue.main.async { isJumping = false }
+        }
     }
 
     /// Two columns only when the page is genuinely wide for the reader's interface scale, and never
