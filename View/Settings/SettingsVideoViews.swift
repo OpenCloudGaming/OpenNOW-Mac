@@ -37,17 +37,8 @@ struct VideoSettingsPage: View {
                 codec: viewModel.streamProfile.codec.label,
                 bitrate: "\(viewModel.streamProfile.maxBitrateMbps) Mbps",
                 colorPrecision: viewModel.streamProfile.colorQuality.label,
-                dataUsage: estimatedDataUsage,
                 uiScale: uiScale
             )
-            if viewModel.didSwitchToCustomStreamingProfile {
-                SettingsDivider(uiScale: uiScale)
-                SettingsMessageView(
-                    message: "Switched to the Custom profile so your edit could apply. The preset values are still here; change the preset to go back to them.",
-                    systemImage: "slider.horizontal.3",
-                    uiScale: uiScale
-                )
-            }
             let overrides = viewModel.streamingOverrideGames
             if !overrides.isEmpty {
                 SettingsDivider(uiScale: uiScale)
@@ -88,8 +79,8 @@ struct VideoSettingsPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The preset picker leads the card because it decides whether anything under it can be
-    /// touched: every row below is locked while a preset other than Custom is selected.
+    /// The preset picker leads the card because it writes every value below it. Editing one of those
+    /// values takes the profile to Custom, which is the only way an edit can survive.
     private var displayCard: some View {
         SettingsCard(title: "Display", uiScale: uiScale) {
             SettingsOptionRow(title: "Quality Preset", subtitle: "Balanced, Competitive, Data Saver and Cinematic write every value below. Editing any of them switches to Custom.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, uiScale: uiScale, action: viewModel.setStreamingQualityProfileIndex)

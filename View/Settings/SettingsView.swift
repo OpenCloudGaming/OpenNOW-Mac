@@ -195,7 +195,10 @@ struct SettingsView: View {
             focus.setActive(true)
             apply(pageCommand.command)
         }
-        .onChange(of: viewModel.selectedSettingsGroup) { _, _ in focus.focus(Self.tabBarFocusID) }
+        .onChange(of: viewModel.selectedSettingsGroup) { _, _ in
+            focus.focus(Self.tabBarFocusID)
+            viewModel.didSwitchToCustomStreamingProfile = false
+        }
     }
 
     /// Up/down walk the tab bar and the focusable rows as one list, left/right act on whatever is
@@ -558,6 +561,7 @@ struct SettingsContent: View {
     var focusedID: String?
 
     @Environment(\.controllerFocusActive) private var isPadFocusActive
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var contentWidth: CGFloat = 0
     @State private var activeSectionID: String?
 
@@ -585,20 +589,38 @@ struct SettingsContent: View {
                 if !viewModel.actionMessage.isEmpty {
                     SettingsMessageView(message: viewModel.actionMessage, systemImage: "checkmark.circle.fill", uiScale: uiScale)
                 }
+                // Preset-managed rows live on more than one destination, so the notice belongs to
+                // the page frame rather than to Video: L4S is on Network, and an explanation the
+                // reader has to go looking for on another tab explains nothing.
+                if viewModel.didSwitchToCustomStreamingProfile {
+                    SettingsMessageView(
+                        message: "Switched to the Custom quality profile so your edit could apply. Pick a preset again to go back to its values.",
+                        systemImage: "slider.horizontal.3",
+                        uiScale: uiScale
+                    )
+                }
                 page
             }
             .padding(.horizontal, 28 * uiScale)
             .padding(.top, 28 * uiScale)
             .padding(.bottom, 48 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .coordinateSpace(name: settingsPageCoordinateSpace)
-        .background {
-            GeometryReader { viewport in
-                Color.clear.preference(key: SettingsContentWidthKey.self, value: viewport.size.width)
+            // Measured inside the padding, so this is the width a card actually gets - the scroll
+            // view's own frame still carries the padding and, when scrollers are set to always
+            // show, the width of the scroller too.
+            .background {
+                GeometryReader { cards in
+                    Color.clear.preference(key: SettingsContentWidthKey.self, value: cards.size.width)
+                }
             }
         }
-        .onPreferenceChange(SettingsContentWidthKey.self) { contentWidth = $0 }
+        .coordinateSpace(name: settingsPageCoordinateSpace)
+        .onPreferenceChange(SettingsContentWidthKey.self) { width in
+            // A destination change rebuilds the measured subtree and republishes zero for a frame.
+            // Taking it would collapse a wide page to one column and then reflow it back.
+            guard width > 0 else { return }
+            contentWidth = width
+        }
         .onPreferenceChange(SettingsSectionMarksKey.self) { marks in
             activeSectionID = Self.activeSection(marks: marks, sections: sections) ?? activeSectionID
         }
@@ -615,6 +637,7 @@ struct SettingsContent: View {
         .background(SettingsSurfaceBackground())
         .environment(\.opnSettingsWideLayout, usesTwoColumns)
         .environment(\.opnSettingsNarrowRows, usesNarrowRows)
+        .environment(\.opnSettingsCardWidth, contentWidth)
         }
     }
 
@@ -622,17 +645,17 @@ struct SettingsContent: View {
     /// under a gamepad: focus order is a single list sorted by vertical position, so a second column
     /// would interleave with the first and up/down would jump between them.
     private var usesTwoColumns: Bool {
-        guard !isPadFocusActive else { return false }
-        return SettingsLayoutMetrics.allowsTwoColumns(contentWidth: contentWidth, uiScale: uiScale)
+        // Same signal the rail uses. Keying this off pad focus alone meant a controller-mode page
+        // opened in two columns and reflowed to one on the reader's first press.
+        guard !controllerModeEnabled, !isPadFocusActive else { return false }
+        return SettingsLayoutMetrics.allowsTwoColumns(cardWidth: contentWidth, uiScale: uiScale)
     }
 
     /// At the window floor the 250pt label column leaves an option row's chips too little room and
     /// they wrap into three lines, so the control moves under its label instead. `SettingsColumns`
     /// raises this again for its own cards, which are half a page wide whatever the window is.
     private var usesNarrowRows: Bool {
-        guard contentWidth > 0, uiScale > 0 else { return false }
-        let pageWidth = contentWidth / uiScale - SettingsLayoutMetrics.pageHorizontalPadding * 2
-        return pageWidth < SettingsLayoutMetrics.narrowRowWidth
+        SettingsLayoutMetrics.usesNarrowRows(cardWidth: contentWidth, uiScale: uiScale)
     }
 
     /// The section the reader is in: the last one whose top has passed the top of the viewport,

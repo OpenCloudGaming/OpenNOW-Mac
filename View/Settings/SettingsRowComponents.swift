@@ -187,7 +187,6 @@ struct SettingsOptionRow: View {
     let options: [String]
     let selectedIndex: Int
     var enabled: [Bool] = []
-    var isLocked = false
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -198,8 +197,8 @@ struct SettingsOptionRow: View {
         layout
         .controllerFocusable(
             focusIdentity,
-            activate: { guard !isLocked else { return }; cycleOption(1) },
-            adjust: { delta in guard !isLocked else { return }; cycleOption(delta) }
+            activate: { cycleOption(1) },
+            adjust: { delta in cycleOption(delta) }
         )
     }
 
@@ -223,10 +222,10 @@ struct SettingsOptionRow: View {
 
     private var label: some View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
-            SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
+            SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(subtitle)
                 .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                .foregroundStyle(.white.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -234,15 +233,18 @@ struct SettingsOptionRow: View {
     private var chips: some View {
         SettingsFlowLayout(spacing: 8 * uiScale) {
             ForEach(options.indices, id: \.self) { index in
-                    let optionEnabled = !isLocked && (enabled.indices.contains(index) ? enabled[index] : true)
-                    Button { action(index) } label: {
+                    let optionEnabled = enabled.indices.contains(index) ? enabled[index] : true
+                    Button {
+                        guard index != selectedIndex else { return }
+                        action(index)
+                    } label: {
                         Text(options[index])
                             .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(index == selectedIndex && !isLocked ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
+                            .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
                             .padding(.horizontal, 12 * uiScale)
                             .frame(height: 32 * uiScale)
-                            .background(index == selectedIndex ? OpenNOWDesign.accent.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
-                            .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.12), lineWidth: 1) }
+                            .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
+                            .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -270,7 +272,6 @@ struct SettingsOptionRow: View {
 /// native pill-shaped `Toggle(.switch)` (which no macOS API lets us square off).
 struct Toggle: View {
     @Binding var isOn: Bool
-    var isLocked = false
     let uiScale: CGFloat
     @State private var isHovering = false
 
@@ -283,18 +284,16 @@ struct Toggle: View {
         Button { isOn.toggle() } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Rectangle()
-                    .fill(isOn ? OpenNOWDesign.accent.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(isHovering ? 0.12 : 0.09))
-                    .overlay { Rectangle().stroke(isOn ? OpenNOWDesign.accent.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.16), lineWidth: 1) }
+                    .fill(isOn ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.12 : 0.09))
+                    .overlay { Rectangle().stroke(isOn ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: 1) }
                 Rectangle()
-                    .fill(isOn ? Color.black.opacity(isLocked ? 0.5 : 0.85) : Color.white.opacity(isLocked ? 0.35 : 0.72))
+                    .fill(isOn ? Color.black.opacity(0.85) : Color.white.opacity(0.72))
                     .frame(width: knobSize, height: knobSize)
                     .padding(knobInset)
             }
             .frame(width: trackWidth, height: trackHeight)
         }
         .buttonStyle(.plain)
-        .disabled(isLocked)
-        .opacity(isLocked ? 0.45 : 1)
         .onHover { isHovering = $0 }
         .opnMotion(OpenNOWDesign.Motion.toggle, value: isOn)
         .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
@@ -308,7 +307,6 @@ struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
     let isOn: Bool
-    var isLocked = false
     var isNew = false
     /// One line instead of two: the subtitle appears on hover or under pad focus. For the many
     /// short toggles whose titles already say what they do, where a permanent second line spends
@@ -328,16 +326,16 @@ struct SettingsToggleRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
+                SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
                 if showsSubtitle {
                     Text(subtitle)
                         .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                        .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer()
-            Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isLocked: isLocked, uiScale: uiScale)
+            Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), uiScale: uiScale)
         }
         .onHover { hovering in
             guard isCompact else { return }
@@ -345,9 +343,8 @@ struct SettingsToggleRow: View {
         }
         .controllerFocusable(
             focusIdentity,
-            activate: { guard !isLocked else { return }; action(!isOn) },
+            activate: { action(!isOn) },
             adjust: { delta in
-                guard !isLocked else { return }
                 let next = delta > 0
                 guard next != isOn else { return }
                 action(next)
@@ -376,7 +373,7 @@ struct SettingsTextFieldRow: View {
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
+            .settingsLabelColumn(uiScale: uiScale)
             TextField(placeholder, text: Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
@@ -419,7 +416,7 @@ struct SettingsSecureTextFieldRow: View {
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
+            .settingsLabelColumn(uiScale: uiScale)
             SecureField(placeholder, text: Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
@@ -449,29 +446,30 @@ struct SettingsSliderRow: View {
     let value: Double
     let range: ClosedRange<Double>
     var step = 1.0
-    var isLocked = false
     var isNew = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Double) -> Void
 
+    @Environment(\.opnSettingsNarrowRows) private var isNarrow
+
     var body: some View {
-        HStack(alignment: .center, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
-                Text(valueText)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(isLocked ? 0.48 : 1))
+        Group {
+            if isNarrow {
+                VStack(alignment: .leading, spacing: 8 * uiScale) {
+                    label
+                    slider
+                }
+            } else {
+                HStack(alignment: .center, spacing: 18 * uiScale) {
+                    label
+                        .frame(width: 250 * uiScale, alignment: .leading)
+                    slider
+                }
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
-            Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
-                .tint(OpenNOWDesign.accent)
-                .disabled(isLocked)
-                .opacity(isLocked ? 0.45 : 1)
         }
         .controllerFocusable(
             focusIdentity,
             adjust: { delta in
-                guard !isLocked else { return }
                 // A zero or absent step would make a pad nudge do nothing, so fall back to a
                 // hundredth of the range.
                 let increment = step > 0 ? step : (range.upperBound - range.lowerBound) / 100
@@ -480,6 +478,20 @@ struct SettingsSliderRow: View {
                 action(next)
             }
         )
+    }
+
+    private var label: some View {
+        VStack(alignment: .leading, spacing: 5 * uiScale) {
+            SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
+            Text(valueText)
+                .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.accent)
+        }
+    }
+
+    private var slider: some View {
+        Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
+            .tint(OpenNOWDesign.accent)
     }
 }
 
@@ -501,7 +513,7 @@ struct SettingsColorRow: View {
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
+            .settingsLabelColumn(uiScale: uiScale)
             ColorPicker("", selection: Binding(get: { Color(settingsHex: hex) }, set: { action($0.settingsHexString) }), supportsOpacity: false)
                 .labelsHidden()
             Text(hex)
@@ -657,8 +669,3 @@ struct SettingsFlowLayout: Layout {
     }
 }
 
-/// A small "BETA" tag, for surfaces that are shipped but still settling.
-///
-/// One component rather than three inline `Text`s: it appears on the Settings tab, in the stream
-/// HUD and on the Home entry point, and three copies would drift in colour and casing the way the
-/// relay rows already did.

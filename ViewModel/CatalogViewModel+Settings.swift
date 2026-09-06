@@ -18,7 +18,10 @@ extension CatalogViewModel {
     /// is what reaching for the control meant.
     @discardableResult
     func canEditStreamingQualitySettings() -> Bool {
-        guard !streamingQualityProfileAllowsCustomization else { return true }
+        // Read what is stored, not `streamProfile`: that snapshot is republished by a detached task
+        // and lags a preset change, so an edit made in the gap would take the early exit and then be
+        // overwritten when the preset was re-applied.
+        guard OPNStreamPreferences.loadProfile().streamingQualityProfileIndex != Self.customStreamingProfileIndex else { return true }
         OPNStreamPreferences.saveStreamingQualityProfileIndex(Self.customStreamingProfileIndex)
         didSwitchToCustomStreamingProfile = true
         return true
@@ -636,6 +639,7 @@ extension CatalogViewModel {
     }
 
     func restoreStreamingProfileDefaults() {
+        didSwitchToCustomStreamingProfile = false
         OPNStreamPreferences.restoreStreamingProfileDefaults()
         actionMessage = "Streaming profile defaults restored."
         loadSettingsPreferences()

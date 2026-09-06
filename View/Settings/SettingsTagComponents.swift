@@ -8,7 +8,6 @@ import SwiftUI
 /// same way.
 struct SettingsRowTitle: View {
     let title: String
-    let isLocked: Bool
     let isNew: Bool
     let uiScale: CGFloat
 
@@ -16,7 +15,7 @@ struct SettingsRowTitle: View {
         HStack(alignment: .firstTextBaseline, spacing: 8 * uiScale) {
             Text(title)
                 .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
+                .foregroundStyle(.white)
             if isNew { OpenNOWNewTag(uiScale: uiScale) }
         }
     }
@@ -57,6 +56,9 @@ struct OpenNOWNewTag: View {
     }
 }
 
+/// A small "BETA" tag, for surfaces that are shipped but still settling. One component rather than
+/// three inline `Text`s: it appears on the Settings rail, in the stream HUD and on the Home entry
+/// point, and three copies would drift in colour and casing the way the relay rows already did.
 struct OpenNOWBetaTag: View {
     let uiScale: CGFloat
     /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;

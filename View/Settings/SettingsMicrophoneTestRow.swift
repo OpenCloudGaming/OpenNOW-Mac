@@ -22,7 +22,7 @@ struct SettingsMicrophoneTestRow: View {
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 250 * uiScale, alignment: .leading)
+            .settingsLabelColumn(uiScale: uiScale)
             levelMeter
                 .frame(maxWidth: .infinity)
             SettingsActionButton(

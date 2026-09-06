@@ -13,6 +13,10 @@ private struct SettingsNarrowRowsKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct SettingsCardWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
     /// True when the page has room for two card columns and nothing else forbids it. Published by
     /// `SettingsContent`, which owns the only measurement of the page's width.
@@ -26,6 +30,13 @@ extension EnvironmentValues {
     var opnSettingsNarrowRows: Bool {
         get { self[SettingsNarrowRowsKey.self] }
         set { self[SettingsNarrowRowsKey.self] = newValue }
+    }
+
+    /// The width a full-page card gets, padding already removed. `SettingsColumns` halves it to
+    /// decide whether its own cards are narrow.
+    var opnSettingsCardWidth: CGFloat {
+        get { self[SettingsCardWidthKey.self] }
+        set { self[SettingsCardWidthKey.self] = newValue }
     }
 }
 
@@ -41,11 +52,24 @@ enum SettingsLayoutMetrics {
     /// A card narrower than this cannot hold a 250pt label column beside its control.
     static let narrowRowWidth: CGFloat = 600
 
-    /// - Parameter contentWidth: the measured width of the scroll view, padding included.
-    static func allowsTwoColumns(contentWidth: CGFloat, uiScale: CGFloat) -> Bool {
+    /// The gutter between the two columns.
+    static let columnGutter: CGFloat = 16
+
+    /// - Parameter cardWidth: the measured width a full-page card gets, in points.
+    static func allowsTwoColumns(cardWidth: CGFloat, uiScale: CGFloat) -> Bool {
         guard uiScale > 0 else { return false }
-        let cardWidth = contentWidth / uiScale - pageHorizontalPadding * 2
-        return cardWidth >= twoColumnMinimumWidth
+        return cardWidth / uiScale >= twoColumnMinimumWidth
+    }
+
+    /// Whether a container this wide has to stack a row's control under its label.
+    static func usesNarrowRows(cardWidth: CGFloat, uiScale: CGFloat) -> Bool {
+        guard cardWidth > 0, uiScale > 0 else { return false }
+        return cardWidth / uiScale < narrowRowWidth
+    }
+
+    /// What each column gets once the page is split.
+    static func columnWidth(cardWidth: CGFloat) -> CGFloat {
+        max(0, (cardWidth - columnGutter) / 2)
     }
 }
 
@@ -65,16 +89,26 @@ struct SettingsColumns<Leading: View, Trailing: View>: View {
     @ViewBuilder let trailing: () -> Trailing
 
     @Environment(\.opnSettingsWideLayout) private var isWide
+    @Environment(\.opnSettingsCardWidth) private var cardWidth
+
+    /// Each column is half a page, so a row inside one can need its control stacked while the
+    /// full-width cards on the same page keep theirs beside the label. Measured rather than
+    /// assumed: above roughly a 1216pt page the columns are as wide as a page that would not stack.
+    private var columnUsesNarrowRows: Bool {
+        SettingsLayoutMetrics.usesNarrowRows(
+            cardWidth: SettingsLayoutMetrics.columnWidth(cardWidth: cardWidth),
+            uiScale: uiScale
+        )
+    }
 
     var body: some View {
         if isWide {
-            HStack(alignment: .top, spacing: 16 * uiScale) {
+            HStack(alignment: .top, spacing: SettingsLayoutMetrics.columnGutter * uiScale) {
                 column { leading() }
                 column { trailing() }
             }
-            // Half the page each: a row inside these columns no longer has room for its label
-            // beside its control, whatever the window is doing.
-            .environment(\.opnSettingsNarrowRows, true)
+            .environment(\.opnSettingsNarrowRows, columnUsesNarrowRows)
+            .environment(\.opnSettingsCardWidth, SettingsLayoutMetrics.columnWidth(cardWidth: cardWidth))
         } else {
             VStack(alignment: .leading, spacing: 16 * uiScale) {
                 leading()
@@ -140,6 +174,7 @@ extension View {
 /// The section names of the current tab, as a row of chips that jump to their card. A map for a
 /// page that would otherwise be a single long scroll.
 struct SettingsSectionBar: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let sections: [SettingsSection]
     let activeID: String?
     let uiScale: CGFloat
@@ -151,6 +186,21 @@ struct SettingsSectionBar: View {
                 chip(section)
             }
         }
+        // One focus entry for the whole bar: left/right step between sections and jump to them,
+        // which is what the bar is for. Per-chip entries would put a row of them between the header
+        // and the first setting on every page.
+        .controllerFocusable(
+            focusIdentity,
+            activate: { step(1) },
+            adjust: { delta in step(delta) }
+        )
+    }
+
+    private func step(_ delta: Int) {
+        guard !sections.isEmpty else { return }
+        let current = sections.firstIndex { $0.id == activeID } ?? 0
+        let next = (current + delta + sections.count) % sections.count
+        action(sections[next].id)
     }
 
     private func chip(_ section: SettingsSection) -> some View {
@@ -186,8 +236,6 @@ struct SettingsMenuRow: View {
     let subtitle: String
     let options: [String]
     let selectedIndex: Int
-    var enabled: [Bool] = []
-    var isLocked = false
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -212,36 +260,36 @@ struct SettingsMenuRow: View {
         }
         .controllerFocusable(
             focusIdentity,
-            activate: { guard !isLocked else { return }; step(1) },
-            adjust: { delta in guard !isLocked else { return }; step(delta) }
+            activate: { step(1) },
+            adjust: { delta in step(delta) }
         )
     }
 
     private var label: some View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
-            SettingsRowTitle(title: title, isLocked: isLocked, isNew: isNew, uiScale: uiScale)
+            SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(subtitle)
                 .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
+                .foregroundStyle(.white.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var trigger: some View {
-        OpenNOWDropdownMenu(items: dropdownItems, isDisabled: isLocked) {
+        OpenNOWDropdownMenu(items: dropdownItems) {
             HStack(spacing: 8 * uiScale) {
                 Text(selectedTitle)
                     .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.92))
+                    .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.settingsNvidia(size: 10 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isLocked ? 0.24 : 0.56))
+                    .foregroundStyle(.white.opacity(0.56))
             }
             .padding(.horizontal, 12 * uiScale)
             .frame(minWidth: 168 * uiScale, alignment: .leading)
             .frame(height: 32 * uiScale)
-            .background(Color.white.opacity(isLocked ? 0.035 : 0.07))
+            .background(Color.white.opacity(0.07))
             .overlay { Rectangle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
             .contentShape(Rectangle())
         }
@@ -254,28 +302,39 @@ struct SettingsMenuRow: View {
     private var dropdownItems: [OpenNOWDropdownItem] {
         options.indices.map { index in
             OpenNOWDropdownItem(id: "\(index)-\(options[index])", title: options[index], isSelected: index == selectedIndex) {
-                guard isEnabled(index) else { return }
+                guard index != selectedIndex else { return }
                 action(index)
             }
         }
     }
 
-    private func isEnabled(_ index: Int) -> Bool {
-        guard !isLocked else { return false }
-        return enabled.indices.contains(index) ? enabled[index] : true
-    }
-
-    /// Steps to the next selectable value, skipping any the hardware or the seat rules out.
     private func step(_ delta: Int) {
         guard !options.isEmpty else { return }
-        var index = selectedIndex
-        for _ in 0..<options.count {
-            index = (index + delta + options.count) % options.count
-            if isEnabled(index) {
-                action(index)
-                return
-            }
+        action((selectedIndex + delta + options.count) % options.count)
+    }
+}
+
+// MARK: - Label column
+
+private struct SettingsLabelColumn: ViewModifier {
+    let uiScale: CGFloat
+    @Environment(\.opnSettingsNarrowRows) private var isNarrow
+
+    func body(content: Content) -> some View {
+        if isNarrow {
+            content.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            content.frame(width: 250 * uiScale, alignment: .leading)
         }
+    }
+}
+
+extension View {
+    /// A row's label column: a fixed 250 beside its control, or the full width when the container
+    /// is too narrow to hold both. Rows whose control cannot stack - a text field, a level meter -
+    /// still read better full-width than squeezed into what is left of 250.
+    func settingsLabelColumn(uiScale: CGFloat) -> some View {
+        modifier(SettingsLabelColumn(uiScale: uiScale))
     }
 }
 

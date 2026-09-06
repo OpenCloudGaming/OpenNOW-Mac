@@ -83,24 +83,40 @@ import Foundation
 
 /// Two columns are a wide-window affordance, and never one a gamepad has to walk.
 @Test func twoColumnsNeedRealWidthForTheReadersInterfaceScale() {
-    #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 1400, uiScale: 1.0))
-    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 900, uiScale: 1.0))
+    #expect(SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 1400, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 900, uiScale: 1.0))
     // The same 1400pt window at a 1.5 interface scale is a 933pt page: one column.
-    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 1400, uiScale: 1.5))
-    #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 2400, uiScale: 1.5))
-    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 640, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 1400, uiScale: 1.5))
+    #expect(SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 2400, uiScale: 1.5))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 640, uiScale: 1.0))
     // A zero or negative scale must not divide its way into a two-column layout.
-    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: 4000, uiScale: 0))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(cardWidth: 4000, uiScale: 0))
 }
 
-/// The threshold describes the width the cards get, not the width of the window around them.
-@Test func theColumnThresholdExcludesThePagePadding() {
-    let padding = SettingsLayoutMetrics.pageHorizontalPadding * 2
-    let exact = SettingsLayoutMetrics.twoColumnMinimumWidth + padding
-    #expect(SettingsLayoutMetrics.allowsTwoColumns(contentWidth: exact, uiScale: 1.0))
-    #expect(!SettingsLayoutMetrics.allowsTwoColumns(contentWidth: exact - 1, uiScale: 1.0))
-    // A page wide enough for two columns is never also narrow enough to stack its rows.
+/// The threshold describes the width a card gets, and a page wide enough to split is never also
+/// narrow enough to stack its own rows.
+@Test func theColumnThresholdDescribesCardWidth() {
+    let exact = SettingsLayoutMetrics.twoColumnMinimumWidth
+    #expect(SettingsLayoutMetrics.allowsTwoColumns(cardWidth: exact, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.allowsTwoColumns(cardWidth: exact - 1, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: exact, uiScale: 1.0))
     #expect(SettingsLayoutMetrics.twoColumnMinimumWidth > SettingsLayoutMetrics.narrowRowWidth)
+}
+
+/// A column is half a page, so it can need stacked rows while the full-width cards beside it do
+/// not - and above a wide enough page it stops needing them.
+@Test func aColumnStacksItsRowsOnlyWhileItIsNarrow() {
+    let atThreshold = SettingsLayoutMetrics.twoColumnMinimumWidth
+    let column = SettingsLayoutMetrics.columnWidth(cardWidth: atThreshold)
+    #expect(column < SettingsLayoutMetrics.narrowRowWidth)
+    #expect(SettingsLayoutMetrics.usesNarrowRows(cardWidth: column, uiScale: 1.0))
+
+    // A page twice the threshold gives each column more than a narrow row needs.
+    let wideColumn = SettingsLayoutMetrics.columnWidth(cardWidth: atThreshold * 2)
+    #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: wideColumn, uiScale: 1.0))
+
+    // Nothing measured yet is not "narrow", or the first frame would stack every row.
+    #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: 0, uiScale: 1.0))
 }
 
 /// A long service sentence belongs in the access line, not in a chip beside the title.

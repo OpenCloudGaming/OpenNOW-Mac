@@ -2,9 +2,9 @@ import AppKit
 import CryptoKit
 import SwiftUI
 
-/// Nothing is gated here at the moment. The recording editor was the last opt-in on this page and
-/// ships to everyone as a beta now; the page stays because this is where the next one lands, and
-/// because Steam Controller support still points people at it.
+/// Everything Valve's controllers need on this Mac: whether OpenNOW is holding the device, the two
+/// system permissions that gate cursor control and input capture, rumble, and the way in to the
+/// tester and the mapping editor.
 struct SteamControllerSettingsPage: View {
     let uiScale: CGFloat
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
@@ -257,7 +257,6 @@ struct GameplayProfileOverview: View {
     let codec: String
     let bitrate: String
     let colorPrecision: String
-    let dataUsage: String
     let uiScale: CGFloat
 
     var body: some View {
@@ -281,7 +280,6 @@ struct GameplayProfileOverview: View {
                 GameplayProfileMetricTile(label: "Codec", value: codec, uiScale: uiScale)
                 GameplayProfileMetricTile(label: "Bitrate", value: bitrate, uiScale: uiScale)
                 GameplayProfileMetricTile(label: "Color", value: colorPrecision, uiScale: uiScale)
-                GameplayProfileMetricTile(label: "Data Usage", value: dataUsage, width: 260 * uiScale, uiScale: uiScale)
             }
         }
     }
