@@ -350,8 +350,17 @@ struct SettingsSliderRow: View {
         }
     }
 
+    /// The explicit height is load-bearing, not cosmetic. Sampled live 2026-09-06: an unsized
+    /// `Slider` here spent ~12% of the main thread, per slider, in `-[NSSlider
+    /// _layoutComponentSubviewsIfNecessary]` -> `_trackRectForCellFrame:` -> re-entering
+    /// `ViewGraphRootValueUpdater._sizeThatFits` — the backing `NSSlider` asking the whole
+    /// surrounding SwiftUI view graph what size it should be, on every layout pass a scroll
+    /// produces. One slider was enough to make the General page (which has exactly one) freeze
+    /// identically to Streaming's five. Giving it a concrete height answers that question locally
+    /// instead of re-entering SwiftUI for it.
     private var slider: some View {
         Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
+            .frame(height: 20 * uiScale)
             .tint(OpenNOWDesign.accent)
     }
 }

@@ -176,12 +176,26 @@ struct SettingsView: View {
         .onPreferenceChange(ControllerFocusOrderKey.self) { entries in
             focus.setOrder(entries)
         }
-        .onAppear { focus.setActive(controllerPageCommand != nil) }
+        .onAppear { focus.setActive(controllerModeEnabled) }
         .onChange(of: controllerPageCommand) { _, pageCommand in
-            guard let pageCommand else { return }
+            guard controllerModeEnabled, let pageCommand else { return }
             focus.setActive(true)
             apply(pageCommand.command)
         }
+        // The layout above already learned this: keying anything off "a pad command arrived" reads
+        // that as permanent once one ever does — `embeddedPageCommand` is a `@Published` value that
+        // only ever gets replaced by a newer command, never nil'd back out. `setActive` above raced
+        // exactly the bug the layout comment describes, one level down: a single stray press while
+        // `controllerModeEnabled` was off (or before it was ever turned on) left `focus.isActive`
+        // true for the rest of the page's life, which every row's `ControllerFocusableModifier`
+        // reads to decide whether to run — so it kept measuring and reducing every row's position
+        // through a `GeometryReader` and a `PreferenceKey` on every scroll frame, on every settings
+        // page, for a mouse-and-trackpad session with the pad focus ring never even shown. Sampled
+        // live 2026-09-06: `ControllerFocusOrderKey.reduce` and `GeometryReader.Child.updateValue`
+        // both firing during a scroll freeze the desktop surface was supposed to be exempt from.
+        // The preference itself stays gated the same way it always was; this only makes sure the
+        // gate can close again once the explicit setting says the pad isn't driving this surface.
+        .onChange(of: controllerModeEnabled) { _, enabled in focus.setActive(enabled) }
         .onChange(of: viewModel.selectedSettingsGroup) { _, _ in
             focus.focus(Self.tabBarFocusID)
             viewModel.didSwitchToCustomStreamingProfile = false

@@ -157,29 +157,51 @@ extension EnvironmentValues {
     }
 }
 
+private struct SettingsNestedStackKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True below the outermost `SettingsStack`, which is the only one allowed to be lazy.
+    var opnSettingsNestedStack: Bool {
+        get { self[SettingsNestedStackKey.self] }
+        set { self[SettingsNestedStackKey.self] = newValue }
+    }
+}
+
 /// The vertical stack a settings page is built from.
 ///
-/// Lazy by default: a page like Video is eleven cards and roughly forty rows, and building all of
-/// them the instant its tab is picked is what makes the switch feel heavy - only the cards that
-/// are actually on screen need to exist. SwiftUI builds and lays out on the main thread, so that
-/// work is the freeze; there is nowhere else for it to go.
+/// Lazy at the outermost level only. Settings nests these three deep - `SettingsContent` holds a
+/// group, the group holds its pages, each page holds its cards - and a `LazyVStack` inside another
+/// `LazyVStack` is not lazy at all: the outer one proposes an unbounded height, so the inner one has
+/// to realise every child just to report a size. Every card was being built anyway. What the
+/// nesting did add was a per-frame loop while scrolling. Sampled 2026-09-06 with the page frozen
+/// under a trackpad scroll: 21% of the main thread in `LazyLayoutViewCache.updateItemPhases` ->
+/// `AG::Graph::propagate_dirty`, with a 105-deep `_FlexFrameLayout.sizeThatFits` recursion under
+/// `RootGeometry` behind it. Each inner stack's items changed phase as they scrolled, that dirtied
+/// the outer stack's item size, the outer re-laid-out and re-proposed, the inner re-phased, again
+/// next frame. Pages nested below the outermost stack are plain `VStack`s now: one huge item that
+/// stays visible the whole scroll never changes phase, so there is nothing to propagate.
 ///
-/// Two things turn laziness off. Pad control, because traversal order is collected from the rows
-/// that rendered, so every row has to be present to be reachable. And an outstanding jump, because
-/// an unbuilt card has no identity for `scrollTo` to find - that one lasts a single transaction,
-/// which is what keeps a search result working without charging every tab switch for it.
+/// Two things turn laziness off at the top too. Pad control, because traversal order is collected
+/// from the rows that rendered, so every row has to be present to be reachable. And an outstanding
+/// jump, because an unbuilt card has no identity for `scrollTo` to find - that one lasts a single
+/// transaction, which is what keeps a search result working without charging every tab switch for
+/// it.
 struct SettingsStack<Content: View>: View {
     let spacing: CGFloat
     @ViewBuilder let content: Content
 
     @Environment(\.controllerFocusActive) private var isPadFocusActive
     @Environment(\.opnSettingsEagerStack) private var isEager
+    @Environment(\.opnSettingsNestedStack) private var isNested
 
     var body: some View {
-        if isPadFocusActive || isEager {
+        if isPadFocusActive || isEager || isNested {
             VStack(alignment: .leading, spacing: spacing) { content }
         } else {
             LazyVStack(alignment: .leading, spacing: spacing) { content }
+                .environment(\.opnSettingsNestedStack, true)
         }
     }
 }
