@@ -444,7 +444,13 @@ struct SettingsContent: View {
     @State private var activeSectionID: String?
 
     var body: some View {
-        scrollingPage
+        if viewModel.selectedSettingsGroup.isEmptyStatePage {
+            page
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(SettingsSurfaceBackground())
+        } else {
+            scrollingPage
+        }
     }
 
     private var scrollingPage: some View {

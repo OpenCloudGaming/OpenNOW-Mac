@@ -100,13 +100,18 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// The destinations that exist right now. Labs is the only conditional one: it appears while a
-    /// feature is on trial and is absent otherwise, because the tab it replaces stood empty long
-    /// enough to teach people to skip it. Kept as a function so the sidebar and pad navigation read
-    /// the same list - iterating `allCases` in one place and a filtered list in the other is what
-    /// let the pad land on a tab that was not drawn.
-    @MainActor static func visibleCases() -> [CatalogSettingsGroup] {
-        allCases.filter { $0 != .labs || OpenNOWLabs.hasFlags }
+    /// Every destination, always. Labs is drawn even with nothing on trial, so it is somewhere people
+    /// can learn to look rather than a tab that comes and goes; its page says so itself. Kept as a
+    /// function so the sidebar and pad navigation read the same list - iterating `allCases` in one
+    /// place and a filtered list in the other is what let the pad land on a tab that was not drawn.
+    static func visibleCases() -> [CatalogSettingsGroup] {
+        allCases
+    }
+
+    /// True for a page that is nothing but an empty state. It names itself, so the standard page
+    /// header above it would be a second, competing title, and there is nothing to scroll.
+    @MainActor var isEmptyStatePage: Bool {
+        self == .labs && !OpenNOWLabs.hasFlags
     }
 
     var title: String {

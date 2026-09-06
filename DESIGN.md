@@ -394,10 +394,11 @@ report is the reference case.
 
 ### Settings Labs (`LabsSettingsPage`, `OpenNOWLabs`)
 
-Features on trial live on their own destination, which exists only while `OpenNOWLabs.flags` is
-non-empty - `CatalogSettingsGroup.visibleCases()` drops it otherwise. A destination that is usually
-empty teaches people to skip it, which is what happened to the tab this replaces. Each flag names
-itself, says what it turns on and when it went on trial, and stores itself under
+Features on trial live on their own destination, always drawn so people can learn where to look.
+With `OpenNOWLabs.flags` empty the page is its own empty state: a 132 accent-ringed flask with three
+bubbles at its neck over "Nothing in flight", centred in the pane. That state names itself, so
+`isEmptyStatePage` drops the page header and the scroll view for it - two titles would compete.
+Each flag names itself, says what it turns on and when it went on trial, and stores itself under
 `OpenNOW.Labs.<id>`. The card carries the EXPERIMENTAL badge.
 
 A card that belongs to its own destination's subject but is not finished keeps its badge there

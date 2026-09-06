@@ -4,17 +4,18 @@ import Foundation
 
 // The settings tab list, and which of its pages carry their own chrome.
 
-@MainActor @Test func onlyLabsIsConditionalAndOnlyWhileSomethingIsInFlight() {
-    // A destination that is usually empty teaches people to skip it, so Labs exists only while a
-    // feature is on trial. Everything else is always drawn, and the rail and the pad read the same
-    // list - iterating `allCases` in one place and a filtered list in the other is what let the pad
-    // land on a tab that was not drawn.
-    let visible = CatalogSettingsGroup.visibleCases()
-    #expect(visible.contains(.labs) == OpenNOWLabs.hasFlags)
-    #expect(visible.filter { $0 != .labs } == CatalogSettingsGroup.allCases.filter { $0 != .labs })
-    if !OpenNOWLabs.hasFlags {
-        #expect(visible == CatalogSettingsGroup.allCases.dropLast())
-    }
+@Test func everySettingsDestinationIsDrawn() {
+    // Nothing is conditional. Labs is drawn with nothing on trial so it is somewhere people can
+    // learn to look, and the rail and the pad read the same list - iterating `allCases` in one place
+    // and a filtered list in the other is what let the pad land on a tab that was not drawn.
+    #expect(CatalogSettingsGroup.visibleCases() == CatalogSettingsGroup.allCases)
+}
+
+/// Only a page that is nothing but an empty state may suppress the page header, because it names
+/// itself and two titles would compete.
+@MainActor @Test func onlyAnEmptyLabsSuppressesTheHeader() {
+    let suppressing = CatalogSettingsGroup.allCases.filter(\.isEmptyStatePage)
+    #expect(suppressing == (OpenNOWLabs.hasFlags ? [] : [.labs]))
 }
 
 /// A flag has to say what it turns on and when it went on trial, or nobody can judge whether to
