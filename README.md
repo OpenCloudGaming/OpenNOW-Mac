@@ -200,7 +200,8 @@ swift test --scratch-path .build/shared
 **Layout**
 
 - `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `OpenNOWApp.swift` - macOS app entry point and application delegate
+- `OpenNOWApp.swift` - macOS app entry point
+- `App` - application delegate and app-lifecycle wiring
 - `Resources` - bundled images, fonts, and store icon assets
 - `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state for login, catalog, controller catalog, and recordings
@@ -211,7 +212,7 @@ swift test --scratch-path .build/shared
 
 **Packages**
 
-The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
+The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all six production directories - those three plus `App`, `View`, and `ViewModel`.
 
 **Focused test runs**
 
