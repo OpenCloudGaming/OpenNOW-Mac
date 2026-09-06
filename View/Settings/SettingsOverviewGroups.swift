@@ -71,15 +71,14 @@ struct NetworkSettingsGroup: View {
     }
 }
 
-/// Everything that is neither a stream setting nor an account one: how the app itself behaves, what
-/// it records, and what it can tell you about this Mac.
+/// Everything that is neither a stream setting nor an account one: how the app presents itself, who
+/// it tells what, and what it can report about this Mac.
 struct GeneralSettingsGroup: View {
     let viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
 
     static let sections: [SettingsSection] =
         InterfaceSettingsPage.sections
-        + RecordingSettingsPage.sections
         + [
             SettingsSection("discord", "Discord"),
             SettingsSection("about", "About"),
@@ -89,12 +88,8 @@ struct GeneralSettingsGroup: View {
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             InterfaceSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            SettingsColumns(uiScale: uiScale) {
-                RecordingSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            } trailing: {
-                DiscordSettingsPage(uiScale: uiScale)
-                    .settingsSection("discord")
-            }
+            DiscordSettingsPage(uiScale: uiScale)
+                .settingsSection("discord")
             AboutSettingsPage(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("about")
             SystemSettingsPage(viewModel: viewModel, uiScale: uiScale)

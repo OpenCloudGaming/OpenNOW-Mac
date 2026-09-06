@@ -92,6 +92,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case video
     case audio
     case input
+    case recording
     case network
     case remoteCoOp
     case general
@@ -112,6 +113,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "Video"
         case .audio: return "Audio"
         case .input: return "Input"
+        case .recording: return "Recording"
         case .network: return "Network"
         case .remoteCoOp: return "Remote Co-Op"
         case .general: return "General"
@@ -124,6 +126,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "Resolution, frame rate, codec, colour, and the picture the stream arrives with."
         case .audio: return "Game output, surround, and the microphone the stream sends."
         case .input: return "Mouse, keyboard, and every controller OpenNOW speaks to."
+        case .recording: return "What Command-R writes to disk, and where to find it afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
         case .general: return "Interface, recording, updates, privacy, and this Mac's capabilities."
@@ -136,6 +139,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "play.tv.fill"
         case .audio: return "speaker.wave.2.fill"
         case .input: return "gamecontroller.fill"
+        case .recording: return "record.circle"
         case .network: return "network"
         case .remoteCoOp: return "person.2.fill"
         case .general: return "gearshape.2.fill"

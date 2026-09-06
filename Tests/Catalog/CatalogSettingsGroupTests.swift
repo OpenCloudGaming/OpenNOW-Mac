@@ -13,7 +13,7 @@ import Foundation
 @Test func theTabsAreTheSevenConcernsAndNothingElse() {
     // One destination per concern. A tab that only ever showed an empty state trained people to
     // ignore it, and a tab per vendor subsystem split HDR, audio and input across three places.
-    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .network, .remoteCoOp, .general])
+    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .recording, .network, .remoteCoOp, .general])
 }
 
 @Test func everySettingsGroupNamesItself() {
@@ -41,6 +41,7 @@ import Foundation
         (.video, VideoSettingsGroup.sections),
         (.audio, AudioSettingsPage.sections),
         (.input, InputSettingsGroup.sections),
+        (.recording, RecordingSettingsGroup.sections),
         (.network, NetworkSettingsGroup.sections),
         (.general, GeneralSettingsGroup.sections),
     ]

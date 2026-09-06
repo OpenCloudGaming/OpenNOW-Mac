@@ -31,7 +31,7 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + networkEntries + generalEntries + remoteCoOpEntries
+    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + recordingEntries + networkEntries + generalEntries + remoteCoOpEntries
 
     private static let videoEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Quality Preset", .video, "display", keywords: ["profile", "balanced", "competitive", "cinematic", "custom", "data saver"]),
@@ -97,12 +97,16 @@ enum SettingsSearchIndex {
     private static let generalEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Interface Scale", .general, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus"]),
-        SettingsSearchEntry("Video Bitrate", .general, "recording", keywords: ["record", "capture", "quality", "file size"]),
-        SettingsSearchEntry("Audio Bitrate", .general, "recording", keywords: ["record", "capture", "sound"]),
-        SettingsSearchEntry("Record Enhanced Video", .general, "recording", keywords: ["record", "capture", "upscaled"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
         SettingsSearchEntry("Automatic Update Checks", .general, "about", keywords: ["update", "version", "release", "upgrade"]),
         SettingsSearchEntry("Disable Telemetry", .general, "about", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),
+    ]
+
+    private static let recordingEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Video Bitrate", .recording, "recording", keywords: ["record", "capture", "quality", "file size"]),
+        SettingsSearchEntry("Audio Bitrate", .recording, "recording", keywords: ["record", "capture", "sound"]),
+        SettingsSearchEntry("Record Enhanced Video", .recording, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
+        SettingsSearchEntry("Your recordings", .recording, "library", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
     ]
 
     private static let remoteCoOpEntries: [SettingsSearchEntry] = [
@@ -146,6 +150,7 @@ enum SettingsSearchIndex {
         case .video: VideoSettingsGroup.sections
         case .audio: AudioSettingsPage.sections
         case .input: InputSettingsGroup.sections
+        case .recording: RecordingSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
         case .general: GeneralSettingsGroup.sections

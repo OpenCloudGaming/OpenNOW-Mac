@@ -81,7 +81,7 @@ import Testing
         let rendered = Set(try Self.renderedRowTitles().keys)
         // The microphone test is its own component rather than a generic row, so the scan cannot see
         // it; everything else in the index must still be rendered somewhere.
-        let unscannable: Set<String> = ["Microphone Test", "Cloudmatch Region"]
+        let unscannable: Set<String> = ["Microphone Test", "Cloudmatch Region", "Your recordings"]
         let stale = SettingsSearchIndex.entries
             .map(\.title)
             .filter { !rendered.contains($0) && !unscannable.contains($0) }
