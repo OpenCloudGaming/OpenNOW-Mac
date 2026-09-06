@@ -22,6 +22,21 @@ struct SettingsSidebar: View {
     private var isSearching: Bool { query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 }
 
     var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            rail
+        }
+        .frame(width: (showsLabels ? 208 : 60) * uiScale)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(SettingsVendorLayout.sidebar)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1)
+        }
+    }
+
+    /// Scrolls rather than clips: seven destinations at a 2.0 interface scale are taller than the
+    /// window's own minimum height, and the horizontal strip this replaced could always be scrolled
+    /// to its far end.
+    private var rail: some View {
         VStack(alignment: .leading, spacing: 2 * uiScale) {
             if showsLabels {
                 SettingsSearchField(query: $query, uiScale: uiScale)
@@ -38,15 +53,9 @@ struct SettingsSidebar: View {
                     item(group)
                 }
             }
-            Spacer(minLength: 0)
         }
         .padding(.vertical, 14 * uiScale)
-        .frame(width: (showsLabels ? 208 : 60) * uiScale, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(SettingsVendorLayout.sidebar)
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func item(_ group: CatalogSettingsGroup) -> some View {

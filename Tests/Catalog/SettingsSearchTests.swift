@@ -14,6 +14,14 @@ import Testing
         "SettingsRemoteCoOpRelayCard.swift",
     ]
 
+    /// Rows that render only once another setting is on, so they are searchable through the control
+    /// that gates them rather than by their own name. A result naming one directly would scroll to a
+    /// card that does not contain it.
+    private static let gatedByAnotherSetting: Set<String> = [
+        "Protocol", "Host", "Port", "Username", "Password", "Scope",
+        "Edge Dimming",
+    ]
+
     private static var settingsDirectory: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -65,7 +73,7 @@ import Testing
         let rendered = try Self.renderedRowTitles()
         #expect(rendered.count > 40, "the source scan found almost nothing; the row pattern has drifted")
         let indexed = Set(SettingsSearchIndex.entries.map(\.title))
-        let missing = rendered.filter { !indexed.contains($0.key) }
+        let missing = rendered.filter { !indexed.contains($0.key) && !Self.gatedByAnotherSetting.contains($0.key) }
         #expect(missing.isEmpty, "not searchable: \(missing.map { "\($0.key) (\($0.value))" }.sorted().joined(separator: ", "))")
     }
 
@@ -78,6 +86,16 @@ import Testing
             .map(\.title)
             .filter { !rendered.contains($0) && !unscannable.contains($0) }
         #expect(stale.isEmpty, "indexed but no longer rendered: \(stale.sorted().joined(separator: ", "))")
+    }
+
+    /// A gated row is still findable, through whatever switches it on.
+    @MainActor @Test func aGatedSettingIsFoundThroughTheControlThatGatesIt() {
+        #expect(SettingsSearchIndex.results(for: "socks").contains { $0.title == "Session Proxy" })
+        #expect(SettingsSearchIndex.results(for: "password").contains { $0.title == "Session Proxy" })
+        #expect(SettingsSearchIndex.results(for: "edge dimming").contains { $0.title == "Pillarbox Fill" })
+        // And no result names a row that would not be on screen when the reader arrives.
+        let indexed = Set(SettingsSearchIndex.entries.map(\.title))
+        #expect(indexed.isDisjoint(with: Self.gatedByAnotherSetting))
     }
 
     @MainActor @Test func aQueryFindsSettingsByLabelAndByTheWordTheReaderKnows() {
@@ -104,11 +122,11 @@ import Testing
         #expect(!SettingsSearchIndex.results(for: "hd").isEmpty)
     }
 
-    @MainActor @Test func aResultSaysWhereItLives() {
-        let surround = try? #require(SettingsSearchIndex.entries.first { $0.title == "Surround Sound" })
-        #expect(SettingsSearchIndex.location(of: surround!) == "Audio › Output")
-        let coOp = try? #require(SettingsSearchIndex.entries.first { $0.group == .remoteCoOp })
+    @MainActor @Test func aResultSaysWhereItLives() throws {
+        let surround = try #require(SettingsSearchIndex.entries.first { $0.title == "Surround Sound" })
+        #expect(SettingsSearchIndex.location(of: surround) == "Audio › Output")
+        let coOp = try #require(SettingsSearchIndex.entries.first { $0.group == .remoteCoOp })
         // No section map, so the destination alone is as precise as it gets.
-        #expect(SettingsSearchIndex.location(of: coOp!) == "Remote Co-Op")
+        #expect(SettingsSearchIndex.location(of: coOp) == "Remote Co-Op")
     }
 }

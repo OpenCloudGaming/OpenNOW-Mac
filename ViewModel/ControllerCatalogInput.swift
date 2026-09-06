@@ -280,7 +280,7 @@ extension ControllerCatalogViewModel {
             catalog.showRecordings()
             focusArea = .navigation
         case .settings:
-            catalog.showSettings(.general)
+            catalog.showSettings(.input)
             focusArea = .navigation
         case .actions:
             openActionMenu()
@@ -524,7 +524,7 @@ extension ControllerCatalogViewModel {
         case .recordings:
             catalog.showRecordings()
         case .settings:
-            catalog.showSettings(.general)
+            catalog.showSettings(.input)
         case .home, .library, .favorites:
             catalog.showCatalogDestination(Self.destination(for: item))
         case .desktopMode:

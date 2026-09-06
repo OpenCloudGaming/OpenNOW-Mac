@@ -501,14 +501,9 @@ struct SettingsContent: View {
         }
         .onPreferenceChange(SettingsSectionMarksKey.self) { marks in
             activeSectionID = Self.activeSection(marks: marks, sections: sections) ?? activeSectionID
-            // A search result names a card on a destination that has not been built yet. The marks
-            // arriving are the first proof it exists, which is the earliest the scroll can happen.
-            guard let pending = viewModel.pendingSettingsSectionID,
-                  marks.contains(where: { $0.id == pending }) else { return }
-            viewModel.pendingSettingsSectionID = nil
-            activeSectionID = pending
-            withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
         }
+        .onAppear { jumpToPendingSection(proxy) }
+        .onChange(of: viewModel.pendingSettingsSectionID) { _, _ in jumpToPendingSection(proxy) }
         // A fresh scroll view per tab: the offset from a long page would otherwise
         // survive the switch and park a shorter page's viewport past its content.
         .id(viewModel.selectedSettingsGroup)
@@ -524,6 +519,22 @@ struct SettingsContent: View {
         .environment(\.opnSettingsNarrowRows, usesNarrowRows)
         .environment(\.opnSettingsCardWidth, contentWidth)
         }
+    }
+
+    /// Takes a search result to its card. Never waits for the card to report its position: a card
+    /// below the fold has not been built, so it publishes nothing, and waiting on that mark is
+    /// waiting forever for exactly the results worth searching for. `scrollTo` reaches a lazily
+    /// built child by identity, which is what `.settingsSection(_:)` gives it.
+    private func jumpToPendingSection(_ proxy: ScrollViewProxy) {
+        guard let pending = viewModel.pendingSettingsSectionID else { return }
+        guard sections.contains(where: { $0.id == pending }) else {
+            // The destination changed but its page has not been swapped in yet; the new page's
+            // `onAppear` picks the jump up.
+            return
+        }
+        viewModel.pendingSettingsSectionID = nil
+        activeSectionID = pending
+        withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(pending, anchor: .top) }
     }
 
     /// Two columns only when the page is genuinely wide for the reader's interface scale, and never

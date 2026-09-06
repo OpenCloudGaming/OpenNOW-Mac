@@ -6,6 +6,7 @@ struct SessionProxySettingsPage: View {
     @State private var settings = OPNSessionProxySettings()
     @State private var password = ""
     @State private var savedSettings = OPNSessionProxySettings()
+    @State private var hasSeededDrafts = false
     @State private var savedPassword = ""
     @State private var isTesting = false
     @State private var testMessage = ""
@@ -129,7 +130,7 @@ struct SessionProxySettingsPage: View {
                 }
             }
         }
-        .onAppear(perform: restoreSaved)
+        .onAppear(perform: seedDraftsIfNeeded)
     }
 
     private var isConfigurationValid: Bool {
@@ -138,6 +139,16 @@ struct SessionProxySettingsPage: View {
 
     private var isDirty: Bool {
         settings != savedSettings || password != savedPassword
+    }
+
+    /// Seeds the editable copy from the store the first time the card is built, and never again.
+    /// The card is a lazy child of its page, so scrolling it out of view and back re-runs `onAppear`;
+    /// re-seeding there discarded an unsaved host and password, and took the SAVE button that would
+    /// have kept them with it.
+    private func seedDraftsIfNeeded() {
+        guard !hasSeededDrafts else { return }
+        hasSeededDrafts = true
+        restoreSaved()
     }
 
     private func restoreSaved() {

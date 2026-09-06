@@ -25,9 +25,12 @@ struct SettingsSearchEntry: Identifiable, Equatable {
 }
 
 enum SettingsSearchIndex {
-    /// Every row a reader can scroll to, in the order the destinations appear. Rows that exist only
-    /// inside a modal wizard are deliberately absent: a result that cannot be scrolled to is a
-    /// result that lies about where it is.
+    /// Every row a reader can scroll to and see, in the order the destinations appear.
+    ///
+    /// Two kinds of row are deliberately absent, because a result that leads to something invisible
+    /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
+    /// appear only once another setting is switched on. The second kind hands its words to the
+    /// control that gates it, so searching "socks" still reaches the session proxy.
     static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + networkEntries + generalEntries + remoteCoOpEntries
 
     private static let videoEntries: [SettingsSearchEntry] = [
@@ -49,8 +52,11 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Clarity", .video, "upscaling", keywords: ["sharpness", "upscale"]),
         SettingsSearchEntry("Noise Reduction", .video, "upscaling", keywords: ["denoise", "grain", "upscale"]),
         SettingsSearchEntry("Frame Pacing", .video, "presentation", keywords: ["latency", "smooth", "stutter", "vsync", "present"]),
-        SettingsSearchEntry("Pillarbox Fill", .video, "pillarbox", keywords: ["black bars", "letterbox", "blur", "stretch", "crop", "16:9"]),
-        SettingsSearchEntry("Edge Dimming", .video, "pillarbox", keywords: ["black bars", "blur", "dim"]),
+        // Edge Dimming only exists under a fill mode that dims, so its words ride the picker that
+        // decides whether it is there at all.
+        SettingsSearchEntry("Pillarbox Fill", .video, "pillarbox", keywords: [
+            "black bars", "letterbox", "blur", "stretch", "crop", "16:9", "edge dimming", "dim",
+        ]),
         SettingsSearchEntry("Prefilter Mode", .video, "enhancement", keywords: ["sharpen", "server", "ai"]),
         SettingsSearchEntry("Prefilter Sharpness", .video, "enhancement", keywords: ["sharpen", "clarity"]),
         SettingsSearchEntry("Prefilter Denoise", .video, "enhancement", keywords: ["noise", "grain"]),
@@ -80,13 +86,12 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Native/NVST Transport", .network, "transport", keywords: ["nvst", "webrtc", "protocol", "rtsp"]),
         SettingsSearchEntry("L4S", .network, "transport", keywords: ["latency", "congestion", "ecn", "low latency"]),
         SettingsSearchEntry("Prevent Display Sleep", .network, "transport", keywords: ["screensaver", "idle", "awake"]),
-        SettingsSearchEntry("Session Proxy", .network, "proxy", keywords: ["socks", "http", "vpn", "region unlock", "tunnel"]),
-        SettingsSearchEntry("Protocol", .network, "proxy", keywords: ["socks", "http", "proxy"]),
-        SettingsSearchEntry("Host", .network, "proxy", keywords: ["proxy", "address", "server"]),
-        SettingsSearchEntry("Port", .network, "proxy", keywords: ["proxy"]),
-        SettingsSearchEntry("Username", .network, "proxy", keywords: ["proxy", "credentials", "login"]),
-        SettingsSearchEntry("Password", .network, "proxy", keywords: ["proxy", "credentials", "login"]),
-        SettingsSearchEntry("Scope", .network, "proxy", keywords: ["proxy", "catalog", "sessions", "region"]),
+        // The proxy's own fields appear only once it is switched on, so the toggle carries their
+        // words. A result has to lead to something the reader can see.
+        SettingsSearchEntry("Session Proxy", .network, "proxy", keywords: [
+            "socks", "http", "vpn", "region unlock", "tunnel", "protocol", "host", "port",
+            "username", "password", "credentials", "scope",
+        ]),
     ]
 
     private static let generalEntries: [SettingsSearchEntry] = [
