@@ -1,6 +1,6 @@
-//  Posts a system notification when a launch that was queued or provisioning becomes ready to
-//  play while OpenNOW is not the frontmost application. The official client does the same, and
-//  it is the only way a long queue can be waited out in another window.
+//  What happens when a launch that was queued or provisioning becomes ready to play while OpenNOW
+//  is not the frontmost application: a system notification, or the app coming to the front on its
+//  own. Either way a long queue can be waited out in another window.
 //
 
 import AppKit
@@ -8,24 +8,33 @@ import Foundation
 import UserNotifications
 
 @MainActor
-enum OpenNOWSessionReadyNotifier {
-    static let enabledKey = "OpenNOW.Interface.SessionReadyNotificationsEnabled"
+enum OpenNOWSessionReadyAction {
+    enum Mode: String, CaseIterable {
+        case notification
+        case bringToFront
+
+        var label: String {
+            switch self {
+            case .notification: "Notification"
+            case .bringToFront: "Bring to Front"
+            }
+        }
+    }
+
+    static let modeKey = "OpenNOW.Interface.SessionReadyAction"
     private static let notificationIdentifier = "io.github.opencloudgaming.opennow.session-ready"
     private static var didRequestAuthorization = false
 
-    static var isEnabled: Bool {
-        get {
-            guard let stored = OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool else { return true }
-            return stored
-        }
-        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: enabledKey) }
+    static var mode: Mode {
+        get { Mode(rawValue: OPNAppPreferenceStorage.standard.string(forKey: modeKey) ?? "") ?? .notification }
+        set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: modeKey) }
     }
 
     /// Asks for notification permission while the user is looking at the launch overlay, so the
     /// system prompt appears in context rather than over another application when the seat is
     /// finally ready. Asks at most once per run and only while the status is undetermined.
     static func prepareAuthorizationIfNeeded() {
-        guard isEnabled, !didRequestAuthorization, Bundle.main.bundleIdentifier != nil else { return }
+        guard mode == .notification, !didRequestAuthorization, Bundle.main.bundleIdentifier != nil else { return }
         didRequestAuthorization = true
         Task {
             let center = UNUserNotificationCenter.current()
@@ -39,10 +48,37 @@ enum OpenNOWSessionReadyNotifier {
         }
     }
 
-    /// Delivers the ready notification unless the app is already frontmost, in which case the
-    /// stream surface itself is the announcement.
+    /// Runs the chosen action unless the app is already frontmost, in which case the stream
+    /// surface itself is the announcement.
     static func sessionDidBecomeReady(title: String) {
-        guard isEnabled, !NSApplication.shared.isActive, Bundle.main.bundleIdentifier != nil else { return }
+        guard !NSApplication.shared.isActive else { return }
+        switch mode {
+        case .notification:
+            postNotification(title: title)
+        case .bringToFront:
+            bringToFront()
+        }
+    }
+
+    /// Activates the app and raises its windows. macOS may refuse an activation the user did not
+    /// initiate; the Dock bounce is the fallback so the ready state is still visible.
+    private static func bringToFront() {
+        let app = NSApplication.shared
+        app.activate(ignoringOtherApps: true)
+        for window in app.windows where window.isVisible || window.isMiniaturized {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        }
+        if app.isActive {
+            OpenNOWLog.info(.app, "Session ready: brought OpenNOW to the front")
+        } else {
+            app.requestUserAttention(.criticalRequest)
+            OpenNOWLog.info(.app, "Session ready: activation refused by the system, bouncing the Dock icon instead")
+        }
+    }
+
+    private static func postNotification(title: String) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let gameTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             let center = UNUserNotificationCenter.current()

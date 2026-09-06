@@ -44,7 +44,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
-| 🔔 **Session ready alerts** | Queue in the background: a system notification fires the moment your seat is ready. |
+| 🔔 **Session ready** | Queue in the background: pick a system notification or have OpenNOW come to the front the moment your seat is ready. |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
 | 🕹️ **Full controller navigation** | Drive the entire app - catalog, details, settings - from the pad. Never reach for the mouse. |
 | 📊 **Real diagnostics** | Live stream HUD, session timers, network stats, and exportable logs when something goes wrong. |

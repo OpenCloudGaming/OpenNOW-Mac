@@ -7,10 +7,15 @@ struct InterfaceSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScaleStorage = OpenNOWInterfacePreferences.defaultUIScale
-    @AppStorage(OpenNOWSessionReadyNotifier.enabledKey) private var sessionReadyNotificationsEnabled = true
+    @AppStorage(OpenNOWSessionReadyAction.modeKey) private var sessionReadyActionRawValue = OpenNOWSessionReadyAction.Mode.notification.rawValue
     @StateObject private var model = InterfaceSettingsViewModel()
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
+
+    private var selectedSessionReadyActionIndex: Int {
+        let mode = OpenNOWSessionReadyAction.Mode(rawValue: sessionReadyActionRawValue) ?? .notification
+        return OpenNOWSessionReadyAction.Mode.allCases.firstIndex(of: mode) ?? 0
+    }
 
     private var activeGlyphs: ControllerInputGlyphSet { model.activeGlyphs }
 
@@ -50,10 +55,11 @@ struct InterfaceSettingsPage: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            SettingsCard(title: "Notifications", uiScale: uiScale) {
-                SettingsToggleRow(title: "Session Ready Alerts", subtitle: "Post a system notification when a queued or provisioning session becomes ready while OpenNOW is in the background.", isOn: sessionReadyNotificationsEnabled, uiScale: uiScale) { enabled in
-                    sessionReadyNotificationsEnabled = enabled
-                    if enabled { OpenNOWSessionReadyNotifier.prepareAuthorizationIfNeeded() }
+            SettingsCard(title: "Session Ready", uiScale: uiScale) {
+                SettingsOptionRow(title: "When the Stream Is Ready", subtitle: "While OpenNOW is in the background and a queued or provisioning session becomes ready: post a system notification, or bring OpenNOW to the front automatically.", options: OpenNOWSessionReadyAction.Mode.allCases.map(\.label), selectedIndex: selectedSessionReadyActionIndex, uiScale: uiScale) { index in
+                    let mode = OpenNOWSessionReadyAction.Mode.allCases[index]
+                    sessionReadyActionRawValue = mode.rawValue
+                    if mode == .notification { OpenNOWSessionReadyAction.prepareAuthorizationIfNeeded() }
                 }
             }
 
