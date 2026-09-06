@@ -205,6 +205,7 @@ struct AccountHealthBadge: View {
 }
 
 struct SettingsRevealButton: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let revealed: Bool
     let uiScale: CGFloat
     let action: () -> Void
@@ -223,6 +224,7 @@ struct SettingsRevealButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .controllerFocusable(focusIdentity, activate: action)
     }
 }
 

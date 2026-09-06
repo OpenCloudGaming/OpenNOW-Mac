@@ -3,152 +3,6 @@ import CryptoKit
 import SwiftUI
 
 /// The annotation a card's header carries: how finished the feature behind it is.
-enum SettingsCardBadge {
-    /// Shipped, still settling. Scope is the card, not the whole tab.
-    case beta
-    /// Off by default, on trial. Promoted to `beta` or removed.
-    case experimental
-
-    var text: String {
-        switch self {
-        case .beta: "BETA"
-        case .experimental: "EXPERIMENTAL"
-        }
-    }
-}
-
-struct SettingsCard<Content: View>: View {
-    let title: String
-    let badge: SettingsCardBadge?
-    let uiScale: CGFloat
-    private let content: Content
-
-    init(title: String, badge: SettingsCardBadge? = nil, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.badge = badge
-        self.uiScale = uiScale
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10 * uiScale) {
-                Rectangle()
-                    .fill(OpenNOWDesign.accent)
-                    .frame(width: 4 * uiScale, height: 18 * uiScale)
-                Text(title.uppercased())
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .tracking(1.1)
-                if let badge {
-                    SettingsCardTag(text: badge.text, uiScale: uiScale)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 18 * uiScale)
-            .padding(.top, 17 * uiScale)
-            .padding(.bottom, 12 * uiScale)
-            VStack(alignment: .leading, spacing: 0) {
-                content
-            }
-            .padding(.horizontal, 20 * uiScale)
-            .padding(.bottom, 20 * uiScale)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack(alignment: .topLeading) {
-                SettingsVendorLayout.card
-                LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
-                Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.10))
-                    .frame(width: 1)
-            }
-        )
-        .overlay { Rectangle().stroke(Color.white.opacity(0.115), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
-    }
-}
-
-/// A card for a setting most hosts never touch: collapsed by default, so its status is visible without
-/// its full field set reading as something everyone has to configure. Callers should seed `isExpanded`
-/// from whether the setting is already configured, so a host who set it up in a previous session still
-/// sees it open.
-struct SettingsCollapsibleCard<Content: View>: View {
-    let title: String
-    let statusSummary: String
-    let isConfigured: Bool
-    let uiScale: CGFloat
-    @Binding var isExpanded: Bool
-    private let content: Content
-
-    init(title: String, statusSummary: String, isConfigured: Bool, uiScale: CGFloat, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.statusSummary = statusSummary
-        self.isConfigured = isConfigured
-        self.uiScale = uiScale
-        self._isExpanded = isExpanded
-        self.content = content()
-    }
-
-    /// The header is a focusable row in its own right. Without it a pad walks straight past a
-    /// collapsed card, and every setting folded inside it is reachable only with a pointer.
-    @State private var focusIdentity = ControllerFocusIdentity()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button { isExpanded.toggle() } label: {
-                HStack(spacing: 10 * uiScale) {
-                    Rectangle()
-                        .fill(OpenNOWDesign.accent)
-                        .frame(width: 4 * uiScale, height: 18 * uiScale)
-                    Text(title.uppercased())
-                        .font(.settingsNvidia(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.68))
-                        .tracking(1.1)
-                    Spacer(minLength: 0)
-                    Text(statusSummary)
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(isConfigured ? OpenNOWDesign.accent : .white.opacity(0.4))
-                        .fixedSize()
-                    Text(isExpanded ? "\u{25BE}" : "\u{25B8}")
-                        .font(.settingsNvidia(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-                .padding(.horizontal, 18 * uiScale)
-                .padding(.top, 17 * uiScale)
-                .padding(.bottom, isExpanded ? 12 * uiScale : 17 * uiScale)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .controllerFocusable(
-                focusIdentity,
-                activate: { isExpanded.toggle() },
-                adjust: { delta in isExpanded = delta > 0 }
-            )
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 0) {
-                    content
-                }
-                .padding(.horizontal, 20 * uiScale)
-                .padding(.bottom, 20 * uiScale)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack(alignment: .topLeading) {
-                SettingsVendorLayout.card
-                LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
-                Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.10))
-                    .frame(width: 1)
-            }
-        )
-        .overlay { Rectangle().stroke(Color.white.opacity(0.115), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
-    }
-}
-
 struct SettingsDivider: View {
     let uiScale: CGFloat
 
@@ -353,14 +207,24 @@ struct SettingsToggleRow: View {
     }
 }
 
-struct SettingsTextFieldRow: View {
+/// The chrome both credential rows share: label column, field box, and the pad handoff.
+///
+/// Confirm hands keyboard focus to the field rather than trying to enter text itself. A pad cannot
+/// type and there is no on-screen keyboard, so the reachable part of the interaction is landing the
+/// ring here and then surrendering the caret to the real keyboard.
+private struct SettingsFieldRow<Field: View>: View {
+    @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
     let subtitle: String
     let text: String
-    let placeholder: String
     let uiScale: CGFloat
     let action: (String) -> Void
+    /// Handed the draft binding rather than building one: the caller only decides whether the box
+    /// masks what is typed.
+    @ViewBuilder let field: (Binding<String>) -> Field
+
     @State private var draft = ""
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
@@ -374,7 +238,7 @@ struct SettingsTextFieldRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsLabelColumn(uiScale: uiScale)
-            TextField(placeholder, text: Binding(get: { draft }, set: { updateDraft($0) }))
+            field(Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
@@ -382,17 +246,34 @@ struct SettingsTextFieldRow: View {
                 .frame(height: 36 * uiScale)
                 .background(Color.white.opacity(0.07))
                 .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                .focused($isFieldFocused)
                 .onAppear { draft = text }
                 .onChange(of: text) { _, value in
                     guard value != draft else { return }
                     draft = value
                 }
         }
+        .controllerFocusable(focusIdentity, activate: { isFieldFocused = true })
     }
 
     private func updateDraft(_ value: String) {
         draft = value
         action(value)
+    }
+}
+
+struct SettingsTextFieldRow: View {
+    let title: String
+    let subtitle: String
+    let text: String
+    let placeholder: String
+    let uiScale: CGFloat
+    let action: (String) -> Void
+
+    var body: some View {
+        SettingsFieldRow(title: title, subtitle: subtitle, text: text, uiScale: uiScale, action: action) { draft in
+            TextField(placeholder, text: draft)
+        }
     }
 }
 
@@ -403,39 +284,11 @@ struct SettingsSecureTextFieldRow: View {
     let placeholder: String
     let uiScale: CGFloat
     let action: (String) -> Void
-    @State private var draft = ""
 
     var body: some View {
-        HStack(alignment: .center, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .settingsLabelColumn(uiScale: uiScale)
-            SecureField(placeholder, text: Binding(get: { draft }, set: { updateDraft($0) }))
-                .textFieldStyle(.plain)
-                .font(.settingsNvidia(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(.horizontal, 12 * uiScale)
-                .frame(height: 36 * uiScale)
-                .background(Color.white.opacity(0.07))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-                .onAppear { draft = text }
-                .onChange(of: text) { _, value in
-                    guard value != draft else { return }
-                    draft = value
-                }
+        SettingsFieldRow(title: title, subtitle: subtitle, text: text, uiScale: uiScale, action: action) { draft in
+            SecureField(placeholder, text: draft)
         }
-    }
-
-    private func updateDraft(_ value: String) {
-        draft = value
-        action(value)
     }
 }
 
@@ -492,35 +345,6 @@ struct SettingsSliderRow: View {
     private var slider: some View {
         Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
             .tint(OpenNOWDesign.accent)
-    }
-}
-
-struct SettingsColorRow: View {
-    let title: String
-    let subtitle: String
-    let hex: String
-    let uiScale: CGFloat
-    let action: (String) -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(subtitle)
-                    .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .settingsLabelColumn(uiScale: uiScale)
-            ColorPicker("", selection: Binding(get: { Color(settingsHex: hex) }, set: { action($0.settingsHexString) }), supportsOpacity: false)
-                .labelsHidden()
-            Text(hex)
-                .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.42))
-            Spacer(minLength: 0)
-        }
     }
 }
 

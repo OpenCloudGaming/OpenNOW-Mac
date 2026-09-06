@@ -30,7 +30,7 @@ struct VideoSettingsPage: View {
 
     private var profileCard: some View {
         SettingsCard(title: "Streaming Profile", uiScale: uiScale) {
-            GameplayProfileOverview(
+            StreamingProfileOverview(
                 mode: streamingProfileMode,
                 resolution: viewModel.streamProfile.resolution.label,
                 frameRate: "\(viewModel.streamProfile.fps) FPS",
@@ -156,7 +156,7 @@ struct VideoSettingsPage: View {
             }
             .padding(12 * uiScale)
             .background(SettingsVendorLayout.row)
-            .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+            .overlay { Rectangle().strokeBorder(Color.white.opacity(0.08), lineWidth: 1) }
         }
     }
 
@@ -189,4 +189,66 @@ extension VideoSettingsPage {
         SettingsSection("advanced", "Advanced"),
         SettingsSection("maintenance", "Maintenance")
     ]
+}
+
+struct StreamingProfileOverview: View {
+    let mode: String
+    let resolution: String
+    let frameRate: String
+    let codec: String
+    let bitrate: String
+    let colorPrecision: String
+    let uiScale: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14 * uiScale) {
+            HStack(alignment: .center, spacing: 14 * uiScale) {
+                VStack(alignment: .leading, spacing: 6 * uiScale) {
+                    Text("Active streaming profile")
+                        .font(.settingsNvidia(size: 15 * uiScale, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("These values are sent to OpenNOW when a new stream starts.")
+                        .font(.settingsNvidia(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                }
+                Spacer(minLength: 0)
+                SettingsStatusPill(title: "MODE", value: mode, positive: mode != "Balanced defaults", uiScale: uiScale)
+            }
+
+            SettingsFlowLayout(spacing: 10 * uiScale) {
+                StreamingProfileMetricTile(label: "Resolution", value: resolution, emphasized: true, uiScale: uiScale)
+                StreamingProfileMetricTile(label: "Frame Rate", value: frameRate, emphasized: true, uiScale: uiScale)
+                StreamingProfileMetricTile(label: "Codec", value: codec, uiScale: uiScale)
+                StreamingProfileMetricTile(label: "Bitrate", value: bitrate, uiScale: uiScale)
+                StreamingProfileMetricTile(label: "Color", value: colorPrecision, uiScale: uiScale)
+            }
+        }
+    }
+}
+
+struct StreamingProfileMetricTile: View {
+    let label: String
+    let value: String
+    var emphasized = false
+    var width: CGFloat?
+    let uiScale: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7 * uiScale) {
+            Text(label.uppercased())
+                .font(.settingsNvidia(size: 9 * uiScale, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.44))
+            Text(value.isEmpty ? "-" : value)
+                .font(.settingsNvidia(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
+                .foregroundStyle(emphasized ? OpenNOWDesign.accent : .white.opacity(0.86))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 13 * uiScale)
+        .padding(.vertical, 11 * uiScale)
+        .frame(width: width ?? ((emphasized ? 180 : 154) * uiScale), height: 72 * uiScale, alignment: .leading)
+        .background(Color.white.opacity(emphasized ? 0.065 : 0.045))
+        .overlay { Rectangle().strokeBorder(emphasized ? OpenNOWDesign.accent.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
+    }
 }

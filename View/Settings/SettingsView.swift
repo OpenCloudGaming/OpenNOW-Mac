@@ -16,23 +16,6 @@ extension Font {
     }
 }
 
-extension Color {
-    init(settingsHex hex: String) {
-        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        let packed = digits.count == 6 ? UInt64(digits, radix: 16) ?? 0 : 0
-        self.init(red: Double((packed >> 16) & 0xFF) / 255, green: Double((packed >> 8) & 0xFF) / 255, blue: Double(packed & 0xFF) / 255)
-    }
-
-    var settingsHexString: String {
-        let color = NSColor(self).usingColorSpace(.sRGB) ?? .black
-        // Converting a wide-gamut pick (the P3 wheel) into sRGB is colorimetric and
-        // can land outside 0...1. Unclamped, that formats to more than six hex digits
-        // and the stored value is rejected back to black.
-        func channel(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
-        return String(format: "#%02X%02X%02X", channel(color.redComponent), channel(color.greenComponent), channel(color.blueComponent))
-    }
-}
-
 struct SettingsAccountSnapshot: Sendable {
     let displayName: String
     let membershipTier: String

@@ -358,9 +358,9 @@ horizontal row of destination pills and pad focus is a single top-to-bottom list
 
 ### Settings Card Columns (`SettingsColumns`)
 
-Two independent card columns, 16 gutter, above 936pt of card width per interface scale (the page's
-28 horizontal padding is subtracted before the comparison); one column below that, and always one
-column under pad focus. Columns are independent, not a grid: a grid row stretches to its taller
+Two independent card columns, 16 gutter, above `narrowRowWidth * 2 + gutter` of card width per
+interface scale - derived rather than picked, so a split never produces columns too narrow to hold a
+row's label beside its control, which would be the one-column layout at half the measure one column below that, and always one column under pad focus. Columns are independent, not a grid: a grid row stretches to its taller
 card and leaves a hole whenever a pair differs. Cards inside the columns get
 `opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
 

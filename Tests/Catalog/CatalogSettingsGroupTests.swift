@@ -100,20 +100,13 @@ import Foundation
     #expect(SettingsLayoutMetrics.twoColumnMinimumWidth > SettingsLayoutMetrics.narrowRowWidth)
 }
 
-/// A column is half a page, so it can need stacked rows while the full-width cards beside it do
-/// not - and above a wide enough page it stops needing them.
-@Test func aColumnStacksItsRowsOnlyWhileItIsNarrow() {
-    let atThreshold = SettingsLayoutMetrics.twoColumnMinimumWidth
-    let column = SettingsLayoutMetrics.columnWidth(cardWidth: atThreshold)
-    #expect(column < SettingsLayoutMetrics.narrowRowWidth)
-    #expect(SettingsLayoutMetrics.usesNarrowRows(cardWidth: column, uiScale: 1.0))
-
-    // A page twice the threshold gives each column more than a narrow row needs.
-    let wideColumn = SettingsLayoutMetrics.columnWidth(cardWidth: atThreshold * 2)
-    #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: wideColumn, uiScale: 1.0))
-
-    // Nothing measured yet is not "narrow", or the first frame would stack every row.
+/// Nothing measured yet must not read as narrow, or the first frame of every page would stack every
+/// row and then reflow once the width arrives.
+@MainActor @Test func nothingMeasuredYetIsNotNarrow() {
     #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: 0, uiScale: 1.0))
+    #expect(!SettingsLayoutMetrics.usesNarrowRows(cardWidth: 800, uiScale: 0))
+    // A genuinely narrow container still stacks.
+    #expect(SettingsLayoutMetrics.usesNarrowRows(cardWidth: 400, uiScale: 1.0))
 }
 
 /// A long service sentence belongs in the access line, not in a chip beside the title.

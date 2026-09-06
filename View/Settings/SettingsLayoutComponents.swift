@@ -41,13 +41,10 @@ extension EnvironmentValues {
 }
 
 enum SettingsLayoutMetrics {
-    /// Two 460pt cards plus the 16pt gutter between them, in unscaled points.
-    static let twoColumnMinimumWidth: CGFloat = 936
-
-    /// The page's own horizontal padding, which the measured width still carries and the cards
-    /// never see. Counting it would let a page split into two columns 28pt narrower than the
-    /// threshold promises.
-    static let pageHorizontalPadding: CGFloat = 28
+    /// Wide enough that each column can still hold a row's label beside its control. Splitting
+    /// below this produced two columns whose every row stacked anyway - the same layout as one
+    /// column, at half the measure.
+    static var twoColumnMinimumWidth: CGFloat { narrowRowWidth * 2 + columnGutter }
 
     /// A card narrower than this cannot hold a 250pt label column beside its control.
     static let narrowRowWidth: CGFloat = 600

@@ -15,7 +15,10 @@ final class InterfaceSettingsViewModel: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
-    init(inputRouter: ControllerInputRouter = ControllerInputRouter(), steamNavigator: GamepadUINavigator = GamepadUINavigator()) {
+    /// The page reads connection state and glyphs and never routes a command, so its router
+    /// observes only. A routing router would take over the handler slots that the catalog shell's
+    /// router installed and drop them again on the way out, leaving the pad dead in the catalog.
+    init(inputRouter: ControllerInputRouter = ControllerInputRouter(observesOnly: true), steamNavigator: GamepadUINavigator = GamepadUINavigator()) {
         self.inputRouter = inputRouter
         self.steamNavigator = steamNavigator
         // Both are `ObservableObject`s in their own right. Republishing keeps the page redrawing on
