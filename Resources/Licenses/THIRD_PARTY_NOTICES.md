@@ -79,9 +79,21 @@ and the shipping framework embeds this source stamp:
     WebRTC source stamp 2026-05-10T04:07:40
 
 The underlying git revision is not recorded in the binary, so the build cannot currently be traced
-to a single upstream commit. Any future rebuild should pin an explicit revision and update this
-section so attribution stays reproducible. The authoritative notices for the `third_party`
-components above are those in the upstream WebRTC tree at the stamp date.
+to a single upstream commit. The framework entered this repository as a prebuilt distribution —
+before provenance tracking existed here — and no build recipe or download source for it was ever
+committed, so its derivation cannot be reconstructed from the repository's history either. To
+establish an integrity baseline for future updates, the SHA-256 digests of the shipping artifacts
+are recorded below; any replacement framework should be verified against a known derivation before
+it replaces these files.
+
+- `WebRTC.framework/Versions/A/WebRTC` (Mach-O arm64 shared library):
+  `1bf31c5f99f0c43649c3bd0f24cf5b3149d3e25917ef608bde2fd7c3f3091b8f`
+- `WebRTC.framework/Versions/A/Resources/LICENSE`:
+  `ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482`
+
+Any future rebuild should pin an explicit revision and update this section so attribution stays
+reproducible. The authoritative notices for the `third_party` components above are those in the
+upstream WebRTC tree at the stamp date.
 
 ## Ably
 
