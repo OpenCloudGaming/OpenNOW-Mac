@@ -2,6 +2,7 @@
 //  an Ably account.
 //
 
+import CryptoKit
 import Foundation
 import Testing
 @testable import OpenNOW
@@ -243,6 +244,111 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         }
         let joins = events.filter { if case .guestJoinRequested = $0 { return true } else { return false } }
         #expect(joins.count == 2, "a returning guest was refused its own participant")
+    }
+
+    // MARK: - Sealing secrets from the shared channel
+
+    /// Every guest on an invite subscribes to the same host channel, so a reconnect token or TURN
+    /// credential sent in the clear on `participantUpdated`/`networkConfiguration` is readable by all
+    /// of them, not just the participant it names. Once a guest has sent its ECDH public key in
+    /// `guestJoinRequested`, the host must seal both fields instead of publishing them in the clear.
+    @Test func participantUpdatedSealsTheReconnectTokenWhenTheGuestSentAKey() async throws {
+        let (session, channel, _) = makeSession()
+        let guestPrivateKey = P256.KeyAgreement.PrivateKey()
+
+        _ = try await collect(session) {
+            try channel.deliverFromGuest(
+                OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: self.participantID,
+                                         inviteToken: "token.signature", displayName: "Guest",
+                                         guestPublicKey: guestPrivateKey.publicKey.rawRepresentation.base64EncodedString()),
+                senderID: "sender-a"
+            )
+        }
+
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1,
+                                                     reconnectToken: "super-secret-reconnect-token")
+        await session.send(.participantUpdated(participant))
+
+        let published = try #require(channel.messages().last { $0.text.contains("participantUpdated") })
+        #expect(!published.text.contains("super-secret-reconnect-token"),
+                "the reconnect token was still readable in the clear on the shared channel")
+        let message = try OPNRemoteCoOpWireCodec.decode(published.text)
+        #expect(message.reconnectToken == nil)
+        let envelope = try #require(message.encryptedReconnectToken)
+        let recovered: String = try unseal(envelope, with: guestPrivateKey)
+        #expect(recovered == "super-secret-reconnect-token")
+    }
+
+    /// Same shared-channel exposure, for the TURN username and password `networkConfiguration`
+    /// carries. Sent once a participant is connected and input-enabled, from the same `send` call.
+    @Test func networkConfigurationSealsTheTurnCredentialsWhenTheGuestSentAKey() async throws {
+        let (session, channel, _) = makeSession()
+        let guestPrivateKey = P256.KeyAgreement.PrivateKey()
+
+        _ = try await collect(session) {
+            try channel.deliverFromGuest(
+                OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: self.participantID,
+                                         inviteToken: "token.signature", displayName: "Guest",
+                                         guestPublicKey: guestPrivateKey.publicKey.rawRepresentation.base64EncodedString()),
+                senderID: "sender-a"
+            )
+        }
+
+        let configuration = OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .automatic,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turn:example.com:3478"], username: "turn-user", credential: "turn-secret")]
+        )
+        session.updateNetworkConfiguration(configuration)
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        await session.send(.participantUpdated(participant))
+
+        let published = try #require(channel.messages().last { $0.text.contains("networkConfiguration") })
+        #expect(!published.text.contains("turn-secret"), "the TURN credential was still readable in the clear")
+        let message = try OPNRemoteCoOpWireCodec.decode(published.text)
+        #expect(message.networkConfiguration == nil)
+        let envelope = try #require(message.encryptedNetworkConfiguration)
+        let recovered: OPNRemoteCoOpNetworkConfiguration = try unseal(envelope, with: guestPrivateKey)
+        #expect(recovered.iceServers.first?.credential == "turn-secret")
+    }
+
+    /// A guest that never sent a public key - an older cached page - must still be able to reconnect:
+    /// falling back to plaintext for it is a deliberate compatibility choice, not an oversight.
+    @Test func participantUpdatedStaysPlaintextWithoutAGuestKey() async throws {
+        let (session, channel, _) = makeSession()
+        _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "sender-a") }
+
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1,
+                                                     reconnectToken: "plain-reconnect-token")
+        await session.send(.participantUpdated(participant))
+
+        let published = try #require(channel.messages().last { $0.text.contains("participantUpdated") })
+        let message = try OPNRemoteCoOpWireCodec.decode(published.text)
+        #expect(message.reconnectToken == "plain-reconnect-token")
+        #expect(message.encryptedReconnectToken == nil)
+    }
+
+    /// Mirrors the browser guest's `unsealEnvelope`: ECDH(P-256) with the host's one-time public key,
+    /// HKDF-SHA256 (empty salt, this info string), AES-256-GCM. Any drift here from
+    /// `OPNRemoteCoOpHostedSignalingSession.seal` would break every hosted guest silently.
+    private func unseal<T: Decodable>(_ envelope: OPNRemoteCoOpWireEncryptedEnvelope,
+                                       with guestPrivateKey: P256.KeyAgreement.PrivateKey) throws -> T {
+        let hostPublicKeyData = try #require(Data(base64Encoded: envelope.ephemeralPublicKey))
+        let hostPublicKey = try P256.KeyAgreement.PublicKey(rawRepresentation: hostPublicKeyData)
+        let sharedSecret = try guestPrivateKey.sharedSecretFromKeyAgreement(with: hostPublicKey)
+        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self, salt: Data(), sharedInfo: Data("OpenNOW.RemoteCoOp.Hosted".utf8), outputByteCount: 32
+        )
+        let ciphertextAndTag = try #require(Data(base64Encoded: envelope.ciphertext))
+        let nonceData = try #require(Data(base64Encoded: envelope.nonce))
+        let tagLength = 16
+        let ciphertext = ciphertextAndTag.prefix(ciphertextAndTag.count - tagLength)
+        let tag = ciphertextAndTag.suffix(tagLength)
+        let sealedBox = try AES.GCM.SealedBox(nonce: AES.GCM.Nonce(data: nonceData), ciphertext: ciphertext, tag: tag)
+        let plaintext = try AES.GCM.open(sealedBox, using: symmetricKey)
+        return try JSONDecoder().decode(T.self, from: plaintext)
     }
 
     // MARK: - Lifecycle

@@ -53,6 +53,12 @@ public enum OPNRemoteCoOpHostingEndpoint {
     public static func relayAugmented(_ configuration: OPNRemoteCoOpNetworkConfiguration,
                                       credentials: OPNRemoteCoOpRelayCredentials,
                                       logger: (@Sendable (String) -> Void)? = nil) async -> OPNRemoteCoOpNetworkConfiguration {
+        // Direct mode's whole promise is that nothing about this Mac's public address is shared -
+        // see `OPNRemoteCoOpTransportMode.directOnly`. A TURN allocation discloses that address to an
+        // external relay the moment it is requested, whether or not ICE ever picks the relay
+        // candidate over a direct one - so appending one here for a host who chose Direct mode broke
+        // the one guarantee that mode exists to make, any time a TURN key happened to be configured.
+        guard configuration.transportMode != .directOnly else { return configuration }
         guard credentials.canRelay else { return configuration }
         let relayServers = await credentials.iceServers()
         guard !relayServers.isEmpty else {

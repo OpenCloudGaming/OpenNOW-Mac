@@ -42,6 +42,13 @@ let approved = false;
 /// Reconnect token issued by the host after a successful join. Required to reclaim an existing
 /// participant on reconnect or on a different transport.
 let reconnectToken = null;
+/// This session's ECDH key pair. Generated once per page load - not per join - so a reconnect keeps
+/// presenting the same public key rather than making the host re-learn a new one. Sent to the host in
+/// `guestJoinRequested`; the host seals the reconnect token and TURN credentials to it in
+/// `participantUpdated`/`networkConfiguration`, because the hosted transport's host channel is a
+/// broadcast every other invite holder also subscribes to. See
+/// `OPNRemoteCoOpHostedSignalingSession.seal` for the host side of this.
+const guestKeyPairPromise = crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
 let sequenceNumber = 0;
 let lastSentState = "";
 let lastSentAt = 0;
@@ -181,14 +188,19 @@ function connectToRoom() {
   const callbacks = {
     onOpen: () => {
       updateDiagnostics({ websocket: "open" });
-      send({
-        kind: "guestJoinRequested",
-        roomID: inviteRoomID(),
-        participantID,
-        inviteToken,
-        reconnectToken,
-        displayName: displayName()
-      });
+      guestPublicKeyBase64()
+        .catch(() => null)
+        .then(guestPublicKey => {
+          send({
+            kind: "guestJoinRequested",
+            roomID: inviteRoomID(),
+            participantID,
+            inviteToken,
+            reconnectToken,
+            displayName: displayName(),
+            guestPublicKey
+          });
+        });
       elements.joinCard.classList.add("hidden");
       elements.sessionCard.classList.remove("hidden");
       setState("Waiting", "Host", false);
@@ -311,7 +323,16 @@ async function handleMessage(message) {
     if (!isForThisParticipant(message)) return;
     if (message.roomID && invite) invite.inviteID = message.roomID;
     updateDiagnostics({ signaling: "network configuration received" });
-    configurePeerConnection(message.networkConfiguration);
+    let configuration = message.networkConfiguration;
+    if (message.encryptedNetworkConfiguration) {
+      try {
+        configuration = await unsealEnvelope(message.encryptedNetworkConfiguration);
+      } catch (error) {
+        updateDiagnostics({ signaling: `network configuration could not be unsealed: ${error.message}` });
+        return;
+      }
+    }
+    configurePeerConnection(configuration);
     return;
   }
   if (message.kind === "peerSignal") {
@@ -322,7 +343,13 @@ async function handleMessage(message) {
   }
   if (message.kind === "participantUpdated" && sameParticipantID(message.participant?.id, participantID)) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
-    if (message.reconnectToken) {
+    if (message.encryptedReconnectToken) {
+      try {
+        reconnectToken = await unsealEnvelope(message.encryptedReconnectToken);
+      } catch (error) {
+        updateDiagnostics({ signaling: `reconnect token could not be unsealed: ${error.message}` });
+      }
+    } else if (message.reconnectToken) {
       reconnectToken = message.reconnectToken;
     }
     if (approved) {
@@ -532,6 +559,55 @@ function verticalAxis(gamepad, index) {
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, Number.isFinite(value) ? value : 0));
+}
+
+async function guestPublicKeyBase64() {
+  const { publicKey } = await guestKeyPairPromise;
+  return base64FromBuffer(await crypto.subtle.exportKey("raw", publicKey));
+}
+
+/// Unseals a `{ephemeralPublicKey, nonce, ciphertext}` envelope the host addressed to this guest's
+/// public key alone: ECDH(this guest's private key, the host's one-time public key) through
+/// HKDF-SHA256, then AES-256-GCM. Must match `OPNRemoteCoOpHostedSignalingSession.seal` exactly - same
+/// curve, same empty HKDF salt, same info string.
+async function unsealEnvelope(envelope) {
+  const { privateKey } = await guestKeyPairPromise;
+  const hostPublicKey = await crypto.subtle.importKey(
+    "raw",
+    bufferFromBase64(envelope.ephemeralPublicKey),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    []
+  );
+  const sharedBits = await crypto.subtle.deriveBits({ name: "ECDH", public: hostPublicKey }, privateKey, 256);
+  const hkdfKey = await crypto.subtle.importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: new TextEncoder().encode("OpenNOW.RemoteCoOp.Hosted") },
+    hkdfKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: bufferFromBase64(envelope.nonce) },
+    aesKey,
+    bufferFromBase64(envelope.ciphertext)
+  );
+  return JSON.parse(new TextDecoder().decode(plaintext));
+}
+
+function base64FromBuffer(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function bufferFromBase64(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 function send(message) {

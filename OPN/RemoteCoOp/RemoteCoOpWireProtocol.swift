@@ -65,6 +65,25 @@ public struct OPNRemoteCoOpWirePeerSignal: Codable, Equatable, Sendable {
     }
 }
 
+/// A hosted-transport payload sealed to one guest's ECDH public key, so the shared broadcast
+/// channel every invite holder subscribes to never carries a reconnect token or TURN credential any
+/// of the *other* holders could read. Must match `OPNRemoteCoOpHostedSignalingSession.seal` and the
+/// browser guest's `unsealEnvelope` exactly: ECDH P-256 with a fresh host key per message, HKDF-SHA256
+/// (empty salt, info "OpenNOW.RemoteCoOp.Hosted"), AES-256-GCM.
+public struct OPNRemoteCoOpWireEncryptedEnvelope: Codable, Equatable, Sendable {
+    /// This message's one-time host key, X9.63/SEC1 uncompressed point, base64.
+    public var ephemeralPublicKey: String
+    public var nonce: String
+    /// AES-GCM ciphertext with the authentication tag appended.
+    public var ciphertext: String
+
+    public init(ephemeralPublicKey: String, nonce: String, ciphertext: String) {
+        self.ephemeralPublicKey = ephemeralPublicKey
+        self.nonce = nonce
+        self.ciphertext = ciphertext
+    }
+}
+
 public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var protocolVersion: Int
     public var kind: OPNRemoteCoOpWireMessageKind
@@ -91,6 +110,15 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     /// per-guest override to read, so without this it cannot tell what its ceiling actually is.
     public var sessionQualityPreset: OPNRemoteCoOpQualityPreset?
     public var sentAtEpochMilliseconds: Int64
+    /// Sent once by a guest in `guestJoinRequested`: this session's ECDH public key. Lets the hosted
+    /// transport seal `participantUpdated`'s reconnect token and `networkConfiguration`'s TURN
+    /// credentials so only this guest can read them off the shared channel. The socket transports
+    /// ignore it - they are already point-to-point.
+    public var guestPublicKey: String?
+    /// Replaces `reconnectToken` on the hosted transport once the guest's public key is known.
+    public var encryptedReconnectToken: OPNRemoteCoOpWireEncryptedEnvelope?
+    /// Replaces `networkConfiguration` on the hosted transport once the guest's public key is known.
+    public var encryptedNetworkConfiguration: OPNRemoteCoOpWireEncryptedEnvelope?
 
     public init(kind: OPNRemoteCoOpWireMessageKind,
                 roomID: UUID? = nil,
@@ -108,6 +136,9 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 reconnectToken: String? = nil,
                 qualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 sessionQualityPreset: OPNRemoteCoOpQualityPreset? = nil,
+                guestPublicKey: String? = nil,
+                encryptedReconnectToken: OPNRemoteCoOpWireEncryptedEnvelope? = nil,
+                encryptedNetworkConfiguration: OPNRemoteCoOpWireEncryptedEnvelope? = nil,
                 sentAt: Date = Date()) {
         self.protocolVersion = 1
         self.kind = kind
@@ -126,6 +157,9 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.reconnectToken = reconnectToken?.nilIfEmpty
         self.qualityPreset = qualityPreset
         self.sessionQualityPreset = sessionQualityPreset
+        self.guestPublicKey = guestPublicKey
+        self.encryptedReconnectToken = encryptedReconnectToken
+        self.encryptedNetworkConfiguration = encryptedNetworkConfiguration
         self.sentAtEpochMilliseconds = Int64((sentAt.timeIntervalSince1970 * 1_000).rounded())
     }
 
@@ -148,6 +182,9 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         reconnectToken = try container.decodeIfPresent(String.self, forKey: .reconnectToken)?.nilIfEmpty
         qualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .qualityPreset)
         sessionQualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .sessionQualityPreset)
+        guestPublicKey = try container.decodeIfPresent(String.self, forKey: .guestPublicKey)
+        encryptedReconnectToken = try container.decodeIfPresent(OPNRemoteCoOpWireEncryptedEnvelope.self, forKey: .encryptedReconnectToken)
+        encryptedNetworkConfiguration = try container.decodeIfPresent(OPNRemoteCoOpWireEncryptedEnvelope.self, forKey: .encryptedNetworkConfiguration)
         sentAtEpochMilliseconds = try container.decodeIfPresent(Int64.self, forKey: .sentAtEpochMilliseconds) ?? Int64((Date().timeIntervalSince1970 * 1_000).rounded())
     }
 

@@ -407,6 +407,22 @@ struct RemoteCoOpTURNTests {
         #expect(augmented.iceServers.last?.credential == "c")
     }
 
+    /// Direct mode's whole promise is that nothing about this Mac's public address is shared. A relay
+    /// is exactly that: appending one here would have contacted Cloudflare and disclosed it the
+    /// moment a TURN key happened to be configured, regardless of whether ICE ever used the candidate.
+    @Test func relayAugmentationLeavesDirectOnlyAlone() async throws {
+        SessionManagerURLProtocol.install(host: Self.mintHost) { _ in
+            SessionManagerURLProtocol.response(json: [
+                "iceServers": ["urls": ["turns:turn.cloudflare.com:443?transport=tcp"], "username": "u", "credential": "c"],
+            ])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: Self.mintHost) }
+
+        let base = OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
+        let augmented = await OPNRemoteCoOpHostingEndpoint.relayAugmented(base, credentials: OPNRemoteCoOpRelayCredentials(turnKey: turnKey, account: account()))
+        #expect(augmented.iceServers.map(\.urls) == base.iceServers.map(\.urls))
+    }
+
     @Test func relayAugmentationLeavesTheConfigurationAloneWithoutAKey() async throws {
         let base = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
         let augmented = await OPNRemoteCoOpHostingEndpoint.relayAugmented(base, credentials: OPNRemoteCoOpRelayCredentials(turnKey: OPNRemoteCoOpTURNKey(keyID: "", keyToken: ""), account: account()))

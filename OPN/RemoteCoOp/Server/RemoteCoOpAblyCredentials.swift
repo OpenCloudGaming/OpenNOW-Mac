@@ -70,7 +70,10 @@ public enum OPNRemoteCoOpAblyJWT {
     /// Known residual: all guests share the guest channel's readership of the host channel, so a
     /// targeted host message is still *visible* to the other invite holders. Fixing that needs a
     /// channel per guest, which needs a token per guest - not available when the invite is minted,
-    /// before anyone has joined. Nothing secret is targeted this way.
+    /// before anyone has joined. The two fields this would otherwise expose - the reconnect token and
+    /// the TURN credentials - are sealed to the guest's own ECDH key instead, in
+    /// `OPNRemoteCoOpHostedSignalingSession.seal`; visibility of the channel no longer means
+    /// visibility of anything secret carried on it.
     public static func mintGuestToken(key: OPNRemoteCoOpAblyKey,
                                       channel: String,
                                       issuedAt: Date = Date(),

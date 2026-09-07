@@ -297,6 +297,28 @@ import Testing
         #expect(greeting.token != invite.token)
     }
 
+    /// "Hide invite details" must redact the game title and application ID from the native greeting
+    /// even when there is no hosted signaling to strip - the greeting reaches any socket that connects
+    /// before it has proven anything. This used to skip the whole redaction step whenever hosted
+    /// signaling was not configured (the common case, since it needs an Ably key), on the mistaken
+    /// reasoning that nothing else in the greeting ever needed stripping.
+    @Test func theNativeGreetingRedactsDetailsWithoutHostedSignaling() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner()
+        let session = OPNRemoteCoOpHostSession(
+            preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, hideGuestInviteDetails: true),
+            inviteSigner: signer
+        )
+        let invite = try await session.startInvite(applicationID: "com.example.game", title: "Secret Game", lifetimeSeconds: 600)
+        #expect(invite.title == "Secret Game", "the full invite itself should still know the title")
+
+        let greeting = try #require(await session.greetingInvite())
+        #expect(greeting.title.isEmpty, "the greeting leaked the game title to an unauthenticated socket")
+        #expect(greeting.applicationID.isEmpty, "the greeting leaked the application ID to an unauthenticated socket")
+        let payload = try signer.verify(greeting.token, now: Date())
+        #expect(payload.title.isEmpty)
+        #expect(payload.applicationID.isEmpty)
+    }
+
     /// No key configured is the common case and must stay embedded — the transport that needs no
     /// account and no third party.
     @Test func noKeyLeavesTheInviteEmbedded() async throws {

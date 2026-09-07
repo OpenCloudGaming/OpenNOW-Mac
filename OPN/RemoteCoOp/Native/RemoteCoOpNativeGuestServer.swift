@@ -426,15 +426,26 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         // `participantUpdated`, their SDP and the relay credentials, and the real guest could not
         // reconnect while it lived.
         if case .guestRejected(let participantID, _) = command {
-            lock.withLock {
+            let releasedConnections: [Connection] = lock.withLock {
                 participantsGivenNetworkConfiguration.remove(participantID)
                 if let handle = participantOwnership.owner(of: participantID), handle.transport == .native {
                     participantOwnership.release(handle)
                 }
+                var released: [Connection] = []
                 for connection in connections.values where connection.participantID == participantID {
                     connection.participantID = nil
+                    // A rejected claim proved nothing - the gate only checks the token is non-empty,
+                    // and `registerGuest` is what actually verifies it - so this socket is exactly as
+                    // unauthenticated as it was before it tried. Without this, one join attempt with a
+                    // garbage token was a permanent escape from the slot-exhaustion cap: a peer could
+                    // send one bad join per socket to evict all of them from the cap for free, then
+                    // repeat until every one of `maximumConnections` was held open and rejected.
+                    unauthenticatedConnections.insert(connection.id)
+                    released.append(connection)
                 }
+                return released
             }
+            for connection in releasedConnections { scheduleJoinDeadline(for: connection) }
         }
     }
 

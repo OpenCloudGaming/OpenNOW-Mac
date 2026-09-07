@@ -10,6 +10,7 @@
 //  subscribe, know when someone leaves, detach.
 //
 
+import CryptoKit
 import Foundation
 
 /// The slice of a hosted channel this transport uses.
@@ -53,7 +54,14 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     /// Sent once per verified participant, like the embedded server. Re-sending on every later update
     /// would put the relay credentials back on the wire for no reason.
     private var participantsGivenNetworkConfiguration: Set<UUID> = []
+    /// Captured from `guestJoinRequested`. Every other invite holder shares read access to the host
+    /// channel this transport publishes on, so a reconnect token or TURN credential sent in the clear
+    /// is visible to all of them, not just the guest it names - `send` and
+    /// `sendNetworkConfigurationIfNeeded` seal to this key instead of trusting that. A guest that never
+    /// sent one (a page cached from before this existed) still gets the plaintext.
+    private var participantPublicKeys: [UUID: P256.KeyAgreement.PublicKey] = [:]
     private var isClosed = false
+    private static let sealInfo = Data("OpenNOW.RemoteCoOp.Hosted".utf8)
 
     public init(channel: any OPNRemoteCoOpSignalingChannel,
                 participantOwnership: OPNRemoteCoOpParticipantOwnership,
@@ -115,15 +123,62 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         if case .guestRejected(let participantID, _) = command {
             lock.withLock {
                 participantsGivenNetworkConfiguration.remove(participantID)
+                participantPublicKeys.removeValue(forKey: participantID)
                 participantsBySender = participantsBySender.filter { $0.value != participantID }
             }
             if let handle = participantOwnership.owner(of: participantID), handle.transport == .hosted {
                 participantOwnership.release(handle)
             }
         }
-        guard let message = OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: nil),
-              let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
+        guard var message = OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: nil) else { return }
+        if case .participantUpdated(let participant) = command {
+            sealReconnectToken(on: &message, participantID: participant.id)
+        }
+        guard let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
+    }
+
+    /// Moves `participantUpdated`'s reconnect token into a sealed envelope once the guest's public key
+    /// is known - that token is what lets anyone reclaim this participant, so leaving it in the clear
+    /// on the shared channel would hand every other invite holder a way to steal the identity during
+    /// this guest's disconnect grace period.
+    private func sealReconnectToken(on message: inout OPNRemoteCoOpWireMessage, participantID: UUID) {
+        guard let token = message.reconnectToken,
+              let key = lock.withLock({ participantPublicKeys[participantID] }),
+              let envelope = seal(token, for: key) else { return }
+        message.reconnectToken = nil
+        // `message(for:)` copies the token into the embedded `participant` too - the same value,
+        // reachable a second way - so both have to be cleared or the seal is decorative.
+        message.participant?.reconnectToken = nil
+        message.encryptedReconnectToken = envelope
+    }
+
+    /// Not locking - called only from within `lock`'s critical section, in `ingest`.
+    private func rememberGuestPublicKey(from message: OPNRemoteCoOpWireMessage, participantID: UUID) {
+        guard let encoded = message.guestPublicKey,
+              let data = Data(base64Encoded: encoded),
+              let key = try? P256.KeyAgreement.PublicKey(rawRepresentation: data) else { return }
+        participantPublicKeys[participantID] = key
+    }
+
+    /// ECDH (P-256, a fresh host key every call) + HKDF-SHA256 + AES-256-GCM, sealed to one guest's
+    /// public key. Must match the browser guest's `unsealEnvelope` exactly.
+    private func seal<T: Encodable>(_ payload: T, for guestPublicKey: P256.KeyAgreement.PublicKey) -> OPNRemoteCoOpWireEncryptedEnvelope? {
+        guard let plaintext = try? JSONEncoder().encode(payload) else { return nil }
+        let ephemeralPrivateKey = P256.KeyAgreement.PrivateKey()
+        guard let sharedSecret = try? ephemeralPrivateKey.sharedSecretFromKeyAgreement(with: guestPublicKey) else { return nil }
+        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(),
+            sharedInfo: Self.sealInfo,
+            outputByteCount: 32
+        )
+        guard let sealed = try? AES.GCM.seal(plaintext, using: symmetricKey) else { return nil }
+        return OPNRemoteCoOpWireEncryptedEnvelope(
+            ephemeralPublicKey: ephemeralPrivateKey.publicKey.rawRepresentation.base64EncodedString(),
+            nonce: Data(sealed.nonce).base64EncodedString(),
+            ciphertext: (sealed.ciphertext + sealed.tag).base64EncodedString()
+        )
     }
 
     /// The hosted transport used to send this not at all - `message(for:)` has no case that produces
@@ -136,13 +191,21 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
             participantsGivenNetworkConfiguration.insert(participant.id)
             return networkConfiguration
         }
-        guard let configuration,
-              let text = try? OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
-                  kind: .networkConfiguration,
-                  roomID: nil,
-                  participantID: participant.id,
-                  networkConfiguration: configuration
-              )) else { return }
+        guard let configuration else { return }
+        var message = OPNRemoteCoOpWireMessage(
+            kind: .networkConfiguration,
+            roomID: nil,
+            participantID: participant.id,
+            networkConfiguration: configuration
+        )
+        // The TURN username and password live in here - sealed the same way the reconnect token is,
+        // and for the same reason: every invite holder shares read access to this channel.
+        if let key = lock.withLock({ participantPublicKeys[participant.id] }),
+           let envelope = seal(configuration, for: key) {
+            message.networkConfiguration = nil
+            message.encryptedNetworkConfiguration = envelope
+        }
+        guard let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }
 
@@ -154,6 +217,7 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
             eventContinuations.removeAll()
             let senders = Array(participantsBySender.keys)
             participantsBySender.removeAll()
+            participantPublicKeys.removeAll()
             return (existing, senders)
         }
         // Finish outside the lock: termination handlers may re-enter the lock.
@@ -187,6 +251,11 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
             if case .claimThenDeliver(let participantID) = decision {
                 participantsBySender[senderID] = participantID
                 participantOwnership.claim(participantID: participantID, for: handle)
+                rememberGuestPublicKey(from: message, participantID: participantID)
+            } else if decision == .deliver, message.kind == .guestJoinRequested, let participantID = message.participantID {
+                // A retried join: the guest may have regenerated its key pair before the host's reply
+                // arrived, so keep the newest one rather than sealing to a key nobody holds any more.
+                rememberGuestPublicKey(from: message, participantID: participantID)
             }
             return decision
         }
@@ -219,6 +288,7 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
             // Cleared with the sender, so a reconnect has to re-verify before it is handed the relay
             // credentials again - the same rule the embedded server applies on socket close.
             participantsGivenNetworkConfiguration.remove(participantID)
+            participantPublicKeys.removeValue(forKey: participantID)
             return participantID
         }
         participantOwnership.release(.init(transport: .hosted, connectionID: senderID))

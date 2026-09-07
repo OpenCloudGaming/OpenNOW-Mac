@@ -78,6 +78,15 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     /// Reconnect token issued by the host after a successful join. Required to reclaim this guest's
     /// participant identity across a reconnect or a move to another transport.
     private var reconnectToken: String?
+    /// Which host issued `reconnectToken` - `host.id` for a LAN host, the signaling URL's host for a
+    /// link - so a join elsewhere never resends it. A stale token from a previous host is a live
+    /// credential for reclaiming this guest's identity there; handing it to whoever this guest joins
+    /// next is a hand-off `leave()` cannot make safe on its own; it does not know the next
+    /// destination. Kept across a same-host reconnect, which is the only case the token is good for.
+    private var reconnectTokenOwner: String?
+    /// The identifier `connect(...)` was last called with, so a reconnect token learned afterwards can
+    /// be tagged with the host that actually issued it.
+    private var currentHostIdentifier: String?
 
     convenience init() {
         self.init(participantID: Self.loadOrCreateParticipantID(), displayName: Host.current().localizedName ?? "OpenNOW Guest")
@@ -161,7 +170,8 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
             name: host.name,
             inviteToken: nil,
             expectedFingerprint: certificateFingerprints[host.id],
-            fingerprintKey: host.id
+            fingerprintKey: host.id,
+            hostIdentifier: host.id
         )
     }
 
@@ -174,7 +184,11 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
             // token from the link is presented as soon as the socket opens.
             inviteToken: link.token,
             expectedFingerprint: nil,
-            fingerprintKey: nil
+            fingerprintKey: nil,
+            // The URL's host, not the invite: a machine keeps serving the same signaling URL across
+            // every invite it ever mints, so this is a stable stand-in for "the host", which is what
+            // reconnectTokenOwner needs it to mean.
+            hostIdentifier: link.signalingURL.host ?? link.signalingURL.absoluteString
         )
     }
 
@@ -183,9 +197,15 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         name: String,
         inviteToken: String?,
         expectedFingerprint: String?,
-        fingerprintKey: String?
+        fingerprintKey: String?,
+        hostIdentifier: String
     ) {
         guard phase == .browsing || phase.isFailure else { return }
+        if reconnectTokenOwner != hostIdentifier {
+            reconnectToken = nil
+            reconnectTokenOwner = nil
+        }
+        currentHostIdentifier = hostIdentifier
         leave()
         phase = .connecting
         statusText = "Connecting to \(name)…"
@@ -341,6 +361,7 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         guard let participant = message.participant, participant.id == participantID else { return }
         if let token = message.reconnectToken?.nilIfEmpty {
             reconnectToken = token
+            reconnectTokenOwner = currentHostIdentifier
         }
         if let sessionQualityPreset = message.sessionQualityPreset {
             self.sessionQualityPreset = sessionQualityPreset

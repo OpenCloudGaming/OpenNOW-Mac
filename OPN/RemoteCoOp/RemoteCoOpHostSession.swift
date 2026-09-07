@@ -161,12 +161,17 @@ public actor OPNRemoteCoOpHostSession {
                                              preferences: OPNRemoteCoOpPreferences,
                                              signaling: OPNRemoteCoOpInviteSignaling?,
                                              signer: OPNRemoteCoOpInviteTokenSigner) throws -> OPNRemoteCoOpInvite {
-        // Nothing to strip when signaling is not hosted: the tokens would be identical.
-        guard signaling != nil else { return invite }
         // When the host has chosen to hide invite details, the native greeting must not reveal the
         // game title or application ID to an unauthenticated socket. The redaction is applied to
         // both the signed payload and the outer invite fields so nothing leaks on either layer.
         let redactDetails = preferences.hideGuestInviteDetails
+        // Nothing to strip when signaling is not hosted and there is no title/appID to hide either:
+        // the tokens would be identical. This used to skip the whole rebuild whenever signaling was
+        // nil, on the reasoning that only the hosted-signaling fields ever needed stripping - which
+        // meant a host with no hosted signaling configured got no redaction at all: the greeting
+        // handed the game title and application ID to any socket that reached the listener, "Hide
+        // invite details" or not.
+        guard signaling != nil || redactDetails else { return invite }
         let redacted = OPNRemoteCoOpInviteTokenPayload(
             inviteID: payload.inviteID,
             code: payload.code,

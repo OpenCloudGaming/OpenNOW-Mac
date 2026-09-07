@@ -366,6 +366,14 @@ public actor OPNRemoteCoOpEmbeddedServer {
 
     /// Drops a participant binding after the host refused the join, so the connection that made the
     /// unverified claim stops owning that participant's routing.
+    ///
+    /// A rejected claim proved nothing - the gate only checks the token is non-empty, and
+    /// `registerGuest` is what actually verifies it - so this socket is exactly as unauthenticated as
+    /// it was before it tried. Without putting it back in `unauthenticatedConnections`, one join
+    /// attempt with a garbage token was a permanent, one-time escape from the slot-exhaustion cap:
+    /// a peer could open `maximumUnauthenticatedConnections` sockets, send one bad join on each to
+    /// evict them all from the cap for free, then repeat until every one of `maximumConnections` was
+    /// held open and rejected - with no route back to counting against either limit.
     private func releaseClaim(on participantID: UUID) {
         participantsGivenNetworkConfiguration.remove(participantID)
         guard let handle = participantOwnership.owner(of: participantID),
@@ -374,6 +382,8 @@ public actor OPNRemoteCoOpEmbeddedServer {
               connection.participantID == participantID else { return }
         participantOwnership.release(handle)
         connection.participantID = nil
+        unauthenticatedConnections.insert(connection.id)
+        scheduleJoinDeadline(for: connection.id)
     }
 
     /// Sent once per verified participant. Re-sending on every later update would put the relay
