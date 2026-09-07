@@ -82,9 +82,6 @@ let package = Package(
             name: "OpenNOWTests",
             dependencies: ["OpenNOW"],
             path: "Tests",
-            // Read through `#filePath`, not `Bundle.module`, so they must not be bundled — but they
-            // do have to be declared, or every build warns about unhandled files.
-            exclude: ["GFN/NVST/Fixtures"],
             swiftSettings: [
                 .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])
             ]
