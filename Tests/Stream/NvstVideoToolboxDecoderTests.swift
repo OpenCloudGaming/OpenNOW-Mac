@@ -161,7 +161,7 @@ struct NvstVideoToolboxDecoderTests {
         #expect(firstSets.isComplete)
 
         let collector = Collector()
-        let decoder = try NvstVideoToolboxDecoder(codec: .h264)
+        let decoder = NvstVideoToolboxDecoder(codec: .h264)
         decoder.onPixelBuffer = { pixelBuffer, _, keyframe in
             collector.append(pixelBuffer, keyframe: keyframe)
         }
@@ -188,7 +188,7 @@ struct NvstVideoToolboxDecoderTests {
         #expect(sets.ordered.count >= 3)
 
         let collector = Collector()
-        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        let decoder = NvstVideoToolboxDecoder(codec: .hevc)
         decoder.onPixelBuffer = { pixelBuffer, _, keyframe in
             collector.append(pixelBuffer, keyframe: keyframe)
         }
@@ -200,7 +200,7 @@ struct NvstVideoToolboxDecoderTests {
     }
 
     @Test func decodingBeforeTheFirstKeyframeFailsWithoutCrashing() throws {
-        let decoder = try NvstVideoToolboxDecoder(codec: .h264)
+        let decoder = NvstVideoToolboxDecoder(codec: .h264)
         // A delta slice with no parameter sets: the seat has not answered the PLI yet.
         let delta = accessUnit(Data([0x00, 0x00, 0x00, 0x01, 0x41, 0x9a, 0x20]), index: 0, codec: .h264)
         #expect(throws: NvstVideoToolboxDecoder.DecoderError.missingParameterSets) {
@@ -209,12 +209,47 @@ struct NvstVideoToolboxDecoderTests {
         #expect(decoder.decodedFrameCount == 0)
     }
 
-    @Test func av1HasNoDecodePathYet() {
-        // Upstream self-limits to H.264 receive; AV1 needs an av1C format description we do not
-        // synthesize yet, so the decoder refuses rather than silently rendering nothing.
-        #expect(throws: NvstVideoToolboxDecoder.DecoderError.unsupportedCodec("AV1")) {
-            _ = try NvstVideoToolboxDecoder(codec: .av1)
+    @Test func av1SequenceHeaderBuildsTheAv1CFormatDescription() throws {
+        guard VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1) else { return }
+        let prepared = NvstElementaryStream.prepare(NvstAv1ObuTests.keyframeAccessUnit, codec: .av1)
+        try #require(prepared.parameterSets.isComplete(for: .av1))
+
+        let decoder = NvstVideoToolboxDecoder(codec: .av1)
+        let description = try decoder.makeFormatDescription(prepared.parameterSets)
+        #expect(CMFormatDescriptionGetMediaSubType(description) == kCMVideoCodecType_AV1)
+        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        #expect(dimensions.width == 1920)
+        #expect(dimensions.height == 1080)
+        #expect(decoder.bitstreamFormat?.bitDepth == 10)
+        #expect(decoder.bitstreamFormat?.chroma == .yuv420)
+    }
+
+    @Test func av1DeltaFrameBeforeTheFirstKeyframeIsRefused() {
+        let decoder = NvstVideoToolboxDecoder(codec: .av1)
+        let delta = NvstAccessUnit(frameIndex: 1, firstStreamPacketIndex: 1, rtpTimestamp: 3000,
+                                   isKeyframe: false, bytes: NvstAv1ObuTests.interFrameAccessUnit)
+        #expect(throws: NvstVideoToolboxDecoder.DecoderError.missingParameterSets) {
+            try decoder.decode(delta)
         }
+    }
+
+    @Test func av1UnframedAccessUnitIsNamedAndDropped() {
+        let decoder = NvstVideoToolboxDecoder(codec: .av1)
+        let collector = LogCollector()
+        decoder.onDecodeFailure = { _, message in collector.append(message) }
+        // First byte 0x00 has the size-field bit clear: not a low-overhead OBU stream.
+        let unit = NvstAccessUnit(frameIndex: 7, firstStreamPacketIndex: 7, rtpTimestamp: 21000,
+                                  isKeyframe: true, bytes: Data([0x00, 0x01, 0x02]))
+        try? decoder.decode(unit)
+        #expect(collector.snapshot.contains { $0.contains("not a size-fielded OBU stream") })
+        #expect(decoder.decodedFrameCount == 0)
+    }
+
+    private final class LogCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var messages: [String] = []
+        func append(_ message: String) { lock.lock(); messages.append(message); lock.unlock() }
+        var snapshot: [String] { lock.lock(); defer { lock.unlock() }; return messages }
     }
 }
 
@@ -317,7 +352,7 @@ extension NvstVideoToolboxDecoderTests {
             var snapshot: [OSType] { lock.lock(); defer { lock.unlock() }; return formats }
         }
         let collector = FormatCollector()
-        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        let decoder = NvstVideoToolboxDecoder(codec: .hevc)
         decoder.onPixelBuffer = { pixelBuffer, _, _ in collector.append(pixelBuffer) }
         for (index, bytes) in units.enumerated() {
             try decoder.decode(accessUnit(bytes, index: UInt32(index), codec: .hevc))
@@ -415,7 +450,7 @@ extension NvstVideoToolboxDecoderTests {
         let sets = NvstElementaryStream.parameterSets(in: units[0], codec: .hevc)
         try #require(sets.isComplete)
 
-        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        let decoder = NvstVideoToolboxDecoder(codec: .hevc)
         decoder.prewarm(parameterSets: sets)
         #expect(decoder.sessionCreationCount == 1)
         // A P-frame first: refused the same way an un-prewarmed decoder refuses it.
@@ -452,7 +487,7 @@ extension NvstVideoToolboxDecoderTests {
             var count: Int { lock.lock(); defer { lock.unlock() }; return times.count }
         }
         let arrivals = Arrivals()
-        let decoder = try NvstVideoToolboxDecoder(codec: .hevc)
+        let decoder = NvstVideoToolboxDecoder(codec: .hevc)
         decoder.onPixelBuffer = { _, _, _ in arrivals.note() }
 
         try decoder.decode(accessUnit(units[0], index: 0, codec: .hevc))

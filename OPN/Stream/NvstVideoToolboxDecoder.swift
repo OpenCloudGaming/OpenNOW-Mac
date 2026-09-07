@@ -11,7 +11,6 @@ import VideoToolbox
 /// only keyframes carry them inline.
 public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     public enum DecoderError: LocalizedError, Equatable, Sendable {
-        case unsupportedCodec(String)
         case missingParameterSets
         case formatDescriptionFailed(OSStatus)
         case sessionCreationFailed(OSStatus)
@@ -21,7 +20,6 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
 
         public var errorDescription: String? {
             switch self {
-            case .unsupportedCodec(let codec): "NVST video codec \(codec) has no VideoToolbox decode path yet."
             case .missingParameterSets: "NVST video stream has not delivered a keyframe with parameter sets yet."
             case .formatDescriptionFailed(let status): "NVST decoder could not build a format description (OSStatus \(status))."
             case .sessionCreationFailed(let status): "NVST decoder could not create a decompression session (OSStatus \(status))."
@@ -59,18 +57,21 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     /// Kept for the first-keyframe gate's test; the transport no longer calls it (see
     /// `NvstBifrostFreeTransport.startVideo` for the measured reason).
     public func prewarm(parameterSets sets: NvstElementaryStream.ParameterSets) {
-        guard sets.isComplete else { return }
+        guard sets.isComplete(for: codec) else { return }
         _ = try? prepareSession(for: sets)
     }
 
     /// Whether a keyframe has been submitted yet; see the gate at the top of `decode`.
     private var hasSeenKeyframe = false
+    /// One-shot so the first AV1 keyframe's wire bytes are logged exactly once per session.
+    private var loggedFirstAv1Keyframe = false
 
     public var onDecodeFailure: (@Sendable (UInt32, String) -> Void)?
 
-    /// `bytes=N nals=[type:length, …]`, so a rejected access unit can be compared with an accepted
-    /// one without a packet capture.
+    /// `bytes=N nals=[type:length, …]` (AV1: `obus=[…]`), so a rejected access unit can be
+    /// compared with an accepted one without a packet capture.
     static func accessUnitShape(_ bytes: Data, codec: NVSTVideoCodec) -> String {
+        guard codec != .av1 else { return NvstAv1Obu.accessUnitShape(bytes) }
         let buffer = [UInt8](bytes)
         let units = NvstAnnexB.nalUnits(bytes)
         let described = units.prefix(12).map { unit -> String in
@@ -95,10 +96,7 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     /// was for, even across a decode failure that `onPixelBuffer` would otherwise skip silently.
     public var onDecodeCompleted: (@Sendable (Bool) -> Void)?
 
-    public init(codec: NVSTVideoCodec) throws {
-        guard codec == .h264 || codec == .hevc else {
-            throw DecoderError.unsupportedCodec(codec.rawValue)
-        }
+    public init(codec: NVSTVideoCodec) {
         self.codec = codec
     }
 
@@ -165,11 +163,13 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         // `NvstElementaryStream.prepare` for what this replaced.
         let prepared = NvstElementaryStream.prepare(unit.bytes, codec: codec)
 
+        let sample = prepared.sample
+        noteAv1FrameShape(unit, sample: sample)
+        guard !sample.isEmpty else { return }
+
         let (session, description) = try prepareSession(for: prepared.parameterSets)
 
         let buildStart = DispatchTime.now().uptimeNanoseconds
-        let sample = prepared.sample
-        guard !sample.isEmpty else { return }
         let sampleBuffer = try makeSampleBuffer(
             sample: sample,
             formatDescription: description,
@@ -223,12 +223,34 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         }
     }
 
+    /// AV1 frame accounting ahead of session setup: the first keyframe's wire bytes, logged once
+    /// per session — the capture that settles whether the seat's access unit is a bare OBU stream
+    /// or carries AV1-Annex-B temporal-unit prefixes — and a name for frames that are not
+    /// size-fielded OBU streams at all, so a misframed stream invalidates a frame and asks the
+    /// seat for a fresh keyframe instead of silently never decoding.
+    private func noteAv1FrameShape(_ unit: NvstAccessUnit, sample: Data) {
+        guard codec == .av1 else { return }
+        if unit.isKeyframe {
+            stateLock.lock()
+            let first = !loggedFirstAv1Keyframe
+            loggedFirstAv1Keyframe = true
+            stateLock.unlock()
+            if first {
+                let head = unit.bytes.prefix(96).map { String(format: "%02x", $0) }.joined()
+                onDecodeFailure?(0, "NVST AV1 first keyframe, \(unit.bytes.count) bytes, head: \(head)")
+            }
+        }
+        if sample.isEmpty, !unit.bytes.isEmpty {
+            onDecodeFailure?(unit.frameIndex, "NVST AV1 access unit is not a size-fielded OBU stream; frame dropped \(Self.accessUnitShape(unit.bytes, codec: codec))")
+        }
+    }
+
     /// Installs the parameter sets this access unit carries and returns the session and format
     /// description to decode it with, rebuilding either when the stream geometry changed.
     private func prepareSession(for incoming: NvstElementaryStream.ParameterSets) throws -> (VTDecompressionSession, CMFormatDescription) {
         stateLock.lock()
         var expiring: VTDecompressionSession?
-        if incoming.isComplete, incoming != parameterSets {
+        if incoming.isComplete(for: codec), incoming != parameterSets {
             parameterSets = incoming
             // New parameter sets mean new stream geometry: rebuild before decoding this frame.
             expiring = session
@@ -240,7 +262,7 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         stateLock.unlock()
         Self.tearDown(expiring)
 
-        guard sets.isComplete else { throw DecoderError.missingParameterSets }
+        guard sets.isComplete(for: codec) else { throw DecoderError.missingParameterSets }
         if description == nil {
             description = try makeFormatDescription(sets)
         }

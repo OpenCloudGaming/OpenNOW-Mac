@@ -12,7 +12,7 @@ extension NvstBifrostFreeTransport {
 
     func startVideo(handoff: NVSTVideoHandoff, mediaReceiver: any NativeNVSTMediaReceiver) async throws {
         let videoLogger = self.logger
-        let decoder = try NvstVideoToolboxDecoder(codec: handoff.codec)
+        let decoder = NvstVideoToolboxDecoder(codec: handoff.codec)
         decoder.onDecodeFailure = { [weak self] frameIndex, message in
             videoLogger?("NVST \(message)")
             guard frameIndex != 0 else { return }

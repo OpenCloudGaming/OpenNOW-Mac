@@ -31,13 +31,7 @@ final class OPNVideoToolboxRTCDecoder: NSObject, RTCVideoDecoder, @unchecked Sen
     }
 
     func startDecode(withNumberOfCores numberOfCores: Int32) -> Int {
-        let created: NvstVideoToolboxDecoder
-        do {
-            created = try NvstVideoToolboxDecoder(codec: codec)
-        } catch {
-            OPNLogCapture.appendEvent("[LibWebRTC] VideoToolbox \(codec.rawValue) decoder unavailable: \(error.localizedDescription)")
-            return Self.codecError
-        }
+        let created = NvstVideoToolboxDecoder(codec: codec)
         created.onPixelBuffer = { [weak self] pixelBuffer, presentationTime, _ in
             self?.deliver(pixelBuffer, presentationTime: presentationTime)
         }
