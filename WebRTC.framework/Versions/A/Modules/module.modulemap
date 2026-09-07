@@ -1,5 +1,0 @@
-framework module WebRTC {
-  header "WebRTC.h"
-
-  export *
-}
