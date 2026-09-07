@@ -17,7 +17,7 @@ struct LoginFormView: View {
                     .frame(width: metrics.panelWidth, height: proxy.size.height)
 
                 if isShowingSignIn {
-                    SignInModal(viewModel: viewModel, availableSize: proxy.size, onClose: closeSignIn)
+                    SignInModal(viewModel: viewModel, accounts: accounts, availableSize: proxy.size, onClose: closeSignIn)
                         // Inset lives outside the panel's own background so it never paints it.
                         .padding(OpenNOWDesign.Spacing.pageHorizontal)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -236,6 +236,52 @@ private struct ProviderCard: View {
     }
 }
 
+/// One saved account on the login wall. Signing out ends a session but keeps the account row, so a
+/// listed account is not necessarily one this build can still restore — the trailing label says
+/// which, and both branches start something: a restore, or a fresh sign-in for that account.
+private struct SavedAccountCard: View {
+    let account: LoginAccount
+    let needsSignIn: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: OpenNOWDesign.Spacing.small) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.displayName.isEmpty ? account.email : account.displayName)
+                        .font(.uiSans(size: 14, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .lineLimit(1)
+                    Text(account.email)
+                        .font(.uiSans(size: 11, weight: .regular))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: OpenNOWDesign.Spacing.small)
+
+                Text(needsSignIn ? "SIGN IN AGAIN" : "CONTINUE")
+                    .font(.uiSans(size: 11, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accent)
+            }
+            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .overlay {
+                Rectangle()
+                    .stroke(isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityHint(needsSignIn ? "Signs in again to use \(account.email)" : "Continues as \(account.email)")
+    }
+}
+
 private struct VendorContentString: View {
     let text: String
 
@@ -256,6 +302,7 @@ private struct VendorContentString: View {
 
 private struct SignInModal: View {
     @ObservedObject var viewModel: LoginViewModel
+    let accounts: [LoginAccount]
     let availableSize: CGSize
     let onClose: () -> Void
 
@@ -342,6 +389,25 @@ private struct SignInModal: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.white.opacity(0.06))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            }
+
+            if !accounts.isEmpty {
+                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
+                    Text("SAVED ACCOUNTS")
+                        .font(.uiSans(size: 11, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .tracking(0.8)
+
+                    VStack(spacing: OpenNOWDesign.Spacing.xSmall) {
+                        ForEach(accounts) { account in
+                            SavedAccountCard(
+                                account: account,
+                                needsSignIn: viewModel.signedOutAccountEmails.contains(account.email)
+                            ) { viewModel.activateSavedAccount(account) }
+                            .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                        }
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {

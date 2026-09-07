@@ -104,17 +104,51 @@ extension OPNAuthService {
     }
 
     func removeSavedSession(userId: String) {
-        guard !userId.isEmpty else { return }
+        removeStoredAccounts(matchingProfileFields: [userId])
+    }
+
+    /// Ends the credential this service holds for one account, together with the keychain tokens
+    /// behind it.
+    ///
+    /// Sign-in stores every session twice: here, keyed by the profile identity, and in SwiftData,
+    /// keyed by the session id. `LoginSession.purgeTokens()` only reaches the second copy, so
+    /// without this a signed-out or forgotten account keeps a complete, refreshable credential in
+    /// `accounts.plist` and the keychain — the refresh token outliving the access token by far.
+    func endSavedSession(userId: String, email: String) {
+        guard removeStoredAccounts(matchingProfileFields: [userId, email]) else { return }
+        Task { [jarvisAuthService, starfleetService] in
+            await jarvisAuthService.clearSession()
+            await starfleetService.clearSession()
+        }
+    }
+
+    /// Drops every stored account whose profile matches `fields`, deletes the keychain tokens
+    /// behind them, and re-points the active id at whatever is left. Returns whether the credential
+    /// the store considered active was among the ones removed.
+    ///
+    /// Matching covers the identity plus the two fields that are unique per account. Display name
+    /// is deliberately left out: it is not unique, and matching on it could end the session of an
+    /// unrelated account that happens to share one.
+    @discardableResult
+    private func removeStoredAccounts(matchingProfileFields fields: [String]) -> Bool {
+        let keys = Set(fields.filter { !$0.isEmpty })
+        guard !keys.isEmpty else { return false }
         var activeUserId: String?
         let existing = loadAccountDictionaries(activeUserId: &activeUserId)
-        let removed = existing.filter { sessionIdentity(from: $0) == userId }
-        removed.forEach { removedAccount in
-            if let identity = sessionIdentity(from: removedAccount) {
-                GFNTokenStore.delete(forIdentity: identity)
-            }
+        func belongsToAccount(_ account: NSDictionary) -> Bool {
+            if let identity = self.sessionIdentity(from: account), keys.contains(identity) { return true }
+            return ["user_id", "email"].compactMap { account[$0] as? String }.contains { keys.contains($0) }
         }
-        let accounts = existing.filter { sessionIdentity(from: $0) != userId }
-        let newActive = activeUserId == userId ? accounts.compactMap(sessionIdentity).first : activeUserId
+        let removedIdentities: [String] = existing.filter(belongsToAccount).compactMap { sessionIdentity(from: $0) }
+        guard !removedIdentities.isEmpty else { return false }
+        removedIdentities.forEach(GFNTokenStore.delete(forIdentity:))
+        let accounts = existing.filter { !belongsToAccount($0) }
+        let identities: [String] = accounts.compactMap { sessionIdentity(from: $0) }
+        let newActive: String? = if let activeUserId, identities.contains(activeUserId) {
+            activeUserId
+        } else {
+            identities.first
+        }
         saveAccountDictionaries(accounts, activeUserId: newActive)
         let defaults = Self.authUserDefaults()
         if let newActive, !newActive.isEmpty {
@@ -124,6 +158,8 @@ extension OPNAuthService {
             defaults.removeObject(forKey: "OPN_ActiveUserId")
             defaults.removeObject(forKey: "OPN_HasSavedSession")
         }
+        guard let activeUserId else { return false }
+        return removedIdentities.contains(activeUserId)
     }
 
     func clearSession() {

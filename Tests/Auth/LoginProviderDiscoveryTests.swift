@@ -9,6 +9,8 @@ private final class FakeLoginAuthService: LoginAuthServing, @unchecked Sendable 
         self.outcome = outcome
     }
 
+    func endSavedSession(userId: String, email: String) {}
+
     func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
         let outcome = self.outcome
         Task { @MainActor in completion(outcome.0, OPNAuthSession(), outcome.1) }

@@ -210,7 +210,8 @@ extension LoginViewModel {
 
     func signOutCurrentSession() async {
         OpenNOWLog.info(.auth, "Signing out current session")
-        let signedOutEmails = Set(accounts.filter(\.isActive).map(\.email))
+        let signedOutAccounts = accounts.filter(\.isActive)
+        let signedOutEmails = Set(signedOutAccounts.map(\.email))
         for account in accounts {
             account.isActive = false
             account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
@@ -221,6 +222,12 @@ extension LoginViewModel {
             // outlives the access token by far, so leaving it behind means sign-out never happened.
             // Other saved accounts keep their tokens — they were not the ones signed out.
             if signedOutEmails.contains(session.accountEmail) { session.purgeTokens() }
+        }
+        // `purgeTokens` above only reaches the copy keyed by the session id. The auth service keeps
+        // its own, keyed by the profile identity, and this view model's Jarvis session store is a
+        // no-op — so without this call the same refresh token stays in the keychain after sign-out.
+        for account in signedOutAccounts {
+            authService.endSavedSession(userId: account.userId, email: account.email)
         }
         clearPendingOAuthState()
         currentAuthorizationURL = ""

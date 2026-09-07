@@ -250,6 +250,32 @@ final class LoginViewModel: ObservableObject {
         OpenNOWLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
     }
 
+    /// The login wall's saved-account row. A restorable account is restored; one whose tokens are
+    /// gone starts a fresh sign-in.
+    ///
+    /// This is deliberately not `activateAccount`: that fallback exists to *send* the user to the
+    /// login wall from the catalog, and the row is already there, so reusing it changes state and
+    /// starts nothing — a button labelled SIGN IN AGAIN that reads as dead.
+    func activateSavedAccount(_ account: LoginAccount) {
+        guard hasUsableSession(for: account) else {
+            beginSignInAgain(for: account)
+            return
+        }
+        Task { _ = await restoreAccountSession(account) }
+    }
+
+    /// Picks the account's provider and starts the browser leg, which is what its row promises.
+    func beginSignInAgain(for account: LoginAccount) {
+        selectRememberedAccount(account)
+        successMessage = ""
+        validationMessage = ""
+        // Keep a switch banner pointed at the account actually being signed in. Do not invent one
+        // when nothing is signed in — there would be no account to return to and nothing to cancel.
+        if signInRequest != nil { signInRequest = .reauthenticate(email: account.email) }
+        OpenNOWLog.info(.auth, "Signing in again account=\(account.email) provider=\(account.providerIdpId)")
+        launchOAuthThroughTermsGate()
+    }
+
     /// Signs in an additional account. The account that is signed in keeps its tokens, so it stays
     /// in the list and switchable once the new one is added.
     func beginAddAccount() {
@@ -281,6 +307,8 @@ final class LoginViewModel: ObservableObject {
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
         let email = account.email
+        // Read before the delete below: a deleted model must not be touched again.
+        let userId = account.userId
         for session in sessions where session.accountEmail == email {
             // Deleting the row alone would orphan the keychain item it points at.
             session.purgeTokens()
@@ -288,6 +316,9 @@ final class LoginViewModel: ObservableObject {
         }
         modelContext.delete(account)
         trySave()
+        // The auth service holds a second copy of this account's tokens under its own profile
+        // identity, which deleting the rows above does not reach.
+        authService.endSavedSession(userId: userId, email: email)
         // Drop the deleted models here too: the @Query refresh that would do it is asynchronous,
         // and anything reading these arrays before it lands would touch a deleted object.
         accounts.removeAll { $0.email == email }

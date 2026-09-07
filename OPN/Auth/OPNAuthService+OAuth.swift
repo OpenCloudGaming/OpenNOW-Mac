@@ -55,8 +55,27 @@ extension OPNAuthService {
         return dictionary
     }
 
+    /// The browser leg's budget: long enough for a person to type a password and a second factor,
+    /// short enough that an abandoned sign-in still releases the port.
+    static let oauthCallbackWindow: TimeInterval = 300
+    /// Bound on a single request read. Without it a peer that connects and says nothing holds the
+    /// leg open for the whole window.
+    static let oauthCallbackReceiveTimeout: TimeInterval = 10
+
+    static let oauthCallbackCompletePage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
+    static let oauthCallbackCancelledPage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in cancelled</h1><p>Return to OpenNOW to try again.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
+
+    /// The loopback leg of the browser sign-in. The listener stays open until the authorization
+    /// response arrives or the window closes.
+    ///
+    /// Any process on this machine can connect to this port, so a single-shot listener is a denial
+    /// of service waiting to happen: accepting once and closing lets a stray connection — a
+    /// preconnect, a favicon request, anything — consume the callback and leave the real one with
+    /// a refused connection. Requests that are not the authorization response are answered and
+    /// dropped, and the leg keeps waiting.
     func startOAuthCallbackListener(
         port: Int,
+        expectedState: String,
         completion: @escaping @Sendable (Result<String, Error>) -> Void,
         readyHandler: @escaping @Sendable () -> Void
     ) {
@@ -66,6 +85,7 @@ extension OPNAuthService {
                 completion(.failure(ServiceError("Failed to create OAuth callback listener")))
                 return
             }
+            defer { close(socketDescriptor) }
             var reuse = Int32(1)
             setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
             var address = sockaddr_in()
@@ -77,39 +97,69 @@ extension OPNAuthService {
                     bind(socketDescriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                 }
             }
-            guard bindResult == 0, listen(socketDescriptor, 1) == 0 else {
-                close(socketDescriptor)
+            guard bindResult == 0, listen(socketDescriptor, 8) == 0 else {
                 completion(.failure(ServiceError("Failed to bind OAuth callback listener")))
                 return
             }
             readyHandler()
-            let clientSocket = accept(socketDescriptor, nil, nil)
-            close(socketDescriptor)
-            guard clientSocket >= 0 else {
-                completion(.failure(ServiceError("Failed to accept OAuth callback")))
+            let deadline = Date().addingTimeInterval(Self.oauthCallbackWindow)
+            while Date() < deadline {
+                guard Self.awaitConnection(socketDescriptor, timeout: min(deadline.timeIntervalSinceNow, 1)) else { continue }
+                let clientSocket = accept(socketDescriptor, nil, nil)
+                guard clientSocket >= 0 else { continue }
+                guard let request = Self.receiveRequest(clientSocket),
+                      let query = Self.callbackQuery(from: request),
+                      Self.isAuthorizationResponse(query, expectedState: expectedState) else {
+                    Self.respond(clientSocket, status: "404 Not Found", body: "")
+                    close(clientSocket)
+                    continue
+                }
+                let wasCancelled = (JarvisSessionParser.parseQueryString(query)["code"] ?? "").isEmpty
+                Self.respond(clientSocket, status: "200 OK", body: wasCancelled ? Self.oauthCallbackCancelledPage : Self.oauthCallbackCompletePage)
+                close(clientSocket)
+                completion(.success(query))
                 return
             }
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)
-            let body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
-            _ = response.withCString { send(clientSocket, $0, strlen($0), 0) }
-            close(clientSocket)
-
-            guard byteCount > 0 else {
-                completion(.failure(ServiceError("Empty OAuth callback request")))
-                return
-            }
-            let request = String(decoding: buffer.prefix(byteCount), as: UTF8.self)
-            guard let pathStart = request.range(of: "GET ")?.upperBound,
-                  let pathEnd = request[pathStart...].firstIndex(of: " ") else {
-                completion(.failure(ServiceError("Invalid OAuth callback request")))
-                return
-            }
-            let path = String(request[pathStart..<pathEnd])
-            let query = path.split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
-            completion(.success(query ?? ""))
+            completion(.failure(ServiceError("Browser sign-in timed out")))
         }
+    }
+
+    /// Waits for the listening socket to become readable rather than blocking in `accept`, so the
+    /// window is honored even when nothing ever connects.
+    private static func awaitConnection(_ descriptor: Int32, timeout: TimeInterval) -> Bool {
+        var descriptors = [pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)]
+        let polled = poll(&descriptors, 1, Int32(max(1, timeout * 1000)))
+        return polled > 0 && (descriptors[0].revents & Int16(POLLIN)) != 0
+    }
+
+    private static func receiveRequest(_ clientSocket: Int32) -> String? {
+        var receiveTimeout = timeval(tv_sec: Int(oauthCallbackReceiveTimeout), tv_usec: 0)
+        setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, socklen_t(MemoryLayout<timeval>.size))
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)
+        guard byteCount > 0 else { return nil }
+        return String(decoding: buffer.prefix(byteCount), as: UTF8.self)
+    }
+
+    private static func callbackQuery(from request: String) -> String? {
+        guard let pathStart = request.range(of: "GET ")?.upperBound,
+              let pathEnd = request[pathStart...].firstIndex(of: " ") else { return nil }
+        let path = String(request[pathStart..<pathEnd])
+        return path.split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
+    }
+
+    /// Only the authorization response ends the leg, and only when it carries the `state` this
+    /// login generated. Without that check anything sent to this port — including a request from
+    /// an unrelated local process — could complete or fail the sign-in.
+    private static func isAuthorizationResponse(_ query: String, expectedState: String) -> Bool {
+        let parameters = JarvisSessionParser.parseQueryString(query)
+        guard expectedState.isEmpty || parameters["state"] == expectedState else { return false }
+        return !(parameters["code"] ?? "").isEmpty || !(parameters["error"] ?? "").isEmpty
+    }
+
+    private static func respond(_ clientSocket: Int32, status: String, body: String) {
+        let response = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
+        _ = response.withCString { send(clientSocket, $0, strlen($0), 0) }
     }
 
     func findAvailablePort() -> Int {

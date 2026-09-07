@@ -109,7 +109,7 @@ public final class OPNAuthService: @unchecked Sendable {
                     oauthState: pkce,
                     providerIdpId: selectedProviderIdpId
                 )
-                self.startOAuthCallbackListener(port: port) { [weak self] result in
+                self.startOAuthCallbackListener(port: port, expectedState: pkce.state) { [weak self] result in
                     self?.handleOAuthCallback(result,
                                               pkce: pkce,
                                               redirectUri: redirectUri,
@@ -333,6 +333,13 @@ public final class OPNAuthService: @unchecked Sendable {
         var accounts = existing.filter {
             let existingIdentity = sessionIdentity(from: $0)
             return existingIdentity != identity && existingIdentity != replacingIdentity
+        }
+        // The entry keyed by `replacingIdentity` leaves the list above, so its keychain tokens have
+        // to leave with it. Otherwise re-keying a session — a profile field arriving after the
+        // first save — leaves a second, still-refreshable copy of the same tokens behind under the
+        // identity nothing points at any more.
+        if let replacingIdentity, !replacingIdentity.isEmpty, replacingIdentity != identity {
+            GFNTokenStore.delete(forIdentity: replacingIdentity)
         }
         accounts.insert(dictionary(from: session, identity: identity), at: 0)
         saveAccountDictionaries(accounts, activeUserId: identity)
