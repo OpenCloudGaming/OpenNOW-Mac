@@ -50,9 +50,10 @@ Name for this family.
 - Copyright (c) 2011, The WebRTC project authors. All rights reserved.
 - License: BSD 3-Clause
 - Bundled as `WebRTC.framework`, sourced from `Vendor/WebRTC.xcframework` (see *WebRTC build
-  provenance*).
-- Full license text: `WebRTC.framework/Versions/A/Resources/LICENSE`, which ships inside the
-  application bundle with the framework itself.
+  provenance*). The committed xcframework carries the license text at its root
+  (`Vendor/WebRTC.xcframework/LICENSE`); the embedded framework slice does not include a
+  standalone license file, so the authoritative redistributed text is the appendix below, which
+  ships inside the application bundle with this file.
 
 `WebRTC.framework` is a self-contained binary whose WebRTC and `third_party` sources are compiled in
 (rather than shipping as an umbrella over separate dependency frameworks). The WebRTC BSD 3-Clause
