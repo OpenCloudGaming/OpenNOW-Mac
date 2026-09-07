@@ -163,7 +163,7 @@ struct SystemHealthChip: View {
         .foregroundStyle(.black)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 20 * uiScale)
-        .background(positive ? OpenNOWDesign.accent : Color.orange)
+        .background(positive ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.warning)
         .accessibilityLabel(Text(title.capitalized))
     }
 }
