@@ -157,9 +157,10 @@ of Gaijin Entertainment. Twitch is a trademark of Twitch Interactive, Inc. Ably 
 Ably Real-time Ltd. Sentry is a trademark of Functional Software, Inc.
 
 All trademarks are the property of their respective owners and are used for identification purposes
-only. The store icons in `Resources/StoreIcons/` are original redrawn glyphs in OpenNOW's own visual
-style, used to identify which storefront a title comes from; they are not the storefronts' own logos
-and their presence does not imply endorsement by any of the above.
+only. Storefront icons in the account-connection settings are fetched at runtime from URLs returned
+by the GeForce NOW service. OpenNOW bundles no storefront logos; when a storefront icon has not yet
+loaded or is unavailable, a neutral text monogram of the storefront name is shown in its place. None
+of this implies endorsement by any of the above.
 
 Use of OpenNOW requires your own GeForce NOW account and compliance with the GeForce NOW Terms of
 Use.

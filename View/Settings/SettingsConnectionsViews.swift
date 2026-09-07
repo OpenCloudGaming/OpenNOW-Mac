@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import SwiftUI
 
 struct ConnectionsSettingsPage: View {
@@ -98,7 +97,6 @@ struct StoreConnectionRow: View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
         let displayName = viewModel.displayName(forStore: store)
-        let iconAsset = StoreIconAsset.resolve(store: store, displayName: displayName)
         let iconURL = definition?.smallImageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         let isConnected = account != nil
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
@@ -106,7 +104,7 @@ struct StoreConnectionRow: View {
             Rectangle()
                 .fill(isConnected ? OpenNOWDesign.accent : Color.white.opacity(0.18))
                 .frame(width: 4 * uiScale, height: 46 * uiScale)
-            StoreIcon(asset: iconAsset, imageURL: iconURL, connected: isConnected, uiScale: uiScale)
+            StoreIcon(displayName: displayName, imageURL: iconURL, connected: isConnected, uiScale: uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(displayName)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
@@ -147,7 +145,7 @@ struct StoreConnectionRow: View {
 }
 
 struct StoreIcon: View {
-    let asset: StoreIconAsset?
+    let displayName: String
     let imageURL: String?
     let connected: Bool
     let uiScale: CGFloat
@@ -157,9 +155,9 @@ struct StoreIcon: View {
             Rectangle()
                 .fill(connected ? OpenNOWDesign.accent.opacity(0.18) : Color.white.opacity(0.075))
             if let url = resolvedImageURL {
-                StoreRemoteIconImage(url: url, asset: asset, connected: connected)
+                StoreRemoteIconImage(url: url, displayName: displayName, connected: connected, uiScale: uiScale)
             } else {
-                StoreLocalIconImage(asset: asset, connected: connected)
+                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
             }
         }
         .frame(width: 42 * uiScale, height: 42 * uiScale)
@@ -176,8 +174,9 @@ struct StoreIcon: View {
 struct StoreRemoteIconImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL
-    let asset: StoreIconAsset?
+    let displayName: String
     let connected: Bool
+    let uiScale: CGFloat
 
     @State private var image: NSImage?
     @State private var hasFailed = false
@@ -192,9 +191,9 @@ struct StoreRemoteIconImage: View {
                     .saturation(connected ? 1 : 0.65)
                     .opacity(connected ? 1 : 0.68)
             } else if hasFailed {
-                StoreLocalIconImage(asset: asset, connected: connected)
+                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
             } else {
-                StoreLocalIconImage(asset: asset, connected: connected)
+                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
                     .opacity(0.42)
             }
         }
@@ -215,79 +214,26 @@ struct StoreRemoteIconImage: View {
 }
 
 struct StoreLocalIconImage: View {
-    let asset: StoreIconAsset?
+    let displayName: String
     let connected: Bool
+    let uiScale: CGFloat
 
     var body: some View {
-        if let asset, let image = StoreIconImage.loadImage(named: asset.assetName) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
-                .padding(asset.padding)
-                .saturation(connected ? 1 : 0.65)
-                .opacity(connected ? 1 : 0.68)
-        } else {
+        if monogram.isEmpty {
             Image(systemName: "link")
-                .font(.settingsFont(size: 17, weight: .bold))
+                .font(.settingsFont(size: 17 * uiScale, weight: .bold))
                 .foregroundStyle(connected ? OpenNOWDesign.accent : .white.opacity(0.56))
-        }
-    }
-}
-
-enum StoreIconImage {
-    @MainActor static func loadImage(named name: String) -> NSImage? {
-        let cacheKey = name as NSString
-        if let cached = cache.object(forKey: cacheKey) { return cached }
-        guard let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "StoreIcons") ?? Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Resources/StoreIcons"),
-              let image = NSImage(contentsOf: url) else { return nil }
-        cache.setObject(image, forKey: cacheKey)
-        return image
-    }
-
-    @MainActor private static let cache = NSCache<NSString, NSImage>()
-}
-
-enum StoreIconAsset: CaseIterable {
-    case battlenet
-    case epicGames
-    case steam
-    case ubisoftConnect
-    case xbox
-    case gaijin
-
-    var assetName: String {
-        switch self {
-        case .battlenet: return "store-battlenet"
-        case .epicGames: return "store-epic-games"
-        case .steam: return "store-steam"
-        case .ubisoftConnect: return "store-ubisoft-connect"
-        case .xbox: return "store-xbox"
-        case .gaijin: return "store-gaijin"
+        } else {
+            Text(monogram)
+                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                .foregroundStyle(connected ? OpenNOWDesign.accent : .white.opacity(0.56))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
     }
 
-    var padding: CGFloat {
-        switch self {
-        case .epicGames: return 5
-        case .steam, .xbox: return 4
-        default: return 6
-        }
-    }
-
-    static func resolve(store: String, displayName: String) -> StoreIconAsset? {
-        let key = normalized(store)
-        let displayKey = normalized(displayName)
-        let combined = key + displayKey
-        if combined.contains("battlenet") || combined.contains("battle") || combined.contains("blizzard") { return .battlenet }
-        if combined.contains("epic") { return .epicGames }
-        if combined.contains("steam") { return .steam }
-        if combined.contains("ubisoft") || combined.contains("uplay") { return .ubisoftConnect }
-        if combined.contains("xbox") || combined.contains("microsoft") { return .xbox }
-        if combined.contains("gaijin") { return .gaijin }
-        return nil
-    }
-
-    private static func normalized(_ value: String) -> String {
-        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    private var monogram: String {
+        let parts = displayName.split { $0 == " " || $0 == "." || $0 == "-" || $0 == "_" }
+        return String(parts.prefix(2).compactMap(\.first)).uppercased()
     }
 }
