@@ -84,7 +84,12 @@ public enum NvstAnnexB {
 
     public static func scan(_ bytes: Data, codec: NVSTVideoCodec) -> AccessUnitScan {
         var result = AccessUnitScan()
-        guard codec != .av1 else { return result }
+        // AV1 has no Annex-B units to locate, but the keyframe answer the caller needs lives in
+        // the OBU stream's frame headers.
+        guard codec != .av1 else {
+            result.isKeyframe = NvstAv1Obu.containsKeyframe(in: bytes)
+            return result
+        }
         bytes.withUnsafeBytes { raw in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
             let count = raw.count

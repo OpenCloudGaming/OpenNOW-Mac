@@ -149,7 +149,7 @@ struct NvstVideoPipelineTests {
     @Test func aHardDecodeFailureRequestsAKeyframeImmediately() throws {
         let units = encodeAnnexB(frameCount: 3)
         try #require(units.count >= 2)
-        let decoder = try NvstVideoToolboxDecoder(codec: .h264)
+        let decoder = NvstVideoToolboxDecoder(codec: .h264)
         let keyframeAsked = Flag()
         let fatal = Flag()
         let pipeline = NvstVideoPipeline(

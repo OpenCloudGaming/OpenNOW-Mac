@@ -35,15 +35,44 @@ extension NvstVideoToolboxDecoder {
 
     /// Reads depth and chroma layout out of the HEVC decoder configuration record (`hvcC`, ISO
     /// 14496-15 §8.3.3.1): byte 16 carries `chromaFormat` in its low two bits and byte 17
-    /// `bitDepthLumaMinus8` in its low three. H.264 sessions on this service are 8-bit 4:2:0 —
-    /// the 10-bit and 4:4:4 tiers are only offered on HEVC and AV1 — so `avcC` is not parsed.
+    /// `bitDepthLumaMinus8` in its low three. AV1 reads the same fields out of the `av1C` record
+    /// the description was built with. H.264 sessions on this service are 8-bit 4:2:0 — the
+    /// 10-bit and 4:4:4 tiers are only offered on HEVC and AV1 — so `avcC` is not parsed.
     static func bitstreamFormat(from description: CMFormatDescription, codec: NVSTVideoCodec) -> BitstreamFormat {
-        guard codec == .hevc,
-              let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any],
-              let record = atoms["hvcC"] as? Data else {
+        let atom: String
+        switch codec {
+        case .hevc: atom = "hvcC"
+        case .av1: atom = "av1C"
+        case .h264: return BitstreamFormat()
+        }
+        guard let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any],
+              let record = atoms[atom] as? Data else {
             return BitstreamFormat()
         }
-        return bitstreamFormat(hvcC: record)
+        return codec == .av1 ? bitstreamFormat(av1C: record) : bitstreamFormat(hvcC: record)
+    }
+
+    /// Depth and chroma layout out of an `av1C` record (AV1-ISOBMFF §2.3.2): byte 2 packs
+    /// `seq_tier_0`, `high_bitdepth`, `twelve_bit`, `monochrome` and the subsampling flags,
+    /// exactly as `NvstAv1Obu.codecConfigurationRecord` wrote them.
+    static func bitstreamFormat(av1C record: Data) -> BitstreamFormat {
+        guard record.count >= 3 else { return BitstreamFormat() }
+        let flags = record[record.startIndex + 2]
+        var format = BitstreamFormat()
+        let twelveBit = flags & 0x20 != 0
+        format.bitDepth = twelveBit ? 12 : (flags & 0x40 != 0 ? 10 : 8)
+        let subsamplingX = flags & 0x08 != 0
+        let subsamplingY = flags & 0x04 != 0
+        if flags & 0x10 != 0 {
+            format.chroma = .monochrome
+        } else if subsamplingX && subsamplingY {
+            format.chroma = .yuv420
+        } else if !subsamplingX && !subsamplingY {
+            format.chroma = .yuv444
+        } else {
+            format.chroma = .yuv422
+        }
+        return format
     }
 
     static func bitstreamFormat(hvcC record: Data) -> BitstreamFormat {
@@ -83,6 +112,7 @@ extension NvstVideoToolboxDecoder {
     }
 
     func makeFormatDescription(_ sets: NvstElementaryStream.ParameterSets) throws -> CMVideoFormatDescription {
+        if codec == .av1 { return try makeAv1FormatDescription(sets) }
         let ordered = sets.ordered
         guard !ordered.isEmpty else { throw DecoderError.missingParameterSets }
         // One contiguous allocation so the pointer array stays valid for the whole call;
@@ -135,6 +165,42 @@ extension NvstVideoToolboxDecoder {
         // the VUI's bitstream restriction), and that decides how long a decoded frame waits inside
         // VideoToolbox before this app sees it.
         let hex = sets.ordered.map { data in data.map { String(format: "%02x", $0) }.joined() }.joined(separator: " ")
+        onDecodeFailure?(0, "NVST parameter sets \(format.summary): \(hex)")
+        return description
+    }
+
+    /// VideoToolbox takes AV1 as a plain `av01` format description whose sample-description
+    /// extension carries the `av1C` record — there is no parameter-set factory the way H.264 and
+    /// HEVC have. The record comes from the stream's own sequence header OBU, so the description
+    /// always matches the bitstream rather than the negotiation's assumptions.
+    private func makeAv1FormatDescription(_ sets: NvstElementaryStream.ParameterSets) throws -> CMVideoFormatDescription {
+        // `configuration` is the sequence header OBU in its wire form (size field included);
+        // re-walking it locates the payload for the record's flag bytes.
+        guard let configuration = sets.ordered.first,
+              let unit = NvstAv1Obu.units(in: configuration)?.first,
+              unit.type == NvstAv1Obu.sequenceHeaderType,
+              let header = NvstAv1Obu.parseSequenceHeader(configuration.subdata(in: unit.payloadOffset..<(unit.payloadOffset + unit.payloadLength))) else {
+            throw DecoderError.missingParameterSets
+        }
+        let record = NvstAv1Obu.codecConfigurationRecord(header: header, configurationOBU: configuration)
+        let extensions: [CFString: Any] = [
+            kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ["av1C": record],
+        ]
+        var description: CMFormatDescription?
+        let status = CMVideoFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            codecType: kCMVideoCodecType_AV1,
+            width: Int32(clamping: header.maxFrameWidth),
+            height: Int32(clamping: header.maxFrameHeight),
+            extensions: extensions as CFDictionary,
+            formatDescriptionOut: &description
+        )
+        guard status == noErr, let description else { throw DecoderError.formatDescriptionFailed(status) }
+        let format = Self.bitstreamFormat(av1C: record)
+        statsLock.lock()
+        currentBitstreamFormat = format
+        statsLock.unlock()
+        let hex = configuration.map { String(format: "%02x", $0) }.joined()
         onDecodeFailure?(0, "NVST parameter sets \(format.summary): \(hex)")
         return description
     }

@@ -44,10 +44,10 @@ public struct NvstRtspNegotiator: Sendable {
                 logger?("NVST control endpoint \(endpoint) failed: \(error.localizedDescription)")
                 // Report the candidate that got furthest, not the last one tried: a media port
                 // failing OPTIONS says nothing, while the control port failing SETUP is the story.
-                let progress = Self.progress(of: error)
+                let progress = (error as? NvstEndpointFailure)?.progress ?? Self.progress(of: error)
                 if progress > bestProgress {
                     bestProgress = progress
-                    bestError = error
+                    bestError = (error as? NvstEndpointFailure)?.underlying ?? error
                 }
             }
         }
@@ -157,7 +157,7 @@ public struct NvstRtspNegotiator: Sendable {
                            steps: steps)
         } catch {
             await connection.close()
-            throw error
+            throw NvstEndpointFailure(progress: Self.progress(of: error, reachedSteps: steps), underlying: error)
         }
     }
 }
@@ -604,9 +604,23 @@ extension NvstRtspNegotiator {
         }
     }
 
+    /// A stage failure plus how far the handshake got, so a deep client-side failure outranks
+    /// another endpoint's early handshake refusal. Without it an AV1 decoder-arming failure after
+    /// a fully successful SETUP lost to a fallback port's `OPTIONS 400`, and the diagnostic named
+    /// the wrong endpoint's refusal (measured live 2026-09-07).
+    private struct NvstEndpointFailure: Error, LocalizedError {
+        let progress: Int
+        let underlying: Error
+        var errorDescription: String? { underlying.localizedDescription }
+    }
+
     /// How far through the handshake an error got, so the most informative failure survives.
-    private static func progress(of error: Error) -> Int {
-        guard let negotiation = error as? NvstRtspNegotiationError else { return 0 }
+    /// Non-negotiation errors are ranked by the steps the attempt completed: a bundle reservation
+    /// or decoder failure is not a handshake refusal and must not read as one.
+    private static func progress(of error: Error, reachedSteps steps: [String] = []) -> Int {
+        guard let negotiation = error as? NvstRtspNegotiationError else {
+            return nonNegotiationProgress(reachedSteps: steps)
+        }
         switch negotiation {
         case .missingEndpoint, .invalidEndpoint: return 0
         case .requestFailed(let method, _, _):
@@ -621,6 +635,16 @@ extension NvstRtspNegotiator {
         case .missingVideoControl, .missingAudioControl, .missingControlStream: return 4
         case .missingVideoPeer, .missingIceCredentials, .conflictingSrtpProfile: return 6
         }
+    }
+
+    /// A failure that is not an RTSP refusal — bundle reservation, decoder arming — is ranked
+    /// where the attempt's completed steps say it happened, so it outranks another endpoint's
+    /// earlier handshake refusal.
+    private static func nonNegotiationProgress(reachedSteps steps: [String]) -> Int {
+        if steps.contains("setup-video") { return 6 }
+        if steps.contains("describe") { return 4 }
+        if steps.contains("options") { return 2 }
+        return steps.contains("wss-open") ? 1 : 0
     }
 
     private func expectOK(_ method: String, _ response: NvstRtspResponse) throws {

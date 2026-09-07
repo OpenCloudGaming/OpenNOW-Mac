@@ -140,10 +140,25 @@ struct NvstAnnexBTests {
         #expect(prepared.sample == Data([0x00, 0x00, 0x00, 0x03, 0x65, 0x88, 0x84]))
     }
 
-    @Test func preparePassesAv1ThroughUntouched() {
-        let unit = Data([0x12, 0x00, 0x0a, 0x0b, 0x0c])
+    @Test func prepareStripsAv1TemporalDelimitersAndHarvestsTheSequenceHeader() {
+        // Temporal delimiter + sequence header + frame: the TD is not sample data, and the SH
+        // becomes the parameter set the av1C format description is built from.
+        let unit = Data([0x12, 0x00, 0x0a, 0x02, 0xaa, 0xbb, 0x32, 0x01, 0x00])
         let prepared = NvstElementaryStream.prepare(unit, codec: .av1)
-        #expect(prepared.sample == unit)
+        #expect(prepared.sample == Data([0x0a, 0x02, 0xaa, 0xbb, 0x32, 0x01, 0x00]))
+        // The configuration form is the wire OBU verbatim — VideoToolbox's av1C validation
+        // requires the size field.
+        #expect(prepared.parameterSets.sequenceParameterSets == [Data([0x0a, 0x02, 0xaa, 0xbb])])
+        #expect(prepared.parameterSets.isComplete(for: .av1))
         #expect(!prepared.parameterSets.isComplete)
+    }
+
+    @Test func av1KeyframeDetectionReadsTheObuFrameHeader() {
+        // FRAME OBU, first payload bit show_existing_frame=0, frame_type=0 (KEY_FRAME).
+        let keyframe = Data([0x32, 0x02, 0x00, 0x99])
+        #expect(NvstAnnexB.scan(keyframe, codec: .av1).isKeyframe)
+        // frame_type=1 (INTER_FRAME) is not.
+        let inter = Data([0x32, 0x02, 0x20, 0x99])
+        #expect(!NvstAnnexB.scan(inter, codec: .av1).isKeyframe)
     }
 }

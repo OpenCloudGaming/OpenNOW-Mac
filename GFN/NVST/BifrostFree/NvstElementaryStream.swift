@@ -7,18 +7,31 @@ import Foundation
 /// does that conversion and nothing else, so it can be verified without a decode session.
 public enum NvstElementaryStream {
     public struct ParameterSets: Equatable, Sendable {
-        /// H.264: SPS. HEVC: SPS.
+        /// H.264: SPS. HEVC: SPS. AV1: the sequence header OBU in its size-less configuration
+        /// form (`NvstAv1Obu.configurationOBU`), which is what the av1C record is built from.
         public var sequenceParameterSets: [Data] = []
-        /// H.264: PPS. HEVC: PPS.
+        /// H.264: PPS. HEVC: PPS. AV1 carries nothing here.
         public var pictureParameterSets: [Data] = []
         /// HEVC only: VPS.
         public var videoParameterSets: [Data] = []
 
+        /// H.264/HEVC completeness: SPS + PPS. AV1 has no picture parameter set — see
+        /// `isComplete(for:)`, which is what the decoder uses.
         public var isComplete: Bool {
             !sequenceParameterSets.isEmpty && !pictureParameterSets.isEmpty
         }
 
-        /// VideoToolbox wants VPS, SPS, PPS in that order for HEVC and SPS, PPS for H.264.
+        /// Whether the sets carry everything a format description for `codec` is built from.
+        /// AV1's only parameter-set analogue is the sequence header OBU.
+        public func isComplete(for codec: NVSTVideoCodec) -> Bool {
+            switch codec {
+            case .av1: !sequenceParameterSets.isEmpty
+            case .h264, .hevc: isComplete
+            }
+        }
+
+        /// VideoToolbox wants VPS, SPS, PPS in that order for HEVC and SPS, PPS for H.264. AV1
+        /// takes just its sequence header OBU.
         public var ordered: [Data] {
             videoParameterSets + sequenceParameterSets + pictureParameterSets
         }
@@ -43,7 +56,26 @@ public enum NvstElementaryStream {
     public static func prepare(_ accessUnit: Data, codec: NVSTVideoCodec) -> Prepared {
         var prepared = Prepared()
         guard codec != .av1 else {
-            prepared.sample = accessUnit
+            // AV1's low-overhead OBU stream is already the length-delimited shape a VideoToolbox
+            // sample wants (AV1-ISOBMFF: sample OBUs carry their own size field); the temporal
+            // delimiter and padding are the only OBUs that are not sample data. The sequence
+            // header OBU doubles as the parameter set the av1C format description is built from.
+            // A unit that is not size-fielded OBUs yields an empty sample and no parameter sets —
+            // the decoder names that framing failure instead of decoding garbage.
+            guard let units = NvstAv1Obu.units(in: accessUnit) else { return prepared }
+            var writer = NvstByteWriter(capacity: accessUnit.count)
+            for unit in units {
+                switch unit.type {
+                case NvstAv1Obu.temporalDelimiterType, NvstAv1Obu.paddingType:
+                    continue
+                case NvstAv1Obu.sequenceHeaderType:
+                    prepared.parameterSets.sequenceParameterSets.append(NvstAv1Obu.configurationOBU(for: unit, in: accessUnit))
+                default:
+                    break
+                }
+                writer.bytes(accessUnit[unit.offset..<(unit.offset + unit.headerLength + unit.payloadLength)])
+            }
+            prepared.sample = writer.data
             return prepared
         }
         var writer = NvstByteWriter(capacity: accessUnit.count)
@@ -134,28 +166,43 @@ public enum NvstElementaryStream {
     /// Extracts the parameter sets from an Annex-B access unit. Keyframes carry them inline; a
     /// delta frame usually carries none, which is why the decoder caches the last complete set.
     public static func parameterSets(in accessUnit: Data, codec: NVSTVideoCodec) -> ParameterSets {
+        guard codec != .av1 else { return av1ParameterSets(in: accessUnit) }
         var sets = ParameterSets()
         let buffer = [UInt8](accessUnit)
-        for unit in NvstAnnexB.nalUnits(accessUnit) {
-            guard unit.offset < buffer.count, unit.length > 0 else { continue }
+        for unit in NvstAnnexB.nalUnits(accessUnit) where unit.offset < buffer.count && unit.length > 0 {
             let payload = Data(buffer[unit.offset..<(unit.offset + unit.length)])
-            switch codec {
-            case .h264:
-                switch buffer[unit.offset] & 0x1f {
-                case 7: sets.sequenceParameterSets.append(payload)
-                case 8: sets.pictureParameterSets.append(payload)
-                default: break
-                }
-            case .hevc:
-                switch (buffer[unit.offset] >> 1) & 0x3f {
-                case 32: sets.videoParameterSets.append(payload)
-                case 33: sets.sequenceParameterSets.append(payload)
-                case 34: sets.pictureParameterSets.append(payload)
-                default: break
-                }
-            case .av1:
-                break
+            appendParameterSet(payload, nalHeader: buffer[unit.offset], codec: codec, to: &sets)
+        }
+        return sets
+    }
+
+    /// Files one NAL unit under its parameter-set kind; picture NALs and delimiters are skipped.
+    private static func appendParameterSet(_ payload: Data, nalHeader: UInt8, codec: NVSTVideoCodec, to sets: inout ParameterSets) {
+        switch codec {
+        case .h264:
+            switch nalHeader & 0x1f {
+            case 7: sets.sequenceParameterSets.append(payload)
+            case 8: sets.pictureParameterSets.append(payload)
+            default: break
             }
+        case .hevc:
+            switch (nalHeader >> 1) & 0x3f {
+            case 32: sets.videoParameterSets.append(payload)
+            case 33: sets.sequenceParameterSets.append(payload)
+            case 34: sets.pictureParameterSets.append(payload)
+            default: break
+            }
+        case .av1: break
+        }
+    }
+
+    /// AV1's only parameter-set analogue: the sequence header OBU in its wire form, harvested
+    /// from a keyframe's access unit.
+    private static func av1ParameterSets(in accessUnit: Data) -> ParameterSets {
+        var sets = ParameterSets()
+        guard let units = NvstAv1Obu.units(in: accessUnit) else { return sets }
+        for unit in units where unit.type == NvstAv1Obu.sequenceHeaderType {
+            sets.sequenceParameterSets.append(NvstAv1Obu.configurationOBU(for: unit, in: accessUnit))
         }
         return sets
     }
@@ -163,6 +210,14 @@ public enum NvstElementaryStream {
     /// The NAL units that belong in the sample buffer: everything except the parameter sets and
     /// the access-unit delimiter, which VideoToolbox takes through the format description.
     public static func pictureNalUnits(in accessUnit: Data, codec: NVSTVideoCodec) -> [Data] {
+        guard codec != .av1 else {
+            // AV1's sample units are whole OBUs minus the temporal delimiter and padding.
+            guard let units = NvstAv1Obu.units(in: accessUnit) else { return [] }
+            return units.compactMap { unit in
+                guard unit.type != NvstAv1Obu.temporalDelimiterType, unit.type != NvstAv1Obu.paddingType else { return nil }
+                return Data(accessUnit[unit.offset..<(unit.offset + unit.headerLength + unit.payloadLength)])
+            }
+        }
         let buffer = [UInt8](accessUnit)
         var units: [Data] = []
         for unit in NvstAnnexB.nalUnits(accessUnit) {
@@ -199,8 +254,10 @@ public enum NvstElementaryStream {
         return writer.data
     }
 
-    /// Full conversion for one access unit: the picture NAL units in length-prefixed form.
+    /// Full conversion for one access unit: the picture NAL units in length-prefixed form. AV1
+    /// samples are the OBU stream itself (size fields included), not a length-prefixed framing.
     public static func sampleData(for accessUnit: Data, codec: NVSTVideoCodec) -> Data {
-        lengthPrefixed(pictureNalUnits(in: accessUnit, codec: codec))
+        if codec == .av1 { return prepare(accessUnit, codec: codec).sample }
+        return lengthPrefixed(pictureNalUnits(in: accessUnit, codec: codec))
     }
 }
