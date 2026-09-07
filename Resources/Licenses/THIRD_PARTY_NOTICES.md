@@ -16,7 +16,7 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | Component | Version | License | How it reaches the user |
 | --- | --- | --- | --- |
 | Hanken Grotesk | 3.013, static instances | SIL OFL 1.1 | `Resources/Fonts/*.woff2`, bundled |
-| WebRTC | see *WebRTC build provenance* | BSD 3-Clause | `WebRTC.framework`, bundled |
+| WebRTC | see *WebRTC build provenance* | BSD 3-Clause | `Vendor/WebRTC.xcframework`, committed |
 | ably-js | 2.28.0 | Apache-2.0 | `Resources/RemoteCoOp/browser/vendor/ably.min.js`, bundled |
 | ably-cocoa | 1.3.0 | Apache-2.0 | statically linked |
 | SocketRocket | vendored inside ably-cocoa | BSD (Facebook) | statically linked via Ably |
@@ -49,7 +49,8 @@ Name for this family.
 
 - Copyright (c) 2011, The WebRTC project authors. All rights reserved.
 - License: BSD 3-Clause
-- Bundled as `WebRTC.framework`.
+- Bundled as `WebRTC.framework`, sourced from `Vendor/WebRTC.xcframework` (see *WebRTC build
+  provenance*).
 - Full license text: `WebRTC.framework/Versions/A/Resources/LICENSE`, which ships inside the
   application bundle with the framework itself.
 
@@ -72,28 +73,40 @@ than bundled here. No OpenH264 binary from Cisco is present, so no MPEG LA notic
 
 ### WebRTC build provenance
 
-`WebRTC.framework` is a prebuilt binary committed to this repository; building OpenNOW does not
-rebuild WebRTC from source. WebRTC writes a build identifier into each binary via `call/version.cc`,
-and the shipping framework embeds this source stamp:
+`WebRTC.framework` is a prebuilt binary committed to this repository at `Vendor/WebRTC.xcframework`;
+building OpenNOW does not rebuild WebRTC from source. Derivation:
 
-    WebRTC source stamp 2026-05-10T04:07:40
+- Base: <https://github.com/stasel/WebRTC/releases/tag/152.0.0> (release `152.0.0`, built by the
+  open-source stasel/WebRTC GitHub Actions pipeline from official WebRTC source, unmodified)
+- Source stamp of the shipped binary: `2026-07-27T04:06:41`
+- Trimmed to the macOS arm64 slice (the application ships arm64-only, matching the previous
+  committed binary); the xcframework `Info.plist` was updated to list that slice only
+- Overlay: the upstream `sdk/objc/components/audio/RTCAudioDevice.h` header (BSD 3-Clause,
+  WebRTC project authors, `#import` line adjusted to the umbrella path) is added to the slice's
+  headers and umbrella, because stock stasel distributions omit that header even though the
+  shipped binary implements the ObjC audio device layer. No binary content is modified.
+- Ad-hoc signed at `Versions/A`; the real signature is applied during "Embed Frameworks"
+- `Versions/A/WebRTC` SHA-256: recorded below for swap detection
+- Consumers: the Xcode app target links `Vendor/WebRTC.xcframework`; the SwiftPM test target
+  consumes the same artifact as a binary target
 
-The underlying git revision is not recorded in the binary, so the build cannot currently be traced
-to a single upstream commit. The framework entered this repository as a prebuilt distribution —
-before provenance tracking existed here — and no build recipe or download source for it was ever
-committed, so its derivation cannot be reconstructed from the repository's history either. To
-establish an integrity baseline for future updates, the SHA-256 digests of the shipping artifacts
-are recorded below; any replacement framework should be verified against a known derivation before
-it replaces these files.
+`Vendor/WebRTC.xcframework/macos-arm64/WebRTC.framework/Versions/A/WebRTC` (Mach-O arm64):
+`e2475a21dea2ff8e3049d98519dc83cc15ceb1f13eac694c88d16ac32f687a5b`
+
+An earlier provenance baseline covered a prebuilt framework committed before tracking existed
+(source stamp 2026-05-10T04:07:40, no upstream revision recoverable). That binary was replaced
+by the traced artifact above in 2026-09; the historical hashes were:
 
 - `WebRTC.framework/Versions/A/WebRTC` (Mach-O arm64 shared library):
   `1bf31c5f99f0c43649c3bd0f24cf5b3149d3e25917ef608bde2fd7c3f3091b8f`
 - `WebRTC.framework/Versions/A/Resources/LICENSE`:
   `ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482`
 
-Any future rebuild should pin an explicit revision and update this section so attribution stays
-reproducible. The authoritative notices for the `third_party` components above are those in the
-upstream WebRTC tree at the stamp date.
+Any future WebRTC update must pick a tagged stasel release, repeat the slice trim and header
+overlay if the upstream packaging still omits `RTCAudioDevice.h`, ad-hoc sign the slice, record
+the new source stamp and SHA-256 in this section, and update the comments in `Package.swift` so
+attribution stays reproducible. The authoritative notices for the `third_party` components above
+are those in the upstream WebRTC tree at the release's source revision.
 
 ## Ably
 

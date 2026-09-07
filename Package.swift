@@ -1,9 +1,6 @@
 // swift-tools-version: 6.0
 
 import PackageDescription
-import Foundation
-
-let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 
 let package = Package(
     name: "OpenNOW",
@@ -30,11 +27,16 @@ let package = Package(
         .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.3.0")
     ],
     targets: [
+        // Prebuilt WebRTC engine (streaming + Remote Co-Op). Committed artifact: the stasel
+        // WebRTC 152.0.0 macOS arm64 slice plus the upstream RTCAudioDevice.h header overlay —
+        // derivation recorded in Resources/Licenses/THIRD_PARTY_NOTICES.md.
+        .binaryTarget(name: "WebRTC", path: "Vendor/WebRTC.xcframework"),
         .target(
             name: "OpenNOW",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
-                .product(name: "Ably", package: "ably-cocoa")
+                .product(name: "Ably", package: "ably-cocoa"),
+                "WebRTC"
             ],
             path: ".",
             exclude: [
@@ -54,7 +56,6 @@ let package = Package(
                 "Tests",
                 "docs",
                 "View/Assets.xcassets",
-                "WebRTC.framework",
                 "build",
                 "scripts",
                 "tools",
@@ -71,18 +72,15 @@ let package = Package(
                 .process("View/Assets.xcassets")
             ],
             swiftSettings: [
-                .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])
-            ],
-            linkerSettings: [
-                .unsafeFlags(["-F", packageRoot, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", packageRoot])
+                .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
         ),
         .testTarget(
             name: "OpenNOWTests",
-            dependencies: ["OpenNOW"],
+            dependencies: ["OpenNOW", "WebRTC"],
             path: "Tests",
             swiftSettings: [
-                .unsafeFlags(["-F", packageRoot, "-Xcc", "-Wno-incomplete-umbrella"])
+                .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
         )
     ],
