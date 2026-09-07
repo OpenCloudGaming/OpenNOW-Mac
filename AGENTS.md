@@ -40,7 +40,7 @@ The app has a `uiScale` system and design tokens defined in `DESIGN.md`. Any new
 
 - **Thread `uiScale` through every view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `OpenNOWDesign.Spacing.*(scale:)`).
 - **Scale consistently within one geometric expression.** Every constant contributing to the same size must scale identically. Mixing scaled and unscaled values only breaks at `uiScale != 1` and looks correct at 1.0 — e.g. `wideTileWidth(scale:) - 32 * uiScale` combined with an unscaled `.padding(.horizontal, 16)` left the tile tray background narrower than the tile (and its full-width selection bar) at any scale above 1.0.
-- **Use project fonts and colors**: `.nvidiaFont(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `OpenNOWDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
+- **Use project fonts and colors**: `.openNOWUI(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `OpenNOWDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
 - **New components** must follow `DESIGN.md` component patterns; update `DESIGN.md` when a change introduces a genuinely new pattern.
 - **Verify visually at a non-default UI scale** (e.g. 1.25 and 1.5 via Settings) for every touched view — layout bugs from inconsistent scaling are invisible at 1.0.
 

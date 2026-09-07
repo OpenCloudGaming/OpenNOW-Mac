@@ -12,7 +12,7 @@
 ![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)
 ![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC%20%2B%20NVST-orange)
 
-**Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA.
+**Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation; other product and storefront names are trademarks of their respective owners. Bundled components, their licenses, and trademark details are listed in the [Third-Party Notices](Resources/Licenses/THIRD_PARTY_NOTICES.md), which also ships inside the app bundle.
 
 ---
 
