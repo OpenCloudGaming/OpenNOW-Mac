@@ -41,6 +41,37 @@ import Testing
     #expect(parsed.lookupTitle == "Direct Launch")
 }
 
+@Test func gameShortcutRejectsMalformedRoutePercentEncoding() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let malformedRoutes = [
+        "#?cmsId=1&launchSource=Ext%zzernal",
+        "#?cmsId=1&launchSource=Ext%ernal",
+        "#?cmsId=1&launchSource=Ext%2",
+        "#?shortName=%FF%FE"
+    ]
+
+    for route in malformedRoutes {
+        let url = directory.appendingPathComponent("Malformed.gfnpc")
+        let data = try JSONSerialization.data(withJSONObject: ["url-route": route], options: [])
+        try data.write(to: url, options: .atomic)
+
+        do {
+            _ = try GFNGameShortcut(fileURL: url)
+            Issue.record("Expected init to throw for malformed route \(route), but it succeeded")
+        } catch let error as GFNGameShortcutError {
+            guard case .invalidPayload = error else {
+                Issue.record("Expected invalidPayload for route \(route), got \(error)")
+                continue
+            }
+        } catch {
+            Issue.record("Expected GFNGameShortcutError for route \(route), got \(error)")
+        }
+    }
+}
+
 @Test func gfnpcDocumentTypeDeclaresShortcutIcon() throws {
     let rootURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()

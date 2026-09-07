@@ -55,7 +55,7 @@ struct GFNGameShortcut: Equatable, Sendable {
         guard let dictionary = object as? [String: Any], let route = dictionary["url-route"] as? String else {
             throw GFNGameShortcutError.invalidPayload
         }
-        let values = Self.routeValues(from: route)
+        let values = try Self.routeValues(from: route)
         let cmsId = values["cmsId"] ?? ""
         let shortName = values["shortName"] ?? ""
         let parentGameId = values["parentGameId"] ?? ""
@@ -78,7 +78,7 @@ struct GFNGameShortcut: Equatable, Sendable {
         try data.write(to: url, options: .atomic)
     }
 
-    private static func routeValues(from route: String) -> [String: String] {
+    private static func routeValues(from route: String) throws -> [String: String] {
         let query: String
         if route.hasPrefix("#?") {
             query = String(route.dropFirst(2))
@@ -87,11 +87,22 @@ struct GFNGameShortcut: Equatable, Sendable {
         } else {
             query = route
         }
-        var components = URLComponents()
-        components.percentEncodedQuery = query
         var values: [String: String] = [:]
-        for item in components.queryItems ?? [] {
-            values[item.name] = item.value ?? ""
+        for pair in query.split(separator: "&", omittingEmptySubsequences: false) {
+            let pieces = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let name = pieces.first.map(String.init)?.removingPercentEncoding else {
+                throw GFNGameShortcutError.invalidPayload
+            }
+            let value: String
+            if pieces.count > 1 {
+                guard let decoded = String(pieces[1]).removingPercentEncoding else {
+                    throw GFNGameShortcutError.invalidPayload
+                }
+                value = decoded
+            } else {
+                value = ""
+            }
+            values[name] = value
         }
         return values
     }
