@@ -50,6 +50,10 @@ public actor OPNRemoteCoOpHostSession {
     /// hosted-signaling credential stripped. See `nativeGreetingInvite(from:payload:signaling:signer:)`.
     private var nativeGreetingInvite: OPNRemoteCoOpInvite?
     private var participants: [OPNRemoteCoOpParticipant] = []
+    /// Shared with the socket and hosted transports so every guest-originated message crosses the
+    /// same ownership table. The host session updates the reconnect-token half; the transports
+    /// consult the binding half through the synchronous gate.
+    public let participantOwnership = OPNRemoteCoOpParticipantOwnership()
     /// Player indices occupied by controllers plugged into the host, kept current by the caller
     /// (`syncRemoteCoOpGamepadTopology` / the WebRTC surface) whenever the local topology changes.
     ///
@@ -159,11 +163,15 @@ public actor OPNRemoteCoOpHostSession {
                                              signer: OPNRemoteCoOpInviteTokenSigner) throws -> OPNRemoteCoOpInvite {
         // Nothing to strip when signaling is not hosted: the tokens would be identical.
         guard signaling != nil else { return invite }
+        // When the host has chosen to hide invite details, the native greeting must not reveal the
+        // game title or application ID to an unauthenticated socket. The redaction is applied to
+        // both the signed payload and the outer invite fields so nothing leaks on either layer.
+        let redactDetails = preferences.hideGuestInviteDetails
         let redacted = OPNRemoteCoOpInviteTokenPayload(
             inviteID: payload.inviteID,
             code: payload.code,
-            applicationID: payload.applicationID,
-            title: payload.title,
+            applicationID: redactDetails ? "" : payload.applicationID,
+            title: redactDetails ? "" : payload.title,
             createdAt: invite.createdAt,
             expiresAt: invite.expiresAt,
             preferences: preferences,
@@ -178,8 +186,8 @@ public actor OPNRemoteCoOpHostSession {
             expiresAt: invite.expiresAt,
             token: try signer.token(for: redacted),
             joinURL: nil,
-            applicationID: invite.applicationID,
-            title: invite.title,
+            applicationID: redactDetails ? "" : invite.applicationID,
+            title: redactDetails ? "" : invite.title,
             hideGuestInviteDetails: invite.hideGuestInviteDetails
         )
     }
@@ -195,6 +203,7 @@ public actor OPNRemoteCoOpHostSession {
         nativeGreetingInvite = nil
         participants.removeAll()
         inputEnabledBeforeDisconnect.removeAll()
+        participantOwnership.removeAll()
         await inputRouter.replaceParticipants([])
         return neutralEvents
     }
@@ -207,15 +216,20 @@ public actor OPNRemoteCoOpHostSession {
     /// actually left frees the slot while the host is still in the same game.
     public static let disconnectGraceSeconds: TimeInterval = 45
 
-    public func registerGuest(displayName: String, inviteToken: String, participantID: UUID = UUID(), now: Date = Date()) async throws -> OPNRemoteCoOpParticipant {
+    public func registerGuest(displayName: String, inviteToken: String, participantID: UUID = UUID(), reconnectToken: String? = nil, now: Date = Date()) async throws -> OPNRemoteCoOpParticipant {
         guard preferences.isAvailable else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard let invite, invite.expiresAt > now else { throw OPNRemoteCoOpHostSessionError.inviteExpired }
         try validate(inviteToken: inviteToken, expectedInvite: invite, now: now)
         removeStaleDisconnectedParticipants(now: now)
         // A returning guest keeps the identity, the slot and the approval it already had. The guest
-        // page reuses its participant ID across a reconnect precisely so this can happen.
+        // page reuses its participant ID across a reconnect precisely so this can happen. Reclaiming
+        // a disconnected participant requires the reconnect token issued when the guest first joined,
+        // so a different invite holder cannot reconnect as an approved guest and inherit their slot.
         if let index = participants.firstIndex(where: { $0.id == participantID }) {
             if participants[index].connectionState == .disconnected {
+                guard reconnectToken == participants[index].reconnectToken else {
+                    throw OPNRemoteCoOpHostSessionError.invalidInviteToken
+                }
                 // Approval survives, so an approved guest resumes playing rather than queueing for
                 // the host again. Input comes back only if the host had it on when the socket dropped:
                 // a guest benched with `setInputEnabled(false)` stays benched through a Wi-Fi roam.
@@ -240,9 +254,11 @@ public actor OPNRemoteCoOpHostSession {
             role: .guest,
             connectionState: preferences.requireHostApproval ? .waitingForApproval : .connected,
             inputEnabled: false,
+            reconnectToken: Self.makeReconnectToken(),
             joinedAt: now,
             lastActivityAt: now
         )
+        participantOwnership.setReconnectToken(participant.reconnectToken ?? "", for: participant.id)
         if !preferences.requireHostApproval {
             participant.playerIndex = try nextAvailablePlayerIndex()
             participant.inputEnabled = true
@@ -250,6 +266,12 @@ public actor OPNRemoteCoOpHostSession {
         participants.append(participant)
         await inputRouter.upsertParticipant(participant)
         return participant
+    }
+
+    private static func makeReconnectToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        for index in bytes.indices { bytes[index] = .random(in: .min ... .max) }
+        return Data(bytes).base64EncodedString()
     }
 
     public func approveParticipant(_ id: UUID) async throws -> OPNRemoteCoOpParticipant {
@@ -365,6 +387,7 @@ public actor OPNRemoteCoOpHostSession {
         guard let index = participants.firstIndex(where: { $0.id == id }) else { throw OPNRemoteCoOpHostSessionError.participantNotFound }
         let removed = participants.remove(at: index)
         inputEnabledBeforeDisconnect[id] = nil
+        participantOwnership.removeParticipant(id)
         await inputRouter.removeParticipant(id)
         guard let playerIndex = removed.playerIndex else { return [] }
         return [.gamepad(GamepadState(

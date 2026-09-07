@@ -52,6 +52,7 @@ struct RemoteCoOpNativeGuestTests {
         let invite = OPNRemoteCoOpInvite(code: "ABC123", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
         let server = OPNRemoteCoOpNativeGuestServer(
             inviteProvider: { invite },
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
             networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
         )
         server.start()
@@ -61,7 +62,7 @@ struct RemoteCoOpNativeGuestTests {
         // Subscribed before the guest connects so the event cannot beat the subscription.
         let events = server.events()
         let connection = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
-        try await connection.connect()
+        _ = try await connection.connect()
         defer { connection.close() }
 
         let participantID = UUID()
@@ -71,7 +72,7 @@ struct RemoteCoOpNativeGuestTests {
             if case .guestJoinRequested = candidate { return true }
             return false
         }
-        guard case .guestJoinRequested(let joinedID, let token, let name) = event else {
+        guard case .guestJoinRequested(let joinedID, let token, let name, _) = event else {
             Issue.record("Expected a guestJoinRequested event, got \(event)")
             return
         }
@@ -85,6 +86,7 @@ struct RemoteCoOpNativeGuestTests {
         let invite = OPNRemoteCoOpInvite(code: "XYZ789", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
         let server = OPNRemoteCoOpNativeGuestServer(
             inviteProvider: { invite },
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
             networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
         )
         server.start()
@@ -95,7 +97,7 @@ struct RemoteCoOpNativeGuestTests {
         // Subscribed before connect: the greeting is the first thing the server sends, and a
         // stream created afterwards can miss it.
         let messages = connection.messages()
-        try await connection.connect()
+        _ = try await connection.connect()
         defer { connection.close() }
 
         // Drained for a window rather than counted.
@@ -117,6 +119,7 @@ struct RemoteCoOpNativeGuestTests {
         let invite = OPNRemoteCoOpInvite(code: "DEF456", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
         let server = OPNRemoteCoOpNativeGuestServer(
             inviteProvider: { invite },
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
             networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
         )
         server.start()
@@ -127,8 +130,8 @@ struct RemoteCoOpNativeGuestTests {
         let guestB = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
         let streamA = guestA.messages()
         let streamB = guestB.messages()
-        try await guestA.connect()
-        try await guestB.connect()
+        _ = try await guestA.connect()
+        _ = try await guestB.connect()
         defer { guestA.close(); guestB.close() }
 
         // Each connection's greeting is `hostHello` alone; the network configuration is withheld

@@ -53,11 +53,11 @@ public final class OPNRemoteCoOpAblyChannel: OPNRemoteCoOpSignalingChannel, @unc
     public func subscribe(name: String, handler: @escaping @Sendable (_ text: String, _ senderID: String) -> Void) {
         guestChannel.subscribe(name) { message in
             guard let text = message.data as? String else { return }
-            // `clientId` is the sender's asserted identity, and it is what the session uses as a
-            // connection key. Ably guarantees it is present only when the credential carries one, so
-            // a message without it is dropped here rather than being given an empty owner the gate
-            // would then treat as a single shared connection.
-            guard let senderID = message.clientId, !senderID.isEmpty else { return }
+            // `connectionId` is the Ably-assigned connection identifier, not the `clientId` the guest
+            // asserts. Using `clientId` would let any invite holder claim to be any other guest on the
+            // shared channel; `connectionId` is assigned by Ably and cannot be forged by the client.
+            let senderID = message.connectionId
+            guard !senderID.isEmpty else { return }
             handler(text, senderID)
         }
     }
@@ -66,14 +66,13 @@ public final class OPNRemoteCoOpAblyChannel: OPNRemoteCoOpSignalingChannel, @unc
         // Both, because they mean the same thing to us and Ably distinguishes them: `leave` is a
         // guest closing its connection, `absent` is one that vanished without saying so. The second
         // is the case the socket transports need a liveness sweep to notice at all.
-        guestChannel.presence.subscribe(.leave) { message in
-            guard let senderID = message.clientId, !senderID.isEmpty else { return }
+        let notify: (ARTPresenceMessage) -> Void = { message in
+            let senderID = message.connectionId
+            guard !senderID.isEmpty else { return }
             handler(senderID)
         }
-        guestChannel.presence.subscribe(.absent) { message in
-            guard let senderID = message.clientId, !senderID.isEmpty else { return }
-            handler(senderID)
-        }
+        guestChannel.presence.subscribe(.leave, callback: notify)
+        guestChannel.presence.subscribe(.absent, callback: notify)
     }
 
     public func detach() {

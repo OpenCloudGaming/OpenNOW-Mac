@@ -29,7 +29,8 @@ struct RemoteCoOpGuestWebSocketTransportTests {
         try Data("<html>guest</html>".utf8).write(to: root.appendingPathComponent("index.html"))
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: root,
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency)
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency),
+            participantOwnership: OPNRemoteCoOpParticipantOwnership()
         )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-ws-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -87,7 +88,7 @@ struct RemoteCoOpGuestWebSocketTransportTests {
 
         let connection = try makeConnection(endpoint)
         let messages = connection.messages()
-        try await connection.connect()
+        _ = try await connection.connect(expectedFingerprint: nil)
 
         let participantID = UUID()
         try await connection.send(OPNRemoteCoOpWireMessage(
@@ -98,9 +99,14 @@ struct RemoteCoOpGuestWebSocketTransportTests {
         ))
 
         // The WebSocket server never greets with `hostHello` - a browser reads the token out of its
-        // own URL - so this is the first thing a guest hears back, and it is what starts their peer
-        // connection. It arrives once the coordinator has verified the invite, never before: the
-        // configuration carries relay credentials.
+        // own URL - so the first thing a guest hears back is the participant record. The relay
+        // credentials only arrive once the host has approved the guest: approval moves the
+        // participant to connected and input-enabled, which is the gate that releases the
+        // configuration.
+        let firstUpdate = await firstMessage(ofKind: .participantUpdated, from: messages)
+        _ = try #require(firstUpdate, "the join was not acknowledged")
+        _ = try await coordinator.approveParticipant(participantID)
+
         let configuration = await firstMessage(ofKind: .networkConfiguration, from: messages)
         let received = try #require(configuration, "no networkConfiguration came back from the join")
         #expect(received.participantID == participantID)
@@ -130,7 +136,7 @@ struct RemoteCoOpGuestWebSocketTransportTests {
 
         let connection = try makeConnection(endpoint)
         let messages = connection.messages()
-        try await connection.connect()
+        _ = try await connection.connect(expectedFingerprint: nil)
         let participantID = UUID()
         try await connection.send(OPNRemoteCoOpWireMessage(
             kind: .guestJoinRequested,
@@ -164,7 +170,7 @@ struct RemoteCoOpGuestWebSocketTransportTests {
 
         let connection = try makeConnection(endpoint)
         let messages = connection.messages()
-        try await connection.connect()
+        _ = try await connection.connect(expectedFingerprint: nil)
         let participantID = UUID()
         // Reaching the socket is not authorisation. The invite is signed, so a guest who found the
         // tunnel without being given the link gets no further than this.
@@ -188,7 +194,7 @@ struct RemoteCoOpGuestWebSocketTransportTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let connection = try makeConnection(endpoint)
         let messages = connection.messages()
-        try await connection.connect()
+        _ = try await connection.connect(expectedFingerprint: nil)
         connection.close()
 
         // The guest view model's pump exits on stream end; a stream that never finished would leave

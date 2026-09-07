@@ -37,13 +37,15 @@ public enum OPNRemoteCoOpHostedSignalingName {
 
 public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSession, @unchecked Sendable {
     private let channel: any OPNRemoteCoOpSignalingChannel
+    private let participantOwnership: OPNRemoteCoOpParticipantOwnership
     private let logger: (@Sendable (String) -> Void)?
     private let lock = NSLock()
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
     /// Which participant a sender has claimed.
     ///
     /// The equivalent of a socket's `participantID`, and the reason the shared gate can be used
-    /// unchanged: it asks who owns this connection, and here a connection is a sender.
+    /// unchanged: it asks who owns this connection, and here a connection is a sender. The shared
+    /// registry is the authoritative source; this table is kept only for local routing lookups.
     private var participantsBySender: [String: UUID] = [:]
     /// The ICE configuration handed to a guest once its invite has verified. Carried here because
     /// nothing else on this transport has it, and without it a hosted guest is never given a relay.
@@ -54,9 +56,11 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     private var isClosed = false
 
     public init(channel: any OPNRemoteCoOpSignalingChannel,
+                participantOwnership: OPNRemoteCoOpParticipantOwnership,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic),
                 logger: (@Sendable (String) -> Void)? = nil) {
         self.channel = channel
+        self.participantOwnership = participantOwnership
         self.networkConfiguration = networkConfiguration
         self.logger = logger
         channel.subscribe(name: OPNRemoteCoOpHostedSignalingName.guest) { [weak self] text, senderID in
@@ -97,12 +101,13 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         // Guests cannot publish here - their token grants `subscribe` only on this channel - so a
         // message arriving on it is the host's.
         //
-        // The relay credentials are the one thing worth being careful with, and they are only sent
-        // after `registerGuest` has verified the signed invite, which is what `participantUpdated`
-        // means. They are still readable by the invite's other holders, which is inherent to a shared
-        // invite and recorded on `mintGuestToken`.
+        // The relay credentials are only released once the host has accepted the guest: the
+        // participant must be marked connected and input enabled. This closes the window where a
+        // guest that has only verified its invite token but has not yet been approved could obtain
+        // the TURN username and password. They are still readable by the invite's other holders,
+        // which is inherent to a shared invite and recorded on `mintGuestToken`.
         if case .participantUpdated(let participant) = command {
-            sendNetworkConfigurationIfNeeded(to: participant.id)
+            sendNetworkConfigurationIfNeeded(to: participant)
         }
         // A refused join releases its claim, for the same reason the socket transports do: the gate
         // binds on a non-empty token and only `registerGuest` checks the signature, so a sender that
@@ -110,9 +115,10 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         if case .guestRejected(let participantID, _) = command {
             lock.withLock {
                 participantsGivenNetworkConfiguration.remove(participantID)
-                for (sender, claimed) in participantsBySender where claimed == participantID {
-                    participantsBySender[sender] = nil
-                }
+                participantsBySender = participantsBySender.filter { $0.value != participantID }
+            }
+            if let handle = participantOwnership.owner(of: participantID), handle.transport == .hosted {
+                participantOwnership.release(handle)
             }
         }
         guard let message = OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: nil),
@@ -123,33 +129,41 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     /// The hosted transport used to send this not at all - `message(for:)` has no case that produces
     /// it - so a hosted guest never received ICE servers and could not connect from any network that
     /// blocks a direct route, which is the exact case this transport exists to serve.
-    private func sendNetworkConfigurationIfNeeded(to participantID: UUID) {
+    private func sendNetworkConfigurationIfNeeded(to participant: OPNRemoteCoOpParticipant) {
         let configuration = lock.withLock { () -> OPNRemoteCoOpNetworkConfiguration? in
-            guard !participantsGivenNetworkConfiguration.contains(participantID) else { return nil }
-            participantsGivenNetworkConfiguration.insert(participantID)
+            guard participant.connectionState == .connected && participant.inputEnabled,
+                  !participantsGivenNetworkConfiguration.contains(participant.id) else { return nil }
+            participantsGivenNetworkConfiguration.insert(participant.id)
             return networkConfiguration
         }
         guard let configuration,
               let text = try? OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
                   kind: .networkConfiguration,
                   roomID: nil,
-                  participantID: participantID,
+                  participantID: participant.id,
                   networkConfiguration: configuration
               )) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }
 
     public func close() async {
-        let continuations = lock.withLock { () -> [AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] in
-            guard !isClosed else { return [] }
+        let (continuations, senders) = lock.withLock { () -> ([AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation], [String]) in
+            guard !isClosed else { return ([], []) }
             isClosed = true
             let existing = Array(eventContinuations.values)
             eventContinuations.removeAll()
+            let senders = Array(participantsBySender.keys)
             participantsBySender.removeAll()
-            return existing
+            return (existing, senders)
+        }
+        // Finish outside the lock: termination handlers may re-enter the lock.
+        for continuation in continuations { continuation.finish() }
+        // Release all hosted bindings. The registry is shared, but each transport only owns its own
+        // handles; releasing handles this transport never created is a no-op.
+        for sender in senders {
+            participantOwnership.release(.init(transport: .hosted, connectionID: sender))
         }
         channel.detach()
-        for continuation in continuations { continuation.finish() }
     }
 
     private func ingest(text: String, senderID: String) {
@@ -158,22 +172,21 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         // The same gate both socket listeners use. A third transport must not carry a third variant
         // of who may say what.
         //
-        // Worth being clear about what this can and cannot do here: on a socket the transport owns the
-        // connection's identity, whereas a sender ID on a hosted channel is asserted by the client. So
-        // the claim guard is doing more work on this transport than on the others, and the real gate
-        // remains the signed invite verified by `registerGuest`, plus host approval.
+        // The `senderID` passed by the channel is Ably's `connectionId`, not the guest-asserted
+        // `clientId`. Using `connectionId` means a second invite holder on the same channel cannot
+        // impersonate another guest by simply claiming their participant ID.
+        let handle = OPNRemoteCoOpConnectionHandle(transport: .hosted, connectionID: senderID)
         let decision = lock.withLock { () -> OPNRemoteCoOpGuestMessageGate.Decision in
             let decision = OPNRemoteCoOpGuestMessageGate.decide(
                 message: message,
-                owner: participantsBySender[senderID],
-                isHeldByAnotherConnection: { participantID in
-                    participantsBySender.contains { $0.key != senderID && $0.value == participantID }
-                }
+                connection: handle,
+                registry: participantOwnership
             )
             // Bound inside the same critical section that tested the claim, so two senders racing the
             // same participant cannot both be told it is free.
             if case .claimThenDeliver(let participantID) = decision {
                 participantsBySender[senderID] = participantID
+                participantOwnership.claim(participantID: participantID, for: handle)
             }
             return decision
         }
@@ -208,6 +221,7 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
             participantsGivenNetworkConfiguration.remove(participantID)
             return participantID
         }
+        participantOwnership.release(.init(transport: .hosted, connectionID: senderID))
         guard let participantID else { return }
         publish(.guestDisconnected(participantID))
     }

@@ -16,7 +16,7 @@ struct RemoteCoOpPerGuestQualityTests {
 
     private func join(_ coordinator: OPNRemoteCoOpHostCoordinator, invite: OPNRemoteCoOpInvite, name: String) async throws -> OPNRemoteCoOpParticipant {
         let participantID = UUID()
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: name))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: name, reconnectToken: nil))
         return try await coordinator.approveParticipant(participantID)
     }
 

@@ -1,8 +1,7 @@
-//  The authorisation rule both listeners now share.
+//  The authorisation rule all three listeners now share.
 //
-//  Written against the decision rather than either transport, because the point of extracting it was
-//  that the two copies could differ without anything noticing.
-//
+//  Written against the decision rather than any transport, because the point of extracting it was
+//  that copies could differ without anything noticing.
 
 import Foundation
 import Testing
@@ -12,10 +11,32 @@ import Testing
     private let owner = UUID()
     private let stranger = UUID()
 
+    private func registry(held: Set<UUID> = []) -> OPNRemoteCoOpParticipantOwnership {
+        let registry = OPNRemoteCoOpParticipantOwnership()
+        for participantID in held {
+            _ = registry.claim(participantID: participantID, for: handle(.embedded))
+        }
+        return registry
+    }
+
+    private func handle(_ transport: OPNRemoteCoOpTransportKind, id: UUID = UUID()) -> OPNRemoteCoOpConnectionHandle {
+        OPNRemoteCoOpConnectionHandle(transport: transport, connectionID: id)
+    }
+
     private func decide(_ message: OPNRemoteCoOpWireMessage,
-                        owner: UUID?,
+                        as transport: OPNRemoteCoOpTransportKind = .embedded,
+                        owner: UUID? = nil,
                         held: Set<UUID> = []) -> OPNRemoteCoOpGuestMessageGate.Decision {
-        OPNRemoteCoOpGuestMessageGate.decide(message: message, owner: owner) { held.contains($0) }
+        let id = UUID()
+        let registry = registry(held: held)
+        if let owner {
+            _ = registry.claim(participantID: owner, for: handle(transport, id: id))
+        }
+        return OPNRemoteCoOpGuestMessageGate.decide(
+            message: message,
+            connection: handle(transport, id: id),
+            registry: registry
+        )
     }
 
     private func input(_ participantID: UUID, sequence: UInt64 = 1) -> OPNRemoteCoOpInputPacket {
@@ -72,11 +93,27 @@ import Testing
         }
     }
 
+    /// A participant held on a *different* transport must also be refused. This is the cross-transport
+    /// impersonation case: a native guest claiming a participant already bound on the embedded or
+    /// hosted transport should be dropped.
+    @Test func aParticipantHeldOnAnotherTransportIsNotUpForGrabs() throws {
+        let registry = OPNRemoteCoOpParticipantOwnership()
+        let embeddedHandle = handle(.embedded)
+        _ = registry.claim(participantID: stranger, for: embeddedHandle)
+        let nativeHandle = handle(.native)
+        let join = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: stranger, inviteToken: "t.s")
+        let decision = OPNRemoteCoOpGuestMessageGate.decide(message: join, connection: nativeHandle, registry: registry)
+        guard case .dropConnection = decision else {
+            Issue.record("a participant held on another transport was claimed on native")
+            return
+        }
+    }
+
     /// The same socket re-sending its own join is not an attack; a guest that reconnects and repeats
     /// the handshake must not be dropped.
     @Test func aSocketMayReclaimTheParticipantItAlreadyHolds() throws {
         let join = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: owner, inviteToken: "t.s")
-        #expect(decide(join, owner: owner, held: [owner]) == .claimThenDeliver(participantID: owner))
+        #expect(decide(join, owner: owner, held: []) == .deliver)
     }
 
     /// Re-claiming its own participant is fine; moving to a *different* one is not.

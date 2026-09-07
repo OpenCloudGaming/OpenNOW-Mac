@@ -130,6 +130,14 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// Participants whose invite has verified and who have therefore been given the ICE
     /// configuration, so a reconnect earns it again but a routine update does not resend it.
     private var participantsGivenNetworkConfiguration: Set<UUID> = []
+    /// The shared ownership table consulted by all three transports. Passed in by the host session.
+    private let participantOwnership: OPNRemoteCoOpParticipantOwnership
+    /// Connections that have not yet completed a verified join. Tracked separately so a flood of
+    /// open sockets cannot crowd out guests that have already authenticated.
+    private var unauthenticatedConnections: Set<UUID> = []
+    /// Seconds a connection may live after the handshake without sending a join. Mirrors the
+    /// native listener's join deadline and closes the same slot-exhaustion window.
+    static let joinDeadline: TimeInterval = 30
     /// Keyed rather than single-slot: a second `events()` call used to orphan the first stream, whose
     /// consumer then waited forever.
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
@@ -145,6 +153,10 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// fetch. This is far above that and still low enough that an unauthenticated peer cannot make
     /// the host hold file descriptors indefinitely.
     static let maximumConnections = 64
+    /// A separate, smaller cap for sockets that have not yet sent a join. This isolates
+    /// unauthenticated connections from authenticated guests so an opening flood cannot crowd out
+    /// slots held by legitimate peers.
+    static let maximumUnauthenticatedConnections = 16
     /// A connection that opens TCP and never finishes a request head is dropped. Well beyond any
     /// real handshake, short enough that idle sockets do not accumulate.
     static let handshakeTimeout: Duration = .seconds(15)
@@ -161,73 +173,14 @@ public actor OPNRemoteCoOpEmbeddedServer {
 
     public init(documentRoot: URL,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                participantOwnership: OPNRemoteCoOpParticipantOwnership,
                 additionalAllowedOrigins: [String] = [],
                 logger: (@Sendable (String) -> Void)? = nil) {
         self.documentRoot = documentRoot
         self.networkConfiguration = networkConfiguration
+        self.participantOwnership = participantOwnership
         self.additionalAllowedOrigins = additionalAllowedOrigins.map { $0.lowercased() }
         self.logger = logger
-    }
-
-    /// Whether a browser at `origin` may open the signaling socket.
-    ///
-    /// A WebSocket is not subject to the same-origin policy the way `fetch` is: any page in any tab
-    /// can open one to this server, and the browser will send it. The invite token gates anything
-    /// meaningful, but this listener runs on the machine playing the game, so an unrelated page
-    /// should not get as far as speaking the protocol.
-    ///
-    /// A missing `Origin` is allowed: non-browser clients omit it entirely, and the guest page is
-    /// not the only legitimate client (the test harness and the smoke checks connect directly).
-    static func isOriginAllowed(_ origin: String?, port: UInt16, additional: [String]) -> Bool {
-        guard let origin, !origin.isEmpty else { return true }
-        let normalized = origin.lowercased()
-        if additional.contains(normalized) { return true }
-        // Every form a browser can produce for this machine's own listener.
-        for host in ["localhost", "127.0.0.1", "[::1]"] {
-            if normalized == "https://\(host):\(port)" || normalized == "https://\(host)" { return true }
-        }
-        // A LAN address cannot be enumerated ahead of time - the interface list can change while a
-        // session is live - so any private-range host on this listener's port is accepted.
-        guard let url = URL(string: normalized),
-              url.scheme == "https",
-              let host = url.host,
-              url.port == Int(port) || url.port == nil else { return false }
-        return isPrivateIPv4(host)
-    }
-
-    /// RFC 1918, link-local, and the 100.64.0.0/10 CGNAT block a tailnet addresses hosts from -
-    /// every address a guest on the same network or the same VPN can reach this Mac at. Deliberately
-    /// not a general "is this a LAN address" helper: a routable public address here means something
-    /// is proxying, and that has to be named explicitly as a tunnel origin.
-    static func isPrivateIPv4(_ host: String) -> Bool {
-        // Every label has to parse, not just four of them. `compactMap` silently discarded the
-        // labels that were not numbers, so `10.0.0.1.evil.com` produced `[10, 0, 0, 1]` and was
-        // classified as a LAN address - a registerable domain matching a private-range prefix.
-        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
-        guard labels.count == 4 else { return false }
-        let parts = labels.compactMap { UInt8($0) }
-        guard parts.count == 4 else { return false }
-        switch (parts[0], parts[1]) {
-        case (10, _): return true
-        case (192, 168): return true
-        case (172, 16...31): return true
-        case (169, 254): return true
-        // Tailscale, which is the documented way to reach a host across networks. Without it a
-        // browser guest on the tailnet loaded the page and was then 403'd on the upgrade.
-        case (100, 64...127): return true
-        default: return false
-        }
-    }
-
-    /// The guest page shipped inside the app bundle. Serving the same files the Node broker serves
-    /// means the page cannot drift from the protocol the host speaks.
-    public static func bundledDocumentRoot() -> URL? {
-        guard let resources = Bundle.main.resourceURL else { return nil }
-        let candidates = [
-            resources.appendingPathComponent("Resources/RemoteCoOp/browser"),
-            resources.appendingPathComponent("RemoteCoOp/browser")
-        ]
-        return candidates.first { FileManager.default.fileExists(atPath: $0.appendingPathComponent("index.html").path) }
     }
 
     public func events() -> AsyncStream<OPNRemoteCoOpSignalingEvent> {
@@ -333,9 +286,12 @@ public actor OPNRemoteCoOpEmbeddedServer {
         // ends by cancellation.
         for continuation in eventContinuations.values { continuation.finish() }
         eventContinuations.removeAll()
-        for connection in connections.values { connection.connection.cancel() }
+        for connection in connections.values {
+            participantOwnership.release(.init(transport: .embedded, connectionID: connection.id))
+            connection.connection.cancel()
+        }
         connections.removeAll()
-        guestConnections.removeAll()
+        unauthenticatedConnections.removeAll()
         listener?.cancel()
         listener = nil
         endpoint = nil
@@ -385,11 +341,11 @@ public actor OPNRemoteCoOpEmbeddedServer {
             broadcast(OPNRemoteCoOpWireMessage(kind: .inviteEnded, roomID: nil, reason: "Host ended the invite."))
             for connection in connections.values where connection.isWebSocket { connection.connection.cancel() }
         case .participantUpdated(let participant):
-            // First update for a participant means the host session accepted their invite token, so
-            // this is the earliest point at which they have earned the ICE configuration. It has to
-            // precede the update itself: the guest builds its peer connection from it, and the offer
-            // follows immediately behind.
-            sendNetworkConfigurationIfNeeded(to: participant.id)
+            // The relay credentials are only released once the host has accepted the guest: the
+            // participant must be marked connected and input enabled. This closes the window where a
+            // guest that has only verified its invite token but has not yet been approved could
+            // obtain the TURN username and password.
+            sendNetworkConfigurationIfNeeded(to: participant)
             sendToGuest(participant.id, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
         case .participantRemoved(let participantID):
             sendToGuest(participantID, OPNRemoteCoOpWireMessage.message(for: command, roomID: nil, sessionQualityPreset: networkConfiguration.sessionQualityPreset))
@@ -411,23 +367,28 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// Drops a participant binding after the host refused the join, so the connection that made the
     /// unverified claim stops owning that participant's routing.
     private func releaseClaim(on participantID: UUID) {
-        guard let connectionID = guestConnections.removeValue(forKey: participantID) else { return }
         participantsGivenNetworkConfiguration.remove(participantID)
-        guard let connection = connections[connectionID], connection.participantID == participantID else { return }
+        guard let handle = participantOwnership.owner(of: participantID),
+              handle.transport == .embedded,
+              let connection = connection(for: handle),
+              connection.participantID == participantID else { return }
+        participantOwnership.release(handle)
         connection.participantID = nil
     }
 
     /// Sent once per verified participant. Re-sending on every later update would put the relay
     /// credentials back on the wire for no reason.
-    private func sendNetworkConfigurationIfNeeded(to participantID: UUID) {
-        guard !participantsGivenNetworkConfiguration.contains(participantID),
-              let connectionID = guestConnections[participantID],
-              let connection = connections[connectionID] else { return }
-        participantsGivenNetworkConfiguration.insert(participantID)
+    private func sendNetworkConfigurationIfNeeded(to participant: OPNRemoteCoOpParticipant) {
+        guard participant.connectionState == .connected && participant.inputEnabled,
+              !participantsGivenNetworkConfiguration.contains(participant.id),
+              let handle = participantOwnership.owner(of: participant.id),
+              handle.transport == .embedded,
+              let connection = connection(for: handle) else { return }
+        participantsGivenNetworkConfiguration.insert(participant.id)
         sendWire(connection, OPNRemoteCoOpWireMessage(
             kind: .networkConfiguration,
             roomID: nil,
-            participantID: participantID,
+            participantID: participant.id,
             networkConfiguration: networkConfiguration
         ))
     }
@@ -448,9 +409,16 @@ public actor OPNRemoteCoOpEmbeddedServer {
             nwConnection.cancel()
             return
         }
+        guard unauthenticatedConnections.count < Self.maximumUnauthenticatedConnections else {
+            logger?("Remote Co-Op refused a connection: \(Self.maximumUnauthenticatedConnections) unauthenticated sockets already open")
+            nwConnection.cancel()
+            return
+        }
         let connection = Connection(connection: nwConnection)
         let id = connection.id
         connections[id] = connection
+        unauthenticatedConnections.insert(id)
+        scheduleJoinDeadline(for: id)
         scheduleHandshakeTimeout(for: id)
         // Only the id crosses into the handler. `Connection` owns the read buffer and is actor
         // state; capturing it would hand mutable state to Network.framework's callback queue.
@@ -480,6 +448,24 @@ public actor OPNRemoteCoOpEmbeddedServer {
     private func dropIfHandshakeIncomplete(_ id: UUID) {
         guard let connection = connections[id], !connection.isWebSocket else { return }
         logger?("Remote Co-Op dropped a connection that never completed a handshake")
+        close(id)
+    }
+
+    /// Drops a WebSocket connection that completed its handshake but never sent a verified join.
+    ///
+    /// A browser guest may open a socket and sit idle, so the window is generous, but a peer that
+    /// holds many sockets without joining is a slot-exhaustion attack. This is enforced separately
+    /// from `handshakeTimeout` because a TLS/TCP handshake can finish without a join ever arriving.
+    private func scheduleJoinDeadline(for id: UUID) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.joinDeadline))
+            await self?.dropIfJoinDeadlineExpired(id)
+        }
+    }
+
+    private func dropIfJoinDeadlineExpired(_ id: UUID) {
+        guard connections[id] != nil, unauthenticatedConnections.contains(id) else { return }
+        logger?("Remote Co-Op dropped a socket that never joined within the deadline")
         close(id)
     }
 
@@ -595,18 +581,15 @@ public actor OPNRemoteCoOpEmbeddedServer {
         // `ingest` already refreshed `lastActivityAt` before this ran, which is the whole point of
         // the message. The native listener has always dropped it, and was right to.
         if message.kind == .heartbeat { return }
+        let handle = OPNRemoteCoOpConnectionHandle(transport: .embedded, connectionID: connection.id)
         // Authorisation lives in `OPNRemoteCoOpGuestMessageGate`, not here.
         //
-        // Both listeners implemented the same rules independently, and that has drifted before: this
-        // listener's allowlist and claim guard had to be hand-copied into the native one after it
-        // shipped without them. One decision, two transports.
+        // All three transports consult the same shared ownership table, so a participant bound on
+        // one transport cannot be claimed on another.
         switch OPNRemoteCoOpGuestMessageGate.decide(
             message: message,
-            owner: connection.participantID,
-            isHeldByAnotherConnection: { participantID in
-                guard let existing = guestConnections[participantID], existing != connection.id else { return false }
-                return connections[existing] != nil
-            }
+            connection: handle,
+            registry: participantOwnership
         ) {
         case .ignore:
             return
@@ -616,14 +599,17 @@ public actor OPNRemoteCoOpEmbeddedServer {
             return
         case .claimThenDeliver(let participantID):
             // The previous binding goes with it. Without this, a connection that had claimed another
-            // participant left `guestConnections` still pointing here for the old ID, so that
+            // participant left the registry still pointing here for the old ID, so that
             // participant's host commands - including their SDP - kept arriving on this socket.
             if let previous = connection.participantID, previous != participantID {
-                guestConnections[previous] = nil
+                participantOwnership.release(handle)
                 participantsGivenNetworkConfiguration.remove(previous)
             }
             connection.participantID = participantID
-            guestConnections[participantID] = connection.id
+            participantOwnership.claim(participantID: participantID, for: handle)
+            // A join, even one whose signature is not yet verified, moves the socket out of the
+            // unauthenticated pool so it no longer counts toward the slot-exhaustion cap.
+            unauthenticatedConnections.remove(connection.id)
             // The ICE configuration is deliberately NOT sent here. The gate only checked that the
             // token is non-empty; the signature is verified later, by `registerGuest`. Those servers
             // now carry relay credentials, so replying here handed anyone who could reach this port
@@ -638,9 +624,11 @@ public actor OPNRemoteCoOpEmbeddedServer {
 
     private func close(_ id: UUID) {
         guard let connection = connections.removeValue(forKey: id) else { return }
+        let handle = OPNRemoteCoOpConnectionHandle(transport: .embedded, connectionID: connection.id)
+        participantOwnership.release(handle)
+        unauthenticatedConnections.remove(id)
         connection.connection.cancel()
         guard let participantID = connection.participantID else { return }
-        guestConnections[participantID] = nil
         // Cleared with the socket, so a reconnect has to re-verify before it is handed the relay
         // credentials again.
         participantsGivenNetworkConfiguration.remove(participantID)
@@ -649,10 +637,17 @@ public actor OPNRemoteCoOpEmbeddedServer {
 
     // MARK: - Sending
 
+    private func connection(for handle: OPNRemoteCoOpConnectionHandle) -> Connection? {
+        guard handle.transport == .embedded,
+              let id = UUID(uuidString: handle.connectionID) else { return nil }
+        return connections[id]
+    }
+
     private func sendToGuest(_ participantID: UUID, _ message: OPNRemoteCoOpWireMessage?) {
         guard let message,
-              let connectionID = guestConnections[participantID],
-              let connection = connections[connectionID] else { return }
+              let handle = participantOwnership.owner(of: participantID),
+              handle.transport == .embedded,
+              let connection = connection(for: handle) else { return }
         sendWire(connection, message)
     }
 

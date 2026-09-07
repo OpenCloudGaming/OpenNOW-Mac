@@ -4,6 +4,7 @@
 
 import Foundation
 import Network
+import Security
 
 /// A host found by Bonjour. `endpoint` is retained so the guest can connect without resolving
 /// anything itself - the service name in it is enough for Network.framework.
@@ -142,9 +143,26 @@ public final class OPNRemoteCoOpNativeGuestConnection: @unchecked Sendable {
     /// with no error and nothing above it timing out.
     private static let connectTimeout = Duration.seconds(10)
 
-    /// Resolves once the socket is ready to use.
-    public func connect() async throws {
-        let connection = NWConnection(to: endpoint, using: .tcp)
+    /// Resolves once the TLS socket is ready to use, returning the host's certificate fingerprint.
+    ///
+    /// `expectedFingerprint` pins the connection to a previously seen certificate. When nil, the
+    /// connection uses trust-on-first-use and the caller is responsible for remembering the
+    /// returned fingerprint for the next connection. A mismatch is reported as a connection
+    /// failure so the caller can warn the user rather than silently accepting a different host.
+    public func connect(expectedFingerprint: String? = nil) async throws -> String {
+        let fingerprintBox = FingerprintBox()
+        let tlsOptions = NWProtocolTLS.Options()
+        sec_protocol_options_set_verify_block(tlsOptions.securityProtocolOptions, { metadata, _, completion in
+            let fingerprint = Self.fingerprint(from: metadata)
+            fingerprintBox.set(fingerprint)
+            if let expectedFingerprint {
+                completion(fingerprint == expectedFingerprint)
+            } else {
+                completion(true)
+            }
+        }, DispatchQueue.global())
+        let parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
+        let connection = NWConnection(to: endpoint, using: parameters)
         let box = OPNContinuationBox()
         lock.withLock { self.connection = connection }
         let timeout = Task { [weak self] in
@@ -171,6 +189,33 @@ public final class OPNRemoteCoOpNativeGuestConnection: @unchecked Sendable {
             }
             connection.start(queue: queue)
             receive(on: connection)
+        }
+        return fingerprintBox.get() ?? ""
+    }
+
+    private static func fingerprint(from metadata: sec_protocol_metadata_t) -> String {
+        let box = FingerprintBox()
+        sec_protocol_metadata_access_peer_certificate_chain(metadata) { certificate in
+            guard box.get() == nil else { return }
+            let secCertificate = sec_certificate_copy_ref(certificate).takeRetainedValue()
+            let data = SecCertificateCopyData(secCertificate) as Data
+            box.set(OPNRemoteCoOpSHA256Fingerprint.hex(of: data))
+        }
+        return box.get() ?? ""
+    }
+
+    private final class FingerprintBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: String?
+        func set(_ value: String) {
+            lock.lock()
+            self.value = value
+            lock.unlock()
+        }
+        func get() -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
         }
     }
 
