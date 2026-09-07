@@ -75,6 +75,84 @@ import Testing
         ])
         #expect(OPNStreamPreferences.loadCachedRegions().map(\.url) == [texasUrl, germanyUrl])
     }
+
+    @Test func untrustedRegionPreferenceFallsBackToDefaultStreamingBaseUrl() {
+        let defaults = UserDefaults.standard
+        let regionKey = "OpenNOW.Stream.RegionUrl"
+        let previousRegionUrl = defaults.object(forKey: regionKey)
+        defer {
+            if let previousRegionUrl { defaults.set(previousRegionUrl, forKey: regionKey) }
+            else { defaults.removeObject(forKey: regionKey) }
+            defaults.synchronize()
+        }
+
+        defaults.set("https://attacker.com/", forKey: regionKey)
+        defaults.synchronize()
+
+        #expect(OPNStreamPreferences.loadSelectedRegionUrl() == "")
+        #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl() == OPNStreamPreferences.defaultStreamingBaseUrl)
+    }
+
+    @Test func untrustedPerGameRegionPreferenceFallsBackToDefaultStreamingBaseUrl() {
+        let defaults = UserDefaults.standard
+        let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
+        let previousProfiles = defaults.object(forKey: gameProfilesKey)
+        let appId = "cwe-923-test-app"
+        defer {
+            if let previousProfiles { defaults.set(previousProfiles, forKey: gameProfilesKey) }
+            else { defaults.removeObject(forKey: gameProfilesKey) }
+            defaults.synchronize()
+        }
+
+        defaults.set([
+            appId: [
+                "OpenNOW.Stream.GameProfileEnabled": true,
+                "OpenNOW.Stream.RegionUrl": "https://attacker.com/",
+            ],
+        ], forKey: gameProfilesKey)
+        defaults.synchronize()
+
+        #expect(OPNStreamPreferences.loadSelectedRegionUrl(forGame: appId) == "")
+        #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId) == OPNStreamPreferences.defaultStreamingBaseUrl)
+    }
+
+    @Test func untrustedCachedRegionsAreFilteredOut() {
+        let defaults = UserDefaults.standard
+        let cachedRegionsKey = "OpenNOW.Stream.CachedRegions"
+        let previousCachedRegions = defaults.object(forKey: cachedRegionsKey)
+        defer {
+            if let previousCachedRegions { defaults.set(previousCachedRegions, forKey: cachedRegionsKey) }
+            else { defaults.removeObject(forKey: cachedRegionsKey) }
+            defaults.synchronize()
+        }
+
+        defaults.set([
+            ["name": "Malicious", "url": "https://attacker.com/", "latencyMs": 5],
+            ["name": "Subdomain Trick", "url": "https://evil.nvidiagrid.net.attacker.com/", "latencyMs": 6],
+            ["name": "Valid Texas", "url": "https://us-texas.cloudmatchbeta.nvidiagrid.net/", "latencyMs": 20],
+        ], forKey: cachedRegionsKey)
+        defaults.synchronize()
+
+        #expect(OPNStreamPreferences.loadCachedRegions() == [
+            OPNStreamRegionOption(name: "Valid Texas", url: "https://us-texas.cloudmatchbeta.nvidiagrid.net/", latencyMs: 20),
+        ])
+    }
+
+    @Test func saveSelectedRegionUrlRejectsUntrustedOrigin() {
+        let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
+        defer { OPNStreamPreferences.saveSelectedRegionUrl(previousRegionUrl) }
+
+        OPNStreamPreferences.saveSelectedRegionUrl("https://attacker.com/")
+        #expect(OPNStreamPreferences.loadSelectedRegionUrl() == "")
+        #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl() == OPNStreamPreferences.defaultStreamingBaseUrl)
+    }
+
+    @Test func cloudMatchRegionBaseUrlRejectsUntrustedAddress() {
+        #expect(OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "attacker.com") == "")
+        #expect(OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "https://evil.nvidiagrid.net.attacker.com") == "")
+        #expect(OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "http://us-texas.cloudmatchbeta.nvidiagrid.net") == "")
+        #expect(OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "https://us-texas.cloudmatchbeta.nvidiagrid.net") == "https://us-texas.cloudmatchbeta.nvidiagrid.net/")
+    }
 }
 
 @Test func cloudVariablesRequestIncludesRequiredGXTQueryItems() throws {

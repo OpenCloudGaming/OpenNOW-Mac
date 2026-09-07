@@ -488,3 +488,22 @@ import Foundation
     #expect(result.1 == "GeForce NOW is patching this game. Try again after patching finishes.")
     #expect(result.2 == nil)
 }
+
+@Test @MainActor func activeSessionServiceRejectsUntrustedStreamingBaseUrl() async {
+    let (fetchSuccess, sessionCount, fetchError): (Bool, Int, String) = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.fetchActiveSessions(accessToken: "secret-token", streamingBaseUrl: "https://attacker.com/") { success, sessions, error in
+            continuation.resume(returning: (success, sessions.count, error))
+        }
+    }
+    #expect(!fetchSuccess)
+    #expect(sessionCount == 0)
+    #expect(fetchError == "Invalid sessions URL")
+
+    let (stopSuccess, stopError): (Bool, String) = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.stopSession(accessToken: "secret-token", sessionId: "session-1", serverIp: "", streamingBaseUrl: "https://attacker.com/") { success, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+    #expect(!stopSuccess)
+    #expect(stopError == "Invalid stop session URL")
+}

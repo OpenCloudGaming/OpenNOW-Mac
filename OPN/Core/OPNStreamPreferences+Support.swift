@@ -24,7 +24,11 @@ extension OPNStreamPreferences {
     }
 
     static func normalizedHTTPSBaseUrlOrEmpty(_ url: String) -> String {
-        guard !url.isEmpty, let components = URLComponents(string: url), components.scheme?.lowercased() == "https", components.host?.isEmpty == false else { return "" }
+        guard !url.isEmpty,
+              let components = URLComponents(string: url),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              CloudMatch.isTrustedStreamingHost(host) else { return "" }
         return url.hasSuffix("/") ? url : url + "/"
     }
 

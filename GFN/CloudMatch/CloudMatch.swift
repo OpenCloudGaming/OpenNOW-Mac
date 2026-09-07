@@ -7,6 +7,50 @@ public enum CloudMatch: Sendable {
 }
 
 public extension CloudMatch {
+    static func isTrustedStreamingHost(_ host: String, additionalTrustedHosts: [String] = []) -> Bool {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty, !trimmed.contains("/") else { return false }
+        let withoutPort = trimmed.split(separator: ":").first.map(String.init) ?? trimmed
+        let cleanHost = withoutPort.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard !cleanHost.isEmpty else { return false }
+
+        for candidate in additionalTrustedHosts {
+            let cleanCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if !cleanCandidate.isEmpty && cleanHost == cleanCandidate {
+                return true
+            }
+        }
+
+        var trustedDomains = [
+            "nvidiagrid.net",
+            "geforcenow.com",
+            "nvidia.com"
+        ]
+        #if DEBUG
+        trustedDomains.append(contentsOf: ["test", "example", "invalid"])
+        #endif
+        for domain in trustedDomains {
+            if cleanHost == domain || cleanHost.hasSuffix("." + domain) {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func isTrustedStreamingBaseURL(_ urlString: String, additionalTrustedHosts: [String] = []) -> Bool {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let components = URLComponents(string: trimmed),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              isTrustedStreamingHost(host, additionalTrustedHosts: additionalTrustedHosts) else {
+            return false
+        }
+        return true
+    }
+}
+
+public extension CloudMatch {
     enum Endpoint: String, CaseIterable, Sendable {
         case serviceUrls = "/v1/serviceUrls"
         case serverInfo = "/v2/serverInfo"
@@ -150,10 +194,11 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(accept, forHTTPHeaderField: "Accept")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        // Every remaining header is skipped when its value is empty, so the whole set is one table
-        // rather than one `if` per field.
+        let allowAuthorization = !accessToken.isEmpty && (request.url.map { url in
+            url.scheme?.lowercased() == "https" && url.host.map { CloudMatch.isTrustedStreamingHost($0) } == true
+        } ?? false)
         let optionalHeaders: [(field: String, value: String)] = [
-            ("Authorization", accessToken.isEmpty ? "" : "GFNJWT \(accessToken)"),
+            ("Authorization", allowAuthorization ? "GFNJWT \(accessToken)" : ""),
             ("nv-client-id", clientId),
             ("nv-client-type", clientType),
             ("nv-client-version", clientVersion),
@@ -238,7 +283,9 @@ public enum CloudMatchRequestFactory {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return CloudMatch.productionBaseURLString }
         let withScheme = raw.hasPrefix("https://") || raw.hasPrefix("http://") ? raw : "https://\(raw)"
-        return withScheme.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let stripped = withScheme.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard CloudMatch.isTrustedStreamingBaseURL(stripped) else { return CloudMatch.productionBaseURLString }
+        return stripped
     }
 
     public static func resolvedSessionBaseURL(streamingBaseURL: String, serverIP: String) -> String {
@@ -249,7 +296,10 @@ public enum CloudMatchRequestFactory {
             return base.isEmpty ? (fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase) : base
         }
         let host = usableEndpointHost(serverIP)
-        return host.isEmpty ? (fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase) : "https://\(host)"
+        guard !host.isEmpty, CloudMatch.isTrustedStreamingHost(host) else {
+            return fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase
+        }
+        return "https://\(host)"
     }
 
     private static func endpointRequest(path: String, method: String, accessToken: String, queryItems: [URLQueryItem], body: Data?, configuration: CloudMatchConfiguration, timeoutInterval: TimeInterval, deviceId: String, includeOrigin: Bool) -> URLRequest? {
@@ -273,7 +323,11 @@ public enum CloudMatchRequestFactory {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !raw.isEmpty else { return "" }
         let withScheme = raw.hasPrefix("https://") || raw.hasPrefix("http://") ? raw : "https://\(raw)"
-        guard let components = URLComponents(string: withScheme), components.scheme?.lowercased() == "https", let host = components.host, !usableEndpointHost(host).isEmpty else { return "" }
+        guard let components = URLComponents(string: withScheme),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              !usableEndpointHost(host).isEmpty,
+              CloudMatch.isTrustedStreamingHost(host) else { return "" }
         return withScheme
     }
 }

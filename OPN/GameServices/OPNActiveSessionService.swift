@@ -43,6 +43,10 @@ enum OPNActiveSessionService {
             Task { @MainActor in completion(false, [], "No access token") }
             return
         }
+        guard CloudMatch.isTrustedStreamingBaseURL(streamingBaseUrl) || streamingBaseUrl.isEmpty else {
+            Task { @MainActor in completion(false, [], "Invalid sessions URL") }
+            return
+        }
         let base = normalizedBaseURL(streamingBaseUrl)
         guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             Task { @MainActor in completion(false, [], "Invalid sessions URL") }
@@ -86,6 +90,10 @@ enum OPNActiveSessionService {
         }
         guard !sessionId.isEmpty else {
             Task { @MainActor in completion(false, "No session id") }
+            return
+        }
+        guard CloudMatch.isTrustedStreamingBaseURL(streamingBaseUrl) || streamingBaseUrl.isEmpty else {
+            Task { @MainActor in completion(false, "Invalid stop session URL") }
             return
         }
         clearPersistedActiveSessionId(sessionId)
@@ -147,10 +155,8 @@ enum OPNActiveSessionService {
     }
 
     private static func normalizedBaseURL(_ value: String) -> String {
-        let raw = value.isEmpty ? OPNStreamPreferences.defaultStreamingBaseUrl : value
-        var normalized = raw.hasPrefix("http://") || raw.hasPrefix("https://") ? raw : "https://\(raw)"
-        if !normalized.hasSuffix("/") { normalized += "/" }
-        return normalized
+        let normalized = OPNStreamPreferences.normalizedHTTPSBaseUrlOrEmpty(value)
+        return normalized.isEmpty ? OPNStreamPreferences.defaultStreamingBaseUrl : normalized
     }
 
 }

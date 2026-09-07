@@ -199,7 +199,10 @@ final class OPNGameService: @unchecked Sendable {
 
     func normalizeStreamingBaseUrl(_ url: String) -> String {
         if url.isEmpty { return Self.defaultStreamingBaseUrl }
-        guard let components = URLComponents(string: url), components.scheme?.lowercased() == "https", components.host?.isEmpty == false else { return "" }
+        guard let components = URLComponents(string: url),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              CloudMatch.isTrustedStreamingHost(host) else { return "" }
         return url.hasSuffix("/") ? url : "\(url)/"
     }
 

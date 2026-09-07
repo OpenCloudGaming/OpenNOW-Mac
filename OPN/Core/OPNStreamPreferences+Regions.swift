@@ -6,7 +6,7 @@ import CoreAudio
 
 extension OPNStreamPreferences {
     public static func loadSelectedRegionUrl() -> String {
-        storage.string(forKey: k.selectedRegionUrl) ?? ""
+        normalizedHTTPSBaseUrlOrEmpty(storage.string(forKey: k.selectedRegionUrl) ?? "")
     }
 
     public static func loadSelectedStreamingBaseUrl() -> String {
