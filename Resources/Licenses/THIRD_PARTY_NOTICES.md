@@ -53,9 +53,10 @@ Name for this family.
 - Full license text: `WebRTC.framework/Versions/A/Resources/LICENSE`, which ships inside the
   application bundle with the framework itself.
 
-`WebRTC.framework` is a statically linked build. The WebRTC BSD 3-Clause license covers the WebRTC
-project's own code; the components it links from WebRTC's `third_party` tree carry their own
-licenses. Components confirmed present in the shipped binary are:
+`WebRTC.framework` is a self-contained binary whose WebRTC and `third_party` sources are compiled in
+(rather than shipping as an umbrella over separate dependency frameworks). The WebRTC BSD 3-Clause
+license covers the WebRTC project's own code; the components it compiles from WebRTC's `third_party`
+tree carry their own licenses. Components confirmed present in the shipped binary are:
 
 - dav1d (BSD 2-Clause) — AV1 decode
 - libvpx (BSD 3-Clause) — VP8/VP9
@@ -71,12 +72,16 @@ than bundled here. No OpenH264 binary from Cisco is present, so no MPEG LA notic
 
 ### WebRTC build provenance
 
-The framework is produced by `scripts/build-libwebrtc-sdk.sh`, which runs `fetch --nohooks webrtc`
-followed by `gclient sync` against whatever revision WebRTC's default branch is at when the script
-runs. **No branch, tag, or revision is pinned, and the revision of the currently bundled binary is
-not recorded.** The authoritative notices for the `third_party` components above are those in the
-upstream WebRTC tree at the build revision. Pinning the revision in the build script and recording
-it here would make both the attribution and the build reproducible.
+`WebRTC.framework` is a prebuilt binary committed to this repository; building OpenNOW does not
+rebuild WebRTC from source. WebRTC writes a build identifier into each binary via `call/version.cc`,
+and the shipping framework embeds this source stamp:
+
+    WebRTC source stamp 2026-05-10T04:07:40
+
+The underlying git revision is not recorded in the binary, so the build cannot currently be traced
+to a single upstream commit. Any future rebuild should pin an explicit revision and update this
+section so attribution stays reproducible. The authoritative notices for the `third_party`
+components above are those in the upstream WebRTC tree at the stamp date.
 
 ## Ably
 
