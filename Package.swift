@@ -41,7 +41,6 @@ let package = Package(
                 "DerivedData",
                 "AGENTS.md",
                 "CHANGELOG.md",
-                "CHANGELOG-legacy.md",
                 "DESIGN.md",
                 "LICENSE",
                 "README.md",
