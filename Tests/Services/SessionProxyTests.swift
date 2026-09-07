@@ -22,6 +22,10 @@ private final class MutableClock: @unchecked Sendable {
 }
 
 @Suite(.serialized) struct SessionProxyTests {
+    /// The key the password lived under before it moved to the keychain. Still written by tests that
+    /// exercise the migration, so the store keeps reading it and the helper below preserves it.
+    private let legacyPlaintextPasswordKey = "OpenNOW.Stream.SessionProxyPassword"
+
     private func validSettings() -> OPNSessionProxySettings {
         OPNSessionProxySettings(isEnabled: true, scheme: .http, host: "proxy.example.com", port: "3128", username: "")
     }
@@ -241,12 +245,26 @@ private final class MutableClock: @unchecked Sendable {
         #expect(!settings.routes(.session))
     }
 
-    @Test func passwordRoundTripsThroughPreferences() async {
+    /// The preferences plist is an unencrypted file any process running as this user can read, so
+    /// the password is a keychain item and the plaintext key is dropped on save.
+    @Test func passwordRoundTripsThroughTheKeychainRatherThanThePreferences() async {
         await withPreservedProxySettings {
-            guard OPNSessionProxyStore.savePassword("s3cret") else { return }
+            #expect(OPNSessionProxyStore.savePassword("s3cret"))
             #expect(OPNSessionProxyStore.loadPassword() == "s3cret")
+            #expect(UserDefaults.standard.object(forKey: legacyPlaintextPasswordKey) == nil)
             #expect(OPNSessionProxyStore.savePassword(""))
             #expect(OPNSessionProxyStore.loadPassword() == "")
+        }
+    }
+
+    /// Upgrading must not cost the user their working proxy: the password an earlier build left in
+    /// the preferences is read into the keychain, and the plaintext copy deleted behind it.
+    @Test func plaintextPasswordFromAnEarlierBuildMovesIntoTheKeychain() async {
+        await withPreservedProxySettings {
+            UserDefaults.standard.set("legacy-secret", forKey: legacyPlaintextPasswordKey)
+            #expect(OPNSessionProxyStore.loadPassword() == "legacy-secret")
+            #expect(UserDefaults.standard.object(forKey: legacyPlaintextPasswordKey) == nil)
+            #expect(OPNSessionProxyStore.loadPassword() == "legacy-secret")
         }
     }
 
@@ -260,6 +278,7 @@ private final class MutableClock: @unchecked Sendable {
             "OpenNOW.Stream.SessionProxyPort",
             "OpenNOW.Stream.SessionProxyUsername",
             "OpenNOW.Stream.SessionProxyScope",
+            legacyPlaintextPasswordKey,
         ]
         let existing = keys.map { defaults.object(forKey: $0) }
         let existingPassword = OPNSessionProxyStore.loadPassword()

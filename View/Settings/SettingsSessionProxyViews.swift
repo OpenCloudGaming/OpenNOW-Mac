@@ -11,6 +11,7 @@ struct SessionProxySettingsPage: View {
     @State private var isTesting = false
     @State private var testMessage = ""
     @State private var testSucceeded = false
+    @State private var passwordSaveFailure = ""
 
     var body: some View {
         SettingsCard(title: "Session Proxy", badge: .beta, uiScale: uiScale) {
@@ -83,7 +84,7 @@ struct SessionProxySettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsSecureTextFieldRow(
                     title: "Password",
-                    subtitle: "Optional. Saved with the app's preferences on this Mac.",
+                    subtitle: "Optional. Stored in this Mac's keychain, never in the app's preferences.",
                     text: $password,
                     placeholder: "Optional",
                     uiScale: uiScale
@@ -99,13 +100,19 @@ struct SessionProxySettingsPage: View {
                     )
                 }
             }
-            if settings.isEnabled || isDirty {
+            if settings.isEnabled || isDirty || !passwordSaveFailure.isEmpty {
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 12 * uiScale) {
                     if !settings.isEnabled {
                         Text(savedSettings.isEnabled ? "Proxy still active until saved." : "Proxy off. Requests connect directly.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.75))
+                    }
+                    if !passwordSaveFailure.isEmpty {
+                        Text(passwordSaveFailure)
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                            .foregroundStyle(OpenNOWDesign.Semantic.warning)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if !testMessage.isEmpty {
                         Text(testMessage)
@@ -162,6 +169,7 @@ struct SessionProxySettingsPage: View {
         guard let configuration = OPNSessionProxyStore.configuration(from: settings, password: password) else { return }
         isTesting = true
         testMessage = ""
+        passwordSaveFailure = ""
         Task { @MainActor in
             let result = await OPNSessionProxySessionProvider.shared.testConnection(configuration: configuration)
             isTesting = false
@@ -176,12 +184,19 @@ struct SessionProxySettingsPage: View {
         }
     }
 
+    /// A refused keychain write leaves the previously stored password in place, so `savedPassword`
+    /// is re-read rather than assumed: the card stays dirty, SAVE stays on screen for a retry, and
+    /// the warning says which password the proxy will actually authenticate with.
     private func save() {
         let previousRouteKey = OPNSessionProxyStore.configuration()?.cacheKey ?? "direct"
         OPNSessionProxyStore.save(settings)
-        OPNSessionProxyStore.savePassword(password)
+        let passwordStored = OPNSessionProxyStore.savePassword(password)
         savedSettings = settings
-        savedPassword = password
+        savedPassword = passwordStored ? password : OPNSessionProxyStore.loadPassword()
+        passwordSaveFailure = passwordStored
+            ? ""
+            : "Password not saved — the keychain refused the write. The proxy keeps its previous password."
+        if !passwordStored { testMessage = "" }
         let newRouteKey = OPNSessionProxyStore.configuration()?.cacheKey ?? "direct"
         guard newRouteKey != previousRouteKey else { return }
         viewModel.refresh()

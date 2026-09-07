@@ -122,11 +122,14 @@ public enum OPNSessionProxyStore {
     private static let portKey = "OpenNOW.Stream.SessionProxyPort"
     private static let usernameKey = "OpenNOW.Stream.SessionProxyUsername"
     private static let scopeKey = "OpenNOW.Stream.SessionProxyScope"
-    private static let passwordKey = "OpenNOW.Stream.SessionProxyPassword"
-    private static let legacyKeychainPurgeKey = "OpenNOW.Stream.SessionProxyLegacyKeychainPurged"
+    /// Builds before the keychain move kept the password beside the host and port, in a plist any
+    /// process running as this user can read. The key survives so that copy can be migrated out and
+    /// deleted; nothing writes to it any more.
+    private static let legacyPlaintextPasswordKey = "OpenNOW.Stream.SessionProxyPassword"
+    private static let keychainService = "OpenNOW.SessionProxy"
+    private static let keychainAccount = "password"
 
     public static func load() -> OPNSessionProxySettings {
-        purgeLegacyKeychainPasswordIfNeeded()
         let storage = OPNAppPreferenceStorage.standard
         let schemeRaw = storage.object(forKey: schemeKey) as? String ?? ""
         let scopeRaw = storage.object(forKey: scopeKey) as? String ?? ""
@@ -151,25 +154,98 @@ public enum OPNSessionProxyStore {
     }
 
     public static func loadPassword() -> String {
-        purgeLegacyKeychainPasswordIfNeeded()
-        return OPNAppPreferenceStorage.standard.string(forKey: passwordKey) ?? ""
+        migrateLegacyPlaintextPasswordIfNeeded()
+        return keychainPassword() ?? ""
     }
 
+    /// Writes through to the keychain, so a `false` means this password was not stored and whatever
+    /// was stored before is still what the proxy authenticates with — the settings card says so
+    /// rather than showing a SAVE that silently kept the old secret.
     @discardableResult
     public static func savePassword(_ password: String) -> Bool {
-        OPNAppPreferenceStorage.standard.set(password, forKey: passwordKey)
+        guard writeKeychainPassword(password) else { return false }
+        OPNAppPreferenceStorage.standard.removeObject(forKey: legacyPlaintextPasswordKey)
         return true
     }
 
-    private static func purgeLegacyKeychainPasswordIfNeeded() {
+    /// A password left in the preferences by an earlier build is moved into the keychain and the
+    /// plaintext copy deleted. When the keychain refuses the write the copy stays put and the move
+    /// is retried on the next read: dropping it would break a working proxy, and the plaintext was
+    /// already on disk. An empty value only drops the stale key — unlike an explicit `savePassword("")`,
+    /// a migration is not the user asking to clear a secret, so it must not delete a keychain item.
+    private static func migrateLegacyPlaintextPasswordIfNeeded() {
         let storage = OPNAppPreferenceStorage.standard
-        guard !storage.bool(forKey: legacyKeychainPurgeKey) else { return }
-        SecItemDelete([
+        guard let legacyPassword = storage.string(forKey: legacyPlaintextPasswordKey) else { return }
+        guard !legacyPassword.isEmpty else {
+            storage.removeObject(forKey: legacyPlaintextPasswordKey)
+            return
+        }
+        guard writeKeychainPassword(legacyPassword) else {
+            OpenNOWLog.warning(.auth, "Session proxy password could not be moved into the keychain; it stays in the preferences for now")
+            return
+        }
+        storage.removeObject(forKey: legacyPlaintextPasswordKey)
+    }
+
+    private static func keychainQuery() -> CFDictionary {
+        [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "OpenNOW.SessionProxy",
-            kSecAttrAccount as String: "password",
-        ] as CFDictionary)
-        storage.set(true, forKey: legacyKeychainPurgeKey)
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+        ] as CFDictionary
+    }
+
+    private static func keychainPassword() -> String? {
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ] as CFDictionary, &item)
+        guard status != errSecItemNotFound else { return nil }
+        guard status == errSecSuccess, let data = item as? Data else {
+            OpenNOWLog.warning(.auth, "Session proxy password could not be read from the keychain (\(status))")
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func writeKeychainPassword(_ password: String) -> Bool {
+        guard !password.isEmpty else {
+            let status = SecItemDelete(keychainQuery())
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                logKeychainFailure("clear", status: status)
+                return false
+            }
+            return true
+        }
+        let data = Data(password.utf8)
+        let updateStatus = SecItemUpdate(keychainQuery(), [kSecValueData as String: data] as CFDictionary)
+        guard updateStatus != errSecSuccess else { return true }
+        // Only "not found" justifies an add; anything else is a real keychain failure, and adding on
+        // top of it would mask the cause.
+        guard updateStatus == errSecItemNotFound else {
+            logKeychainFailure("update", status: updateStatus)
+            return false
+        }
+        let addStatus = SecItemAdd([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ] as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            logKeychainFailure("add", status: addStatus)
+            return false
+        }
+        return true
+    }
+
+    private static func logKeychainFailure(_ operation: String, status: OSStatus) {
+        OpenNOWLog.warning(.auth, "Session proxy password keychain \(operation) failed (\(status))")
     }
 
     public static func configuration() -> OPNSessionProxyConfiguration? {
