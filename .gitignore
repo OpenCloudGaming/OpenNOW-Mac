@@ -117,7 +117,3 @@ scripts/nvst-experiment.sh
 # NVST protocol reverse-engineering notes: investigation logs, disassembly findings, byte-level
 # wire-format observations. Kept locally for reference, not published in the tracked tree.
 docs/NVST/*
-
-# Prebuilt WebRTC xcframework, provisioned by scripts/fetch-webrtc.sh. Never commit: the
-# integrity chain is the published release URL + SHA-256 in that script, not this checkout.
-/Vendor/WebRTC.xcframework/

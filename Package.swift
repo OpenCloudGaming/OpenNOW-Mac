@@ -27,10 +27,9 @@ let package = Package(
         .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.3.0")
     ],
     targets: [
-        // Prebuilt WebRTC engine (streaming + Remote Co-Op). Repackaged stasel/WebRTC M152
-        // release with the upstream RTCAudioDevice.h header overlay added — see
-        // scripts/fetch-webrtc.sh and Resources/Licenses/THIRD_PARTY_NOTICES.md. Provision
-        // Vendor/ with the script before building; the artifact is intentionally not committed.
+        // Prebuilt WebRTC engine (streaming + Remote Co-Op). Committed artifact: the stasel
+        // WebRTC 152.0.0 macOS arm64 slice plus the upstream RTCAudioDevice.h header overlay —
+        // derivation recorded in Resources/Licenses/THIRD_PARTY_NOTICES.md.
         .binaryTarget(name: "WebRTC", path: "Vendor/WebRTC.xcframework"),
         .target(
             name: "OpenNOW",
