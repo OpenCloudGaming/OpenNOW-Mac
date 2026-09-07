@@ -13,19 +13,14 @@ struct AboutSettingsPage: View {
         ZStack {
             VStack(alignment: .leading, spacing: 16 * uiScale) {
             SettingsCard(title: "Product", uiScale: uiScale) {
-                HStack(alignment: .top, spacing: 22 * uiScale) {
-                    ZStack {
-                        Rectangle()
-                            .fill(Color.black.opacity(0.22))
-                            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.72), lineWidth: 1) }
-                        VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
-                            .scaledToFit()
-                            .padding(.horizontal, 14 * uiScale)
-                    }
-                    .frame(width: 180 * uiScale, height: 88 * uiScale)
+                HStack(alignment: .center, spacing: 20 * uiScale) {
+                    VendorResourceImage(name: "logo", fileExtension: "png")
+                        .scaledToFit()
+                        .frame(width: 88 * uiScale, height: 88 * uiScale)
+                        .accessibilityLabel(Text("\(SettingsAppMetadata.displayName) icon"))
 
                     VStack(alignment: .leading, spacing: 12 * uiScale) {
-                        HStack(alignment: .firstTextBaseline, spacing: 10 * uiScale) {
+                        HStack(alignment: .center, spacing: 10 * uiScale) {
                             Text(SettingsAppMetadata.displayName)
                                 .font(.settingsFont(size: 25 * uiScale, weight: .bold))
                                 .foregroundStyle(.white)

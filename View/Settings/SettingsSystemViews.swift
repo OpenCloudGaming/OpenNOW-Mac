@@ -30,24 +30,23 @@ struct SystemSettingsPage: View {
     /// of it. Everything behind it is a report, read once when something is wrong.
     private var readinessCard: some View {
         SettingsCard(title: "Readiness", uiScale: uiScale) {
-                HStack(alignment: .top, spacing: 18 * uiScale) {
-                    VStack(alignment: .leading, spacing: 10 * uiScale) {
-                        Text(systemSummaryTitle)
-                            .font(.settingsFont(size: 22 * uiScale, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(systemSummaryDetail)
-                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.62))
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 8 * uiScale) {
-                            AboutStatusPill(title: "Display", value: displaySummary, uiScale: uiScale)
-                            AboutStatusPill(title: "Decode", value: preferredDecoder, uiScale: uiScale)
-                            AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    SystemHealthBadge(title: systemHealthTitle, subtitle: systemHealthSubtitle, positive: systemHealthPositive, uiScale: uiScale)
+            VStack(alignment: .leading, spacing: 10 * uiScale) {
+                HStack(alignment: .center, spacing: 10 * uiScale) {
+                    Text(systemSummaryTitle)
+                        .font(.settingsFont(size: 22 * uiScale, weight: .bold))
+                        .foregroundStyle(.white)
+                    SystemHealthChip(title: systemHealthTitle, positive: systemHealthPositive, uiScale: uiScale)
                 }
+                Text(systemSummaryDetail)
+                    .font(.settingsFont(size: 13 * uiScale, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8 * uiScale) {
+                    AboutStatusPill(title: "Display", value: displaySummary, uiScale: uiScale)
+                    AboutStatusPill(title: "Decode", value: preferredDecoder, uiScale: uiScale)
+                    AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
+                }
+            }
             }
     }
 
@@ -128,10 +127,6 @@ struct SystemSettingsPage: View {
         systemHealthPositive ? "READY" : "LIMITED"
     }
 
-    private var systemHealthSubtitle: String {
-        systemHealthPositive ? "Hardware path available" : "Review decoder support"
-    }
-
     private var systemSummaryTitle: String {
         systemHealthPositive ? "Streaming hardware looks ready" : "Streaming support is partially available"
     }
@@ -149,27 +144,27 @@ struct SystemSettingsPage: View {
     }
 }
 
-struct SystemHealthBadge: View {
+/// Verdict chip beside the readiness headline, in the same solid-fill chip language as the
+/// account tier and product tags so the three summary cards read as one family.
+struct SystemHealthChip: View {
     let title: String
-    let subtitle: String
     let positive: Bool
     let uiScale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5 * uiScale) {
+        HStack(spacing: 6 * uiScale) {
+            Circle()
+                .fill(.black.opacity(0.78))
+                .frame(width: 6 * uiScale, height: 6 * uiScale)
             Text(title)
-                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? .black : .white.opacity(0.88))
-                .tracking(1.1)
-            Text(subtitle)
-                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? .black.opacity(0.74) : .white.opacity(0.54))
-                .lineLimit(2)
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
+                .tracking(0.8)
         }
-        .padding(.horizontal, 14 * uiScale)
-        .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
-        .background(positive ? OpenNOWDesign.accent : Color.white.opacity(0.07))
-        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent : Color.white.opacity(0.13), lineWidth: 1) }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 8 * uiScale)
+        .frame(height: 20 * uiScale)
+        .background(positive ? OpenNOWDesign.accent : Color.orange)
+        .accessibilityLabel(Text(title.capitalized))
     }
 }
 

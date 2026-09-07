@@ -94,7 +94,7 @@ struct CatalogHeroVendorBackgroundScrim: View {
 
 struct CatalogHeroVendorImageMask: View {
     var body: some View {
-        VendorResourceImage(name: "Marquee_Hero_Image_Gradient", fileExtension: "svg")
+        VendorResourceImage(name: "hero-vignette", fileExtension: "svg")
             .scaledToFill()
     }
 }

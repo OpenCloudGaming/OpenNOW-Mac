@@ -113,11 +113,11 @@ struct GameDetailPanel: View {
                         HStack {
                             Spacer()
                                 .frame(width: min(contentWidth + 42, max(24, panelWidth - 154)))
-                            CatalogDetailImageArrow(name: "lt_arrow") {
+                            CatalogDetailImageArrow(name: "arrow-left") {
                                 moveImage(delta: -1, count: imageURLs.count)
                             }
                             Spacer()
-                            CatalogDetailImageArrow(name: "rt_arrow") {
+                            CatalogDetailImageArrow(name: "arrow-right") {
                                 moveImage(delta: 1, count: imageURLs.count)
                             }
                         }

@@ -224,9 +224,7 @@ struct VendorLaunchPanel<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
-                VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
-                    .scaledToFit()
-                    .frame(width: 108, height: 32, alignment: .leading)
+                OpenNOWWordmark(height: 32)
                 Spacer()
                 Button { } label: {
                     Text("LAUNCH STATUS")

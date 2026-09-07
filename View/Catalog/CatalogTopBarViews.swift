@@ -261,7 +261,7 @@ struct CatalogAccountAvatar: View {
     }
 
     private var fallbackAvatar: some View {
-        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
+        VendorResourceImage(name: "avatar-generic", fileExtension: "svg")
             .scaledToFill()
     }
 }

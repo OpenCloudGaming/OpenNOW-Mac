@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original OpenNOW asset. Alpha mask applied to the marquee hero image. The banner stays fully
+     opaque across its width and upper three quarters; the bottom quarter dissolves into the
+     catalog surface and a short fade on the leading edge lets the copy column sit on the image.
+     The trailing edge is left hard so the artwork runs to the marquee's right boundary. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 620" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="bottom-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.00" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="0.73" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="0.80" stop-color="#FFFFFF" stop-opacity="0.87"/>
+      <stop offset="0.85" stop-color="#FFFFFF" stop-opacity="0.62"/>
+      <stop offset="0.90" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.95" stop-color="#FFFFFF" stop-opacity="0.075"/>
+      <stop offset="1.00" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="leading-fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.000" stop-color="#000000"/>
+      <stop offset="0.010" stop-color="#0A0A0A"/>
+      <stop offset="0.020" stop-color="#242424"/>
+      <stop offset="0.030" stop-color="#4A4A4A"/>
+      <stop offset="0.042" stop-color="#7D7D7D"/>
+      <stop offset="0.052" stop-color="#B0B0B0"/>
+      <stop offset="0.068" stop-color="#E6E6E6"/>
+      <stop offset="0.083" stop-color="#FFFFFF"/>
+      <stop offset="1.000" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <mask id="leading-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1920" height="620">
+      <rect width="1920" height="620" fill="url(#leading-fade)"/>
+    </mask>
+  </defs>
+  <rect width="1920" height="620" fill="url(#bottom-fade)" mask="url(#leading-mask)"/>
+</svg>

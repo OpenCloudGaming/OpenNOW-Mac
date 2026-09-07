@@ -338,13 +338,13 @@ struct CatalogHeroView: View {
 
                     HStack {
                         if activeIndex > 0 {
-                            CatalogMarqueeArrow(name: "lt_arrow", action: onPreviousSlide)
+                            CatalogMarqueeArrow(name: "arrow-left", action: onPreviousSlide)
                         } else {
                             Color.clear.frame(width: 48 * uiScale, height: 48 * uiScale)
                         }
                         Spacer()
                         if activeIndex < games.count - 1 {
-                            CatalogMarqueeArrow(name: "rt_arrow", action: onNextSlide)
+                            CatalogMarqueeArrow(name: "arrow-right", action: onNextSlide)
                         } else {
                             Color.clear.frame(width: 48 * uiScale, height: 48 * uiScale)
                         }

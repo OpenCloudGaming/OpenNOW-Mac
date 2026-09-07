@@ -31,11 +31,10 @@ struct VendorResourceImage: View {
         let assets: [(name: String, fileExtension: String)] = [
             ("logo-isolated", "svg"),
             ("logo", "png"),
-            ("LoginWallContentBackground", "png"),
-            ("LoginWallFallbackTile", "png"),
-            ("Marquee_Hero_Image_Gradient", "svg"),
-            ("nv-gfn-logo_v3", "png"),
-            ("avatar_generic_118", "svg")
+            ("login-wall-background", "png"),
+            ("login-wall-fallback-tile", "png"),
+            ("hero-vignette", "svg"),
+            ("avatar-generic", "svg")
         ]
         for asset in assets {
             _ = loadImage(name: asset.name, fileExtension: asset.fileExtension)
@@ -48,7 +47,7 @@ struct VendorResourceImage: View {
             return cachedImage
         }
 
-        for subdirectory in ["OpenNOW", "Resources/OpenNOW", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+        for subdirectory in ["OpenNOW", "Resources/OpenNOW", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
                 imageCache.setObject(image, forKey: cacheKey)
@@ -321,7 +320,7 @@ private struct LoginWallGridTile: View {
     }
 
     private var fallbackTile: some View {
-        VendorResourceImage(name: "LoginWallFallbackTile", fileExtension: "png")
+        VendorResourceImage(name: "login-wall-fallback-tile", fileExtension: "png")
             .scaledToFit()
             .opacity(0.5)
     }

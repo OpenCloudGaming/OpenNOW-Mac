@@ -112,11 +112,11 @@ struct CatalogRailView: View {
                     }
                     if games.count > 3 {
                         HStack {
-                            CatalogRailArrow(name: "lt_arrow") {
+                            CatalogRailArrow(name: "arrow-left") {
                                 moveRail(proxy: proxy, delta: -3)
                             }
                             Spacer()
-                            CatalogRailArrow(name: "rt_arrow") {
+                            CatalogRailArrow(name: "arrow-right") {
                                 moveRail(proxy: proxy, delta: 3)
                             }
                         }

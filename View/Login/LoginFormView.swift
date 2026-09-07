@@ -56,7 +56,7 @@ struct LoginFormView: View {
 
     private func leftPanel(metrics: VendorLoginWallMetrics) -> some View {
         ZStack(alignment: .topLeading) {
-            VendorResourceImage(name: "LoginWallContentBackground", fileExtension: "png")
+            VendorResourceImage(name: "login-wall-background", fileExtension: "png")
                 .scaledToFill()
                 .frame(width: metrics.panelWidth, height: metrics.height)
                 .clipped()

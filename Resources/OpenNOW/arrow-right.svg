@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original OpenNOW asset. Circled carousel chevron, right-pointing. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+  <circle cx="20" cy="20" r="19.5" fill="#000000" opacity="0.62"/>
+  <circle cx="20" cy="20" r="19.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.4"/>
+  <path fill="#FFFFFF" d="M17.6 13.6 16.2 15.05 21.15 20 16.2 24.95 17.6 26.4 24 20 17.6 13.6Z"/>
+</svg>
