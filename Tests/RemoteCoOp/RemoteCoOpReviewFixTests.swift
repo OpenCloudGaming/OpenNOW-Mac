@@ -14,12 +14,13 @@ struct RemoteCoOpReviewFixTests {
         let session = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true))
         let invite = try await session.startInvite(lifetimeSeconds: 120)
         let participantID = UUID()
-        _ = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let guest = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let reconnectToken = try #require(guest.reconnectToken)
         _ = try await session.approveParticipant(participantID)
         _ = try await session.setInputEnabled(false, for: participantID)
 
         _ = await session.noteGuestDisconnected(participantID)
-        let restored = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let restored = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID, reconnectToken: reconnectToken)
 
         // The slot and the approval survive a Wi-Fi roam; the host's decision to bench them does too.
         #expect(restored.connectionState == .connected)
@@ -32,11 +33,12 @@ struct RemoteCoOpReviewFixTests {
         let session = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true))
         let invite = try await session.startInvite(lifetimeSeconds: 120)
         let participantID = UUID()
-        _ = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let guest = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let reconnectToken = try #require(guest.reconnectToken)
         _ = try await session.approveParticipant(participantID)
 
         _ = await session.noteGuestDisconnected(participantID)
-        let restored = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let restored = try await session.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID, reconnectToken: reconnectToken)
 
         #expect(restored.inputEnabled)
     }
@@ -99,7 +101,7 @@ struct RemoteCoOpReviewFixTests {
         )
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
         let participantID = UUID()
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let approved = try await coordinator.approveParticipant(participantID)
         try await controller.sync(participants: [approved])
         let peer = try #require(factory.peer(for: participantID))

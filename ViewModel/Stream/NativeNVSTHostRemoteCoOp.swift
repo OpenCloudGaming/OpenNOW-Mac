@@ -440,6 +440,7 @@ extension NativeNVSTHostViewModel {
             // The greeting invite, not the real one: this is handed to any socket that connects,
             // before it has presented anything, so it must not carry the hosted-signaling credential.
             inviteProvider: { [remoteCoOpHostSession] in await remoteCoOpHostSession.greetingInvite() },
+            participantOwnership: remoteCoOpHostSession.participantOwnership,
             networkConfiguration: remoteCoOpNetworkConfiguration,
             logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.native_server", level: .info, message: message) }
         )
@@ -452,6 +453,7 @@ extension NativeNVSTHostViewModel {
         if let hostedChannel = makeRemoteCoOpHostedChannel(inviteID: pendingInviteID, expiresAt: pendingInviteExpiry) {
             let hosted = OPNRemoteCoOpHostedSignalingSession(
                 channel: hostedChannel,
+                participantOwnership: remoteCoOpHostSession.participantOwnership,
                 // The augmented configuration, same as the socket transports get - without it a
                 // hosted guest is handed no ICE servers at all and cannot connect from a network
                 // that blocks a direct route.
@@ -552,6 +554,7 @@ extension NativeNVSTHostViewModel {
         let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
             preferences: preferences,
             networkConfiguration: remoteCoOpNetworkConfiguration,
+            participantOwnership: remoteCoOpHostSession.participantOwnership,
             logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
         )
         // Generated here rather than inside `startInvite`, because the hosted channel is named

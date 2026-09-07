@@ -9,6 +9,9 @@
 //  an actor's state, the other an NSLock - but the rule about who may say what does not differ, and a
 //  third transport must not be able to introduce a third variant of it.
 //
+//  The gate is synchronous because the socket listeners run inside their own locks. Shared state is
+//  held by the lock-protected `OPNRemoteCoOpParticipantOwnership` registry, not by an actor.
+//
 
 import Foundation
 
@@ -27,12 +30,13 @@ public enum OPNRemoteCoOpGuestMessageGate {
         case deliver
     }
 
-    /// `isHeldByAnotherConnection` is the transport's own bookkeeping: whether a *live* connection
-    /// other than this one already owns that participant. A dead one does not count, or a guest could
-    /// never reconnect.
+    /// `connection` identifies the inbound transport connection; `registry` is the shared
+    /// participant ownership table. A connection is bound to at most one participant, and a
+    /// participant can be owned by at most one connection at a time. Reconnecting on a different
+    /// transport is only allowed after the previous connection has been released.
     public static func decide(message: OPNRemoteCoOpWireMessage,
-                              owner: UUID?,
-                              isHeldByAnotherConnection: (UUID) -> Bool) -> Decision {
+                              connection: OPNRemoteCoOpConnectionHandle,
+                              registry: OPNRemoteCoOpParticipantOwnership) -> Decision {
         // Allowlist first, before any binding.
         //
         // `networkConfiguration` and `error` used to arrive on the host's outbound socket from the
@@ -57,27 +61,26 @@ public enum OPNRemoteCoOpGuestMessageGate {
            let token = message.inviteToken,
            !token.isEmpty {
             // A connection bound to one participant may not become another.
-            //
-            // Re-claiming the *same* participant is legitimate (a retried join), but moving to a
-            // different one is not: the claim only proves the token is non-empty - its signature is
-            // checked later, by `registerGuest` - and `registerGuest` restores a recently disconnected
-            // participant with their approval and player slot intact. So a second invite holder could
-            // claim an approved guest's identity and inherit input rights the host never granted them,
-            // which is the exact bypass host approval exists to prevent. It also left the transports
-            // routing that participant's signaling, including their SDP, to the wrong connection.
-            if let owner, participantID != owner {
+            if let owned = registry.participantOwnedBy(connection), owned != participantID {
                 return .dropConnection(reason: "claimed a second participant on one connection")
             }
-            if participantID != owner, isHeldByAnotherConnection(participantID) {
+            // Re-claiming the *same* participant is legitimate (a retried join).
+            if registry.participantOwnedBy(connection) == participantID {
+                return .deliver
+            }
+            // A live participant owned by a different connection cannot be claimed here; the
+            // caller must drop the claimant. This closes the cross-transport impersonation window
+            // where a second connection reuses a participant ID that is still bound elsewhere.
+            if registry.owner(of: participantID) != nil {
                 return .dropConnection(reason: "claimed a participant that is already connected")
             }
             return .claimThenDeliver(participantID: participantID)
         }
 
-        // Everything after the join must come from the socket that owns the participant. An un-joined
-        // socket owns nothing and so may not act as anyone; it used to pass this by omitting the
-        // field, leaving a victim's UUID as the only secret.
-        guard let owner else { return .ignore }
+        // Everything after the join must come from the connection that owns the participant. An
+        // un-joined socket owns nothing and so may not act as anyone; it used to pass this by
+        // omitting the field, leaving a victim's UUID as the only secret.
+        guard let owner = registry.participantOwnedBy(connection) else { return .ignore }
         guard ownsEveryClaim(in: message, owner: owner) else { return .ignore }
         return .deliver
     }

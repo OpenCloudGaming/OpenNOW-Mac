@@ -58,8 +58,12 @@ public struct OPNRemoteCoOpGuestInviteLink: Equatable, Sendable {
 }
 
 /// Both ways a native guest can reach a host, so the message pump does not care which it got.
+///
+/// The fingerprint argument is only meaningful for the raw TCP transport, which uses a self-signed
+/// certificate and pins it to prevent MITM. The WebSocket tunnel transport validates certificates
+/// normally and returns an empty fingerprint.
 public protocol OPNRemoteCoOpNativeGuestTransport: Sendable {
-    func connect() async throws
+    func connect(expectedFingerprint: String?) async throws -> String
     func messages() -> AsyncStream<OPNRemoteCoOpWireMessage>
     func send(_ message: OPNRemoteCoOpWireMessage) async throws
     func close()
@@ -69,7 +73,7 @@ extension OPNRemoteCoOpNativeGuestConnection: OPNRemoteCoOpNativeGuestTransport 
 
 /// TLS is validated normally, deliberately: this exists for the tunnel case, where the certificate is
 /// real and the guest has no prior relationship with the host to pin against. A LAN host's self-signed
-/// certificate correctly fails here - that guest has Bonjour and the raw listener.
+/// certificate is reached through the raw listener, which pins it.
 public final class OPNRemoteCoOpNativeGuestWebSocketConnection: OPNRemoteCoOpNativeGuestTransport, @unchecked Sendable {
     private let url: URL
     private let makeSession: @Sendable (URLSessionConfiguration) -> URLSession
@@ -85,7 +89,7 @@ public final class OPNRemoteCoOpNativeGuestWebSocketConnection: OPNRemoteCoOpNat
         self.makeSession = makeSession ?? { URLSession(configuration: $0) }
     }
 
-    public func connect() async throws {
+    public func connect(expectedFingerprint: String?) async throws -> String {
         let configuration = URLSessionConfiguration.ephemeral
         // A guest waiting for approval is quiet, not idle; the socket must not be reaped for it.
         configuration.timeoutIntervalForRequest = 60
@@ -110,6 +114,7 @@ public final class OPNRemoteCoOpNativeGuestWebSocketConnection: OPNRemoteCoOpNat
                 }
             }
         }
+        return ""
     }
 
     public func messages() -> AsyncStream<OPNRemoteCoOpWireMessage> {

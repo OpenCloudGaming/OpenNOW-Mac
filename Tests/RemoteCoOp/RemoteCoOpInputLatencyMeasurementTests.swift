@@ -218,7 +218,7 @@ private final class LoopbackControllerHarness: @unchecked Sendable {
         }
 
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Latency Probe"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Latency Probe", reconnectToken: nil))
         let approved = try await coordinator.approveParticipant(participantID)
         try await controller.sync(participants: [approved])
 

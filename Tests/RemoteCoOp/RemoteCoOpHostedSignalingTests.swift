@@ -61,9 +61,10 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     private let participantID = UUID()
     private let stranger = UUID()
 
-    private func makeSession() -> (OPNRemoteCoOpHostedSignalingSession, StubSignalingChannel) {
+    private func makeSession() -> (OPNRemoteCoOpHostedSignalingSession, StubSignalingChannel, OPNRemoteCoOpParticipantOwnership) {
         let channel = StubSignalingChannel()
-        return (OPNRemoteCoOpHostedSignalingSession(channel: channel), channel)
+        let ownership = OPNRemoteCoOpParticipantOwnership()
+        return (OPNRemoteCoOpHostedSignalingSession(channel: channel, participantOwnership: ownership), channel, ownership)
     }
 
     private func join(_ id: UUID, token: String = "token.signature") -> OPNRemoteCoOpWireMessage {
@@ -92,7 +93,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// receiving that participant's `participantUpdated` and `peerSignal` (their SDP), was handed the
     /// relay credentials on the first update, and the real guest could not take the participant back.
     @Test func aRefusedJoinReleasesItsClaim() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
 
         // Squatter claims the participant, then the host refuses it.
         _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "squatter") }
@@ -110,7 +111,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         // And the real guest can claim it.
         let realJoin = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "real-guest") }
         #expect(realJoin.contains { event in
-            if case .guestJoinRequested(let id, _, _) = event { return id == self.participantID }
+            if case .guestJoinRequested(let id, _, _, _) = event { return id == self.participantID }
             return false
         }, "the real guest was refused a participant nobody holds")
     }
@@ -120,7 +121,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// One channel carries both directions, separated by name. The host must never consume its own
     /// commands, whether or not the provider echoes them.
     @Test func hostCommandsArePublishedUnderTheHostName() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         await session.send(.guestRejected(participantID: participantID, reason: "full"))
         let published = try #require(channel.messages().first)
         #expect(published.name == OPNRemoteCoOpHostedSignalingName.host)
@@ -129,11 +130,11 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     }
 
     @Test func guestMessagesBecomeEvents() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
         }
-        guard case .guestJoinRequested(let id, _, let name)? = events.first else {
+        guard case .guestJoinRequested(let id, _, let name, _)? = events.first else {
             Issue.record("the join never surfaced, got \(events)")
             return
         }
@@ -146,7 +147,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// The transport must not carry its own copy of the policy, so the checks the gate makes are
     /// asserted here through it rather than reimplemented.
     @Test func aSenderThatNeverJoinedCannotAct() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(
                 OPNRemoteCoOpWireMessage(kind: .guestQualityRequested, participantID: participantID, qualityPreset: .p720f60),
@@ -157,7 +158,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     }
 
     @Test func aJoinedSenderCannotActAsAnother() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             try channel.deliverFromGuest(
@@ -173,7 +174,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// A second sender naming a participant someone else holds is refused. There is no socket to
     /// close here, so refusing to bind is the whole remedy — and it is the one that matters.
     @Test func aParticipantHeldByAnotherSenderIsNotUpForGrabs() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             try channel.deliverFromGuest(join(participantID), senderID: "sender-b")
@@ -181,9 +182,22 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         #expect(events.count == 1, "a held participant was handed to a second sender")
     }
 
+    /// A second sender using the same `connectionId` as the first is treated as the same connection,
+    /// so it cannot claim a different participant on the shared channel. This is the hosted R1 fix:
+    /// identity is the Ably connection, not the guest-asserted clientId.
+    @Test func aSenderReusingAnotherConnectionIdCannotClaimADifferentParticipant() async throws {
+        let (session, channel, _) = makeSession()
+        let events = try await collect(session) {
+            try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
+            try channel.deliverFromGuest(join(stranger), senderID: "sender-a")
+        }
+        let joins = events.filter { if case .guestJoinRequested = $0 { return true } else { return false } }
+        #expect(joins.count == 1, "a sender claimed a second participant")
+    }
+
     /// Host-originated kinds have no producer on the guest side of the channel.
     @Test func hostKindsArrivingFromAGuestAreRefused() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             try channel.deliverFromGuest(
@@ -201,7 +215,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// Presence is what replaces the heartbeat and the idle sweep: the channel reports a departure
     /// rather than the host inferring one from silence.
     @Test func aSenderLeavingDisconnectsItsParticipant() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             channel.deliverLeave(senderID: "sender-a")
@@ -210,7 +224,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     }
 
     @Test func aLeaveFromAnUnknownSenderDisconnectsNobody() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             channel.deliverLeave(senderID: "sender-unknown")
@@ -221,7 +235,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// A guest that left and came back must be able to claim its participant again — the binding is
     /// released with the departure, so the claim guard does not lock them out of their own session.
     @Test func aParticipantIsReleasedOnLeaveSoTheGuestCanReturn() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = try await collect(session) {
             try channel.deliverFromGuest(join(participantID), senderID: "sender-a")
             channel.deliverLeave(senderID: "sender-a")
@@ -234,7 +248,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     // MARK: - Lifecycle
 
     @Test func closingDetachesTheChannelAndEndsTheStream() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         let events = session.events()
         await session.close()
         #expect(channel.didDetach)
@@ -245,7 +259,7 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     }
 
     @Test func nothingIsPublishedAfterClose() async throws {
-        let (session, channel) = makeSession()
+        let (session, channel, _) = makeSession()
         await session.close()
         await session.send(.guestRejected(participantID: participantID, reason: "late"))
         #expect(channel.messages().isEmpty)

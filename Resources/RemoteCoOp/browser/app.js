@@ -39,6 +39,9 @@ let transport = null;
 let invite = parseInvite(inviteToken);
 const participantID = createParticipantID();
 let approved = false;
+/// Reconnect token issued by the host after a successful join. Required to reclaim an existing
+/// participant on reconnect or on a different transport.
+let reconnectToken = null;
 let sequenceNumber = 0;
 let lastSentState = "";
 let lastSentAt = 0;
@@ -183,6 +186,7 @@ function connectToRoom() {
         roomID: inviteRoomID(),
         participantID,
         inviteToken,
+        reconnectToken,
         displayName: displayName()
       });
       elements.joinCard.classList.add("hidden");
@@ -318,6 +322,9 @@ async function handleMessage(message) {
   }
   if (message.kind === "participantUpdated" && sameParticipantID(message.participant?.id, participantID)) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
+    if (message.reconnectToken) {
+      reconnectToken = message.reconnectToken;
+    }
     if (approved) {
       // Back in the room with the slot intact, so the next drop starts its backoff from scratch.
       stopReconnecting();

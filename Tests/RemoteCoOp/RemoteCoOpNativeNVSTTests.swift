@@ -670,8 +670,11 @@ import Testing
     @Test func aReturningGuestResumesWithoutReapproval() async throws {
         let (host, invite, participantID) = try await approvedHost()
         _ = await host.noteGuestDisconnected(participantID)
+        let snapshot = await host.snapshot()
+        let participant = try #require(snapshot.participants.first { $0.id == participantID })
+        let reconnectToken = try #require(participant.reconnectToken)
 
-        let restored = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        let restored = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID, reconnectToken: reconnectToken)
         #expect(restored.connectionState == .connected)
         #expect(restored.inputEnabled)
         #expect(restored.playerIndex == 1)
@@ -687,10 +690,11 @@ import Testing
         )
         let invite = try await host.startInvite(lifetimeSeconds: 3_600)
         let participantID = UUID()
-        _ = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        let guest = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        let reconnectToken = try #require(guest.reconnectToken)
         _ = await host.noteGuestDisconnected(participantID)
 
-        let restored = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID)
+        let restored = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token, participantID: participantID, reconnectToken: reconnectToken)
         #expect(restored.connectionState == .waitingForApproval)
         #expect(!restored.inputEnabled)
         #expect(restored.playerIndex == nil)

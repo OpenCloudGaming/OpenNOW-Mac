@@ -17,6 +17,7 @@
 
 import Foundation
 import Network
+import Security
 
 public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession, @unchecked Sendable {
     public static let serviceType = "_opennow-coop._tcp"
@@ -24,6 +25,12 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     /// Far above the three guests a seat allows, and low enough that an unauthenticated peer cannot
     /// make the host hold descriptors indefinitely. Matches the browser-facing server.
     static let maximumConnections = 64
+    /// A separate cap for sockets that have not yet joined, so an opening flood cannot crowd out
+    /// authenticated guests.
+    static let maximumUnauthenticatedConnections = 16
+    /// How long a newly accepted socket may sit without sending a verified join. generous for real
+    /// guests, short enough to prevent slot exhaustion.
+    static let joinDeadline: TimeInterval = 30
 
     /// One accepted socket. `participantID` is learned from the guest's join request and is what
     /// `send(_:)` routes targeted commands by.
@@ -45,12 +52,18 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.native-server")
     private let inviteProvider: @Sendable () async -> OPNRemoteCoOpInvite?
+    private let participantOwnership: OPNRemoteCoOpParticipantOwnership
     /// Mutable: Transport and Latency can change mid-session, and a guest joining afterwards was being
     /// handed the configuration from invite-creation time.
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private let logger: @Sendable (String) -> Void
     private var listener: NWListener?
     private var connections: [UUID: Connection] = [:]
+    private var unauthenticatedConnections: Set<UUID> = []
+    private var tlsIdentity: SecIdentity?
+    /// SHA-256 fingerprint of the certificate the native listener presents. Exposed so the host
+    /// HUD can display it for out-of-band verification and so the Bonjour TXT record can carry it.
+    private(set) var certificateFingerprint: String?
     /// Participants whose invite has verified and who have therefore been given the ICE
     /// configuration. Cleared with the socket, so a reconnect has to re-verify before it is handed
     /// the relay credentials again.
@@ -62,9 +75,11 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     private var boundPort: UInt16?
 
     public init(inviteProvider: @escaping @Sendable () async -> OPNRemoteCoOpInvite?,
+                participantOwnership: OPNRemoteCoOpParticipantOwnership,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 logger: @escaping @Sendable (String) -> Void = { _ in }) {
         self.inviteProvider = inviteProvider
+        self.participantOwnership = participantOwnership
         self.networkConfiguration = networkConfiguration
         self.logger = logger
     }
@@ -77,6 +92,10 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     /// it to real guests.
     public var port: UInt16? {
         lock.withLock { boundPort }
+    }
+
+    public var fingerprint: String? {
+        lock.withLock { certificateFingerprint }
     }
 
     /// What a native guest should type into its "connect by address" field, or nil before the
@@ -144,18 +163,40 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
 
     private func listen(on port: UInt16) {
         let endpointPort = port == 0 ? NWEndpoint.Port.any : NWEndpoint.Port(rawValue: port) ?? .any
+        let host = OPNRemoteCoOpLocalAddress.advertisedHost()
+        let identity: SecIdentity
+        do {
+            identity = try OPNRemoteCoOpTLSIdentity.identity(for: host)
+        } catch {
+            logger("Native Remote Co-Op could not load its TLS identity: \(error.localizedDescription)")
+            return
+        }
+        let fingerprint = OPNRemoteCoOpTLSIdentity.fingerprint(for: identity)
+        let tlsOptions = NWProtocolTLS.Options()
+        guard let secIdentity = sec_identity_create(identity) else {
+            logger("Native Remote Co-Op listener failed: the TLS identity has no usable private key")
+            return
+        }
+        sec_protocol_options_set_local_identity(tlsOptions.securityProtocolOptions, secIdentity)
+        let parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
+        parameters.allowLocalEndpointReuse = true
+        parameters.includePeerToPeer = false
         let listener: NWListener
         do {
-            listener = try NWListener(using: .tcp, on: endpointPort)
+            listener = try NWListener(using: parameters, on: endpointPort)
         } catch {
             logger("Native Remote Co-Op listener failed to bind port \(port): \(error.localizedDescription)")
             retryOnEphemeralPort(after: port)
             return
         }
+        var txtRecordDictionary: [String: String] = ["v": "1"]
+        if let fingerprint, !fingerprint.isEmpty {
+            txtRecordDictionary["fingerprint"] = fingerprint
+        }
         listener.service = NWListener.Service(
             name: Host.current().localizedName ?? "OpenNOW Host",
             type: Self.serviceType,
-            txtRecord: NWTXTRecord(["v": "1"])
+            txtRecord: NWTXTRecord(txtRecordDictionary)
         )
         listener.stateUpdateHandler = { [weak self, weak listener] state in
             self?.handleListenerState(state, attemptedPort: port, boundPort: listener?.port?.rawValue)
@@ -163,7 +204,11 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         listener.newConnectionHandler = { [weak self] handle in
             self?.accept(handle)
         }
-        lock.withLock { self.listener = listener }
+        lock.withLock {
+            self.listener = listener
+            self.tlsIdentity = identity
+            self.certificateFingerprint = fingerprint
+        }
         listener.start(queue: queue)
     }
 
@@ -206,18 +251,33 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             // before the connection is tracked means a flood cannot grow the table, and refusing the
             // newcomer rather than evicting means no established guest is dropped mid-game.
             guard !isClosed, connections.count < Self.maximumConnections else { return false }
+            guard unauthenticatedConnections.count < Self.maximumUnauthenticatedConnections else { return false }
             connections[connection.id] = connection
+            unauthenticatedConnections.insert(connection.id)
             return true
         }
         guard accepted else {
             handle.cancel()
             return
         }
+        scheduleJoinDeadline(for: connection)
         handle.stateUpdateHandler = { [weak self] state in
             if case .ready = state { self?.greet(connection) }
         }
         handle.start(queue: queue)
         receive(on: connection)
+    }
+
+    private func scheduleJoinDeadline(for connection: Connection) {
+        queue.asyncAfter(deadline: .now() + Self.joinDeadline) { [weak self, weak connection] in
+            guard let self, let connection else { return }
+            let shouldDrop = self.lock.withLock {
+                self.unauthenticatedConnections.contains(connection.id) && self.connections[connection.id] != nil
+            }
+            guard shouldDrop else { return }
+            self.logger("Native Remote Co-Op dropped a socket that never joined within the deadline")
+            self.drop(connection)
+        }
     }
 
     /// On-connect handshake: the current invite, with its signed token, exactly what an invite link
@@ -261,21 +321,27 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     private func route(_ message: OPNRemoteCoOpWireMessage, from connection: Connection) {
         // Authorisation lives in `OPNRemoteCoOpGuestMessageGate`, not here.
         //
-        // These rules were written out independently in both listeners, and this one shipped without
-        // the kind allowlist and the claim guard until they were hand-copied across. One decision,
-        // two transports, so a third cannot introduce a third variant.
+        // All three transports consult the same shared ownership table, so a participant bound on
+        // one transport cannot be claimed on another.
+        let handle = OPNRemoteCoOpConnectionHandle(transport: .native, connectionID: connection.id)
         let decision = lock.withLock { () -> OPNRemoteCoOpGuestMessageGate.Decision in
             let decision = OPNRemoteCoOpGuestMessageGate.decide(
                 message: message,
-                owner: connection.participantID,
-                isHeldByAnotherConnection: { participantID in
-                    connections.values.contains { $0.participantID == participantID && $0 !== connection }
-                }
+                connection: handle,
+                registry: participantOwnership
             )
             // Bound inside the same critical section that tested the claim, so two sockets racing the
             // same participant cannot both be told it is free.
             if case .claimThenDeliver(let participantID) = decision {
+                // Release any previous binding this connection held before claiming the new one.
+                if let previous = connection.participantID, previous != participantID {
+                    participantOwnership.release(handle)
+                    participantsGivenNetworkConfiguration.remove(previous)
+                }
                 connection.participantID = participantID
+                participantOwnership.claim(participantID: participantID, for: handle)
+                // A join moves the socket out of the unauthenticated pool.
+                unauthenticatedConnections.remove(connection.id)
             }
             return decision
         }
@@ -296,6 +362,8 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     private func drop(_ connection: Connection) {
         let participantID = lock.withLock { () -> UUID? in
             guard connections.removeValue(forKey: connection.id) != nil else { return nil }
+            participantOwnership.release(.init(transport: .native, connectionID: connection.id))
+            unauthenticatedConnections.remove(connection.id)
             if let participantID = connection.participantID { participantsGivenNetworkConfiguration.remove(participantID) }
             return connection.participantID
         }
@@ -326,10 +394,11 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
 
     public func send(_ command: OPNRemoteCoOpSignalingCommand) async {
         let sessionPreset = lock.withLock { networkConfiguration.sessionQualityPreset }
-        // The first update for a participant means the host session accepted their invite token, so
-        // it is the earliest point at which they have earned the ICE configuration. It precedes the
-        // update itself: the guest builds its peer connection from it, and the offer follows.
-        if case .participantUpdated(let participant) = command { sendNetworkConfigurationIfNeeded(to: participant.id) }
+        // The relay credentials are only released once the host has accepted the guest: the
+        // participant must be marked connected and input enabled. This closes the window where a
+        // guest that has only verified its invite token but has not yet been approved could obtain
+        // the TURN username and password.
+        if case .participantUpdated(let participant) = command { sendNetworkConfigurationIfNeeded(to: participant) }
         guard let message = OPNRemoteCoOpWireMessage.message(for: command, sessionQualityPreset: sessionPreset) else { return }
         let targets: [Connection] = lock.withLock {
             switch command {
@@ -338,10 +407,15 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             // quality - on the wire to every peer that could reach the listener.
             case .guestRejected(let participantID, _), .inputRejected(let participantID, _),
                  .peerSignal(let participantID, _), .participantRemoved(let participantID):
-                return connections.values.filter { $0.participantID == participantID }
+                return connection(for: participantID).map { [$0] } ?? []
             case .participantUpdated(let participant):
-                return connections.values.filter { $0.participantID == participant.id }
-            case .inviteCreated, .inviteEnded:
+                return connection(for: participant.id).map { [$0] } ?? []
+            // Native guests already receive the invite as a greeting on connect, so broadcasting an
+            // `inviteCreated` here is redundant and would leak hosted-signaling credentials onto a
+            // plaintext socket. See R5.
+            case .inviteCreated:
+                return []
+            case .inviteEnded:
                 return Array(connections.values)
             }
         }
@@ -354,11 +428,22 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         if case .guestRejected(let participantID, _) = command {
             lock.withLock {
                 participantsGivenNetworkConfiguration.remove(participantID)
+                if let handle = participantOwnership.owner(of: participantID), handle.transport == .native {
+                    participantOwnership.release(handle)
+                }
                 for connection in connections.values where connection.participantID == participantID {
                     connection.participantID = nil
                 }
             }
         }
+    }
+
+    private func connection(for participantID: UUID) -> Connection? {
+        guard let handle = participantOwnership.owner(of: participantID),
+              handle.transport == .native else { return nil }
+        guard let id = UUID(uuidString: handle.connectionID),
+              let connection = connections[id] else { return nil }
+        return connection
     }
 
     public func close() async {
@@ -370,6 +455,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             let continuations = Array(eventContinuations.values)
             self.listener = nil
             self.connections.removeAll()
+            self.unauthenticatedConnections.removeAll()
             self.eventContinuations.removeAll()
             idleSweepTask?.cancel()
             idleSweepTask = nil
@@ -377,6 +463,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         }
         state.0?.cancel()
         for connection in state.1 {
+            participantOwnership.release(.init(transport: .native, connectionID: connection.id))
             connection.handle.stateUpdateHandler = nil
             connection.handle.cancel()
         }
@@ -387,11 +474,15 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
 
     /// Sent once per verified participant. Re-sending on every later update would put the relay
     /// credentials back on the wire for no reason.
-    private func sendNetworkConfigurationIfNeeded(to participantID: UUID) {
+    private func sendNetworkConfigurationIfNeeded(to participant: OPNRemoteCoOpParticipant) {
         let target = lock.withLock { () -> (Connection, OPNRemoteCoOpNetworkConfiguration)? in
-            guard !participantsGivenNetworkConfiguration.contains(participantID),
-                  let connection = connections.values.first(where: { $0.participantID == participantID }) else { return nil }
-            participantsGivenNetworkConfiguration.insert(participantID)
+            guard participant.connectionState == .connected && participant.inputEnabled,
+                  !participantsGivenNetworkConfiguration.contains(participant.id),
+                  let handle = participantOwnership.owner(of: participant.id),
+                  handle.transport == .native,
+                  let id = UUID(uuidString: handle.connectionID),
+                  let connection = connections[id] else { return nil }
+            participantsGivenNetworkConfiguration.insert(participant.id)
             return (connection, networkConfiguration)
         }
         guard let target else { return }

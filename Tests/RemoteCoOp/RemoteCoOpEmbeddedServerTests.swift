@@ -29,7 +29,11 @@ import Testing
     private func makeServer(root: URL,
                            networkConfiguration: OPNRemoteCoOpNetworkConfiguration? = nil) async throws -> (OPNRemoteCoOpEmbeddedServer, OPNRemoteCoOpEmbeddedServerEndpoint, URLSession) {
         let configuration = networkConfiguration ?? OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly, latencyMode: .lowLatency)
-        let server = OPNRemoteCoOpEmbeddedServer(documentRoot: root, networkConfiguration: configuration)
+        let server = OPNRemoteCoOpEmbeddedServer(
+            documentRoot: root,
+            networkConfiguration: configuration,
+            participantOwnership: OPNRemoteCoOpParticipantOwnership()
+        )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
@@ -142,7 +146,7 @@ import Testing
         // No reply yet: the ICE configuration is not sent until the invite has verified, and this
         // socket's token has not been. The host-side event is what fires first.
         let event = try #require(await received.value)
-        guard case .guestJoinRequested(let eventParticipantID, _, let displayName) = event else {
+        guard case .guestJoinRequested(let eventParticipantID, _, let displayName, _) = event else {
             Issue.record("expected a guest join event, got \(event)")
             return
         }
@@ -477,7 +481,8 @@ import Testing
 
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: root,
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency)
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency),
+            participantOwnership: OPNRemoteCoOpParticipantOwnership()
         )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -524,7 +529,7 @@ import Testing
             kind: .guestJoinRequested, roomID: UUID(), participantID: participantID, inviteToken: "a.b", displayName: "Guest"))))
 
         let event = try #require(await collected.value)
-        guard case .guestJoinRequested(let seen, _, _) = event else {
+        guard case .guestJoinRequested(let seen, _, _, _) = event else {
             Issue.record("the host must not receive a guest-sent \(event)")
             return
         }
@@ -562,7 +567,7 @@ import Testing
             kind: .guestJoinRequested, roomID: UUID(), participantID: owner, inviteToken: "a.b", displayName: "Guest"))))
 
         let event = try #require(await collected.value)
-        guard case .guestJoinRequested(let seen, _, _) = event else {
+        guard case .guestJoinRequested(let seen, _, _, _) = event else {
             Issue.record("input from an unjoined socket must be dropped, got \(event)")
             return
         }

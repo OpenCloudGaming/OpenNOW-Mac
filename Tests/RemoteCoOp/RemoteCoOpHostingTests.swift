@@ -155,7 +155,7 @@ struct RemoteCoOpHostingTests {
 
         let participantID = UUID()
         let invite = try await coordinator.startInvite(applicationID: "123", title: "Portal", lifetimeSeconds: 120)
-        let joinEvents = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        let joinEvents = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let pendingCommand = signaling.commandHistory().last
         let approved = try await coordinator.approveParticipant(participantID)
         let approvedCommand = signaling.commandHistory().last
@@ -200,7 +200,7 @@ struct RemoteCoOpHostingTests {
 
         let participantID = UUID()
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let neutralEvents = await coordinator.handle(.guestDisconnected(participantID))
         let removedCommand = signaling.commandHistory().last
         let snapshot = await coordinator.snapshot()
@@ -282,7 +282,7 @@ struct RemoteCoOpHostingTests {
         }
         let participantID = UUID()
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let approved = try await coordinator.approveParticipant(participantID)
         try await controller.sync(participants: [approved])
         let peer = try #require(factory.peer(for: participantID))
@@ -324,7 +324,7 @@ struct RemoteCoOpHostingTests {
         }
         let participantID = UUID()
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let approved = try await coordinator.approveParticipant(participantID)
         try await controller.sync(participants: [approved])
         let peer = try #require(factory.peer(for: participantID))
@@ -364,7 +364,7 @@ struct RemoteCoOpHostingTests {
         }
         let participantID = UUID()
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
-        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia", reconnectToken: nil))
         let approved = try await coordinator.approveParticipant(participantID)
         try await controller.sync(participants: [approved])
         let peer = try #require(factory.peer(for: participantID))

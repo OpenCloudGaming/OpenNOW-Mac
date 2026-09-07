@@ -67,6 +67,7 @@ public enum OPNRemoteCoOpHostingEndpoint {
 
     public static func make(preferences: OPNRemoteCoOpPreferences,
                             networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                            participantOwnership: OPNRemoteCoOpParticipantOwnership,
                             logger: (@Sendable (String) -> Void)? = nil) async throws -> OPNRemoteCoOpHostingSession {
         guard let documentRoot = OPNRemoteCoOpEmbeddedServer.bundledDocumentRoot() else {
             throw OPNRemoteCoOpHostingEndpointError.guestPageMissing
@@ -80,6 +81,7 @@ public enum OPNRemoteCoOpHostingEndpoint {
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: documentRoot,
             networkConfiguration: networkConfiguration,
+            participantOwnership: participantOwnership,
             // Guests arrive with the tunnel's `Origin`, not this machine's, so the allowlist has to
             // know about it or every upgrade through the tunnel is rejected.
             additionalAllowedOrigins: tunnel.map { [originString(for: $0)] } ?? [],

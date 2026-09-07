@@ -80,6 +80,10 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var reason: String?
     public var peerSignal: OPNRemoteCoOpWirePeerSignal?
     public var networkConfiguration: OPNRemoteCoOpNetworkConfiguration?
+    /// Identity-continuity token: sent by a guest reconnecting to an already-bound participant, and
+    /// returned by the host in `participantUpdated` after a guest has been accepted. Optional so older
+    /// guests can still join as new participants; required to reclaim an existing participant.
+    public var reconnectToken: String?
     /// Carried by `guestQualityRequested`. Nil clears the guest's own request and puts them back on
     /// whatever the host allows.
     public var qualityPreset: OPNRemoteCoOpQualityPreset?
@@ -101,6 +105,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 reason: String? = nil,
                 peerSignal: OPNRemoteCoOpWirePeerSignal? = nil,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration? = nil,
+                reconnectToken: String? = nil,
                 qualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 sessionQualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 sentAt: Date = Date()) {
@@ -118,6 +123,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.reason = reason
         self.peerSignal = peerSignal
         self.networkConfiguration = networkConfiguration
+        self.reconnectToken = reconnectToken?.nilIfEmpty
         self.qualityPreset = qualityPreset
         self.sessionQualityPreset = sessionQualityPreset
         self.sentAtEpochMilliseconds = Int64((sentAt.timeIntervalSince1970 * 1_000).rounded())
@@ -139,6 +145,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         peerSignal = try container.decodeIfPresent(OPNRemoteCoOpWirePeerSignal.self, forKey: .peerSignal)
         networkConfiguration = try container.decodeIfPresent(OPNRemoteCoOpNetworkConfiguration.self, forKey: .networkConfiguration)
+        reconnectToken = try container.decodeIfPresent(String.self, forKey: .reconnectToken)?.nilIfEmpty
         qualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .qualityPreset)
         sessionQualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .sessionQualityPreset)
         sentAtEpochMilliseconds = try container.decodeIfPresent(Int64.self, forKey: .sentAtEpochMilliseconds) ?? Int64((Date().timeIntervalSince1970 * 1_000).rounded())
@@ -154,7 +161,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         switch kind {
         case .guestJoinRequested:
             guard let participantID, let inviteToken else { return nil }
-            return .guestJoinRequested(participantID: participantID, inviteToken: inviteToken, displayName: displayName ?? "Guest")
+            return .guestJoinRequested(participantID: participantID, inviteToken: inviteToken, displayName: displayName ?? "Guest", reconnectToken: reconnectToken)
         case .guestInput:
             // `input ?? inputs?.last`: the browser populates the array form, so a message omitting the
             // singular field is still routed - which is why the gate checks ownership of both.
@@ -197,7 +204,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .inviteEnded:
             return OPNRemoteCoOpWireMessage(kind: .inviteEnded, roomID: fallbackRoomID)
         case .participantUpdated(let participant):
-            return OPNRemoteCoOpWireMessage(kind: .participantUpdated, roomID: fallbackRoomID, participantID: participant.id, participant: participant, sessionQualityPreset: sessionQualityPreset)
+            return OPNRemoteCoOpWireMessage(kind: .participantUpdated, roomID: fallbackRoomID, participantID: participant.id, participant: participant, reconnectToken: participant.reconnectToken, sessionQualityPreset: sessionQualityPreset)
         case .participantRemoved(let participantID):
             return OPNRemoteCoOpWireMessage(kind: .participantRemoved, roomID: fallbackRoomID, participantID: participantID)
         case .guestRejected(let participantID, let reason):

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
-    case guestJoinRequested(participantID: UUID, inviteToken: String, displayName: String)
+    case guestJoinRequested(participantID: UUID, inviteToken: String, displayName: String, reconnectToken: String?)
     case guestInput(OPNRemoteCoOpInputPacket)
     /// A guest asking to lower their own stream. Nil clears the request. Never raises past what the
     /// host allowed - the clamp lives in the coordinator, not on the guest's side of the wire.
@@ -169,9 +169,9 @@ public actor OPNRemoteCoOpHostCoordinator {
 
     public func handle(_ event: OPNRemoteCoOpSignalingEvent) async -> [UserInputEvent] {
         switch event {
-        case .guestJoinRequested(let participantID, let inviteToken, let displayName):
+        case .guestJoinRequested(let participantID, let inviteToken, let displayName, let reconnectToken):
             do {
-                let participant = try await hostSession.registerGuest(displayName: displayName, inviteToken: inviteToken, participantID: participantID)
+                let participant = try await hostSession.registerGuest(displayName: displayName, inviteToken: inviteToken, participantID: participantID, reconnectToken: reconnectToken)
                 await signaling.send(.participantUpdated(participant))
             } catch {
                 await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))

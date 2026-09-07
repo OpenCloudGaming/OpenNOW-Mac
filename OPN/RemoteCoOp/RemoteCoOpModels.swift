@@ -596,6 +596,11 @@ public struct OPNRemoteCoOpParticipant: Identifiable, Codable, Equatable, Sendab
     public var connectionState: OPNRemoteCoOpParticipantConnectionState
     public var inputEnabled: Bool
     public var playerIndex: Int?
+    /// A secret the host issues to a verified guest so a reconnect or a move to another transport can
+    /// prove it is the same participant. Sent only after the host has accepted the guest, and checked
+    /// whenever a connection tries to claim an already-bound participant ID. This is not a credential
+    /// for media or relay access; it is only an identity continuity token.
+    public var reconnectToken: String?
     /// This guest's own stream quality, or nil to follow the session's setting. Optional rather than
     /// defaulted so "follow the session" stays distinct from "happens to match it right now".
     public var qualityPreset: OPNRemoteCoOpQualityPreset?
@@ -612,6 +617,7 @@ public struct OPNRemoteCoOpParticipant: Identifiable, Codable, Equatable, Sendab
                 connectionState: OPNRemoteCoOpParticipantConnectionState,
                 inputEnabled: Bool = false,
                 playerIndex: Int? = nil,
+                reconnectToken: String? = nil,
                 qualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 guestRequestedQualityPreset: OPNRemoteCoOpQualityPreset? = nil,
                 joinedAt: Date = Date(),
@@ -625,6 +631,7 @@ public struct OPNRemoteCoOpParticipant: Identifiable, Codable, Equatable, Sendab
         self.connectionState = connectionState
         self.inputEnabled = inputEnabled
         self.playerIndex = playerIndex.map { min(3, max(1, $0)) }
+        self.reconnectToken = reconnectToken?.nilIfEmpty
         self.qualityPreset = qualityPreset
         self.guestRequestedQualityPreset = guestRequestedQualityPreset
         self.joinedAt = joinedAt

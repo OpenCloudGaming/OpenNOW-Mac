@@ -20,15 +20,13 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         /// A video track can exist before approval - the host decides eligibility on connection state,
         /// so a bug there delivered one - and the guest should not be relying on the host to be right
         /// about that while showing a "waiting for approval" overlay.
-        var allowsVideoPlayback: Bool {
-            if case .connected = self { return true }
-            return false
-        }
+        var allowsVideoPlayback: Bool { self == .connected }
     }
 
     private static let participantIDDefaultsKey = "remoteCoOpNativeGuestParticipantID"
     private static let manualAddressDefaultsKey = "remoteCoOpNativeGuestManualAddress"
     private static let recentAddressesDefaultsKey = "remoteCoOpNativeGuestRecentAddresses"
+    private static let certificateFingerprintsDefaultsKey = "remoteCoOpNativeGuestCertificateFingerprints"
     private static let recentAddressLimit = 5
 
     @Published private(set) var hosts: [OPNRemoteCoOpNativeDiscoveredHost] = []
@@ -51,6 +49,9 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     @Published private(set) var hasController: Bool?
     /// Addresses and links that have worked before, most recent first.
     @Published private(set) var recentAddresses: [String] = UserDefaults.standard.stringArray(forKey: RemoteCoOpGuestViewModel.recentAddressesDefaultsKey) ?? []
+    /// Trust-on-first-use certificate fingerprints for raw native connections, keyed by the same
+    /// string used as the address or host identifier. Used to detect a changed host on reconnect.
+    @Published private(set) var certificateFingerprints: [String: String] = UserDefaults.standard.object(forKey: RemoteCoOpGuestViewModel.certificateFingerprintsDefaultsKey) as? [String: String] ?? [:]
     /// The host currently being watched, for the stats overlay. Removing the "Watching <title>" pill
     /// took the host's name with it, which was the half worth keeping.
     @Published private(set) var connectedHostName: String?
@@ -74,6 +75,9 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     private var peerSignalChain: Task<Void, Never>?
     private var connectionAttempt = 0
     private var peerStarted = false
+    /// Reconnect token issued by the host after a successful join. Required to reclaim this guest's
+    /// participant identity across a reconnect or a move to another transport.
+    private var reconnectToken: String?
 
     convenience init() {
         self.init(participantID: Self.loadOrCreateParticipantID(), displayName: Host.current().localizedName ?? "OpenNOW Guest")
@@ -130,9 +134,16 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         UserDefaults.standard.set(recentAddresses, forKey: Self.recentAddressesDefaultsKey)
     }
 
+    private func rememberCertificateFingerprint(_ fingerprint: String, forKey key: String) {
+        certificateFingerprints[key] = fingerprint
+        UserDefaults.standard.set(certificateFingerprints, forKey: Self.certificateFingerprintsDefaultsKey)
+    }
+
     func forgetRecentAddress(_ address: String) {
         recentAddresses.removeAll { $0 == address }
         UserDefaults.standard.set(recentAddresses, forKey: Self.recentAddressesDefaultsKey)
+        certificateFingerprints.removeValue(forKey: address)
+        UserDefaults.standard.set(certificateFingerprints, forKey: Self.certificateFingerprintsDefaultsKey)
     }
 
     func joinRecentAddress(_ address: String) {
@@ -142,8 +153,16 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     func join(_ host: OPNRemoteCoOpNativeDiscoveredHost) {
         // No token: the native listener greets a new socket with `hostHello` carrying the invite, so
-        // the join request waits for that rather than being sent up front.
-        connect(transport: OPNRemoteCoOpNativeGuestConnection(endpoint: host.endpoint), name: host.name, inviteToken: nil)
+        // the join request waits for that rather than being sent up front. The raw listener uses a
+        // self-signed certificate, so trust-on-first-use applies; the fingerprint is stored under the
+        // host identifier and checked on reconnect.
+        connect(
+            transport: OPNRemoteCoOpNativeGuestConnection(endpoint: host.endpoint),
+            name: host.name,
+            inviteToken: nil,
+            expectedFingerprint: certificateFingerprints[host.id],
+            fingerprintKey: host.id
+        )
     }
 
     /// Joins through the embedded server's WebSocket, which is the transport a tunnel forwards.
@@ -153,11 +172,19 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
             name: link.signalingURL.host ?? "the host",
             // This socket is never greeted - a browser reads the token out of its own URL - so the
             // token from the link is presented as soon as the socket opens.
-            inviteToken: link.token
+            inviteToken: link.token,
+            expectedFingerprint: nil,
+            fingerprintKey: nil
         )
     }
 
-    private func connect(transport: any OPNRemoteCoOpNativeGuestTransport, name: String, inviteToken: String?) {
+    private func connect(
+        transport: any OPNRemoteCoOpNativeGuestTransport,
+        name: String,
+        inviteToken: String?,
+        expectedFingerprint: String?,
+        fingerprintKey: String?
+    ) {
         guard phase == .browsing || phase.isFailure else { return }
         leave()
         phase = .connecting
@@ -174,7 +201,10 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         let attempt = connectionAttempt
         messageTask = Task { [weak self] in
             do {
-                try await transport.connect()
+                let fingerprint = try await transport.connect(expectedFingerprint: expectedFingerprint)
+                if !fingerprint.isEmpty, let fingerprintKey {
+                    self?.rememberCertificateFingerprint(fingerprint, forKey: fingerprintKey)
+                }
                 if let inviteToken {
                     self?.requestJoin(inviteToken: inviteToken)
                 }
@@ -309,6 +339,9 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     /// being applied here.
     private func applyParticipantUpdate(_ message: OPNRemoteCoOpWireMessage) {
         guard let participant = message.participant, participant.id == participantID else { return }
+        if let token = message.reconnectToken?.nilIfEmpty {
+            reconnectToken = token
+        }
         if let sessionQualityPreset = message.sessionQualityPreset {
             self.sessionQualityPreset = sessionQualityPreset
         }
@@ -365,7 +398,7 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     private func requestJoin(inviteToken: String) {
         if statusText.hasPrefix("Connecting") { statusText = "Joining the session…" }
-        let message = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: participantID, inviteToken: inviteToken, displayName: displayName)
+        let message = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: participantID, inviteToken: inviteToken, displayName: displayName, reconnectToken: reconnectToken)
         Task {
             try? await connection?.send(message)
         }
