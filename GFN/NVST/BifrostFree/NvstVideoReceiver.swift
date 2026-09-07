@@ -594,7 +594,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         guard replay.wouldAccept(extendedIndex) else {
             throw NvstRtpParseError.replayed
         }
-        let rolloverCounter = UInt32(extendedIndex >> 16)
+        // RFC 7714's IV consumes only the low 32 bits of the rollover counter, so truncation is
+        // the conversion rather than a narrowing of it — and it keeps an index estimate from
+        // trapping here, pre-authentication, where no throw can reach the caller's catch.
+        let rolloverCounter = UInt32(truncatingIfNeeded: extendedIndex >> 16)
         let iv = try SrtpKeyDerivation.gcmIV(sessionSalt: sessionSalt, ssrc: ssrc, rolloverCounter: rolloverCounter, sequenceNumber: sequenceNumber)
         // Slices share the datagram's storage, so the AAD, ciphertext and tag reach the cipher
         // without three more per-packet copies; only the re-glued plaintext allocates.

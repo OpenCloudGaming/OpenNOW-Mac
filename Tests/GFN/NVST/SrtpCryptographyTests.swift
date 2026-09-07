@@ -94,4 +94,46 @@ struct SrtpCryptographyTests {
         // A modest sequence delta stays in the current rollover window.
         #expect(estimated == 0)
     }
+
+    /// A sequence number more than 32,768 above the highest accepted one reads as belonging to the
+    /// epoch before the current one — which does not exist while the rollover counter is still
+    /// zero, the state the stream is in until its sequence wraps. Estimating into that absent
+    /// epoch used to wrap `roc - 1` and return an index whose ROC was `0xffff_ffff_ffff_ffff`;
+    /// the receiver's `UInt32` conversion of it trapped, so a single unauthenticated datagram
+    /// terminated the process. Roughly half of all sequence numbers are far enough above any given
+    /// highest to take that branch.
+    @Test func replayWindowHasNoEpochBeforeTheFirstOne() {
+        var window = SrtpReplayWindow()
+        let accepted = window.accept(100)
+        #expect(accepted)
+
+        let estimated = window.estimatedIndex(for: 40_000)
+        #expect(estimated == 40_000)
+        #expect(UInt32(exactly: estimated >> 16) != nil)
+
+        // The estimate is a guess, not an acceptance: it still passes through the ordinary
+        // replay window, and the window does not move until a packet authenticates.
+        let acceptable = window.wouldAccept(estimated)
+        #expect(acceptable)
+        #expect(window.estimatedIndex(for: 0xffff) == 0xffff)
+    }
+
+    /// Above the first rollover the previous epoch does exist, and a sequence number far below the
+    /// highest must still estimate into it — otherwise a packet that legitimately straddles the
+    /// wrap is misplaced by a whole epoch and fails authentication.
+    @Test func replayWindowEstimatesIntoThePreviousEpochOnceOneExists() {
+        var window = SrtpReplayWindow()
+        let accepted = window.accept(0x0001_0000)
+        #expect(accepted)
+
+        let estimated = window.estimatedIndex(for: 0xffff)
+        #expect(estimated == 0xffff)
+        #expect(UInt32(exactly: estimated >> 16) != nil)
+
+        // Wrapping forward stays symmetric: far below the highest means the next epoch.
+        var forward = SrtpReplayWindow()
+        let forwardAccepted = forward.accept(0xffff)
+        #expect(forwardAccepted)
+        #expect(forward.estimatedIndex(for: 0) == 0x0001_0000)
+    }
 }

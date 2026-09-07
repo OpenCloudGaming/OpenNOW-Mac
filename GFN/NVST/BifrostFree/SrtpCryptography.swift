@@ -298,6 +298,15 @@ public struct SrtpReplayWindow {
 
     public init() {}
 
+    /// The extended index a sequence number most plausibly belongs to (RFC 3711 §3.3.1).
+    ///
+    /// Total for every input: the previous-epoch branch is skipped while `roc` is zero, because a
+    /// stream has no epoch before its first packet. Wrapping `roc - 1` there returned an index
+    /// whose ROC was `0xffff_ffff_ffff_ffff`, and the receiver's `UInt32` conversion of it trapped
+    /// — one datagram on the video socket whose sequence number sat more than 32,768 above the
+    /// highest accepted one terminated the process, before authentication and with no key. Such a
+    /// packet has no epoch to belong to, so it estimates into the current one and is then held to
+    /// the ordinary replay and authentication checks.
     public func estimatedIndex(for sequenceNumber: UInt16) -> UInt64 {
         guard let highest = highestIndex else { return UInt64(sequenceNumber) }
         let roc = highest >> 16
@@ -305,8 +314,8 @@ public struct SrtpReplayWindow {
         let delta = Int32(sequenceNumber) - Int32(highestSequence)
         if delta < -32_768 {
             return ((roc &+ 1) << 16) | UInt64(sequenceNumber)
-        } else if delta > 32_768 {
-            return ((roc &- 1) << 16) | UInt64(sequenceNumber)
+        } else if delta > 32_768, roc > 0 {
+            return ((roc - 1) << 16) | UInt64(sequenceNumber)
         }
         return (roc << 16) | UInt64(sequenceNumber)
     }

@@ -63,6 +63,42 @@ struct NvstMjolnirReceiverTests {
         #expect(receiver.snapshot.boundSSRC == nil)
     }
 
+    /// An unauthenticated datagram reached the replay window's index estimate before any
+    /// authentication ran, and while the rollover counter was still zero a sequence number more
+    /// than 32,768 above the highest accepted one estimated into an epoch that does not exist.
+    /// The resulting ROC did not fit the `UInt32` the GCM IV takes and trapped — a Swift
+    /// `fatalError`, which the caller's `catch` cannot intercept, so one packet on the video
+    /// socket terminated the app. The attacker needs the port, not the key.
+    @Test func anUnauthenticatedPacketFarAheadOfTheWindowIsDroppedRatherThanFatal() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff()
+        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
+        let first = try NvstReceiverFixtures.seal(
+            NvstReceiverFixtures.packet(sequence: 100, frameIndex: 1, flags: 0x07, media: media),
+            sequence: 100, handoff: handoff)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: first)).count == 1)
+
+        // The header is plaintext, so all of it is attacker-controlled; only the payload and the
+        // trailing tag need the session key. Sequence 40,000 is 39,900 above the highest accepted.
+        var forged = NvstReceiverFixtures.packet(sequence: 40_000, frameIndex: 2, flags: 0x07,
+                                                 media: [UInt8](repeating: 0x5a, count: 16))
+        forged.replaceSubrange(32..<forged.count, with: Data(repeating: 0xa5, count: forged.count - 32))
+        let forgedEvents = receiver.process(datagram: forged)
+
+        #expect(NvstReceiverFixtures.drops(forgedEvents).contains { $0.contains("authentication") })
+        #expect(NvstReceiverFixtures.frames(forgedEvents).isEmpty)
+        let stats = receiver.snapshot
+        #expect(stats.authenticatedPackets == 1)
+        #expect(stats.droppedPackets == 1)
+        // A forged packet must not age real ones out of the window, so the next real packet still
+        // authenticates at its own index.
+        let next = try NvstReceiverFixtures.seal(
+            NvstReceiverFixtures.packet(sequence: 101, frameIndex: 2, flags: 0x07, media: media),
+            sequence: 101, handoff: handoff)
+        #expect(NvstReceiverFixtures.frames(receiver.process(datagram: next)).count == 1)
+        #expect(receiver.snapshot.authenticatedPackets == 2)
+    }
+
     /// One lost packet used to take its whole reorder window with it: the finalizing flush
     /// destroyed every packet buffered behind the gap, so a single loss cost 32 packets and the
     /// frames they carried — uncounted, because the destroyed packets hit no drop counter.
