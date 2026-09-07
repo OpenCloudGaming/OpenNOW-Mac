@@ -105,7 +105,7 @@ WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - 
 
 Enable it in **Settings → Network → Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
 
-The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md).
+The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md), and the provenance of the vendor-protocol code in [`docs/PROTOCOL_PROVENANCE.md`](docs/PROTOCOL_PROVENANCE.md).
 
 ## Steam Controller, Unlocked
 
