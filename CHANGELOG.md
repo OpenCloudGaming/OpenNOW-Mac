@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.6.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.5.0...v0.6.0) (2026-09-07)
+
+
+### Features
+
+* 5.1/7.1 surround sound and bitstream-depth HDR decode ([943c05a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/943c05a7b52997acb44b454ff427276bca727508))
+* add custom font ([375650c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/375650c0a14f50c789b2c63f16105a4eb052039a))
+* choose notification or bring-to-front when a session is ready ([e883cbe](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e883cbe185c26361db1be61495238d77c571c424))
+* NEW tag on settings added in the current release ([d560649](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d5606496fa2f5b40b5da3704634cdff571f4deb3))
+* notify when a queued session becomes ready ([0b004ed](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0b004edd4b9278fd83e8a3ab9eb5260410a6e354))
+* restructure settings ([#15](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/15)) ([57f83b3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/57f83b3635e9d817b58f618304587b7c25a7996e))
+* revamp stream HUD stats panel and keep it clear of the titlebar ([53ade02](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/53ade02d0eff3d00228797948f3fcdca7836c828))
+
+
+### Bug Fixes
+
+* catalog hover padding ([1bb5c11](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1bb5c118f64e1a047186867283014173c5361c77))
+* catalog images rendering ([d83c76d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d83c76dbfe39678d8000d6d4cca4547081afb95f))
+* crash kicking a lowest-latency draw from the decode thread ([7eca9ce](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7eca9ce29142af6bea62162818fe419f975a9e2a))
+* judge decode budget by tail latency, not a lifetime mean ([674e441](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/674e441350fbd36c36834c5ed7ac377f184576c3))
+* **lint:** use Semantic.warning for negative capability badge ([019dd75](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/019dd751d494227603480320a614bca1f40f0bff))
+* **nvst:** 8 bit 4-4-4 streaming ([fe0bac2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fe0bac2a548ac715ada77b2bf4584e75257146a2))
+* settings scroll tab switch ([8a47ec9](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8a47ec9f7b90d8627b9ead693d7fd86b473b6ae1))
+* settings scrolling performance ([531ba0e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/531ba0e6c9f801be69bf8e6e212d12056c6c8ef4))
+
 ## [0.5.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 
