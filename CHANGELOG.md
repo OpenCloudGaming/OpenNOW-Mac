@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.7.0...v0.7.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* stream mouse click ([fbdc71d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fbdc71d39b2598b42fd4905efeb00b7b12777b2a))
+
 ## [0.7.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.6.0...v0.7.0) (2026-09-08)
 
 
