@@ -219,6 +219,9 @@ public struct NativeNVSTTerminationReason: Equatable, Sendable {
     /// session-notification channel it uses for terminations, but the cloud session
     /// stays alive and resumable, so it must never be reported as a stream end.
     public static let pausedByUser: UInt32 = 59
+    /// The BifrostFree control plane's word for the same thing: a `0x0109` termination whose
+    /// session survives and can be resumed.
+    public static let sessionPause: UInt32 = NvstSeatTermination.sessionPauseResult
 
     public let rawValue: UInt32
     public let resultName: String?
@@ -228,7 +231,7 @@ public struct NativeNVSTTerminationReason: Equatable, Sendable {
         self.resultName = resultName
     }
 
-    public var isPause: Bool { rawValue == Self.pausedByUser }
+    public var isPause: Bool { rawValue == Self.pausedByUser || rawValue == Self.sessionPause }
 }
 
 public struct NativeNVSTSessionTermination: Equatable, Sendable {
@@ -257,6 +260,24 @@ public struct NativeNVSTSessionTermination: Equatable, Sendable {
     /// A paused session is not an ended session: the cloud session must survive so the
     /// user can resume it.
     public var isPause: Bool { reason.isPause }
+}
+
+extension NvstSeatTermination {
+    /// The path's view of the seat's verdict. Only a pause leaves the session resumable and alive;
+    /// every other result is the seat ending the session, which is exactly the case
+    /// `NativeNVSTRecoveryPolicy` must refuse to reconnect to.
+    public var sessionTermination: NativeNVSTSessionTermination {
+        let name = resultName
+        return NativeNVSTSessionTermination(
+            reason: NativeNVSTTerminationReason(rawValue: result, resultName: name),
+            extendedResult: NativeNVSTTerminationValue(code: Int32(bitPattern: result), name: name),
+            isResumable: isSessionPause,
+            isSessionAlive: isSessionPause,
+            message: isSessionPause
+                ? "Native NVST stream paused by the cloud server."
+                : "The cloud server ended the session: \(NvstResultCode.describe(result))"
+        )
+    }
 }
 
 public struct NativeNVSTTransportFailure: Equatable, Sendable {

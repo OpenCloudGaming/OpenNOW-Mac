@@ -236,6 +236,9 @@ extension NvstBifrostFreeTransport {
         bundle.onHdrMode = { [weak self] notification in
             Task { await self?.handleHdrMode(notification) }
         }
+        bundle.onSeatTermination = { [weak self] termination in
+            Task { await self?.handleSeatTermination(termination) }
+        }
         bundle.onRemoteAudio = { [weak self] count in
             logger?("NVST bundle seat offered \(count) audio track(s)")
             Task { await self?.noteRemoteAudio(trackCount: count) }
@@ -795,5 +798,13 @@ extension NvstBifrostFreeTransport {
             message: "Native NVST could not decode video: \(message)",
             recoveryClassification: .permanent
         )))
+    }
+
+    /// The seat ended the session and said why. Reported as a session termination rather than a
+    /// transport failure so the path refuses to reconnect: the seat has already decided, and
+    /// resuming against it is what turned "the game quit to desktop" into a budget of failed
+    /// recoveries and a stall report.
+    func handleSeatTermination(_ termination: NvstSeatTermination) {
+        terminationContinuation?.yield(.sessionTerminated(termination.sessionTermination))
     }
 }

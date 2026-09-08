@@ -57,8 +57,9 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     /// Captured from `guestJoinRequested`. Every other invite holder shares read access to the host
     /// channel this transport publishes on, so a reconnect token or TURN credential sent in the clear
     /// is visible to all of them, not just the guest it names - `send` and
-    /// `sendNetworkConfigurationIfNeeded` seal to this key instead of trusting that. A guest that never
-    /// sent one (a page cached from before this existed) still gets the plaintext.
+    /// `sendNetworkConfigurationIfNeeded` seal to this key instead of trusting that. A guest with no
+    /// key on file gets neither secret at all, never a plaintext copy: falling back to plaintext for
+    /// one missing key would have undone the seal for every other guest reading the same broadcast.
     private var participantPublicKeys: [UUID: P256.KeyAgreement.PublicKey] = [:]
     private var isClosed = false
     private static let sealInfo = Data("OpenNOW.RemoteCoOp.Hosted".utf8)
@@ -109,11 +110,17 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         // Guests cannot publish here - their token grants `subscribe` only on this channel - so a
         // message arriving on it is the host's.
         //
+        // `OPNRemoteCoOpCompositeSignalingSession` fans every command out to every transport, so a
+        // command about a guest who joined over the embedded server or the native listener reaches
+        // here too. Nothing about them belongs on this channel: this transport never learned a key
+        // for them, so encrypting on their behalf is impossible, and sending their reconnect token,
+        // TURN credentials or SDP in the clear would broadcast another transport's secrets to every
+        // hosted invite holder, none of whom have any relationship to that guest at all.
+        guard isTargetedAtThisTransport(command) else { return }
         // The relay credentials are only released once the host has accepted the guest: the
         // participant must be marked connected and input enabled. This closes the window where a
         // guest that has only verified its invite token but has not yet been approved could obtain
-        // the TURN username and password. They are still readable by the invite's other holders,
-        // which is inherent to a shared invite and recorded on `mintGuestToken`.
+        // the TURN username and password.
         if case .participantUpdated(let participant) = command {
             sendNetworkConfigurationIfNeeded(to: participant)
         }
@@ -138,18 +145,46 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }
 
+    /// Whether `participantID` actually joined over this transport, rather than merely being named in
+    /// a command `OPNRemoteCoOpCompositeSignalingSession` fanned out to every transport.
+    private func ownsHosted(_ participantID: UUID) -> Bool {
+        guard let handle = participantOwnership.owner(of: participantID) else { return false }
+        return handle.transport == .hosted
+    }
+
+    /// Invite-wide commands go out unconditionally; every per-participant command is dropped here
+    /// unless that participant is actually this transport's own guest. See the comment in `send`.
+    private func isTargetedAtThisTransport(_ command: OPNRemoteCoOpSignalingCommand) -> Bool {
+        switch command {
+        case .inviteCreated, .inviteEnded:
+            return true
+        case .participantUpdated(let participant):
+            return ownsHosted(participant.id)
+        case .participantRemoved(let participantID),
+             .guestRejected(let participantID, _),
+             .inputRejected(let participantID, _),
+             .peerSignal(let participantID, _):
+            return ownsHosted(participantID)
+        }
+    }
+
     /// Moves `participantUpdated`'s reconnect token into a sealed envelope once the guest's public key
     /// is known - that token is what lets anyone reclaim this participant, so leaving it in the clear
     /// on the shared channel would hand every other invite holder a way to steal the identity during
     /// this guest's disconnect grace period.
+    ///
+    /// A guest with no key on file gets no token at all, never a plaintext one: a page that never
+    /// sent a key - or an attacker deliberately omitting one to force a plaintext copy onto the
+    /// channel every other invite holder reads - loses reconnect continuity rather than the token
+    /// being handed out to everyone regardless.
     private func sealReconnectToken(on message: inout OPNRemoteCoOpWireMessage, participantID: UUID) {
-        guard let token = message.reconnectToken,
-              let key = lock.withLock({ participantPublicKeys[participantID] }),
-              let envelope = seal(token, for: key) else { return }
+        guard let plaintextToken = message.reconnectToken else { return }
         message.reconnectToken = nil
         // `message(for:)` copies the token into the embedded `participant` too - the same value,
         // reachable a second way - so both have to be cleared or the seal is decorative.
         message.participant?.reconnectToken = nil
+        guard let key = lock.withLock({ participantPublicKeys[participantID] }),
+              let envelope = seal(plaintextToken, for: key) else { return }
         message.encryptedReconnectToken = envelope
     }
 
@@ -184,27 +219,23 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
     /// The hosted transport used to send this not at all - `message(for:)` has no case that produces
     /// it - so a hosted guest never received ICE servers and could not connect from any network that
     /// blocks a direct route, which is the exact case this transport exists to serve.
+    ///
+    /// Withheld, not sent in the clear, until a guest key is on file: the TURN username and password
+    /// are gated on approval precisely so an invite holder who has not been approved cannot get them
+    /// early, and a plaintext copy on this shared channel handed them to every such holder regardless
+    /// - approved or not - the moment any one guest lacked a key. Not marked "given" until it is
+    /// actually sealed and sent, so a guest whose key arrives after this first runs still gets one.
     private func sendNetworkConfigurationIfNeeded(to participant: OPNRemoteCoOpParticipant) {
+        guard let key = lock.withLock({ participantPublicKeys[participant.id] }) else { return }
         let configuration = lock.withLock { () -> OPNRemoteCoOpNetworkConfiguration? in
             guard participant.connectionState == .connected && participant.inputEnabled,
                   !participantsGivenNetworkConfiguration.contains(participant.id) else { return nil }
             participantsGivenNetworkConfiguration.insert(participant.id)
             return networkConfiguration
         }
-        guard let configuration else { return }
-        var message = OPNRemoteCoOpWireMessage(
-            kind: .networkConfiguration,
-            roomID: nil,
-            participantID: participant.id,
-            networkConfiguration: configuration
-        )
-        // The TURN username and password live in here - sealed the same way the reconnect token is,
-        // and for the same reason: every invite holder shares read access to this channel.
-        if let key = lock.withLock({ participantPublicKeys[participant.id] }),
-           let envelope = seal(configuration, for: key) {
-            message.networkConfiguration = nil
-            message.encryptedNetworkConfiguration = envelope
-        }
+        guard let configuration, let envelope = seal(configuration, for: key) else { return }
+        var message = OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: nil, participantID: participant.id)
+        message.encryptedNetworkConfiguration = envelope
         guard let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }

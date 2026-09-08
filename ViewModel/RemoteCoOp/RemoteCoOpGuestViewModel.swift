@@ -78,11 +78,13 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     /// Reconnect token issued by the host after a successful join. Required to reclaim this guest's
     /// participant identity across a reconnect or a move to another transport.
     private var reconnectToken: String?
-    /// Which host issued `reconnectToken` - `host.id` for a LAN host, the signaling URL's host for a
-    /// link - so a join elsewhere never resends it. A stale token from a previous host is a live
-    /// credential for reclaiming this guest's identity there; handing it to whoever this guest joins
-    /// next is a hand-off `leave()` cannot make safe on its own; it does not know the next
-    /// destination. Kept across a same-host reconnect, which is the only case the token is good for.
+    /// Which host issued `reconnectToken` - `host.id` for a LAN host, the whole signaling URL for a
+    /// link, not just its hostname, since two different services can share one behind a proxy or a
+    /// tunnel's shared domain - so a join elsewhere never resends it. A stale token from a previous
+    /// host is a live credential for reclaiming this guest's identity there; handing it to whoever
+    /// this guest joins next is a hand-off `leave()` cannot make safe on its own, since it does not
+    /// know the next destination. Kept across a same-host reconnect, which is the only case the token
+    /// is good for.
     private var reconnectTokenOwner: String?
     /// The identifier `connect(...)` was last called with, so a reconnect token learned afterwards can
     /// be tagged with the host that actually issued it.
@@ -185,10 +187,13 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
             inviteToken: link.token,
             expectedFingerprint: nil,
             fingerprintKey: nil,
-            // The URL's host, not the invite: a machine keeps serving the same signaling URL across
-            // every invite it ever mints, so this is a stable stand-in for "the host", which is what
-            // reconnectTokenOwner needs it to mean.
-            hostIdentifier: link.signalingURL.host ?? link.signalingURL.absoluteString
+            // The whole signaling URL, not the invite and not just the hostname: a machine keeps
+            // serving the same one across every invite it ever mints, so this is a stable stand-in for
+            // "the host", which is what reconnectTokenOwner needs it to mean - and the host alone is
+            // not enough. Two different services can share a hostname behind a reverse proxy or a
+            // tunnel provider's shared domain, distinguished only by port or path; using just the host
+            // would have treated them as the same owner and sent one's reconnect token to the other.
+            hostIdentifier: link.signalingURL.absoluteString
         )
     }
 

@@ -247,6 +247,9 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     var lastHapticSignature = ""
     /// The seat's HDR mode notification (`0x010e`): the game's HDR state as a mode word.
     public var onHdrMode: (@Sendable (NvstHdrModeNotification) -> Void)?
+    /// The seat's termination notification (`0x0109`): the session is over by the seat's own
+    /// decision, and the reason it gives is the only account of why.
+    public var onSeatTermination: (@Sendable (NvstSeatTermination) -> Void)?
     public var onRemoteAudio: (@Sendable (Int) -> Void)?
     /// Decoded playout PCM (Int16 interleaved) on its way to the output device, so a recording can
     /// capture game audio. Called on the CoreAudio render thread: it must copy and return, never

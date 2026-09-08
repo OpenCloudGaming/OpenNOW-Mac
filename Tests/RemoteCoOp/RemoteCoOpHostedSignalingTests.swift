@@ -122,7 +122,11 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
     /// One channel carries both directions, separated by name. The host must never consume its own
     /// commands, whether or not the provider echoes them.
     @Test func hostCommandsArePublishedUnderTheHostName() async throws {
-        let (session, channel, _) = makeSession()
+        let (session, channel, ownership) = makeSession()
+        // A rejection this transport never owns is dropped entirely - see the cross-transport
+        // isolation tests below - so this has to claim the participant first, matching how a real
+        // `guestJoinRequested` binds it before `registerGuest` ever gets a chance to reject it.
+        ownership.claim(participantID: participantID, for: OPNRemoteCoOpConnectionHandle(transport: .hosted, connectionID: "sender-a"))
         await session.send(.guestRejected(participantID: participantID, reason: "full"))
         let published = try #require(channel.messages().first)
         #expect(published.name == OPNRemoteCoOpHostedSignalingName.host)
@@ -313,9 +317,11 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         #expect(recovered.iceServers.first?.credential == "turn-secret")
     }
 
-    /// A guest that never sent a public key - an older cached page - must still be able to reconnect:
-    /// falling back to plaintext for it is a deliberate compatibility choice, not an oversight.
-    @Test func participantUpdatedStaysPlaintextWithoutAGuestKey() async throws {
+    /// A guest with no key on file - an older cached page, or an attacker deliberately omitting one -
+    /// must get no reconnect token at all, never a plaintext one: this transport has no way to seal
+    /// to it, and falling back to plaintext would broadcast the token to every other invite holder
+    /// reading the same channel regardless of whether *they* ever sent a key.
+    @Test func participantUpdatedWithholdsTheReconnectTokenWithoutAGuestKey() async throws {
         let (session, channel, _) = makeSession()
         _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "sender-a") }
 
@@ -325,9 +331,109 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         await session.send(.participantUpdated(participant))
 
         let published = try #require(channel.messages().last { $0.text.contains("participantUpdated") })
+        #expect(!published.text.contains("plain-reconnect-token"),
+                "the reconnect token was sent in the clear to a guest with no key on file")
         let message = try OPNRemoteCoOpWireCodec.decode(published.text)
-        #expect(message.reconnectToken == "plain-reconnect-token")
+        #expect(message.reconnectToken == nil)
+        #expect(message.participant?.reconnectToken == nil)
         #expect(message.encryptedReconnectToken == nil)
+    }
+
+    /// Same failure mode for the TURN credentials: no key on file means no `networkConfiguration`
+    /// message goes out at all, sealed or not, rather than one in the clear.
+    @Test func networkConfigurationIsWithheldWithoutAGuestKey() async throws {
+        let (session, channel, _) = makeSession()
+        _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "sender-a") }
+
+        session.updateNetworkConfiguration(OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .automatic,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turn:example.com:3478"], username: "turn-user", credential: "turn-secret")]
+        ))
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        await session.send(.participantUpdated(participant))
+
+        #expect(!channel.messages().contains { $0.text.contains("networkConfiguration") },
+                "the TURN credentials were published to a guest with no key on file")
+    }
+
+    /// A key that arrives after the first `participantUpdated` (a slow key exchange, or a retried
+    /// join) must still get the TURN credentials once it does - withholding must not be permanent.
+    @Test func networkConfigurationIsSentOnceTheGuestsKeyArrives() async throws {
+        let (session, channel, _) = makeSession()
+        _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "sender-a") }
+
+        session.updateNetworkConfiguration(OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .automatic,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turn:example.com:3478"], username: "turn-user", credential: "turn-secret")]
+        ))
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        await session.send(.participantUpdated(participant))
+        #expect(!channel.messages().contains { $0.text.contains("networkConfiguration") })
+
+        let guestPrivateKey = P256.KeyAgreement.PrivateKey()
+        _ = try await collect(session) {
+            try channel.deliverFromGuest(
+                OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: self.participantID,
+                                         inviteToken: "token.signature", displayName: "Guest",
+                                         guestPublicKey: guestPrivateKey.publicKey.rawRepresentation.base64EncodedString()),
+                senderID: "sender-a"
+            )
+        }
+        await session.send(.participantUpdated(participant))
+
+        let published = try #require(channel.messages().last { $0.text.contains("networkConfiguration") })
+        let message = try OPNRemoteCoOpWireCodec.decode(published.text)
+        let envelope = try #require(message.encryptedNetworkConfiguration)
+        let recovered: OPNRemoteCoOpNetworkConfiguration = try unseal(envelope, with: guestPrivateKey)
+        #expect(recovered.iceServers.first?.credential == "turn-secret")
+    }
+
+    // MARK: - Cross-transport isolation
+
+    /// `OPNRemoteCoOpCompositeSignalingSession` fans every command out to every transport. A
+    /// participant who joined over the embedded server or the native listener never sent this
+    /// transport a key - it never even saw their `guestJoinRequested` - so a command naming them must
+    /// be dropped here entirely, not sent in the clear because sealing is impossible.
+    @Test func participantUpdatedForAnotherTransportsGuestIsDroppedEntirely() async throws {
+        let (session, channel, ownership) = makeSession()
+        ownership.claim(participantID: participantID, for: OPNRemoteCoOpConnectionHandle(transport: .embedded, connectionID: "embedded-conn"))
+
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1,
+                                                     reconnectToken: "embedded-guests-secret-token")
+        await session.send(.participantUpdated(participant))
+
+        #expect(channel.messages().isEmpty, "a command about another transport's guest reached the hosted broadcast channel")
+    }
+
+    /// Same isolation for `networkConfiguration`: TURN credentials meant for an embedded guest must
+    /// never be pushed onto the hosted channel just because Composite fanned the command out here too.
+    @Test func networkConfigurationForAnotherTransportsGuestIsDroppedEntirely() async throws {
+        let (session, channel, ownership) = makeSession()
+        ownership.claim(participantID: participantID, for: OPNRemoteCoOpConnectionHandle(transport: .native, connectionID: "native-conn"))
+        session.updateNetworkConfiguration(OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .automatic,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turn:example.com:3478"], username: "turn-user", credential: "turn-secret")]
+        ))
+
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Guest", role: .guest,
+                                                     connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        await session.send(.participantUpdated(participant))
+
+        #expect(channel.messages().isEmpty, "another transport's TURN credentials reached the hosted broadcast channel")
+    }
+
+    /// `peerSignal` carries WebRTC SDP - just as much another transport's business as the two secrets
+    /// above, and the same fan-out reaches it.
+    @Test func peerSignalForAnotherTransportsGuestIsDroppedEntirely() async throws {
+        let (session, channel, ownership) = makeSession()
+        ownership.claim(participantID: participantID, for: OPNRemoteCoOpConnectionHandle(transport: .embedded, connectionID: "embedded-conn"))
+
+        await session.send(.peerSignal(participantID: participantID, signal: OPNRemoteCoOpWirePeerSignal(kind: .offer, sdp: "v=0…")))
+
+        #expect(channel.messages().isEmpty, "another transport's SDP reached the hosted broadcast channel")
     }
 
     /// Mirrors the browser guest's `unsealEnvelope`: ECDH(P-256) with the host's one-time public key,

@@ -82,6 +82,14 @@ extension NvstWebRtcBundle {
 
     /// One parsed control command, routed to whoever owns it.
     private func dispatchInboundCommand(_ command: NvstControlCommand) {
+        // Ahead of everything else and outside the inbound log budget: a session long enough to
+        // have spent the budget still has to hear the seat ending it, and this is the only channel
+        // that says so.
+        if let termination = NvstSeatTermination.parse(command) {
+            logger?("NVST bundle seat terminated the session: \(termination.summary)")
+            onSeatTermination?(termination)
+            return
+        }
         if let stats = NvstSeatStats.from(command) {
             onSeatStats?(stats)
             return
@@ -152,9 +160,6 @@ extension NvstWebRtcBundle {
         if !trailing.isEmpty { line += " unparsed=\(trailing.count)" }
         line += " hex=\(hex)"
         logger?(line)
-        for command in commands where command.terminationReason != nil {
-            logger?("NVST bundle seat terminated the session: \(command.summary)")
-        }
     }
 
     /// Enough to characterise the control conversation without flooding the log.
