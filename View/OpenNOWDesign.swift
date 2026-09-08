@@ -19,6 +19,9 @@ enum OpenNOWDesign {
 
     enum Semantic {
         static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
+        /// Favorite state, and the one place a second hue is sanctioned: an accent-green heart
+        /// sitting beside an accent-green Play button reads as a second primary action, not a toggle.
+        static let favorite = Color(red: 1, green: 0.30, blue: 0.58)
         /// Degraded-but-not-broken state on app-shell surfaces: unsaved edits, a low battery, a
         /// value that still works but wants attention. Matches `WebRTCMediaStreamTheme.warning`
         /// so the same condition reads the same colour in the stream HUD and in Settings.
@@ -181,11 +184,13 @@ enum OpenNOWDesign {
 extension View {
     /// Now sits over interactive rows (settings toggles, sliders), not just buttons, so it is
     /// explicitly inert and absent rather than a permanently installed clear stroke.
-    func openNowFocusRing(_ isFocused: Bool) -> some View {
+    /// `onAccentFill` swaps the ring to the page surface colour. An accent ring over an accent
+    /// background is invisible, so a focused primary button looked identical to an unfocused one.
+    func openNowFocusRing(_ isFocused: Bool, onAccentFill: Bool = false) -> some View {
         overlay {
             if isFocused {
                 Rectangle()
-                    .stroke(OpenNOWDesign.accent, lineWidth: 2)
+                    .strokeBorder(onAccentFill ? OpenNOWDesign.Surface.app : OpenNOWDesign.accent, lineWidth: 2)
                     .allowsHitTesting(false)
             }
         }
@@ -290,10 +295,79 @@ private struct OpenNOWInterfaceScaleModifier: ViewModifier {
                 .frame(width: proxy.size.width / effectiveScale, height: proxy.size.height / effectiveScale)
                 .scaleEffect(effectiveScale, anchor: .topLeading)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                .background(magnifiedSurfaceMarker)
+        }
+    }
+
+    @ViewBuilder
+    private var magnifiedSurfaceMarker: some View {
+        if effectiveScale != 1 {
+            OpenNOWMagnifiedSurfaceMarker()
         }
     }
 }
 
+/// Says whether anything on screen is currently magnified by `opnInterfaceScale`. Correcting layer
+/// density rasterises the whole window, so it only pays for itself while a magnified subtree exists.
+@MainActor
+private final class OpenNOWMagnifiedSurfaceRegistry {
+    static let shared = OpenNOWMagnifiedSurfaceRegistry()
+
+    private let surfaces = NSHashTable<NSView>.weakObjects()
+    private var changeHandlers: [ObjectIdentifier: () -> Void] = [:]
+
+    var isAnySurfaceMagnified: Bool {
+        surfaces.allObjects.contains { $0.window != nil }
+    }
+
+    /// Also the detach path: a marker that left the window is still registered but no longer counts,
+    /// so re-announcing it on every window change is what retires the correction.
+    func announceSurface(_ surface: NSView) {
+        surfaces.add(surface)
+        notifyChange()
+    }
+
+    func removeSurface(_ surface: NSView) {
+        surfaces.remove(surface)
+        notifyChange()
+    }
+
+    func setChangeHandler(for owner: NSView, handler: @escaping () -> Void) {
+        changeHandlers[ObjectIdentifier(owner)] = handler
+    }
+
+    func removeChangeHandler(for owner: NSView) {
+        changeHandlers.removeValue(forKey: ObjectIdentifier(owner))
+    }
+
+    private func notifyChange() {
+        for handler in changeHandlers.values {
+            handler()
+        }
+    }
+}
+
+private struct OpenNOWMagnifiedSurfaceMarker: NSViewRepresentable {
+    func makeNSView(context: Context) -> OpenNOWMagnifiedSurfaceMarkerView {
+        OpenNOWMagnifiedSurfaceMarkerView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: OpenNOWMagnifiedSurfaceMarkerView, context: Context) {}
+
+    static func dismantleNSView(_ nsView: OpenNOWMagnifiedSurfaceMarkerView, coordinator: ()) {
+        OpenNOWMagnifiedSurfaceRegistry.shared.removeSurface(nsView)
+    }
+}
+
+private final class OpenNOWMagnifiedSurfaceMarkerView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        OpenNOWMagnifiedSurfaceRegistry.shared.announceSurface(self)
+    }
+}
+
+/// Mount anywhere: it corrects `contentsScale` across the whole window, and stays idle until an
+/// `opnInterfaceScale` subtree is on screen, because unmagnified content is already at the right density.
 struct OpenNOWInterfaceScaleDensityBooster: NSViewRepresentable {
     let scale: CGFloat
 
@@ -327,6 +401,9 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        OpenNOWMagnifiedSurfaceRegistry.shared.setChangeHandler(for: self) { [weak self] in
+            self?.reconfigure()
+        }
         reconfigure()
     }
 
@@ -335,20 +412,32 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
     }
 
     func invalidate() {
+        OpenNOWMagnifiedSurfaceRegistry.shared.removeChangeHandler(for: self)
         stopObserver()
     }
 
     private func reconfigure() {
         stopObserver()
         guard window != nil else { return }
+        // Only magnified content is rasterised at the wrong density. Walking the window for the
+        // catalog, settings or recordings re-renders correct layers at 2.1x the pixels for nothing.
+        guard scale != 1, OpenNOWMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else {
+            restoreNaturalDensity()
+            return
+        }
         walkInterval = Self.activeInterval
         applyDensity(targetScale: effectiveTargetScale())
-        guard scale != 1 else { return }
         let observer = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, _ in
             guard let self, window != nil, window?.inLiveResize == false else { return }
             let now = CFAbsoluteTimeGetCurrent()
             guard now - lastApplication >= walkInterval else { return }
             lastApplication = now
+            // A magnified subtree can be torn down whole, without its marker being dismantled, so
+            // the walk also retires itself the first time it finds nothing magnified left.
+            guard OpenNOWMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else {
+                reconfigure()
+                return
+            }
             // A settled window needs no correcting, and re-walking it ten times a second is pure
             // cost. Back off while nothing changes; a page rebuild puts it straight back.
             walkInterval = applyDensity(targetScale: effectiveTargetScale()) ? Self.activeInterval : min(walkInterval * 2, Self.settledInterval)

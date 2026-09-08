@@ -1,5 +1,6 @@
-import Testing
+import AppKit
 import Foundation
+import Testing
 @testable import OpenNOW
 
 // Routing extracted from ControllerCatalogView in the MVVM migration. These exercise the paths that
@@ -85,9 +86,15 @@ import Foundation
     let single = OPNCatalogGameObject(game: info)
     let actions = model.detailActions(for: single)
 
-    #expect(actions.first == .primary)
-    #expect(actions.contains(.store) == false, "a single-variant game has no store to change")
-    #expect(actions.last == .close)
+    // The row is play and more, nothing else: every secondary action lives behind `more`, so a
+    // gamepad reaches Play in one press rather than walking past Share to get there.
+    #expect(actions == [.primary, .more])
+
+    let more = model.detailMoreActions(for: single)
+    #expect(more.first == .favorite)
+    #expect(more.contains(.store) == false, "a single-variant game has no store to change")
+    #expect(more.contains(.share))
+    #expect(more.contains(.visitStore))
 }
 
 @Test @MainActor func unboundViewModelIgnoresInputInsteadOfCrashing() {
@@ -101,4 +108,41 @@ import Foundation
 
     #expect(model.focusArea == .navigation)
     #expect(model.isDetailVisible == false)
+}
+
+@Test func itMapsArrowKeysDespiteAppKitTaggingThemAsFunctionAndNumericPad() {
+    // AppKit sets both flags on every arrow event; testing the whole device-independent mask
+    // rejected all four and left keyboard navigation dead while Esc and Return still worked.
+    let arrowFlags: NSEvent.ModifierFlags = [.function, .numericPad]
+
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 126, modifierFlags: arrowFlags) == .move(.up))
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 125, modifierFlags: arrowFlags) == .move(.down))
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 123, modifierFlags: arrowFlags) == .move(.left))
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 124, modifierFlags: arrowFlags) == .move(.right))
+}
+
+@Test func itIgnoresKeysHeldWithAChordModifier() {
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 123, modifierFlags: [.command]) == nil)
+    #expect(ControllerKeyboardCommandMap.command(keyCode: 36, modifierFlags: [.option]) == nil)
+}
+
+@Test @MainActor func itOffersAScreenshotsPageOnlyWhenTheGameShipsMoreThanOneImage() {
+    let model = ControllerCatalogViewModel()
+    var info = OPNGameInfo()
+    info.title = "One"
+    let game = OPNCatalogGameObject(game: info)
+
+    // A game with nothing to show must not get a tab that opens an empty panel.
+    #expect(model.detailPages(for: game).contains(.screenshots) == false)
+    #expect(model.detailPages(for: game) == [.about, .details])
+}
+
+@Test func itStopsPagingAtTheEndsRatherThanWrapping() {
+    let pages: [ControllerGameDetailPage] = [.about, .screenshots, .details]
+
+    #expect(ControllerGameDetailPage.about.stepped(by: -1, in: pages) == .about)
+    #expect(ControllerGameDetailPage.about.stepped(by: 1, in: pages) == .screenshots)
+    #expect(ControllerGameDetailPage.details.stepped(by: 1, in: pages) == .details)
+    // A page missing from the available list falls back to the first rather than staying stranded.
+    #expect(ControllerGameDetailPage.screenshots.stepped(by: 1, in: [.about, .details]) == .about)
 }

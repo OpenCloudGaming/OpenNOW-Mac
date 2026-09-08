@@ -532,28 +532,55 @@ nonisolated private final class CatalogImageCacheContainerStore: @unchecked Send
     }
 }
 
+/// Two budgets rather than one, keyed off the decoded size of each entry.
+///
+/// A detail hero outweighs twenty tiles, and the detail panel rotates through every screenshot a
+/// game has every five seconds - each rotation a distinct URL, so a distinct entry. Sharing one
+/// limit let that rotation evict the whole rail of tiles, which then had to come back one at a time
+/// through the single persistence queue: every tile flashed its shimmer placeholder while scrolling.
+/// Costs are genuine decoded bytes, so the split is by what an entry actually occupies.
 nonisolated private final class CatalogImageMemoryCache: @unchecked Sendable {
-    private let cache = NSCache<NSURL, CatalogCachedImageBox>()
+    /// Above this decoded size, artwork gets the isolated budget. Tiles (1.33MB wide, 3.15MB poster)
+    /// and the 1600 rung stay together; the larger rungs move across.
+    private static let largeArtworkDecodedThreshold = 6 * 1024 * 1024
+
+    private let tileCache = NSCache<NSURL, CatalogCachedImageBox>()
+    private let largeArtworkCache = NSCache<NSURL, CatalogCachedImageBox>()
 
     init() {
-        cache.countLimit = 384
-        cache.totalCostLimit = 160 * 1024 * 1024
+        tileCache.countLimit = 384
+        tileCache.totalCostLimit = 128 * 1024 * 1024
+        largeArtworkCache.countLimit = 12
+        largeArtworkCache.totalCostLimit = 64 * 1024 * 1024
     }
 
     func image(for url: URL) -> CatalogCachedImageData? {
-        cache.object(forKey: url as NSURL)?.value
+        let key = url as NSURL
+        if let tile = tileCache.object(forKey: key) { return tile.value }
+        return largeArtworkCache.object(forKey: key)?.value
     }
 
     func setImage(_ imageData: CatalogCachedImageData, for url: URL) {
-        cache.setObject(CatalogCachedImageBox(value: imageData), forKey: url as NSURL, cost: imageData.memoryCost)
+        let key = url as NSURL
+        let cost = imageData.memoryCost
+        // Measured on the decoded bitmap alone: retained source bytes are not what makes an entry
+        // expensive to keep, and counting them pushed 1600-rung art into the large budget.
+        let isLargeArtwork = imageData.decodedByteCount >= Self.largeArtworkDecodedThreshold
+        let receivingCache = isLargeArtwork ? largeArtworkCache : tileCache
+        // One URL can be decoded at two sizes (a small prefetch rung, then a full-size read), so a
+        // write evicts the other budget's copy - reads check tiles first and would keep the stale one.
+        let displacedCache = isLargeArtwork ? tileCache : largeArtworkCache
+        displacedCache.removeObject(forKey: key)
+        receivingCache.setObject(CatalogCachedImageBox(value: imageData), forKey: key, cost: cost)
     }
 
     func removeAll() {
-        cache.removeAllObjects()
+        tileCache.removeAllObjects()
+        largeArtworkCache.removeAllObjects()
     }
 
     func containsImage(for url: URL) -> Bool {
-        cache.object(forKey: url as NSURL) != nil
+        image(for: url) != nil
     }
 }
 

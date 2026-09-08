@@ -100,6 +100,14 @@ final class ControllerCatalogViewModel: ObservableObject {
     @Published var searchResultIndex = 0
     @Published var isDetailVisible = false
     @Published var detailActionIndex = 0
+    /// Which of the detail overlay's body panels is showing. LB/RB step between them, since a
+    /// gamepad has no way to reach content past the fold otherwise.
+    @Published var detailPage = ControllerGameDetailPage.about
+    @Published var detailFocusRow = ControllerGameDetailFocusRow.actions
+    @Published var detailScreenshotIndex = 0
+    @Published var isDetailLightboxVisible = false
+    @Published var isDetailMoreMenuVisible = false
+    @Published var detailMoreActionIndex = 0
 
     // Library and Favorites are no longer standalone destinations — they are reached from the
     // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
@@ -289,12 +297,31 @@ final class ControllerCatalogViewModel: ObservableObject {
         return items
     }
 
+    /// The row itself: the action anybody came for, and a door to the rest.
     func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
-        var actions: [ControllerDetailAction] = [.primary, .favorite]
+        var actions: [ControllerDetailAction] = [.primary]
+        if !detailMoreActions(for: game).isEmpty { actions.append(.more) }
+        return actions
+    }
+
+    /// Everything the row used to carry inline, now one Y press away.
+    func detailMoreActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
+        var actions: [ControllerDetailAction] = [.favorite]
         if game.variants.count > 1 { actions.append(.store) }
         if catalog?.selectedVariant(in: game) != nil { actions.append(.ownership) }
-        actions.append(contentsOf: [.share, .shortcut, .visitStore, .close])
+        actions.append(contentsOf: [.share, .shortcut, .visitStore])
         return actions
+    }
+
+    /// Screenshots only earn a page when the game ships more than the one image the hero already
+    /// uses, so the tab strip never offers an empty panel.
+    func detailPages(for game: OPNCatalogGameObject) -> [ControllerGameDetailPage] {
+        guard !detailScreenshots(for: game).isEmpty else { return [.about, .details] }
+        return [.about, .screenshots, .details]
+    }
+
+    func detailScreenshots(for game: OPNCatalogGameObject) -> [String] {
+        game.screenshotImageURLs
     }
 }
 

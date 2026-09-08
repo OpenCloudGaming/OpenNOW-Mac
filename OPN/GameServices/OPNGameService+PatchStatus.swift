@@ -44,6 +44,22 @@ extension OPNGameService {
         }
     }
 
+    /// Every exit releases the stored closure: it is held by the object it captures, so leaving it
+    /// in place leaks the fetcher and its page state on each 30-60s poll.
+    private func finishPatchStatusWalk(
+        _ fetchPage: RecursiveCatalogPageFetcher,
+        state: PatchStatusPageState,
+        error: String,
+        completion: @escaping OPNAppPatchStatusesCallback
+    ) {
+        fetchPage.action = nil
+        guard error.isEmpty || !state.items.isEmpty else {
+            dispatchAppPatchStatuses(completion, false, [:], error)
+            return
+        }
+        dispatchAppPatchStatuses(completion, true, parseAppPatchStatuses(state.items), "")
+    }
+
     func fetchLibraryPatchStatuses(completion: @escaping OPNAppPatchStatusesCallback) {
         resolveCatalogVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
@@ -84,11 +100,7 @@ extension OPNGameService {
                 self.postGraphQlJson(query: query, variables: variables) { [weak self, state, fetchPage] data, error in
                     guard let self else { return }
                     guard error.isEmpty else {
-                        if !state.items.isEmpty {
-                            self.dispatchAppPatchStatuses(completion, true, self.parseAppPatchStatuses(state.items), "")
-                        } else {
-                            self.dispatchAppPatchStatuses(completion, false, [:], error)
-                        }
+                        self.finishPatchStatusWalk(fetchPage, state: state, error: error, completion: completion)
                         return
                     }
                     let apps = data?["apps"] as? NSDictionary
@@ -96,11 +108,11 @@ extension OPNGameService {
                     let pageInfo = apps?["pageInfo"] as? NSDictionary
                     let hasNextPage = self.safeBool(pageInfo?["hasNextPage"])
                     let endCursor = self.safeString(pageInfo?["endCursor"]) ?? ""
-                    if hasNextPage, !endCursor.isEmpty, page + 1 < Self.maxCatalogPages {
-                        fetchPage.action?(page + 1, endCursor)
-                    } else {
-                        self.dispatchAppPatchStatuses(completion, true, self.parseAppPatchStatuses(state.items), "")
+                    guard hasNextPage, !endCursor.isEmpty, page + 1 < Self.maxCatalogPages else {
+                        self.finishPatchStatusWalk(fetchPage, state: state, error: "", completion: completion)
+                        return
                     }
+                    fetchPage.action?(page + 1, endCursor)
                 }
             }
             fetchPage.action?(0, "")

@@ -308,9 +308,13 @@ extension OPNGameService {
                             self.dispatchCatalogBrowse(completion, true, snapshot, "")
                         }
 
-                        if !isFinalPage, !callerDrivenPaging {
-                            fetchPage.action?(page + 1, endCursor)
+                        guard !isFinalPage, !callerDrivenPaging else {
+                            // The closure is stored on the object it captures, so it has to stay
+                            // strong across the async gap between pages - released once, at the end.
+                            fetchPage.action = nil
+                            return
                         }
+                        fetchPage.action?(page + 1, endCursor)
                     }
                 }
             }
@@ -449,7 +453,6 @@ final class AtomicFlag: @unchecked Sendable {
 
 private final class CatalogPageState: @unchecked Sendable {
     let lock = NSLock()
-    var collectedApps: [NSDictionary] = []
     var enrichedGames: [OPNGameInfo] = []
     var result: OPNCatalogBrowseResult
 
@@ -459,7 +462,6 @@ private final class CatalogPageState: @unchecked Sendable {
 
     func applyPage(items: [NSDictionary], update: (inout OPNCatalogBrowseResult) -> Void) {
         lock.withLock {
-            collectedApps.append(contentsOf: items)
             update(&result)
         }
     }

@@ -190,17 +190,19 @@ extension ControllerCatalogViewModel {
 
     private func handleDetailInput(_ command: ControllerInputCommand) {
         guard let game = catalog?.selectedGame else { return }
-        let actions = detailActions(for: game)
+        if isDetailLightboxVisible { handleDetailLightboxInput(command, game: game); return }
+        if isDetailMoreMenuVisible { handleDetailMoreInput(command, game: game); return }
+        let pages = detailPages(for: game)
         switch command {
-        case .move(.left), .move(.up): moveDetailActionIndex(delta: -1, actionCount: actions.count)
-        case .move(.right), .move(.down): moveDetailActionIndex(delta: 1, actionCount: actions.count)
-        case .confirm:
-            guard actions.indices.contains(detailActionIndex) else { return }
-            executeDetailAction(actions[detailActionIndex])
+        case .move(let direction): handleDetailMove(direction, game: game)
+        case .confirm: confirmDetailSelection(actions: detailActions(for: game), game: game)
         case .back: closeDetails()
         case .search: openSearchOverlay()
-        case .actions, .menu: openActionMenu()
-        default: break
+        // Y opens the game's own secondary actions here, not the catalog-wide menu: on this page
+        // that is what "more" means.
+        case .actions, .menu: openDetailMoreMenu(for: game)
+        case .pageLeft: showDetailPage(detailPage.stepped(by: -1, in: pages))
+        case .pageRight: showDetailPage(detailPage.stepped(by: 1, in: pages))
         }
     }
 
@@ -309,13 +311,110 @@ extension ControllerCatalogViewModel {
     func openDetails(_ game: OPNCatalogGameObject, sectionId: String) {
         catalog?.selectGame(game, inSection: sectionId)
         detailActionIndex = 0
+        detailPage = .about
+        detailFocusRow = .actions
+        detailScreenshotIndex = 0
+        isDetailLightboxVisible = false
+        detailMoreActionIndex = 0
+        isDetailMoreMenuVisible = false
         isDetailVisible = true
         isSearchVisible = false
     }
 
     func closeDetails() {
         isDetailVisible = false
+        isDetailLightboxVisible = false
+        isDetailMoreMenuVisible = false
         catalog?.selectGame(nil)
+    }
+
+    private func handleDetailMoreInput(_ command: ControllerInputCommand, game: OPNCatalogGameObject) {
+        let actions = detailMoreActions(for: game)
+        switch command {
+        case .move(.up), .move(.left):
+            detailMoreActionIndex = max(detailMoreActionIndex - 1, 0)
+        case .move(.down), .move(.right):
+            detailMoreActionIndex = min(detailMoreActionIndex + 1, max(actions.count - 1, 0))
+        case .confirm:
+            guard actions.indices.contains(detailMoreActionIndex) else { return }
+            let action = actions[detailMoreActionIndex]
+            closeDetailMoreMenu()
+            executeDetailAction(action)
+        case .back, .actions, .menu:
+            closeDetailMoreMenu()
+        default:
+            break
+        }
+    }
+
+    private func handleDetailMove(_ direction: ControllerInputDirection, game: OPNCatalogGameObject) {
+        switch direction {
+        case .up: focusDetailRow(.actions)
+        case .down: focusDetailRow(.content, game: game)
+        case .left: moveWithinDetailRow(delta: -1, actions: detailActions(for: game), game: game)
+        case .right: moveWithinDetailRow(delta: 1, actions: detailActions(for: game), game: game)
+        }
+    }
+
+    /// The strip is the only focusable content row, so `down` is inert everywhere else rather than
+    /// moving focus somewhere the page cannot draw it.
+    private func focusDetailRow(_ row: ControllerGameDetailFocusRow, game: OPNCatalogGameObject? = nil) {
+        guard row == .content else {
+            detailFocusRow = .actions
+            return
+        }
+        guard let game, detailPage == .screenshots, !detailScreenshots(for: game).isEmpty else { return }
+        detailFocusRow = .content
+    }
+
+    private func moveWithinDetailRow(delta: Int, actions: [ControllerDetailAction], game: OPNCatalogGameObject) {
+        guard detailFocusRow == .content else {
+            moveDetailActionIndex(delta: delta, actionCount: actions.count)
+            return
+        }
+        let screenshots = detailScreenshots(for: game)
+        guard !screenshots.isEmpty else { return }
+        detailScreenshotIndex = min(max(detailScreenshotIndex + delta, 0), screenshots.count - 1)
+    }
+
+    private func confirmDetailSelection(actions: [ControllerDetailAction], game: OPNCatalogGameObject) {
+        guard detailFocusRow == .content else {
+            guard actions.indices.contains(detailActionIndex) else { return }
+            executeDetailAction(actions[detailActionIndex])
+            return
+        }
+        guard !detailScreenshots(for: game).isEmpty else { return }
+        isDetailLightboxVisible = true
+    }
+
+    private func handleDetailLightboxInput(_ command: ControllerInputCommand, game: OPNCatalogGameObject) {
+        let screenshots = detailScreenshots(for: game)
+        switch command {
+        case .move(.left): detailScreenshotIndex = max(detailScreenshotIndex - 1, 0)
+        case .move(.right): detailScreenshotIndex = min(detailScreenshotIndex + 1, max(screenshots.count - 1, 0))
+        case .back, .confirm: closeDetailLightbox()
+        default: break
+        }
+    }
+
+    func showDetailPage(_ page: ControllerGameDetailPage) {
+        detailPage = page
+        detailFocusRow = .actions
+        detailScreenshotIndex = 0
+    }
+
+    func closeDetailLightbox() {
+        isDetailLightboxVisible = false
+    }
+
+    func openDetailMoreMenu(for game: OPNCatalogGameObject) {
+        guard !detailMoreActions(for: game).isEmpty else { return }
+        detailMoreActionIndex = 0
+        isDetailMoreMenuVisible = true
+    }
+
+    func closeDetailMoreMenu() {
+        isDetailMoreMenuVisible = false
     }
 
     func executeDetailAction(_ action: ControllerDetailAction) {
@@ -346,8 +445,8 @@ extension ControllerCatalogViewModel {
             catalog.addShortcutForSelectedGame()
         case .visitStore:
             catalog.openStoreForSelectedVariant()
-        case .close:
-            closeDetails()
+        case .more:
+            openDetailMoreMenu(for: game)
         }
     }
 

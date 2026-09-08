@@ -6,7 +6,7 @@
 //  so a hero swap changed something the reader could not see.
 //
 //  The window's titlebar is transparent and the content runs under it, so every control anchored to
-//  the top of the page - the close button, the logo, the lightbox chrome - is offset by the measured
+//  the top of the page - the close button and the lightbox chrome - is offset by the measured
 //  window top inset. Artwork is free to bleed under the titlebar; controls are not.
 //
 //  Escape and the arrow keys come off a local event monitor rather than `onExitCommand`: that
@@ -19,8 +19,8 @@
 //  stays navigable without one.
 //
 //  Two deliberate performance choices, because this page opens over a live catalog:
-//  - the hero reuses the same URLs and pixel budget the detail panel already decoded, so opening
-//    the page is a cache hit rather than a second decode of the same artwork;
+//  - the hero quantises its pixel budget onto the shared artwork ladder, so a resize reuses the
+//    decode the previous width already produced instead of asking for a new one;
 //  - the screenshot strip is lazy and asks for thumbnail-sized pixels, so a game with a dozen
 //    screenshots decodes the two or three that are actually on screen.
 //
@@ -33,6 +33,7 @@ struct CatalogGameInfoOverlay: View {
     /// Height of the transparent titlebar the window content runs under.
     var topInset: CGFloat = 0
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lightboxIndex: Int?
     @State private var stripAnchor = 0
@@ -92,11 +93,14 @@ struct CatalogGameInfoOverlay: View {
     // MARK: - Hero
 
     private func hero(game: OPNCatalogGameObject, metrics: CatalogGameInfoMetrics, viewport: CGSize) -> some View {
-        let imageURL = game.bestDetailImageURL
+        let imageURL = game.detailImageURL(forAspectRatio: viewport.width / max(metrics.heroHeight, 1))
         return ZStack(alignment: .bottomLeading) {
-            CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill, maxPixelSize: 1600)
-                .frame(width: viewport.width, height: metrics.heroHeight)
-                .clipped()
+            let artworkPixels = CatalogArtworkResolution.pixelWidth(renderedWidth: viewport.width, displayScale: displayScale)
+            CatalogHeroArtwork(
+                url: viewModel.optimizedImageURL(imageURL, width: artworkPixels),
+                maxPixelSize: CGFloat(artworkPixels)
+            )
+            .frame(width: viewport.width, height: metrics.heroHeight)
             // Two stops, not one: the lower band has to carry white text over whatever the
             // screenshot happens to be, and the very bottom has to land on the page surface.
             LinearGradient(
@@ -114,30 +118,20 @@ struct CatalogGameInfoOverlay: View {
                 .padding(.bottom, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
         }
         .frame(width: viewport.width, height: metrics.heroHeight)
-        .overlay(alignment: .topLeading) {
-            if !game.bestLogoImageURL.isEmpty, let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 300) {
-                CatalogCachedImageView(url: logoURL, contentMode: .fit, maxPixelSize: 300, placeholder: EmptyView(), failure: EmptyView())
-                    .frame(width: 148 * uiScale, height: 64 * uiScale, alignment: .topLeading)
-                    .padding(.leading, metrics.horizontalPadding)
-                    .padding(.top, topInset + OpenNOWDesign.Spacing.small(scale: uiScale))
-                    .opacity(0.92)
-            }
-        }
     }
 
     private func heroCaption(game: OPNCatalogGameObject, metrics: CatalogGameInfoMetrics) -> some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
-            HStack(alignment: .bottom, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
-                Text(game.title.isEmpty ? "Selected Game" : game.title)
-                    .catalogFont(size: 40, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                favoriteButton(game: game)
-                Spacer(minLength: 0)
-            }
+            CatalogHeroWordmark(
+                logoURL: viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth),
+                title: game.title.isEmpty ? "Selected Game" : game.title,
+                titlePointSize: 40,
+                titleLineLimit: 2,
+                boxHeight: metrics.wordmarkHeight
+            )
             metadataLine(game: game)
             FlowLayout(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                favoriteButton(game: game)
                 ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { label in
                     Text(label)
                         .catalogFont(size: 12, weight: .bold)
@@ -154,28 +148,10 @@ struct CatalogGameInfoOverlay: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A labelled control rather than a bare glyph. On the panel the heart sits next to a status
-    /// line that reports what a tap did; here it is the only thing on screen that can answer, so it
-    /// carries its own state - and the caption below prints whatever the call came back with.
     private func favoriteButton(game: OPNCatalogGameObject) -> some View {
-        let favorited = viewModel.isFavorite(game)
-        return Button { viewModel.toggleFavoriteSelectedGame() } label: {
-            HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
-                Image(systemName: favorited ? "heart.fill" : "heart")
-                    .catalogFont(size: 13, weight: .bold)
-                Text(favorited ? "FAVORITED" : "FAVORITE")
-                    .catalogFont(size: 12, weight: .bold)
-                    .tracking(0.8)
-            }
-            .foregroundStyle(favorited ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
-            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-            .frame(height: 32 * uiScale)
-            .background(favorited ? OpenNOWDesign.accent : Color.white.opacity(0.12))
-            .overlay { Rectangle().stroke(favorited ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-            .contentShape(Rectangle())
+        CatalogFavoriteButton(isFavorite: viewModel.isFavorite(game), side: 24, iconSize: 12) {
+            viewModel.toggleFavoriteSelectedGame()
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(favorited ? "Remove from favorites" : "Add to favorites")
     }
 
     /// What the last catalog call said. Without it a favorite that the service refused looks exactly
@@ -436,6 +412,7 @@ struct CatalogGameInfoOverlay: View {
 private struct CatalogGameInfoMetrics {
     let horizontalPadding: CGFloat
     let heroHeight: CGFloat
+    let wordmarkHeight: CGFloat
     let columnGap: CGFloat
     let sideColumnWidth: CGFloat
     let mainColumnWidth: CGFloat
@@ -447,6 +424,8 @@ private struct CatalogGameInfoMetrics {
         let padding = OpenNOWDesign.clamped(viewport.width * 0.06, minimum: 28, maximum: 96) * scale
         horizontalPadding = min(padding, viewport.width * 0.14)
         heroHeight = OpenNOWDesign.clamped(viewport.height * 0.44, minimum: 220, maximum: 560)
+        // Held under half the band: the caption still has to seat its metadata and capability rows.
+        wordmarkHeight = min(OpenNOWDesign.clamped(viewport.height * 0.15, minimum: 76, maximum: 150) * scale, heroHeight * 0.44)
         columnGap = OpenNOWDesign.clamped(viewport.width * 0.035, minimum: 24, maximum: 64) * scale
         let available = max(280, viewport.width - horizontalPadding * 2)
         let side = OpenNOWDesign.clamped(available * 0.28, minimum: 240 * scale, maximum: 340 * scale)

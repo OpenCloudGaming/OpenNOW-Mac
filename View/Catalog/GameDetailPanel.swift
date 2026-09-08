@@ -17,6 +17,7 @@ struct GameDetailPanel: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @Environment(\.opnUIScale) var uiScale
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         if let game = viewModel.selectedGame {
@@ -32,11 +33,12 @@ struct GameDetailPanel: View {
                 let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
                 let hiddenImageLeading = max(0, contentWidth + 54 - (panelWidth - imageWidth))
                 ZStack(alignment: .topTrailing) {
+                    let artworkPixels = CatalogArtworkResolution.pixelWidth(renderedWidth: imageWidth, displayScale: displayScale)
                     CatalogRemoteImage(
-                        url: viewModel.optimizedImageURL(imageURL, width: 1600),
+                        url: viewModel.optimizedImageURL(imageURL, width: artworkPixels),
                         contentMode: .fill,
                         fallbackIconOffsetX: hiddenImageLeading / 2,
-                        maxPixelSize: 1600
+                        maxPixelSize: CGFloat(artworkPixels)
                     )
                         .frame(width: imageWidth, height: resolvedHeight)
                         .clipped()
@@ -66,14 +68,6 @@ struct GameDetailPanel: View {
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
                                 .foregroundStyle(.white.opacity(0.96))
-                            Button { viewModel.toggleFavoriteSelectedGame() } label: {
-                                Image(systemName: viewModel.isFavorite(game) ? "heart.fill" : "heart")
-                                    .catalogFont(size: 21, weight: .bold)
-                                    .foregroundStyle(.white.opacity(0.94))
-                                    .frame(width: 36 * uiScale, height: 34 * uiScale)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(viewModel.isFavorite(game) ? "Remove from favorites" : "Add to favorites")
                             Spacer(minLength: 0)
                         }
 
@@ -143,7 +137,7 @@ struct GameDetailPanel: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 300) {
+                    if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
                         CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: EmptyView(), failure: EmptyView())
                         .frame(width: 160, height: 70, alignment: .bottomTrailing)
                         .padding(.trailing, 42)

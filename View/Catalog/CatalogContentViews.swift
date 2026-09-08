@@ -379,7 +379,7 @@ struct CatalogHeroTitleView: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 620) {
+        if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
             CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
                 .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
         } else {

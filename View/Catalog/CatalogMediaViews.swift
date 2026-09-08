@@ -301,6 +301,50 @@ struct CatalogDetailImageArrow: View {
     }
 }
 
+/// The favorite toggle, shared by the detail panel, the info page and the controller hero so the
+/// control reads the same wherever it appears. Square and icon-only: it sits beside Play on the
+/// panel, and a labelled pill there would compete with it.
+struct CatalogFavoriteButton: View {
+    let isFavorite: Bool
+    var side: CGFloat = 40
+    var iconSize: CGFloat = 15
+    let toggle: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        Button(action: toggle) {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .catalogFont(size: iconSize, weight: .bold)
+                .foregroundStyle(isFavorite ? .black.opacity(0.88) : OpenNOWDesign.Semantic.favorite)
+                .frame(width: side * uiScale, height: side * uiScale)
+                .background(isFavorite ? OpenNOWDesign.Semantic.favorite : Color.white.opacity(0.08))
+                .overlay {
+                    Rectangle().strokeBorder(OpenNOWDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFavorite ? "Remove from favorites" : "Add to favorites")
+    }
+}
+
+/// Artwork is resized by the CDN from a width in the URL, so a request has to follow the size the
+/// image will actually be drawn at - a fixed budget is stretched on a large display and reads soft.
+/// Quantised into steps because that URL is also the cache key: a width tracking every resize would
+/// refetch the same artwork continuously.
+enum CatalogArtworkResolution {
+    /// The ladder stops at 2560: a 3840 decode costs 33MB and four of them fill the whole in-memory
+    /// artwork budget, which is more than the sharpness it buys behind the hero scrim is worth.
+    static let maximumStep = 2560
+    private static let steps = [1600, 2048, maximumStep]
+
+    static func pixelWidth(renderedWidth: CGFloat, displayScale: CGFloat) -> Int {
+        let required = Int((renderedWidth * max(displayScale, 1)).rounded(.up))
+        return steps.first { $0 >= required } ?? maximumStep
+    }
+}
+
 struct FlowLayout: Layout {
     var spacing: CGFloat
 

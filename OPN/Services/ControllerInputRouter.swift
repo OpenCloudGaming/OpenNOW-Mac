@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import GameController
@@ -27,6 +28,33 @@ struct ControllerInputGlyph: Equatable {
 
     static func keyboard(symbolName: String, fallbackText: String, accessibilityLabel: String) -> ControllerInputGlyph {
         ControllerInputGlyph(symbolName: symbolName, fallbackText: fallbackText, accessibilityLabel: accessibilityLabel)
+    }
+}
+
+/// The keyboard fallback for controller navigation: one arrow or action key per command.
+enum ControllerKeyboardCommandMap {
+    private static let commandKeyCodes: [UInt16: ControllerInputCommand] = [
+        126: .move(.up),
+        125: .move(.down),
+        123: .move(.left),
+        124: .move(.right),
+        36: .confirm,
+        76: .confirm,
+        53: .back,
+        3: .search,
+        46: .actions,
+        48: .menu,
+        33: .pageLeft,
+        30: .pageRight
+    ]
+
+    /// Only chord modifiers disqualify a key. Testing the whole device-independent mask rejected
+    /// every arrow, which AppKit tags with `.function` and `.numericPad`.
+    private static let chordModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+
+    static func command(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> ControllerInputCommand? {
+        guard modifierFlags.intersection(chordModifiers).isEmpty else { return nil }
+        return commandKeyCodes[keyCode]
     }
 }
 

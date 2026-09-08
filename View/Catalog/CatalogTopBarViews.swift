@@ -21,6 +21,9 @@ struct CatalogTopBar: View {
     /// rather than a fade between two separately positioned views.
     @Namespace private var searchTransition
     @State private var isSearchExpanded = false
+    /// Widest of the two side clusters, measured rather than assumed: the account button carries a
+    /// display name, so a constant allowance would be wrong for anyone with a long one.
+    @State private var sideClusterWidth: CGFloat = 0
     @FocusState private var isSearchFieldFocused: Bool
 
     private static let searchGeometryID = "catalog-top-bar-search"
@@ -30,19 +33,22 @@ struct CatalogTopBar: View {
         GeometryReader { proxy in
             ZStack(alignment: .center) {
                 HStack(alignment: .center, spacing: 14 * uiScale) {
-                    Button {
-                        showsMainMenu.toggle()
-                        showsAccountMenu = false
-                    } label: {
-                        CatalogHamburgerLabel(isOpen: showsMainMenu)
+                    HStack(alignment: .center, spacing: 14 * uiScale) {
+                        Button {
+                            showsMainMenu.toggle()
+                            showsAccountMenu = false
+                        } label: {
+                            CatalogHamburgerLabel(isOpen: showsMainMenu)
+                        }
+                        .frame(width: 44 * uiScale, height: 40 * uiScale)
+                        .buttonStyle(.opnPressable(scale: 0.90))
+                        .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
+                        Text(mainPageTitle)
+                            .catalogFont(size: 17, weight: .medium)
+                            .foregroundStyle(.white.opacity(0.92))
+                            .frame(height: 40 * uiScale, alignment: .center)
                     }
-                    .frame(width: 44 * uiScale, height: 40 * uiScale)
-                    .buttonStyle(.opnPressable(scale: 0.90))
-                    .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
-                    Text(mainPageTitle)
-                        .catalogFont(size: 17, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.92))
-                        .frame(height: 40 * uiScale, alignment: .center)
+                    .background(sideClusterWidthReader)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.appBarHeight(scale: uiScale), alignment: .leading)
@@ -51,7 +57,7 @@ struct CatalogTopBar: View {
                 if viewModel.selectedMainPage == .games {
                     if isSearchExpanded {
                         catalogSearchField
-                            .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                            .frame(width: centeredWidth(for: proxy.size.width))
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                     }
                 } else if viewModel.selectedMainPage == .settings {
@@ -61,11 +67,12 @@ struct CatalogTopBar: View {
                         .catalogFont(size: 15, weight: .bold)
                         .foregroundStyle(.white.opacity(0.70))
                         .tracking(1.1)
-                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                        .frame(width: centeredWidth(for: proxy.size.width))
                 }
 
                 HStack(spacing: 24 * uiScale) {
                     Spacer()
+                    HStack(spacing: 24 * uiScale) {
                     HStack(spacing: 4 * uiScale) {
                         if viewModel.selectedMainPage == .games {
                             // Cmd+K opens the field and puts the caret in it, and focuses it again
@@ -128,14 +135,16 @@ struct CatalogTopBar: View {
                     } label: {
                         HStack(spacing: 12 * uiScale) {
                             CatalogAccountAvatar(account: viewModel.account, size: 32 * uiScale)
-                            VStack(alignment: .leading, spacing: 1 * uiScale) {
-                                Text(viewModel.account.displayName)
-                                    .catalogFont(size: 15, weight: .medium)
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                Text(viewModel.subscriptionStatus.membershipTier)
-                                    .catalogFont(size: 12, weight: .medium)
-                                    .foregroundStyle(.white.opacity(0.78))
+                            if !isAccountCompact(for: proxy.size.width) {
+                                VStack(alignment: .leading, spacing: 1 * uiScale) {
+                                    Text(viewModel.account.displayName)
+                                        .catalogFont(size: 15, weight: .medium)
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Text(viewModel.subscriptionStatus.membershipTier)
+                                        .catalogFont(size: 12, weight: .medium)
+                                        .foregroundStyle(.white.opacity(0.78))
+                                }
                             }
                             Image(systemName: "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
@@ -146,12 +155,17 @@ struct CatalogTopBar: View {
                     }
                     .buttonStyle(.opnPressable(scale: 0.97))
                     .accessibilityLabel("Open account menu")
+                    }
+                    .background(sideClusterWidthReader)
                 }
                 .frame(height: CatalogVendorLayout.appBarHeight(scale: uiScale), alignment: .center)
                 .padding(.trailing, 22 * uiScale)
             }
         }
         .frame(height: CatalogVendorLayout.appBarHeight(scale: uiScale))
+        .onPreferenceChange(CatalogTopBarSideClusterWidthKey.self) { width in
+            sideClusterWidth = width
+        }
         .background {
             CatalogVendorLayout.appBarBackground
             WindowDragArea()
@@ -187,6 +201,26 @@ struct CatalogTopBar: View {
         case .recordings: return "Recordings"
         case .settings: return "Settings"
         }
+    }
+
+    private var sideClusterWidthReader: some View {
+        GeometryReader { geometry in
+            Color.clear.preference(key: CatalogTopBarSideClusterWidthKey.self, value: geometry.size.width)
+        }
+    }
+
+    /// The centred layer overlaps its neighbours instead of displacing them, so its width has to be
+    /// the space the wider side leaves rather than a share of the whole bar.
+    private func centeredWidth(for totalWidth: CGFloat) -> CGFloat {
+        let gutter = 18 * uiScale
+        let available = totalWidth - (sideClusterWidth + gutter) * 2
+        // A floor rather than zero: a bar too narrow for both should overlap slightly, not make the
+        // field vanish with the query still in it.
+        return max(min(CatalogVendorLayout.searchWidth(for: totalWidth), available), 220 * uiScale)
+    }
+
+    private func isAccountCompact(for totalWidth: CGFloat) -> Bool {
+        totalWidth < 1080 * uiScale
     }
 
     private var catalogSearchField: some View {
@@ -342,5 +376,13 @@ struct CatalogHamburgerLabel: View {
         case 2: return -45
         default: return 0
         }
+    }
+}
+
+private struct CatalogTopBarSideClusterWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

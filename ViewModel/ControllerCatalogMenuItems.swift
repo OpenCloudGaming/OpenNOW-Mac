@@ -8,15 +8,50 @@
 
 import Foundation
 
+/// The panels of the game page's body, stepped through with LB/RB.
+enum ControllerGameDetailPage: CaseIterable {
+    case about
+    case screenshots
+    case details
+
+    var title: String {
+        switch self {
+        case .about: return "ABOUT THIS GAME"
+        case .screenshots: return "SCREENSHOTS"
+        case .details: return "DETAILS"
+        }
+    }
+
+    /// Stops at the ends rather than wrapping: paging past the last panel back to the first reads
+    /// as a jump rather than a step. Takes the available pages because Screenshots is only offered
+    /// for games that ship any.
+    func stepped(by offset: Int, in pages: [Self]) -> Self {
+        guard let currentIndex = pages.firstIndex(of: self) else { return pages.first ?? self }
+        let targetIndex = min(max(currentIndex + offset, 0), pages.count - 1)
+        return pages[targetIndex]
+    }
+}
+
+/// Which row of the game page the d-pad is driving. Left/right acts within the row, up/down moves
+/// between them, so Play stays one press away while the screenshot strip is being browsed.
+enum ControllerGameDetailFocusRow {
+    case actions
+    case content
+}
+
+/// The detail page offers three focus stops - play, favorite and more - and keeps every secondary
+/// action behind `more`. A gamepad walks a flat list one step at a time, so putting seven equally
+/// weighted buttons in that list made the one action anybody came for cost as many presses as
+/// "Visit Store". `close` is gone with them: B already backs out of the page.
 enum ControllerDetailAction: Equatable {
     case primary
     case favorite
+    case more
     case store
     case ownership
     case share
     case shortcut
     case visitStore
-    case close
 
     @MainActor func title(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, viewModel: CatalogViewModel) -> String {
         switch self {
@@ -26,6 +61,7 @@ enum ControllerDetailAction: Equatable {
             if selectedVariant != nil { return "Mark Owned" }
             return "Play"
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
+        case .more: return "More"
         case .store: return "Change Store"
         case .ownership:
             if selectedVariant.map({ CatalogViewModel.variantIsOwned($0, in: game) }) == true { return "Unmark Owned" }
@@ -33,7 +69,6 @@ enum ControllerDetailAction: Equatable {
         case .share: return "Share"
         case .shortcut: return "Add Shortcut"
         case .visitStore: return "Visit Store"
-        case .close: return "Close"
         }
     }
 
@@ -41,12 +76,12 @@ enum ControllerDetailAction: Equatable {
         switch self {
         case .primary: return "play.fill"
         case .favorite: return "heart.fill"
+        case .more: return "ellipsis"
         case .store: return "bag.fill"
         case .ownership: return "checkmark.seal.fill"
         case .share: return "square.and.arrow.up"
         case .shortcut: return "plus.rectangle.on.rectangle"
         case .visitStore: return "safari.fill"
-        case .close: return "xmark"
         }
     }
 }

@@ -1,5 +1,5 @@
-//  The full-screen overlays controller mode pushes over the catalog: search, the picker, the game
-//  detail sheet and the action menu.
+//  The full-screen overlays controller mode pushes over the catalog: search, the sort/filter
+//  picker and the action menu.
 //
 
 import AppKit
@@ -114,7 +114,7 @@ struct ControllerSearchOverlay: View {
             .frame(height: 36 * uiScale)
             .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -141,7 +141,7 @@ struct ControllerSearchOverlay: View {
             .frame(height: 36 * uiScale)
             .background(isFocused ? OpenNOWDesign.accent : (isSelected ? OpenNOWDesign.accent.opacity(0.15) : Color.white.opacity(0.075)))
             .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -163,7 +163,7 @@ struct ControllerSearchOverlay: View {
             .frame(height: 36 * uiScale)
             .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.05))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -269,7 +269,7 @@ struct ControllerSearchPickerOverlay: View {
                                     .frame(height: 44 * uiScale)
                                     .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
                                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-                                    .openNowFocusRing(isFocused)
+                                    .openNowFocusRing(isFocused, onAccentFill: true)
                                 }
                                 .buttonStyle(.plain)
                                 .id(option.id)
@@ -291,111 +291,6 @@ struct ControllerSearchPickerOverlay: View {
             .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.accent).frame(height: 2) }
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
         }
-    }
-}
-
-struct ControllerGameDetailOverlay: View {
-    let viewModel: CatalogViewModel
-    let game: OPNCatalogGameObject
-    let selectedActionIndex: Int
-    let actions: [ControllerDetailAction]
-    let glyphs: ControllerInputGlyphSet
-    let layout: ControllerLayoutMetrics
-    let perform: (ControllerDetailAction) -> Void
-    let close: () -> Void
-
-    var selectedVariant: OPNCatalogGameVariantObject? { viewModel.selectedVariant(in: game) }
-    var selectedPlatformOption: CatalogPlatformOption? { viewModel.selectedPlatformOption(in: game) }
-
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        GeometryReader { proxy in
-            let panelWidth = min(layout.contentWidth * 0.62, 900)
-            ZStack {
-                ControllerArtworkBackdrop(viewModel: viewModel, game: game, size: proxy.size)
-
-                VStack(alignment: .leading, spacing: 18 * uiScale) {
-                    ControllerOverlayHeader(title: game.title.isEmpty ? "Selected Game" : game.title, subtitle: detailSubtitle, glyphs: glyphs, close: close)
-                    detailMetadata
-                    Text(detailDescription)
-                        .catalogFont(size: 18, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.82))
-                        .lineSpacing(4)
-                        .lineLimit(5)
-                        .frame(maxWidth: 720 * uiScale, alignment: .leading)
-                    detailRows
-                    FlowLayout(spacing: 12 * uiScale) {
-                        ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
-                            Button { perform(action) } label: {
-                                HStack(spacing: 9 * uiScale) {
-                                    Image(systemName: action.icon)
-                                        .catalogFont(size: 14, weight: .bold)
-                                    Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel).uppercased())
-                                        .catalogFont(size: 12, weight: .bold)
-                                        .tracking(0.8)
-                                }
-                                .foregroundStyle(index == selectedActionIndex ? .black.opacity(0.88) : .white.opacity(0.86))
-                                .padding(.horizontal, 15 * uiScale)
-                                .frame(height: 44 * uiScale)
-                                .background(index == selectedActionIndex ? OpenNOWDesign.accent : Color.white.opacity(0.075))
-                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-                                .openNowFocusRing(index == selectedActionIndex)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 8 * uiScale)
-                }
-                .frame(width: panelWidth, alignment: .leading)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
-    }
-
-    private var detailSubtitle: String {
-        let store = selectedPlatformOption?.title ?? game.primaryStoreLabel
-        let ownership = selectedPlatformOption?.hasAccess == true ? "Ready" : (selectedPlatformOption?.status.isEmpty == false ? selectedPlatformOption?.status ?? "Ownership required" : "Ownership required")
-        return [store, ownership].filter { !$0.isEmpty }.joined(separator: " • ")
-    }
-
-    private var detailDescription: String {
-        let short = game.shortDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !short.isEmpty { return short }
-        let long = game.longDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !long.isEmpty { return long }
-        return "Play instantly through GeForce NOW cloud streaming."
-    }
-
-    private var detailMetadata: some View {
-        FlowLayout(spacing: 8 * uiScale) {
-            if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
-            if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
-            if game.supportsKeyboard { ControllerMetadataPill(text: "Keyboard") }
-            ForEach(Array(game.genres.prefix(3)), id: \.self) { genre in
-                ControllerMetadataPill(text: genre)
-            }
-            if game.isLaunchPatching { ControllerMetadataPill(text: "Patching", highlighted: true) }
-        }
-        .frame(maxWidth: 720 * uiScale, alignment: .leading)
-    }
-
-    var detailRows: some View {
-        VStack(alignment: .leading, spacing: 8 * uiScale) {
-            ControllerDetailRow(label: "Publisher", value: game.publisherName)
-            ControllerDetailRow(label: "Developer", value: game.developerName)
-            ControllerDetailRow(label: "Stores", value: game.storeLine)
-            ControllerDetailRow(label: "Players", value: playerLine)
-        }
-    }
-
-    private var playerLine: String {
-        if game.maxOnlinePlayers > 1, game.maxLocalPlayers > 1 { return "1-\(game.maxLocalPlayers) local, online multiplayer" }
-        if game.maxOnlinePlayers > 1 { return "Online multiplayer" }
-        if game.maxLocalPlayers > 1 { return "1-\(game.maxLocalPlayers) local players" }
-        return "Single player"
     }
 }
 

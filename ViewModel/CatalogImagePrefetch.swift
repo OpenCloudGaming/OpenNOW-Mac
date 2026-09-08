@@ -16,7 +16,7 @@ extension CatalogViewModel {
         for game in games.prefix(8) {
             appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &urls, seen: &seen)
         }
         for tile in section.tiles.prefix(4) {
             appendPrefetchURL(tile.imageUrl, width: 768, urls: &urls, seen: &seen)
@@ -31,7 +31,7 @@ extension CatalogViewModel {
         for game in section.games.prefix(18) {
             appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
-            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &urls, seen: &seen)
         }
         prefetchImages(urls)
     }

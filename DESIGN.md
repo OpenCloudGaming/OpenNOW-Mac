@@ -17,9 +17,12 @@ Token sources of truth:
 
 - **Accent** (#75E61A): NVIDIA green, `OpenNOWDesign.accent` /
   `WebRTCMediaStreamTheme.accent`. Primary actions, active states, focus rings, section
+  eyebrows, top edge bars. Never used for large backgrounds.
 - **Destructive** (#FF8980): `OpenNOWDesign.Semantic.destructive`. Destructive menu
   roles, end-stream actions, error accents.
-  eyebrows, top edge bars. Never used for large backgrounds.
+- **Favorite** (#FF4D94): `OpenNOWDesign.Semantic.favorite`. The favorite toggle only.
+  Deliberately not the accent: beside an accent-filled Play button, an accent-filled heart
+  reads as a second primary action rather than a state you can switch off.
 - **Accent Soft** (#ABFF5C): `WebRTCMediaStreamTheme.accentSoft`. Status text on the
   stream launch overlay only.
 

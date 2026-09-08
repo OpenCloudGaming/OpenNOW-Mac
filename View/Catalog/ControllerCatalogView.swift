@@ -27,10 +27,20 @@ struct ControllerLayoutMetrics {
     /// point height. A constant 280pt banner is roughly right on a laptop and reads as a letterbox
     /// strip on an ultrawide, where the artwork is stretched across several times that width.
     /// Clamped so it still leaves room for the first rail on short windows.
+    /// What the scrolling page slot is left with once the shell's fixed chrome is paid for: header,
+    /// navigation bar, hint bar, the search entry row above the billboard, and the gaps between.
+    var pageHeight: CGFloat {
+        let chrome = (72 + 40 + 46 + 44 + 88) * scale
+        return max(size.height - chrome, 120 * scale)
+    }
+
+    /// Measured against the page slot, not the window. The billboard carries its caption along the
+    /// bottom edge, so a band sized against the whole window grew past the fold as the window got
+    /// wider and took the caption with it - the text vanished without anything being clipped.
     var heroHeight: CGFloat {
-        let minimum = (compactHeight ? 230 : 280) * scale
-        let maximum = max(minimum, min(size.height * 0.42, 520 * scale))
-        return min(max(contentWidth * 0.22, minimum), maximum)
+        let maximumHeroHeight = max(min(pageHeight * 0.68, 520 * scale), 1)
+        let minimumHeroHeight = min((compactHeight ? 230 : 280) * scale, maximumHeroHeight)
+        return min(max(contentWidth * 0.22, minimumHeroHeight), maximumHeroHeight)
     }
     var railPreferredTileWidth: CGFloat { (compactHeight ? 278 : 300) * scale }
 
@@ -139,9 +149,28 @@ struct ControllerCatalogView: View {
                         game: game,
                         selectedActionIndex: controllerViewModel.detailActionIndex,
                         actions: detailActions(for: game),
+                        page: controllerViewModel.detailPage,
+                        pages: controllerViewModel.detailPages(for: game),
+                        focusRow: controllerViewModel.detailFocusRow,
+                        screenshots: controllerViewModel.detailScreenshots(for: game),
+                        selectedScreenshotIndex: controllerViewModel.detailScreenshotIndex,
+                        isLightboxVisible: controllerViewModel.isDetailLightboxVisible,
+                        topInset: topInset,
+                        moreActions: controllerViewModel.detailMoreActions(for: game),
+                        selectedMoreActionIndex: controllerViewModel.detailMoreActionIndex,
+                        isMoreMenuVisible: controllerViewModel.isDetailMoreMenuVisible,
                         glyphs: activeGlyphs,
                         layout: layout,
                         perform: controllerViewModel.executeDetailAction,
+                        performMoreAction: { action in
+                            controllerViewModel.closeDetailMoreMenu()
+                            controllerViewModel.executeDetailAction(action)
+                        },
+                        selectPage: controllerViewModel.showDetailPage,
+                        selectScreenshot: { index in controllerViewModel.detailScreenshotIndex = index },
+                        openLightbox: { controllerViewModel.isDetailLightboxVisible = true },
+                        closeLightbox: controllerViewModel.closeDetailLightbox,
+                        closeMoreMenu: controllerViewModel.closeDetailMoreMenu,
                         close: controllerViewModel.closeDetails
                     )
                     .transition(.opacity)
@@ -254,7 +283,9 @@ struct ControllerCatalogView: View {
         if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
         if controllerViewModel.isSearchKeyboardVisible { return [.move, .select, .back] }
         if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
-        if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
+        if controllerViewModel.isDetailLightboxVisible { return [.move, .back] }
+        if controllerViewModel.isDetailMoreMenuVisible { return [.move, .select, .back] }
+        if controllerViewModel.isDetailVisible { return [.move, .select, .more, .page, .back] }
         if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
         return [.move, .select, .back, .search, .menu]
     }

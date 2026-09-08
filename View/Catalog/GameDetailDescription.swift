@@ -33,19 +33,15 @@ extension GameDetailPanel {
     /// description, so this is the only route to the rest of it.
     var moreInfoButton: some View {
         Button { viewModel.showGameInfo() } label: {
-            HStack(spacing: 7) {
-                Text("READ MORE")
-                    .catalogFont(size: 12, weight: .bold)
-                    .tracking(0.8)
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .catalogFont(size: 11, weight: .bold)
-            }
-            .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
-            .padding(.horizontal, 13 * uiScale)
-            .frame(height: 34 * uiScale)
-            .background(isMoreInfoHovering ? OpenNOWDesign.accent : Color.white.opacity(0.10))
-            .overlay { Rectangle().stroke(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: 1) }
-            .contentShape(Rectangle())
+            Text("READ MORE")
+                .catalogFont(size: 12, weight: .bold)
+                .tracking(0.8)
+                .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+                .padding(.horizontal, 13 * uiScale)
+                .frame(height: 34 * uiScale)
+                .background(isMoreInfoHovering ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+                .overlay { Rectangle().strokeBorder(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: 1) }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isMoreInfoHovering = $0 }

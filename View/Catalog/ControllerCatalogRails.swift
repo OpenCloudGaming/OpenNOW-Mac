@@ -10,49 +10,130 @@ struct ControllerHeroBillboard: View {
     let height: CGFloat
 
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        Group {
             if let game {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill, maxPixelSize: 1920)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .contentShape(Rectangle())
-                LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 9 * uiScale) {
-                    Text("NOW PLAYING IN THE CLOUD")
-                        .catalogFont(size: 11, weight: .bold)
-                        .tracking(1.6)
-                        .foregroundStyle(OpenNOWDesign.accent)
-                    Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                        .catalogFont(size: height < 260 ? 31 : 36, weight: .bold)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.68)
-                    HStack(spacing: 10 * uiScale) {
-                        if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
-                        if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
-                        if game.isInLibrary { ControllerMetadataPill(text: "In Library", highlighted: true) }
-                        if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
+                caption(for: game)
+                    // The band's height is the floor or the caption, whichever is larger. The
+                    // artwork is a background so it fills that height without being able to set
+                    // it - as a stacked sibling its `maxHeight: .infinity` swallowed the whole
+                    // scroll viewport and took the band with it.
+                    .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
+                    .background {
+                        ZStack {
+                            CatalogHeroArtwork(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: billboardArtworkPixels), maxPixelSize: CGFloat(billboardArtworkPixels))
+                            LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
+                            LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
+                        }
                     }
-                    Text(heroDescription(game))
-                        .catalogFont(size: 13, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.74))
-                        .lineLimit(height < 260 ? 1 : 2)
-                        .frame(maxWidth: 650 * uiScale, alignment: .leading)
-                }
-                .padding(.horizontal, 28 * uiScale)
-                .padding(.vertical, (height < 260 ? 20 : 24) * uiScale)
-                .frame(maxWidth: 720 * uiScale, maxHeight: .infinity, alignment: .bottomLeading)
             } else {
                 CatalogImageFallback()
+                    .frame(maxWidth: .infinity, minHeight: height)
             }
         }
-        .frame(height: height)
-        .background(Color.black.opacity(0.34))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
         .clipped()
+        .background(Color.black.opacity(0.34))
+        .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+    }
+
+    private func caption(for game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: captionSpacing * uiScale) {
+            CatalogHeroWordmark(
+                logoURL: viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth),
+                title: game.title.isEmpty ? "GeForce NOW" : game.title,
+                titlePointSize: titlePointSize,
+                boxHeight: headHeight * uiScale
+            )
+            if showsPills { pillRow(for: game) }
+            if showsDescription {
+                Text(heroDescription(game))
+                    .catalogFont(size: descriptionPointSize, weight: .medium)
+                    .foregroundStyle(.white.opacity(0.74))
+                    .lineLimit(descriptionLineLimit)
+                    .frame(maxWidth: descriptionWidth * uiScale, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, captionHorizontalPadding * uiScale)
+        .padding(.vertical, captionVerticalPadding * uiScale)
+        .frame(maxWidth: captionWidth * uiScale, alignment: .leading)
+    }
+
+    /// `height` already carries the interface scale and `catalogFont` applies it again, so every
+    /// ratio below is taken against the unscaled band to avoid scaling twice.
+    @ViewBuilder
+    private func pillRow(for game: OPNCatalogGameObject) -> some View {
+        HStack(spacing: 10 * uiScale) {
+            if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
+            if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
+            if game.isInLibrary { ControllerMetadataPill(text: "In Library", highlighted: true) }
+            if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
+        }
+    }
+
+    private var unscaledHeight: CGFloat { height / max(uiScale, 0.01) }
+
+    /// The band is full-bleed and roughly cinematic, so its drawn width tracks its height; asking by
+    /// height keeps the request on the same ladder as the two game-page heroes.
+    private var billboardArtworkPixels: Int {
+        CatalogArtworkResolution.pixelWidth(renderedWidth: height * 3, displayScale: displayScale)
+    }
+
+    /// The caption is sized from the band rather than from breakpoints, so it shrinks to fit any
+    /// window shape instead of overflowing and being cut off at whatever height the band lands on.
+    /// Each maximum below is its own ratio taken at `unscaledHeight` 520, the tallest band
+    /// `ControllerLayoutMetrics` can produce, so the clamp guards that ceiling rather than shaping.
+    private var titlePointSize: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.15, minimum: 17, maximum: 78) }
+
+    private var captionSpacing: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.035, minimum: 3, maximum: 18) }
+
+    private var captionVerticalPadding: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.085, minimum: 8, maximum: 44) }
+
+    /// Held at the same 1.56:1 ratio to the vertical inset the flat 28 used to give a laptop band -
+    /// left flat it inverts on a 5K banner and the text hugs the edge of a 5000pt image.
+    private var captionHorizontalPadding: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.13, minimum: 28, maximum: 68) }
+
+    /// The column has to grow with the type or the larger title only triggers `minimumScaleFactor`
+    /// and truncates. This holds roughly 26 characters at full size on every band.
+    private var captionWidth: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 2.3, minimum: 720, maximum: 1200) }
+
+    private var descriptionPointSize: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.042, minimum: 13, maximum: 22) }
+
+    /// A 50-em measure, never wider than the caption column it sits inside.
+    private var descriptionWidth: CGFloat { min(descriptionPointSize * 50, captionWidth - captionHorizontalPadding * 2) }
+
+    private var isLogoAvailable: Bool { !(game?.bestLogoImageURL ?? "").isEmpty }
+
+    /// Taller than the title row on purpose - the ink inside a 16:9 logo canvas can be a third of
+    /// its height - but held under half the band so the metadata rows keep their share.
+    private var logoBandHeight: CGFloat {
+        min(OpenNOWDesign.clamped(unscaledHeight * 0.30, minimum: 56, maximum: 168), unscaledHeight * 0.44)
+    }
+
+    // Rough intrinsic heights of the optional rows, unscaled. Only used to decide what the band can
+    // afford - the real layout still measures itself.
+    private var pillsHeight: CGFloat { 30 }
+    private var titleHeight: CGFloat { titlePointSize * 1.3 }
+
+    /// What the caption's first row actually costs, logo or title. The frame above and the budget
+    /// below both read this, so a tall wordmark can never push the pills out of the band.
+    private var headHeight: CGFloat { isLogoAvailable ? logoBandHeight : titleHeight }
+
+    private var descriptionLineLimit: Int { unscaledHeight >= 300 ? 2 : 1 }
+    private var descriptionHeight: CGFloat { CGFloat(descriptionLineLimit) * descriptionPointSize * 1.38 }
+
+    /// What is left for the caption's rows once its own padding is paid for.
+    private var captionBudget: CGFloat { unscaledHeight - captionVerticalPadding * 2 }
+
+    /// Each row is included only if the band can actually hold it alongside the title. Fixed
+    /// breakpoints cut the caption in half at every height that fell between them.
+    private var showsPills: Bool {
+        captionBudget >= headHeight + pillsHeight + captionSpacing
+    }
+
+    private var showsDescription: Bool {
+        captionBudget >= headHeight + pillsHeight + descriptionHeight + captionSpacing * 2
     }
 
     private func heroDescription(_ game: OPNCatalogGameObject) -> String {

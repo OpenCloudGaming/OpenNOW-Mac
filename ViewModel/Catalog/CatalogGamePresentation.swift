@@ -6,7 +6,23 @@
 //  it without importing a view file.
 //
 
+import CoreGraphics
 import Foundation
+
+/// The artwork shapes the catalog serves. MARQUEE_HERO_IMAGE is the only type authored wider than
+/// 16:9 - TV_BANNER measures 3840x2160, the same frame HERO_IMAGE ships in.
+enum CatalogArtworkType {
+    static let wide = ["MARQUEE_HERO_IMAGE"]
+    static let landscape = ["HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER"]
+    /// Above this the band is wider than any 16:9 asset by more than a tenth of its height.
+    static let wideBandAspectRatio: CGFloat = 2.0
+}
+
+/// One width for every logo request: the width is baked into the CDN URL and the URL is the image
+/// cache key, so two widths for one asset decode it twice.
+enum CatalogLogoArtwork {
+    static let requestWidth = 620
+}
 
 extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
@@ -34,60 +50,81 @@ extension OPNCatalogGameObject {
         isInLibrary || variants.contains { $0.inLibrary || $0.librarySelected } || variants.isEmpty
     }
 
-    var bestHeroImageURL: String {
-        for key in ["MARQUEE_HERO_IMAGE", "HERO_IMAGE"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+    /// The server spells its keys SCREAMING_SNAKE; the lowercased probe covers the loose top-level
+    /// fields the parser folds into the same map.
+    func firstImageURL(ofTypes types: [String]) -> String? {
+        for type in types {
+            if let value = imageUrlsByType[type]?.first, !value.isEmpty { return value }
+            if let value = imageUrlsByType[type.lowercased()]?.first, !value.isEmpty { return value }
         }
+        return nil
+    }
+
+    var bestHeroImageURL: String {
+        if let value = firstImageURL(ofTypes: CatalogArtworkType.wide + ["HERO_IMAGE"]) { return value }
         if !heroImageUrl.isEmpty { return heroImageUrl }
         return bestTileImageURL
     }
 
     var bestMarqueeHeroImageURL: String {
-        if let value = imageUrlsByType["MARQUEE_HERO_IMAGE"]?.first, !value.isEmpty { return value }
-        if let value = imageUrlsByType["marquee_hero_image"]?.first, !value.isEmpty { return value }
-        return bestHeroImageURL
+        firstImageURL(ofTypes: CatalogArtworkType.wide) ?? bestHeroImageURL
     }
 
     var bestLogoImageURL: String {
-        for key in ["GAME_LOGO", "LOGO", "TITLE_LOGO"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
-            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
-        }
-        return ""
+        firstImageURL(ofTypes: ["GAME_LOGO", "LOGO", "TITLE_LOGO"]) ?? ""
     }
 
     var bestTileImageURL: String {
         if !imageUrl.isEmpty { return imageUrl }
-        for key in ["BOX_ART", "BOXART", "TILE", "GAME_BOX_ART", "HERO_IMAGE"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
-        }
+        if let value = firstImageURL(ofTypes: ["BOX_ART", "BOXART", "TILE", "GAME_BOX_ART", "HERO_IMAGE"]) { return value }
         if let value = screenshotUrls.first, !value.isEmpty { return value }
         return heroImageUrl
     }
 
     var bestStorePickerPosterURL: String {
-        for key in ["GAME_BOX_ART", "BOX_ART", "BOXART", "KEY_ART", "KEY_IMAGE"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
-            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
-        }
-        return bestTileImageURL
+        firstImageURL(ofTypes: ["GAME_BOX_ART", "BOX_ART", "BOXART", "KEY_ART", "KEY_IMAGE"]) ?? bestTileImageURL
     }
 
     var bestWideImageURL: String {
-        for key in ["TV_BANNER"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
-            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
-        }
-        return bestTileImageURL
+        firstImageURL(ofTypes: ["TV_BANNER"]) ?? bestTileImageURL
     }
 
-    var bestDetailImageURL: String {
-        for key in ["HERO_IMAGE", "MARQUEE_HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER"] {
-            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
-        }
+    /// A hero band three to five times wider than it is tall shows less than half a 16:9 frame, so
+    /// the wider marquee artwork is read first whenever the band is wide enough to need it.
+    func detailImageURL(forAspectRatio aspectRatio: CGFloat) -> String {
+        if let value = firstImageURL(ofTypes: Self.detailImageTypes(forAspectRatio: aspectRatio)) { return value }
         if !heroImageUrl.isEmpty { return heroImageUrl }
         if let value = screenshotUrls.first, !value.isEmpty { return value }
         return imageUrl
+    }
+
+    var bestDetailImageURL: String { detailImageURL(forAspectRatio: 16 / 9) }
+
+    private static func detailImageTypes(forAspectRatio aspectRatio: CGFloat) -> [String] {
+        if aspectRatio >= CatalogArtworkType.wideBandAspectRatio {
+            return CatalogArtworkType.wide + CatalogArtworkType.landscape
+        }
+        return CatalogArtworkType.landscape + CatalogArtworkType.wide
+    }
+
+    /// Screenshots only - the hero, logo and store art that `detailImageURLs` also carries are not
+    /// screenshots, and listing them made the gallery open on a duplicate of the banner above it.
+    var screenshotImageURLs: [String] {
+        var values: [String] = []
+        var seen = Set<String>()
+
+        func append(_ value: String) {
+            guard !value.isEmpty else { return }
+            let key = String(value.prefix(while: { $0 != ";" }))
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
+            values.append(value)
+        }
+
+        for value in imageUrlsByType["SCREENSHOTS"] ?? [] { append(value) }
+        for value in imageUrlsByType["screenshots"] ?? [] { append(value) }
+        for value in screenshotUrls { append(value) }
+        return values
     }
 
     var detailImageURLs: [String] {

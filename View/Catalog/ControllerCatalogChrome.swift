@@ -76,29 +76,6 @@ struct ControllerMetadataPill: View {
     }
 }
 
-struct ControllerDetailRow: View {
-    let label: String
-    let value: String
-
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        if !value.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
-                Text(label.uppercased())
-                    .catalogFont(size: 10, weight: .bold)
-                    .tracking(0.7)
-                    .foregroundStyle(.white.opacity(0.42))
-                    .frame(width: 96 * uiScale, alignment: .leading)
-                Text(value)
-                    .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(2)
-            }
-        }
-    }
-}
-
 enum ControllerHint: Equatable {
     case move
     case select
@@ -107,6 +84,8 @@ enum ControllerHint: Equatable {
     case showAll
     case menu
     case clear
+    case page
+    case more
 }
 
 struct ControllerHintBar: View {
@@ -167,6 +146,8 @@ struct ControllerHintItem: View {
         case .showAll: return [glyphs.actions]
         case .menu: return [glyphs.menu]
         case .clear: return [glyphs.actions]
+        case .page: return [glyphs.pageLeft, glyphs.pageRight]
+        case .more: return [glyphs.actions]
         }
     }
 
@@ -179,6 +160,8 @@ struct ControllerHintItem: View {
         case .showAll: return "SHOW ALL"
         case .menu: return "MENU"
         case .clear: return "CLEAR"
+        case .page: return "PAGE"
+        case .more: return "MORE"
         }
     }
 }
@@ -236,51 +219,6 @@ struct ControllerKeyboardMovePill: View {
         .background(OpenNOWDesign.accent.opacity(0.12))
         .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel("Arrow keys")
-    }
-}
-
-/// Blurred cover art behind the game detail overlay, carrying the stream launch screen's treatment
-/// - artwork under a top-to-bottom scrim - so choosing a game and launching it share one visual
-/// language instead of the details sitting on flat black.
-///
-/// The artwork is laid out larger than the surface, blurred, and only then clipped back: blurring
-/// at the exact size pulls the soft edge inward and leaves a translucent border around the page.
-struct ControllerArtworkBackdrop: View {
-    let viewModel: CatalogViewModel
-    let game: OPNCatalogGameObject
-    let size: CGSize
-
-    private static let bleed: CGFloat = 80
-
-    var body: some View {
-        ZStack {
-            Color.black
-
-            CatalogCachedImageView(
-                url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280),
-                contentMode: .fill,
-                maxPixelSize: 1280,
-                placeholder: Color.clear,
-                failure: Color.clear
-            )
-            .frame(width: size.width + Self.bleed, height: size.height + Self.bleed)
-            .blur(radius: 30)
-            .frame(width: size.width, height: size.height)
-            .clipped()
-            .opacity(0.45)
-
-            // Keeps the description and metadata rows legible over bright artwork.
-            LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.54), location: 0),
-                    .init(color: .black.opacity(0.20), location: 0.42),
-                    .init(color: .black.opacity(0.78), location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .ignoresSafeArea()
     }
 }
 
@@ -355,31 +293,18 @@ struct ControllerKeyboardInputBridge: NSViewRepresentable {
             self.monitor = nil
         }
 
+        /// Only an actually-editable responder counts. This used to also match on the responder's
+        /// stringified type name containing "Text", which a SwiftUI hosting view's generic
+        /// signature satisfies on its own — so every command except up/down was handed back to the
+        /// responder chain and the arrows navigated nothing.
         @MainActor private static var isTextInputActive: Bool {
             guard let responder = NSApp.keyWindow?.firstResponder else { return false }
-            return responder is NSTextView || String(describing: type(of: responder)).localizedCaseInsensitiveContains("Text")
+            if let textView = responder as? NSTextView { return textView.isEditable }
+            return responder is NSTextField
         }
 
-        /// The keyboard fallback for controller navigation. A table rather than a `switch`: it is
-        /// pure data, one arrow or action key per command.
-        private static let commandKeyCodes: [UInt16: ControllerInputCommand] = [
-            126: .move(.up),
-            125: .move(.down),
-            123: .move(.left),
-            124: .move(.right),
-            36: .confirm,
-            76: .confirm,
-            53: .back,
-            3: .search,
-            46: .actions,
-            48: .menu,
-            33: .pageLeft,
-            30: .pageRight
-        ]
-
         private static func command(for event: NSEvent) -> ControllerInputCommand? {
-            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return nil }
-            return commandKeyCodes[event.keyCode]
+            ControllerKeyboardCommandMap.command(keyCode: event.keyCode, modifierFlags: event.modifierFlags)
         }
     }
 }

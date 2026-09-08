@@ -19,6 +19,8 @@ extension GameDetailPanel {
             .disabled((game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game))
             .fixedSize()
 
+            favoriteActionButton(game: game)
+
             Button { showsActionsMenu.toggle() } label: {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 15, weight: .bold)
@@ -46,6 +48,12 @@ extension GameDetailPanel {
             .onChange(of: game.catalogIdentity) { _, _ in showsActionsMenu = false }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    func favoriteActionButton(game: OPNCatalogGameObject) -> some View {
+        CatalogFavoriteButton(isFavorite: viewModel.isFavorite(game)) {
+            viewModel.toggleFavoriteSelectedGame()
+        }
     }
 
     func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
