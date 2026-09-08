@@ -10,11 +10,13 @@ import UserNotifications
 @MainActor
 enum OpenNOWSessionReadyAction {
     enum Mode: String, CaseIterable {
+        case off
         case notification
         case bringToFront
 
         var label: String {
             switch self {
+            case .off: "Off"
             case .notification: "Notification"
             case .bringToFront: "Bring to Front"
             }
@@ -53,6 +55,8 @@ enum OpenNOWSessionReadyAction {
     static func sessionDidBecomeReady(title: String) {
         guard !NSApplication.shared.isActive else { return }
         switch mode {
+        case .off:
+            break
         case .notification:
             postNotification(title: title)
         case .bringToFront:
