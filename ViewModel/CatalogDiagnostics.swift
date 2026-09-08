@@ -34,7 +34,7 @@ extension CatalogViewModel {
             diagnosticsState = .preparing
             OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Preparing user-requested diagnostics upload"))
             diagnosticsState = .readingLog
-            let logText = OPNSentry.diagnosticsLogForUpload()
+            let logText = await OPNSentry.diagnosticsLogForUpload()
             diagnosticsState = .uploading
             do {
                 let logURL = try await OPNSentry.uploadDiagnosticsLog(logText)

@@ -55,17 +55,18 @@ import Testing
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let log = NvstDiagnosticLog(directory: directory)
+    let budget = 64 * 1024
+    let log = NvstDiagnosticLog(directory: directory, fileBudget: budget)
     let url = try #require(log.url)
-    let line = String(repeating: "n", count: 64 * 1024)
-    for _ in 0..<((NvstDiagnosticLog.maxFileBytes / line.utf8.count) + 8) {
+    let line = String(repeating: "n", count: 4 * 1024)
+    for _ in 0..<((budget / line.utf8.count) + 8) {
         log.append(line)
     }
     log.queue.sync {}
 
     let size = try #require((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber).intValue
-    #expect(size >= NvstDiagnosticLog.maxFileBytes)
-    #expect(size < NvstDiagnosticLog.maxFileBytes + 2 * line.utf8.count)
+    #expect(size >= budget)
+    #expect(size < budget + 2 * line.utf8.count)
     #expect(try String(contentsOf: url, encoding: .utf8).contains("reached its"))
 }
 
@@ -76,14 +77,15 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let chunk = Data(repeating: UInt8(ascii: "x"), count: NvstDiagnosticLog.maxDirectoryBytes / 2 + 1024)
+    let budget = 128 * 1024
+    let chunk = Data(repeating: UInt8(ascii: "x"), count: budget / 2 + 1024)
     let older = directory.appendingPathComponent("nvst-20260101-000000.log")
     let newer = directory.appendingPathComponent("nvst-20260102-000000.log")
     try chunk.write(to: older)
     try chunk.write(to: newer)
     try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: older.path)
 
-    _ = NvstDiagnosticLog(directory: directory)
+    NvstDiagnosticLog.pruneLogsOverBudget(in: directory, budget: budget)
 
     #expect(FileManager.default.fileExists(atPath: newer.path))
     #expect(!FileManager.default.fileExists(atPath: older.path))

@@ -299,6 +299,7 @@ extension OPNSentry {
         diagnosticsLogQueue.async {
             let timestamp = diagnosticsTimestampFormatter.string(from: Date())
             guard let data = "\(timestamp) \(line)\n".data(using: .utf8) else { return }
+            reopenDiagnosticsLogIfFileWentAway()
             guard let handle = diagnosticsLogHandle() else { return }
             try? handle.write(contentsOf: data)
             diagnosticsLogBytesWritten += data.count
@@ -334,6 +335,22 @@ extension OPNSentry {
         diagnosticsLogBytesWritten = 0
     }
 
+    /// Writes through an open descriptor keep succeeding after the file is deleted or replaced —
+    /// they land in an unlinked inode nothing can read. Reopening per line is what made this path
+    /// expensive, so the existence check is amortised instead: often enough that a user who clears
+    /// the log gets a live file back within a second of streaming, rarely enough to stay off the
+    /// per-line cost.
+    private static func reopenDiagnosticsLogIfFileWentAway() {
+        guard openDiagnosticsLogHandle != nil else { return }
+        appendsSinceExistenceCheck += 1
+        guard appendsSinceExistenceCheck >= appendsBetweenExistenceChecks else { return }
+        appendsSinceExistenceCheck = 0
+        guard !FileManager.default.fileExists(atPath: diagnosticsLogURL().path) else { return }
+        closeDiagnosticsLogHandle()
+    }
+
+    private static let appendsBetweenExistenceChecks = 64
+    private nonisolated(unsafe) static var appendsSinceExistenceCheck = 0
     private nonisolated(unsafe) static var openDiagnosticsLogHandle: FileHandle?
     /// The size the open handle has written, so the common case costs no `stat` at all.
     private nonisolated(unsafe) static var diagnosticsLogBytesWritten = 0
@@ -403,18 +420,28 @@ extension OPNSentry {
 
     static func sanitizedUploadLog(_ text: String) -> String {
         var sanitized = sanitizedMessage(text)
-        let replacements: [(String, String)] = [
+        for rule in uploadRedactionRules {
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            sanitized = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+        }
+        return sanitized
+    }
+
+    /// Compiled once, like `redactionRules`. These run over the entire diagnostics log — megabytes
+    /// — so recompiling each pattern per upload was the expensive half of preparing one.
+    private nonisolated(unsafe) static let uploadRedactionRules: [(expression: NSRegularExpression, template: String)] = {
+        let patterns: [(String, String)] = [
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"\b[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){2,7}\b"#, "[redacted-ip]"),
             (#"(?i)\b(latitude|longitude|lat|lon|lng)([=:]\s*|""\s*:\s*"")-?\d{1,3}(?:\.\d+)?"#, "$1$2[redacted-location]"),
             (#"(?i)\b(city|country|state|province|postal[_-]?code|zip|timezone|location|region|server[_-]?location)([=:]\s*|""\s*:\s*"")[^\s,;\}\]"]+"#, "$1$2[redacted-location]"),
             (#"(?i)\b[a-z]+-[a-z]+\.cloudmatch[^\s,;\}\]"]*"#, "[redacted-location-host]")
         ]
-        for replacement in replacements {
-            sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
+        return patterns.compactMap { pattern, template in
+            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            return (expression, template)
         }
-        return sanitized
-    }
+    }()
 
     static func externalLogLineLooksLikeError(_ line: String) -> Bool {
         let lower = line.lowercased()

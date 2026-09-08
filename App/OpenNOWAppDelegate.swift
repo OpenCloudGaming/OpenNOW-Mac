@@ -31,6 +31,10 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything can log: installed from the stream view's `onAppear`, every line captured
+        // ahead of the first stream took the sinkless path and went to `NSLog` only — out of the
+        // unified log's category, out of Sentry, and out of the diagnostics file the user uploads.
+        WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
         OpenNOWLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
         bindUpdatePresentation()

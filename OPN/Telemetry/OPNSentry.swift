@@ -251,9 +251,16 @@ final class OPNSentry {
         }
     }
 
-    public static func diagnosticsLogForUpload() -> String {
-        let log = diagnosticsLogQueue.sync { diagnosticsLogText() }
-        return sanitizedUploadLog(log.isEmpty ? "No OpenNOW diagnostics log lines recorded for this run." : log)
+    /// Reads and scrubs the whole diagnostics log — up to `maxDiagnosticsLogBytes` of it, through a
+    /// dozen regular expressions. Callers must not be on the main actor: this is seconds of work on
+    /// a full file, and the button that triggers it is in the settings UI.
+    public static func diagnosticsLogForUpload() async -> String {
+        await withCheckedContinuation { continuation in
+            diagnosticsLogQueue.async {
+                let log = diagnosticsLogText()
+                continuation.resume(returning: sanitizedUploadLog(log.isEmpty ? "No OpenNOW diagnostics log lines recorded for this run." : log))
+            }
+        }
     }
 
     public static func uploadDiagnosticsLog(_ logText: String) async throws -> URL {

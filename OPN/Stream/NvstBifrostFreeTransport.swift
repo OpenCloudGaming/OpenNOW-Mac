@@ -291,10 +291,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         guard connection == nil else { throw NativeNVSTError.alreadyRunning }
         // The flag is per-connection, not per-actor. An in-place reconnect calls this on the same
         // transport the last teardown latched it on, and every timer that guards on it — the
-        // control keepalive, the QoS feedback, the cursor watchdog — would then refuse to arm:
-        // the seat kills a session that goes 10 s without the keepalive. Cleared here rather than
-        // in teardown so the late-callback race the flag blocks stays blocked while nothing is
-        // connected.
+        // heartbeat, the control keepalive, the QoS feedback, the cursor watchdog — would then
+        // refuse to arm: the seat kills a session that goes 10 s without the keepalive. Cleared
+        // here rather than in teardown so the late-callback race the flag blocks stays blocked
+        // while nothing is connected.
         isTornDown = false
 
         let endpoints = NvstRtspEndpoints.collect(
