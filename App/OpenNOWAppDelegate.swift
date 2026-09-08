@@ -173,6 +173,9 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkForApplicationUpdates(showingCurrentStatus: Bool, automatic: Bool) {
+        if !automatic {
+            OpenNOWUpdatePreferences.clearReminder()
+        }
         if automatic, !OpenNOWUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
         guard updateCheckTask == nil, updateInstallTask == nil else { return }
         updateCheckTask = Task { @MainActor in
@@ -187,6 +190,8 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
                 }
                 presentUpdate(for: release, automatic: automatic)
             } catch is CancellationError {
+                guard showingCurrentStatus else { return }
+                OpenNOWUpdatePresentation.shared.present(.checkFailed(message: "The update check was interrupted."))
             } catch {
                 guard showingCurrentStatus else { return }
                 OpenNOWUpdatePresentation.shared.present(.checkFailed(message: error.localizedDescription))

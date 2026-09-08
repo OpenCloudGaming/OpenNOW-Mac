@@ -53,7 +53,7 @@ enum OpenNOWUpdatePreferences {
         return Date(timeIntervalSince1970: timestamp)
     }
 
-    private static func clearReminder() {
+    static func clearReminder() {
         OPNAppPreferenceStorage.standard.removeObject(forKey: remindAfterKey)
     }
 
