@@ -241,9 +241,71 @@ struct StreamWindowAspectConfigurator: NSViewRepresentable {
             let lockedAspectRatio = NSSize(width: aspectRatio, height: 1)
             window.contentAspectRatio = lockedAspectRatio
             window.aspectRatio = lockedAspectRatio
+            // Locking the ratio only constrains future drags; it does not itself conform the
+            // window's current size, so a stream started at a mismatched window size stays
+            // mismatched until the user manually resizes it.
+            Self.resizeToMatchAspectRatio(window, aspectRatio)
             appliedAspectRatio = aspectRatio
             appliedLockState = true
             needsDeferredAspectRatioClear = false
+        }
+
+        private static func resizeToMatchAspectRatio(_ window: NSWindow, _ aspectRatio: Double) {
+            guard let contentView = window.contentView else { return }
+            let currentSize = contentView.bounds.size
+            guard currentSize.width > 0, currentSize.height > 0 else { return }
+            let topEdge = window.frame.maxY
+            let centerX = window.frame.midX
+            let minimumSize = window.contentMinSize
+            let minimumWidth = minimumSize.width.isFinite ? max(minimumSize.width, 0) : 0
+            let minimumHeight = minimumSize.height.isFinite ? max(minimumSize.height, 0) : 0
+            var width = max(currentSize.width, minimumWidth)
+            var height = width / aspectRatio
+            let visibleFrame = window.screen?.visibleFrame
+            if height < minimumHeight {
+                height = minimumHeight
+                width = height * aspectRatio
+            }
+            if let visibleFrame, isValid(frame: visibleFrame) {
+                let chromeWidth = max(window.frame.width - currentSize.width, 0)
+                let chromeHeight = max(window.frame.height - currentSize.height, 0)
+                let maximumWidth = max(visibleFrame.width - chromeWidth, 1)
+                let maximumHeight = max(visibleFrame.height - chromeHeight, 1)
+                width = min(width, maximumWidth)
+                height = width / aspectRatio
+                if height > maximumHeight {
+                    height = maximumHeight
+                    width = height * aspectRatio
+                }
+            }
+            let contentRect = NSRect(x: 0, y: 0, width: width, height: height)
+            let targetFrame = NSWindow.frameRect(forContentRect: contentRect, styleMask: window.styleMask)
+            guard isValid(frame: targetFrame), topEdge.isFinite, centerX.isFinite else { return }
+            var frame = targetFrame
+            frame.origin.x = centerX - frame.width / 2
+            frame.origin.y = topEdge - frame.height
+            if let visibleFrame, isValid(frame: visibleFrame) {
+                if frame.width <= visibleFrame.width {
+                    frame.origin.x = min(max(frame.origin.x, visibleFrame.minX), visibleFrame.maxX - frame.width)
+                } else {
+                    frame.origin.x = visibleFrame.minX
+                }
+                if frame.height <= visibleFrame.height {
+                    frame.origin.y = min(max(frame.origin.y, visibleFrame.minY), visibleFrame.maxY - frame.height)
+                } else {
+                    frame.origin.y = visibleFrame.minY
+                }
+            }
+            guard isValid(frame: frame) else { return }
+            window.setFrame(frame, display: true)
+        }
+
+        private static func isValid(frame: NSRect) -> Bool {
+            frame.origin.x.isFinite && frame.origin.y.isFinite && isValid(size: frame.size)
+        }
+
+        private static func isValid(size: NSSize) -> Bool {
+            size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
         }
 
         private func clearAppliedAspectRatio() {
