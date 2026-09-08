@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.6.0...v0.7.0) (2026-09-08)
+
+
+### Features
+
+* add stream ready off option ([753cc68](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/753cc68aed314fbf1e30c07393e3f25c3cf66f7b))
+* improve catalog layout ([b570272](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b570272461de800d91cc8fc3565d372ae160a843))
+
+
+### Bug Fixes
+
+* **co-op:** security vulnerabilities ([#19](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/19)) ([ec39e9a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ec39e9a667eee6fce6d4b51b88787de958cff77c))
+* login screen sign out saved credentials ([15ff328](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/15ff328b6fa55a0df6993ec351497bc7b7c614e0))
+* **nvst:** av1 codec ([#18](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/18)) ([d23891d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d23891d9d72f08bc565ebcd5e6bbb0a3e38736af))
+* **nvst:** SRTP rollover-counter underflow crashed the app pre-auth ([043a137](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/043a137ba2057a59cdcb2c198224a7d274d8401b))
+* reject malformed shortcut encoding ([5a9b779](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5a9b779a6ce6fb5787f7a8a37d45141c81a42f5c))
+* remote co-op session signaling ([3d6e0e2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3d6e0e23753246fa7e61bbcdc4895130585767a7))
+* remote co-op signal leak ([88a09bd](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/88a09bd68598651b367aa4744e7528da9c074d28))
+* seat termination stuck in stream reconnect ([9c06ed6](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9c06ed661d2cf1c4f60559377d6928e2139ffd0b))
+* server selection file ([5f1f83f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5f1f83f28cbfb8b2d9218e72b5fa3ca29e8d2194))
+* session proxy password keychain ([50571c3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/50571c3464c8801fb142dbb5bac6f3c664d3f4fd))
+* stream windowed lose aspect ratio on start ([a2ad7ef](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a2ad7ef19743601588e6a5f6112705de6356326e))
+
 ## [0.6.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.5.0...v0.6.0) (2026-09-07)
 
 
