@@ -359,11 +359,18 @@ private struct OpenNOWMagnifiedSurfaceMarker: NSViewRepresentable {
     }
 }
 
-private final class OpenNOWMagnifiedSurfaceMarkerView: NSView {
+final class OpenNOWMagnifiedSurfaceMarkerView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         OpenNOWMagnifiedSurfaceRegistry.shared.announceSurface(self)
     }
+
+    /// Presence is all it is for; it must never take a mouse event. It mounts as a full-size
+    /// background of every magnified subtree, and one of those is the stream's overlay layer,
+    /// which sits above the video surface: hit-testable, it swallowed every mouse-down and scroll
+    /// the stream needed. Movement survived on the surface's tracking area and keys on the
+    /// responder chain, so the whole thing read as "clicks stopped working in the stream".
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Mount anywhere: it corrects `contentsScale` across the whole window, and stays idle until an
