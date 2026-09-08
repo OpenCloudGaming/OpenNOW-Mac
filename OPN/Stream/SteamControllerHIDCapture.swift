@@ -123,6 +123,16 @@ extension SteamControllerHIDMonitor {
         }
     }
 
+    /// Cancels every resend loop and writes zeros, so nothing keeps a motor running once the
+    /// stream that asked for it is gone.
+    public func stopAllRumble() {
+        let deviceIDs = Set(rumbleResendTasks.keys)
+        for deviceID in deviceIDs {
+            rumbleResendTasks.removeValue(forKey: deviceID)?.cancel()
+            writeRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+        }
+    }
+
     private func writeRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16, resend: Bool = false) {
         let contexts = devices.values.filter { $0.deviceID == deviceID }
         guard !contexts.isEmpty else {

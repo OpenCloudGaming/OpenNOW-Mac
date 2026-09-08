@@ -5,7 +5,13 @@ public typealias WebRTCMediaStreamQuitRequestHandler = @MainActor @Sendable (_ c
 public typealias WebRTCMediaStreamCommandHandler = @MainActor @Sendable (_ command: WebRTCMediaStreamCommand) -> Void
 
 enum StreamAntiAFKInputPolicy {
-    static let pollInterval = Duration.seconds(60)
+    /// The poll phase is pinned to stream start, not to the last input, so the interval is the
+    /// worst-case lateness of the first nudge: at 60 s a tick at 209 s of idle deferred the next
+    /// check to 269 s. The tick itself is two date comparisons, so a short one costs nothing.
+    static let pollInterval = Duration.seconds(15)
+    /// UNVERIFIED against the seat: no capture or vendor note in this repo records the real idle
+    /// timeout, so this is a margin chosen below the shortest reported one rather than a measured
+    /// bound. Settle it by idling a session with anti-AFK off and recording the time to disconnect.
     static let idleThresholdSeconds: TimeInterval = 210
 
     static func randomMouseDelta() -> (x: Int16, y: Int16) {

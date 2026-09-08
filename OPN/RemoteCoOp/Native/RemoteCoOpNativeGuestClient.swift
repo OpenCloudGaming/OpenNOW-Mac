@@ -111,11 +111,15 @@ public final class OPNRemoteCoOpNativeHostBrowser: @unchecked Sendable {
 public enum OPNRemoteCoOpNativeConnectionError: LocalizedError, Equatable, Sendable {
     case connectFailed(String)
     case closed
+    /// The media peer connection went away while the signaling socket was still open — a host that
+    /// slept or lost its network without closing anything.
+    case peerConnectionLost(String)
 
     public var errorDescription: String? {
         switch self {
         case .connectFailed(let message): message
         case .closed: "The connection to the Remote Co-Op host closed."
+        case .peerConnectionLost(let reason): reason
         }
     }
 }

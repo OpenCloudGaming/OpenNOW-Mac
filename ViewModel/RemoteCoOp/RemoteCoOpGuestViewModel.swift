@@ -450,6 +450,11 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
                 self?.stats = stats
             }
         }
+        peer.onConnectionFailed = { [weak self] reason in
+            Task { @MainActor in
+                self?.handleConnectionFailure(OPNRemoteCoOpNativeConnectionError.peerConnectionLost(reason))
+            }
+        }
         peer.onSignal = { [weak self] signal in
             guard let self else { return }
             let message = OPNRemoteCoOpWireMessage(kind: .peerSignal, participantID: self.participantID, peerSignal: signal)

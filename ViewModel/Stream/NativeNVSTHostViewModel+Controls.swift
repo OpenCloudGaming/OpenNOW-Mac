@@ -329,13 +329,16 @@ extension NativeNVSTHostViewModel {
     }
 
     func sendNativeAntiAFKMouseMovement() {
-        guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible, inputDispatcher != nil else { return }
+        // Not gated on the HUD or the stream controls: both are client-side overlays the seat never
+        // sees, and refusing to nudge while one is open is how an idle session got dropped with
+        // "AFK: On" showing in that very HUD.
+        guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, inputDispatcher != nil else { return }
         guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
         let delta = StreamAntiAFKInputPolicy.randomMouseDelta()
         inputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: delta.x, deltaY: delta.y))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
-            guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd, !unifiedHUDVisible, !streamControlsVisible else { return }
+            guard isConnected, antiAFKMouseMovementEnabled, !isEnding, !didEnd else { return }
             guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= StreamAntiAFKInputPolicy.idleThresholdSeconds else { return }
             inputDispatcher?.enqueue(StreamAntiAFKInputPolicy.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
         }

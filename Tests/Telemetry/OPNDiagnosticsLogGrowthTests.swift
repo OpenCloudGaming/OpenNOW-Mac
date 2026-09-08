@@ -109,3 +109,12 @@ import Testing
     let event = WebRTCMediaTelemetryEvent(name: "nvst.test", level: .info, message: "ip=10.0.0.4")
     #expect(!event.isRedacted)
 }
+
+/// The anti-AFK poll phase is pinned to stream start rather than to the last input, so the poll
+/// interval is the worst-case lateness of the first nudge. It has to stay small against the idle
+/// threshold, or an idle session is dropped before the nudge that would have saved it.
+@Test func antiAFKPollIsFrequentEnoughToBeatItsOwnIdleThreshold() {
+    let poll = Double(StreamAntiAFKInputPolicy.pollInterval.components.seconds)
+    #expect(poll > 0)
+    #expect(StreamAntiAFKInputPolicy.idleThresholdSeconds + poll < 240)
+}

@@ -103,6 +103,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
         var powerOffComboSent = false
+        /// The USB device this HID interface hangs off. Walking the IORegistry for it is a
+        /// syscall-per-parent climb, and the answer cannot change while the device is attached — so
+        /// it is taken once here rather than on every tick of the one-second battery poll, which
+        /// runs on the thread presenting frames.
+        var usbHostRegistryID: UInt64 = 0
 
         init(device: IOHIDDevice, controllerID: UInt64, model: SteamControllerModel, isActive: Bool) {
             self.device = device
@@ -255,6 +260,10 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         } else {
             heartbeatTimer?.invalidate()
             heartbeatTimer = nil
+            // Before the interfaces are restored: a rumble is held by a 40 ms resend loop, and a
+            // stream that ends mid-vibration used to leave both the motors and the loop running for
+            // the life of the app — the pad only stopped when it was unplugged.
+            stopAllRumble()
             for context in devices.values {
                 restoreAfterCapture(for: context)
             }
