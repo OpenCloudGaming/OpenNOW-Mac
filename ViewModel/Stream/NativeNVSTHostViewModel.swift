@@ -306,8 +306,13 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 deviceOutputChannels: resolvedStreamSettings.audioChannelCount
             ),
             logger: { message in
-                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: message)
-                diagnosticLog.append(message)
+                // Scrubbed here so both destinations share one pass, and so the durable session
+                // file gets the redacted text: it used to receive the raw message while only the
+                // telemetry path was scrubbed, which put anything secret-shaped in a log the user
+                // is invited to share.
+                let sanitized = OPNSentry.sanitizedLogMessage(message)
+                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized)
+                diagnosticLog.append(sanitized)
             },
             remoteCoOpVideoRelay: remoteCoOpVideoRelay,
             remoteCoOpAudioRelay: remoteCoOpAudioRelay

@@ -245,7 +245,33 @@ extension OPNSentry {
     /// in an uploaded bundle is a full account or stream compromise.
     static func sanitizedMessage(_ message: String) -> String {
         var sanitized = message
-        let replacements: [(String, String)] = [
+        for rule in redactionRules {
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            sanitized = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+        }
+        return sanitized
+    }
+
+    /// A message that has already been through `sanitizedMessage`. The type is the proof: the log
+    /// sinks each used to re-sanitise what the caller had just sanitised, which on the stream
+    /// transport's two-second counter dump meant fourteen regex passes over a couple of kilobytes
+    /// every tick, for a second result identical to the first.
+    struct SanitizedLogMessage {
+        let value: String
+
+        init(_ message: String) {
+            value = sanitizedMessage(message)
+        }
+
+        init(alreadySanitized value: String) {
+            self.value = value
+        }
+    }
+
+    /// Compiled once. `replacingOccurrences(options: .regularExpression)` recompiles the pattern on
+    /// every call, and these run on every log line the app writes.
+    private nonisolated(unsafe) static let redactionRules: [(expression: NSRegularExpression, template: String)] = {
+        let patterns: [(String, String)] = [
             // Credentials passed as query parameters — `id_token_hint` on the OIDC logout URL is the
             // one that actually reaches here, via OPNNetworkLog's request summary.
             (#"(?i)([?&](?:[a-z0-9_-]*token[a-z0-9_-]*|code|key|secret|password|pwd|assertion)=)[^&\s]+"#, "$1[redacted-secret]"),
@@ -259,32 +285,61 @@ extension OPNSentry {
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"(?i)\b(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|:(?:(?::[0-9a-f]{1,4}){1,7}|:))\b"#, "[redacted-ip]")
         ]
-        for replacement in replacements {
-            sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
+        // `.caseInsensitive` is applied to every rule, matching what the previous
+        // `replacingOccurrences` call passed. Redaction is the one place to keep the wider match:
+        // dropping it here would narrow what gets stripped, which is a leak, not a cleanup.
+        return patterns.compactMap { pattern, template in
+            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            return (expression, template)
         }
-        return sanitized
-    }
+    }()
 
     static func appendDiagnosticsLogLine(_ line: String) {
         guard !line.isEmpty else { return }
         diagnosticsLogQueue.async {
-            let url = diagnosticsLogURL()
-            let timestamp = ISO8601DateFormatter().string(from: Date())
-            let entry = "\(timestamp) \(line)\n"
-            guard let data = entry.data(using: .utf8) else { return }
-            let manager = FileManager.default
-            let directory = url.deletingLastPathComponent()
-            try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
-            if !manager.fileExists(atPath: url.path) {
-                manager.createFile(atPath: url.path, contents: nil)
-            }
-            guard let handle = try? FileHandle(forWritingTo: url) else { return }
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
+            let timestamp = diagnosticsTimestampFormatter.string(from: Date())
+            guard let data = "\(timestamp) \(line)\n".data(using: .utf8) else { return }
+            guard let handle = diagnosticsLogHandle() else { return }
             try? handle.write(contentsOf: data)
-            trimDiagnosticsLogIfNeeded(url: url)
+            diagnosticsLogBytesWritten += data.count
+            trimDiagnosticsLogIfNeeded(url: diagnosticsLogURL(), writtenBytes: diagnosticsLogBytesWritten)
         }
     }
+
+    /// The open write handle, positioned at the end. Reopening per line cost a `FileHandle`, a
+    /// `seekToEnd` and a close for every one of the stream transport's counter lines; the file is
+    /// append-only for the life of the process, so the handle is too.
+    /// Only ever touched on `diagnosticsLogQueue`.
+    private static func diagnosticsLogHandle() -> FileHandle? {
+        if let openDiagnosticsLogHandle { return openDiagnosticsLogHandle }
+        let url = diagnosticsLogURL()
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !manager.fileExists(atPath: url.path) {
+            manager.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        let end = (try? handle.seekToEnd()) ?? 0
+        diagnosticsLogBytesWritten = Int(clamping: end)
+        openDiagnosticsLogHandle = handle
+        return handle
+    }
+
+    /// Closes the handle so the next append reopens the file — for the paths that replace the file
+    /// underneath us (a new run's clear, or a trim's atomic rewrite), where the old descriptor
+    /// points at an unlinked inode and every further write would vanish.
+    static func closeDiagnosticsLogHandle() {
+        try? openDiagnosticsLogHandle?.close()
+        openDiagnosticsLogHandle = nil
+        diagnosticsLogBytesWritten = 0
+    }
+
+    private nonisolated(unsafe) static var openDiagnosticsLogHandle: FileHandle?
+    /// The size the open handle has written, so the common case costs no `stat` at all.
+    private nonisolated(unsafe) static var diagnosticsLogBytesWritten = 0
+
+    /// Only ever touched on `diagnosticsLogQueue`.
+    private nonisolated(unsafe) static let diagnosticsTimestampFormatter = ISO8601DateFormatter()
 
     static func diagnosticsLogText() -> String {
         let url = diagnosticsLogURL()
@@ -304,12 +359,19 @@ extension OPNSentry {
         try? Data().write(to: url, options: .atomic)
     }
 
-    static func trimDiagnosticsLogIfNeeded(url: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber,
-              size.intValue > maxDiagnosticsLogBytes,
-              let data = try? Data(contentsOf: url) else { return }
-        try? Data(data.suffix(maxDiagnosticsLogBytes)).write(to: url, options: .atomic)
+    /// Trims to `trimmedDiagnosticsLogBytes`, not back to the ceiling.
+    ///
+    /// Trimming to the ceiling left the file exactly at it, so the very next line was over again
+    /// and every subsequent write read and rewrote the whole 8 MB — on a stream that logs counters
+    /// every two seconds, that is a permanent read-modify-write of megabytes per line, reached
+    /// after about an hour. Cutting back to three quarters buys ~2 MB of headroom per trim.
+    static func trimDiagnosticsLogIfNeeded(url: URL, writtenBytes: Int) {
+        guard writtenBytes > maxDiagnosticsLogBytes else { return }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let kept = Data(data.suffix(trimmedDiagnosticsLogBytes))
+        guard (try? kept.write(to: url, options: .atomic)) != nil else { return }
+        // The atomic write replaced the file, so the handle now points at an unlinked inode.
+        closeDiagnosticsLogHandle()
     }
 
     static func diagnosticsUploadData(_ text: String) throws -> Data {

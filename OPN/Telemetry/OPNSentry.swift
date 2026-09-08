@@ -55,6 +55,8 @@ final class OPNSentry {
     static let dsnInfoPlistKey = "OPNSentryDSN"
     static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
     static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
+    /// What a trim cuts back to. Below the ceiling on purpose — see `trimDiagnosticsLogIfNeeded`.
+    static let trimmedDiagnosticsLogBytes = 6 * 1024 * 1024
     static let maxDiagnosticsUploadBytes = 384 * 1024
     private static let telemetryDisabledKey = "OpenNOW.Telemetry.Disabled"
     nonisolated(unsafe) static var initialized = false
@@ -129,6 +131,7 @@ final class OPNSentry {
     public static func clearDiagnosticsLogForNewRun() {
         diagnosticsLogQueue.sync {
             clearDiagnosticsLog(at: diagnosticsLogURL())
+            closeDiagnosticsLogHandle()
         }
     }
 
@@ -162,7 +165,12 @@ final class OPNSentry {
 
     public static func logDebugMessage(_ message: String) {
         guard shouldLogDebug() else { return }
-        let sanitized = sanitizedMessage(message)
+        logDebugMessage(SanitizedLogMessage(message))
+    }
+
+    static func logDebugMessage(_ message: SanitizedLogMessage) {
+        guard shouldLogDebug() else { return }
+        let sanitized = message.value
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
@@ -175,7 +183,11 @@ final class OPNSentry {
     /// host who had turned telemetry off, which defeats the one thing it was for: sharing a log with
     /// a developer on request. Only the Sentry send below stays behind that flag.
     public static func logInfoMessage(_ message: String) {
-        let sanitized = sanitizedMessage(message)
+        logInfoMessage(SanitizedLogMessage(message))
+    }
+
+    static func logInfoMessage(_ message: SanitizedLogMessage) {
+        let sanitized = message.value
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
         guard shouldLogInfo(), initialized, SentrySDK.isEnabled else { return }
@@ -183,7 +195,11 @@ final class OPNSentry {
     }
 
     public static func logWarningMessage(_ message: String) {
-        let sanitized = sanitizedMessage(message)
+        logWarningMessage(SanitizedLogMessage(message))
+    }
+
+    static func logWarningMessage(_ message: SanitizedLogMessage) {
+        let sanitized = message.value
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
         guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return }
@@ -191,7 +207,11 @@ final class OPNSentry {
     }
 
     public static func logErrorMessage(_ message: String) {
-        let sanitized = sanitizedMessage(message)
+        logErrorMessage(SanitizedLogMessage(message))
+    }
+
+    static func logErrorMessage(_ message: SanitizedLogMessage) {
+        let sanitized = message.value
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
         guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return }
@@ -201,7 +221,12 @@ final class OPNSentry {
 
     public static func logFatalMessage(_ message: String) {
         guard isTelemetryEnabled() else { return }
-        let sanitized = sanitizedMessage(message)
+        logFatalMessage(SanitizedLogMessage(message))
+    }
+
+    static func logFatalMessage(_ message: SanitizedLogMessage) {
+        guard isTelemetryEnabled() else { return }
+        let sanitized = message.value
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }

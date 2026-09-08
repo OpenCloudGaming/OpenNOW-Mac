@@ -362,18 +362,28 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// useless while diagnosing a live run: this separates "no packets arrive" from "packets do
     /// not authenticate" from "frames assemble but do not decode", every two seconds.
     private func startHeartbeat() {
+        guard !isTornDown else { return }
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled else { return }
                 await self.logCounters()
+                try? await Task.sleep(for: .seconds(2))
             }
         }
     }
 
     private func logCounters() async {
-        guard let receiver else { return }
+        guard let receiver else {
+            // The heartbeat exists to tell "no packets arrive" apart from "packets do not
+            // authenticate" and "frames do not decode" — and the first of those is exactly the
+            // state where there is no receiver yet, either because negotiation has not reached
+            // PLAY or because a far seat never bound a video destination. Returning silently here
+            // made the loop mute in the one case it was written for.
+            logger?("NVST counters receiver=none media=not-started session=\(session == nil ? "negotiating" : "established")"
+                    + " bundle=\(bundle == nil ? "none" : "up") inputReady=\(bundle?.isInputReady == true)")
+            return
+        }
         let stats = receiver.stats
         // Session peak tracker, so a manual test (play a 120 title into gameplay for ~30s) yields a
         // self-verdicting line instead of forcing a grep of the raw per-interval arrays. Peak
@@ -689,6 +699,13 @@ extension NvstBifrostFreeTransport {
         qosFeedbackTask?.cancel()
         qosFeedbackTask = nil
         await logCounters()
+        // After the closing summary, not before it: a recovery negotiates a fresh session on this
+        // same actor, and carrying the peaks over made the next session's verdict line report the
+        // previous one's best interval as its own.
+        peakIntervalFps = 0
+        peakIntervalMbps = 0
+        lastSummaryFrames = 0
+        lastSummaryMediaSeconds = 0
         feedbackSender?.stop()
         feedbackSender = nil
         // The media receivers and pipeline stop before the bundle closes, so in-flight frame acks
