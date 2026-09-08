@@ -90,6 +90,10 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
     // MARK: - Lifecycle
 
     public func connect(sessionID: String?) async throws {
+        // Per-socket, like the connection itself. `sendKeepAlive` and every request guard on it, so
+        // a connection reused after a failure answered nothing: the keepalive loop could re-arm and
+        // then no-op every two seconds for the rest of the session.
+        failure = nil
         let parameters = NWParameters(tls: tlsOptions(), tcp: NWProtocolTCP.Options())
         let endpoint = NWEndpoint.hostPort(host: .init(target.host), port: .init(integerLiteral: target.port))
         let connection = NWConnection(to: endpoint, using: parameters)

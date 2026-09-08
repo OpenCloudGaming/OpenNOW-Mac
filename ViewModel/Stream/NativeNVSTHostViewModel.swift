@@ -311,7 +311,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 // telemetry path was scrubbed, which put anything secret-shaped in a log the user
                 // is invited to share.
                 let sanitized = OPNSentry.sanitizedLogMessage(message)
-                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized)
+                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },
             remoteCoOpVideoRelay: remoteCoOpVideoRelay,
