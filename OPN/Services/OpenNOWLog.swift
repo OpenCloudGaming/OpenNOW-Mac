@@ -41,6 +41,10 @@ enum OpenNOWLog {
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.OpenNOW"
 
     static func debug(_ category: Category, _ message: Message) {
+        // The level check comes first here, unlike the other levels: debug is off by default, and
+        // redacting a line nothing will read cost 40 µs a call — on the HID report path, that is per
+        // controller report, on the thread carrying input.
+        guard OPNSentry.shouldLogDebug() else { return }
         // Scrubbed once, then framed: the frame is a fixed prefix, so scrubbing before or after it
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted

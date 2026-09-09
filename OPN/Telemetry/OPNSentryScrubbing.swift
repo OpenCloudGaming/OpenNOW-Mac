@@ -60,23 +60,56 @@ extension OPNSentry {
         return SentryUnit(rawValue: unit)
     }
 
+    /// `ProcessInfo.processInfo.environment` rebuilds the entire environment dictionary on every
+    /// read — 25 µs a call, and the log-level checks call it per line. The environment cannot change
+    /// after launch, so the answer is resolved once and the lookup itself is `getenv`.
     static func environmentFlagEnabled(_ name: String) -> Bool {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
-        return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+        environmentFlagCache.value(for: name) { environmentValue(name).map(isAffirmative) ?? false }
     }
 
+    static func isAffirmative(_ value: String) -> Bool {
+        value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+    }
+
+    static func environmentValue(_ name: String) -> String? {
+        guard let raw = getenv(name) else { return nil }
+        return String(cString: raw)
+    }
+
+    /// Values are immutable for the process, so this only ever fills in.
+    final class EnvironmentFlagCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var flags: [String: Bool] = [:]
+
+        func value(for name: String, resolve: () -> Bool) -> Bool {
+            lock.lock()
+            if let cached = flags[name] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+            let resolved = resolve()
+            lock.lock()
+            flags[name] = resolved
+            lock.unlock()
+            return resolved
+        }
+    }
+
+    nonisolated(unsafe) static let environmentFlagCache = EnvironmentFlagCache()
+
     static func environmentFlagDisabled(_ name: String) -> Bool {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
+        guard let value = environmentValue(name) else { return false }
         return value == "0" || value.caseInsensitiveCompare("false") == .orderedSame || value.caseInsensitiveCompare("no") == .orderedSame
     }
 
     static func environmentDouble(_ name: String) -> Double? {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return nil }
+        guard let value = environmentValue(name) else { return nil }
         return Double(value)
     }
 
     static func environmentString(_ name: String) -> String? {
-        guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        guard let value = environmentValue(name)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
     }
 
@@ -244,6 +277,102 @@ extension OPNSentry {
     /// So this has to strip credentials, not just addresses — a single leaked JWT or session key
     /// in an uploaded bundle is a full account or stream compromise.
     static func sanitizedMessage(_ message: String) -> String {
+        var sanitized = message
+        // Each rule can only match if a particular ASCII marker is present, and one byte scan
+        // answers that for all of them. Skipping a rule whose marker is absent is not a heuristic —
+        // the rule could not have matched — and it is the difference between 217 µs and 6 µs on a
+        // counters line, on the actor that also carries input.
+        var markers = RedactionMarkers(scanning: message)
+        for (index, rule) in redactionRules.enumerated() {
+            if let markers, !markers.mayMatchRule(at: index) { continue }
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            let replaced = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+            guard replaced != sanitized else { continue }
+            sanitized = replaced
+            // The templates contain the word "secret", so a rewrite can create a marker a later rule
+            // matches on. Rather than rescan, the gate simply stops applying once the text moves.
+            markers = nil
+        }
+        return sanitized
+    }
+
+    /// Which redaction rules could possibly match a message, from one pass over its bytes.
+    ///
+    /// Only built for pure ASCII: ICU's caseless matching folds U+212A KELVIN SIGN to `k` and
+    /// U+017F LATIN SMALL LETTER LONG S to `s`, so a byte scan would miss a keyword an ICU pattern
+    /// still finds. Any byte outside ASCII gives up the gate and runs every rule, which is what the
+    /// code did before.
+    struct RedactionMarkers {
+        private let hasQueryDelimiter: Bool
+        private let hasJWTPrefix: Bool
+        private let hasAuthorizationScheme: Bool
+        private let hasCredentialKeyword: Bool
+        private let hasDottedNumber: Bool
+        private let hasColon: Bool
+
+        init?(scanning message: String) {
+            var lowercased = [UInt8]()
+            lowercased.reserveCapacity(message.utf8.count)
+            var sawDigit = false
+            var sawDot = false
+            var sawColon = false
+            var sawQueryDelimiter = false
+            for byte in message.utf8 {
+                guard byte < 0x80 else { return nil }
+                switch byte {
+                case UInt8(ascii: "0")...UInt8(ascii: "9"): sawDigit = true
+                case UInt8(ascii: "."): sawDot = true
+                case UInt8(ascii: ":"): sawColon = true
+                case UInt8(ascii: "?"), UInt8(ascii: "&"): sawQueryDelimiter = true
+                default: break
+                }
+                let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
+                lowercased.append(isUppercase ? byte + 0x20 : byte)
+            }
+            hasQueryDelimiter = sawQueryDelimiter
+            hasColon = sawColon
+            // Conservative on purpose: the rule needs four dotted digit runs, and "a digit and a dot
+            // somewhere" is a superset of that. A superset costs a wasted pass, never a missed match.
+            hasDottedNumber = sawDigit && sawDot
+            hasJWTPrefix = Self.contains(lowercased, Self.jwtPrefix)
+            hasAuthorizationScheme = Self.authorizationSchemes.contains { Self.contains(lowercased, $0) }
+            hasCredentialKeyword = Self.credentialKeywords.contains { Self.contains(lowercased, $0) }
+        }
+
+        /// Indices match `redactionRules`, in order.
+        func mayMatchRule(at index: Int) -> Bool {
+            switch index {
+            case 0: return hasQueryDelimiter
+            case 1: return hasJWTPrefix
+            case 2: return hasAuthorizationScheme
+            case 3: return hasCredentialKeyword
+            case 4: return hasDottedNumber
+            case 5: return hasColon
+            default: return true
+            }
+        }
+
+        private static func contains(_ haystack: [UInt8], _ needle: [UInt8]) -> Bool {
+            guard needle.count <= haystack.count else { return false }
+            let last = haystack.count - needle.count
+            var start = 0
+            while start <= last {
+                var offset = 0
+                while offset < needle.count, haystack[start + offset] == needle[offset] { offset += 1 }
+                if offset == needle.count { return true }
+                start += 1
+            }
+            return false
+        }
+
+        private static let jwtPrefix = Array("eyj".utf8)
+        private static let authorizationSchemes = ["bearer", "basic"].map { Array($0.utf8) }
+        private static let credentialKeywords = ["token", "secret", "password", "pwd", "apikey", "encryptionkey"].map { Array($0.utf8) }
+    }
+
+    /// The rules as they were before the gate: every pattern, in order, unconditionally. Kept so the
+    /// tests can assert the gated path is byte-for-byte equivalent rather than merely plausible.
+    static func exhaustivelySanitizedMessage(_ message: String) -> String {
         var sanitized = message
         for rule in redactionRules {
             let range = NSRange(sanitized.startIndex..., in: sanitized)
