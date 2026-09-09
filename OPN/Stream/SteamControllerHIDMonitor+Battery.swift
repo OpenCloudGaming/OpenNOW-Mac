@@ -31,7 +31,7 @@ extension SteamControllerHIDMonitor {
             .filter { seen.insert($0.controllerID).inserted }
             .map { context in
                 BatteryPresence(deviceID: context.deviceID,
-                                hostID: usbDeviceRegistryID(of: context.device),
+                                hostID: context.usbHostRegistryID,
                                 model: context.model,
                                 level: batteryLevels[context.deviceID],
                                 charging: batteryCharging[context.deviceID] ?? false)

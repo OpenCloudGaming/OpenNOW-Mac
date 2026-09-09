@@ -125,6 +125,11 @@ public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDe
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.webSocketTask === task else { return }
+            // A drop with no close frame reaches only this callback, and it used to leave the 5 s
+            // heartbeat writing into a dead task with its completion discarded — the one channel
+            // whose liveness it exists to prove, with nothing left watching it.
+            self.clearHeartbeat()
+            self.webSocketTask = nil
             if self.didOpen {
                 let nsError = error as NSError
                 if self.isSocketNotConnectedError(nsError) {

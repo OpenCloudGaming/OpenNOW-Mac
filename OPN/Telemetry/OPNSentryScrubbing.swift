@@ -60,23 +60,56 @@ extension OPNSentry {
         return SentryUnit(rawValue: unit)
     }
 
+    /// `ProcessInfo.processInfo.environment` rebuilds the entire environment dictionary on every
+    /// read — 25 µs a call, and the log-level checks call it per line. The environment cannot change
+    /// after launch, so the answer is resolved once and the lookup itself is `getenv`.
     static func environmentFlagEnabled(_ name: String) -> Bool {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
-        return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+        environmentFlagCache.value(for: name) { environmentValue(name).map(isAffirmative) ?? false }
     }
 
+    static func isAffirmative(_ value: String) -> Bool {
+        value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+    }
+
+    static func environmentValue(_ name: String) -> String? {
+        guard let raw = getenv(name) else { return nil }
+        return String(cString: raw)
+    }
+
+    /// Values are immutable for the process, so this only ever fills in.
+    final class EnvironmentFlagCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var flags: [String: Bool] = [:]
+
+        func value(for name: String, resolve: () -> Bool) -> Bool {
+            lock.lock()
+            if let cached = flags[name] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+            let resolved = resolve()
+            lock.lock()
+            flags[name] = resolved
+            lock.unlock()
+            return resolved
+        }
+    }
+
+    nonisolated(unsafe) static let environmentFlagCache = EnvironmentFlagCache()
+
     static func environmentFlagDisabled(_ name: String) -> Bool {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
+        guard let value = environmentValue(name) else { return false }
         return value == "0" || value.caseInsensitiveCompare("false") == .orderedSame || value.caseInsensitiveCompare("no") == .orderedSame
     }
 
     static func environmentDouble(_ name: String) -> Double? {
-        guard let value = ProcessInfo.processInfo.environment[name] else { return nil }
+        guard let value = environmentValue(name) else { return nil }
         return Double(value)
     }
 
     static func environmentString(_ name: String) -> String? {
-        guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        guard let value = environmentValue(name)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
     }
 
@@ -245,7 +278,129 @@ extension OPNSentry {
     /// in an uploaded bundle is a full account or stream compromise.
     static func sanitizedMessage(_ message: String) -> String {
         var sanitized = message
-        let replacements: [(String, String)] = [
+        // Each rule can only match if a particular ASCII marker is present, and one byte scan
+        // answers that for all of them. Skipping a rule whose marker is absent is not a heuristic —
+        // the rule could not have matched — and it is the difference between 217 µs and 6 µs on a
+        // counters line, on the actor that also carries input.
+        var markers = RedactionMarkers(scanning: message)
+        for (index, rule) in redactionRules.enumerated() {
+            if let markers, !markers.mayMatchRule(at: index) { continue }
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            let replaced = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+            guard replaced != sanitized else { continue }
+            sanitized = replaced
+            // The templates contain the word "secret", so a rewrite can create a marker a later rule
+            // matches on. Rather than rescan, the gate simply stops applying once the text moves.
+            markers = nil
+        }
+        return sanitized
+    }
+
+    /// Which redaction rules could possibly match a message, from one pass over its bytes.
+    ///
+    /// Only built for pure ASCII: ICU's caseless matching folds U+212A KELVIN SIGN to `k` and
+    /// U+017F LATIN SMALL LETTER LONG S to `s`, so a byte scan would miss a keyword an ICU pattern
+    /// still finds. Any byte outside ASCII gives up the gate and runs every rule, which is what the
+    /// code did before.
+    struct RedactionMarkers {
+        private let isQueryDelimiterPresent: Bool
+        private let isJWTPrefixPresent: Bool
+        private let isAuthorizationSchemePresent: Bool
+        private let isCredentialKeywordPresent: Bool
+        private let isDottedNumberPresent: Bool
+        private let isColonPresent: Bool
+
+        init?(scanning message: String) {
+            var lowercased = [UInt8]()
+            lowercased.reserveCapacity(message.utf8.count)
+            var sawDigit = false
+            var sawDot = false
+            var sawColon = false
+            var sawQueryDelimiter = false
+            for byte in message.utf8 {
+                guard byte < 0x80 else { return nil }
+                switch byte {
+                case UInt8(ascii: "0")...UInt8(ascii: "9"): sawDigit = true
+                case UInt8(ascii: "."): sawDot = true
+                case UInt8(ascii: ":"): sawColon = true
+                case UInt8(ascii: "?"), UInt8(ascii: "&"): sawQueryDelimiter = true
+                default: break
+                }
+                let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
+                lowercased.append(isUppercase ? byte + 0x20 : byte)
+            }
+            isQueryDelimiterPresent = sawQueryDelimiter
+            isColonPresent = sawColon
+            // Conservative on purpose: the rule needs four dotted digit runs, and "a digit and a dot
+            // somewhere" is a superset of that. A superset costs a wasted pass, never a missed match.
+            isDottedNumberPresent = sawDigit && sawDot
+            isJWTPrefixPresent = Self.contains(lowercased, Self.jwtPrefix)
+            isAuthorizationSchemePresent = Self.authorizationSchemes.contains { Self.contains(lowercased, $0) }
+            isCredentialKeywordPresent = Self.credentialKeywords.contains { Self.contains(lowercased, $0) }
+        }
+
+        /// Indices match `redactionRules`, in order.
+        func mayMatchRule(at index: Int) -> Bool {
+            switch index {
+            case 0: return isQueryDelimiterPresent
+            case 1: return isJWTPrefixPresent
+            case 2: return isAuthorizationSchemePresent
+            case 3: return isCredentialKeywordPresent
+            case 4: return isDottedNumberPresent
+            case 5: return isColonPresent
+            default: return true
+            }
+        }
+
+        static func contains(_ haystack: [UInt8], _ needle: [UInt8]) -> Bool {
+            guard needle.count <= haystack.count else { return false }
+            let last = haystack.count - needle.count
+            var start = 0
+            while start <= last {
+                var offset = 0
+                while offset < needle.count, haystack[start + offset] == needle[offset] { offset += 1 }
+                if offset == needle.count { return true }
+                start += 1
+            }
+            return false
+        }
+
+        private static let jwtPrefix = Array("eyj".utf8)
+        private static let authorizationSchemes = ["bearer", "basic"].map { Array($0.utf8) }
+        private static let credentialKeywords = ["token", "secret", "password", "pwd", "apikey", "encryptionkey"].map { Array($0.utf8) }
+    }
+
+    /// The rules as they were before the gate: every pattern, in order, unconditionally. Kept so the
+    /// tests can assert the gated path is byte-for-byte equivalent rather than merely plausible.
+    static func exhaustivelySanitizedMessage(_ message: String) -> String {
+        var sanitized = message
+        for rule in redactionRules {
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            sanitized = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+        }
+        return sanitized
+    }
+
+    /// A message that has already been through `sanitizedMessage`. The type is the proof: the log
+    /// sinks each used to re-sanitise what the caller had just sanitised, which on the stream
+    /// transport's two-second counter dump meant fourteen regex passes over a couple of kilobytes
+    /// every tick, for a second result identical to the first.
+    struct SanitizedLogMessage {
+        let value: String
+
+        init(_ message: String) {
+            value = sanitizedMessage(message)
+        }
+
+        init(alreadySanitized value: String) {
+            self.value = value
+        }
+    }
+
+    /// Compiled once. `replacingOccurrences(options: .regularExpression)` recompiles the pattern on
+    /// every call, and these run on every log line the app writes.
+    private nonisolated(unsafe) static let redactionRules: [(expression: NSRegularExpression, template: String)] = {
+        let patterns: [(String, String)] = [
             // Credentials passed as query parameters — `id_token_hint` on the OIDC logout URL is the
             // one that actually reaches here, via OPNNetworkLog's request summary.
             (#"(?i)([?&](?:[a-z0-9_-]*token[a-z0-9_-]*|code|key|secret|password|pwd|assertion)=)[^&\s]+"#, "$1[redacted-secret]"),
@@ -259,32 +414,78 @@ extension OPNSentry {
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"(?i)\b(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|:(?:(?::[0-9a-f]{1,4}){1,7}|:))\b"#, "[redacted-ip]")
         ]
-        for replacement in replacements {
-            sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
+        // `.caseInsensitive` is applied to every rule, matching what the previous
+        // `replacingOccurrences` call passed. Redaction is the one place to keep the wider match:
+        // dropping it here would narrow what gets stripped, which is a leak, not a cleanup.
+        return patterns.compactMap { pattern, template in
+            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            return (expression, template)
         }
-        return sanitized
-    }
+    }()
 
     static func appendDiagnosticsLogLine(_ line: String) {
         guard !line.isEmpty else { return }
         diagnosticsLogQueue.async {
-            let url = diagnosticsLogURL()
-            let timestamp = ISO8601DateFormatter().string(from: Date())
-            let entry = "\(timestamp) \(line)\n"
-            guard let data = entry.data(using: .utf8) else { return }
-            let manager = FileManager.default
-            let directory = url.deletingLastPathComponent()
-            try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
-            if !manager.fileExists(atPath: url.path) {
-                manager.createFile(atPath: url.path, contents: nil)
-            }
-            guard let handle = try? FileHandle(forWritingTo: url) else { return }
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
+            let timestamp = diagnosticsTimestampFormatter.string(from: Date())
+            guard let data = "\(timestamp) \(line)\n".data(using: .utf8) else { return }
+            reopenDiagnosticsLogIfFileWentAway()
+            guard let handle = diagnosticsLogHandle() else { return }
             try? handle.write(contentsOf: data)
-            trimDiagnosticsLogIfNeeded(url: url)
+            diagnosticsLogBytesWritten += data.count
+            trimDiagnosticsLogIfNeeded(url: diagnosticsLogURL(), writtenBytes: diagnosticsLogBytesWritten)
         }
     }
+
+    /// The open write handle, positioned at the end. Reopening per line cost a `FileHandle`, a
+    /// `seekToEnd` and a close for every one of the stream transport's counter lines; the file is
+    /// append-only for the life of the process, so the handle is too.
+    /// Only ever touched on `diagnosticsLogQueue`.
+    private static func diagnosticsLogHandle() -> FileHandle? {
+        if let openDiagnosticsLogHandle { return openDiagnosticsLogHandle }
+        let url = diagnosticsLogURL()
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !manager.fileExists(atPath: url.path) {
+            manager.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        let end = (try? handle.seekToEnd()) ?? 0
+        diagnosticsLogBytesWritten = Int(clamping: end)
+        openDiagnosticsLogHandle = handle
+        return handle
+    }
+
+    /// Closes the handle so the next append reopens the file — for the paths that replace the file
+    /// underneath us (a new run's clear, or a trim's atomic rewrite), where the old descriptor
+    /// points at an unlinked inode and every further write would vanish.
+    static func closeDiagnosticsLogHandle() {
+        try? openDiagnosticsLogHandle?.close()
+        openDiagnosticsLogHandle = nil
+        diagnosticsLogBytesWritten = 0
+    }
+
+    /// Writes through an open descriptor keep succeeding after the file is deleted or replaced —
+    /// they land in an unlinked inode nothing can read. Reopening per line is what made this path
+    /// expensive, so the existence check is amortised instead: often enough that a user who clears
+    /// the log gets a live file back within a second of streaming, rarely enough to stay off the
+    /// per-line cost.
+    private static func reopenDiagnosticsLogIfFileWentAway() {
+        guard openDiagnosticsLogHandle != nil else { return }
+        appendsSinceExistenceCheck += 1
+        guard appendsSinceExistenceCheck >= appendsBetweenExistenceChecks else { return }
+        appendsSinceExistenceCheck = 0
+        guard !FileManager.default.fileExists(atPath: diagnosticsLogURL().path) else { return }
+        closeDiagnosticsLogHandle()
+    }
+
+    private static let appendsBetweenExistenceChecks = 64
+    private nonisolated(unsafe) static var appendsSinceExistenceCheck = 0
+    private nonisolated(unsafe) static var openDiagnosticsLogHandle: FileHandle?
+    /// The size the open handle has written, so the common case costs no `stat` at all.
+    private nonisolated(unsafe) static var diagnosticsLogBytesWritten = 0
+
+    /// Only ever touched on `diagnosticsLogQueue`.
+    private nonisolated(unsafe) static let diagnosticsTimestampFormatter = ISO8601DateFormatter()
 
     static func diagnosticsLogText() -> String {
         let url = diagnosticsLogURL()
@@ -304,12 +505,19 @@ extension OPNSentry {
         try? Data().write(to: url, options: .atomic)
     }
 
-    static func trimDiagnosticsLogIfNeeded(url: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber,
-              size.intValue > maxDiagnosticsLogBytes,
-              let data = try? Data(contentsOf: url) else { return }
-        try? Data(data.suffix(maxDiagnosticsLogBytes)).write(to: url, options: .atomic)
+    /// Trims to `trimmedDiagnosticsLogBytes`, not back to the ceiling.
+    ///
+    /// Trimming to the ceiling left the file exactly at it, so the very next line was over again
+    /// and every subsequent write read and rewrote the whole 8 MB — on a stream that logs counters
+    /// every two seconds, that is a permanent read-modify-write of megabytes per line, reached
+    /// after about an hour. Cutting back to three quarters buys ~2 MB of headroom per trim.
+    static func trimDiagnosticsLogIfNeeded(url: URL, writtenBytes: Int) {
+        guard writtenBytes > maxDiagnosticsLogBytes else { return }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let kept = Data(data.suffix(trimmedDiagnosticsLogBytes))
+        guard (try? kept.write(to: url, options: .atomic)) != nil else { return }
+        // The atomic write replaced the file, so the handle now points at an unlinked inode.
+        closeDiagnosticsLogHandle()
     }
 
     static func diagnosticsUploadData(_ text: String) throws -> Data {
@@ -339,20 +547,96 @@ extension OPNSentry {
         return pasteURL
     }
 
+    /// The location rules only matter to the upload, which is a whole log at once — megabytes
+    /// through five more patterns. They carry the same markers treatment as the message rules: a
+    /// rule whose keyword is nowhere in the text cannot match it.
     static func sanitizedUploadLog(_ text: String) -> String {
         var sanitized = sanitizedMessage(text)
-        let replacements: [(String, String)] = [
+        var markers = UploadRedactionMarkers(scanning: sanitized)
+        for (index, rule) in uploadRedactionRules.enumerated() {
+            if let markers, !markers.mayMatchRule(at: index) { continue }
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            let replaced = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+            guard replaced != sanitized else { continue }
+            sanitized = replaced
+            markers = nil
+        }
+        return sanitized
+    }
+
+    /// The upload rules' equivalent of `RedactionMarkers`, with the same ASCII-only restriction.
+    struct UploadRedactionMarkers {
+        private let isDottedNumberPresent: Bool
+        private let isColonPresent: Bool
+        private let isLocationKeywordPresent: Bool
+        private let isCloudmatchHostPresent: Bool
+
+        init?(scanning message: String) {
+            var lowercased = [UInt8]()
+            lowercased.reserveCapacity(message.utf8.count)
+            var sawDigit = false
+            var sawDot = false
+            var sawColon = false
+            for byte in message.utf8 {
+                guard byte < 0x80 else { return nil }
+                switch byte {
+                case UInt8(ascii: "0")...UInt8(ascii: "9"): sawDigit = true
+                case UInt8(ascii: "."): sawDot = true
+                case UInt8(ascii: ":"): sawColon = true
+                default: break
+                }
+                let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
+                lowercased.append(isUppercase ? byte + 0x20 : byte)
+            }
+            isDottedNumberPresent = sawDigit && sawDot
+            isColonPresent = sawColon
+            isLocationKeywordPresent = Self.locationKeywords.contains { RedactionMarkers.contains(lowercased, $0) }
+            isCloudmatchHostPresent = RedactionMarkers.contains(lowercased, Self.cloudmatchHost)
+        }
+
+        /// Indices match `uploadRedactionRules`, in order.
+        func mayMatchRule(at index: Int) -> Bool {
+            switch index {
+            case 0: return isDottedNumberPresent
+            case 1: return isColonPresent
+            case 2, 3: return isLocationKeywordPresent
+            case 4: return isCloudmatchHostPresent
+            default: return true
+            }
+        }
+
+        private static let cloudmatchHost = Array("cloudmatch".utf8)
+        private static let locationKeywords = [
+            "latitude", "longitude", "lat", "lon", "lng", "city", "country", "state", "province",
+            "postal", "zip", "timezone", "location", "region"
+        ].map { Array($0.utf8) }
+    }
+
+    /// The upload rules as they were before the gate, for the equivalence tests.
+    static func exhaustivelySanitizedUploadLog(_ text: String) -> String {
+        var sanitized = exhaustivelySanitizedMessage(text)
+        for rule in uploadRedactionRules {
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            sanitized = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+        }
+        return sanitized
+    }
+
+    /// Compiled once, like `redactionRules`. These run over the entire diagnostics log — megabytes
+    /// — so recompiling each pattern per upload was the expensive half of preparing one.
+    private nonisolated(unsafe) static let uploadRedactionRules: [(expression: NSRegularExpression, template: String)] = {
+        let patterns: [(String, String)] = [
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"\b[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){2,7}\b"#, "[redacted-ip]"),
             (#"(?i)\b(latitude|longitude|lat|lon|lng)([=:]\s*|""\s*:\s*"")-?\d{1,3}(?:\.\d+)?"#, "$1$2[redacted-location]"),
             (#"(?i)\b(city|country|state|province|postal[_-]?code|zip|timezone|location|region|server[_-]?location)([=:]\s*|""\s*:\s*"")[^\s,;\}\]"]+"#, "$1$2[redacted-location]"),
             (#"(?i)\b[a-z]+-[a-z]+\.cloudmatch[^\s,;\}\]"]*"#, "[redacted-location-host]")
         ]
-        for replacement in replacements {
-            sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
+        return patterns.compactMap { pattern, template in
+            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            return (expression, template)
         }
-        return sanitized
-    }
+    }()
 
     static func externalLogLineLooksLikeError(_ line: String) -> Bool {
         let lower = line.lowercased()

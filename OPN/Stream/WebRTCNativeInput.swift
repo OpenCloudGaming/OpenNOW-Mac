@@ -165,9 +165,14 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             inputReady = false
         }
         os_unfair_lock_unlock(&stateLock)
-        if !open {
+        guard open else {
             stopHeartbeat()
+            return
         }
+        // A reopened channel keeps `handshakeComplete` latched, so the handshake that starts the
+        // keepalive never arrives again and input reads as ready with a dead heartbeat.
+        guard isInputReady else { return }
+        startHeartbeat(sessionImpl: sessionImpl)
     }
 
     @objc(handleDataChannelMessageWithLabel:data:sessionImpl:)
@@ -207,6 +212,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     @objc(stop)
     func stop() {
         stopHeartbeat()
+        sessionImpl = nil
         os_unfair_lock_lock(&stateLock)
         inputReady = false
         reliableOpen = false
@@ -285,8 +291,10 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     }
 
     private func startHeartbeat(sessionImpl: OPNLibWebRTCSessionImpl?) {
+        // Assigned before the guard: a reconnect hands over a new session, and keeping the first one
+        // meant every later heartbeat was written into a session that no longer existed.
+        if let sessionImpl { self.sessionImpl = sessionImpl }
         guard heartbeat == nil else { return }
-        self.sessionImpl = sessionImpl
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 2, repeating: 2, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in

@@ -78,6 +78,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     nonisolated static let claimedNames = OSAllocatedUnfairLock(initialState: Set<String>())
     nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
+    /// UNVERIFIED: the firmware re-enables mouse/keyboard emulation after a quiet period and this
+    /// re-asserts lizard mode inside it, but unlike the rumble resend two files over — which cites
+    /// SDL's `TRITON_RUMBLE_RESEND_INTERVAL_MS` — nothing records where five seconds came from. If
+    /// the real window is shorter, a trackpad intermittently drives the macOS cursor mid-stream.
+    /// Settle it against SDL's `SDL_hidapi_steam_triton.c` or on hardware.
     static let heartbeatInterval: TimeInterval = 5.0
     static let featureReportAttempts = 5
     static let powerOffCombo: GamepadButtons = [.mode, .north]
@@ -103,6 +108,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
         var powerOffComboSent = false
+        /// The USB device this HID interface hangs off. Walking the IORegistry for it is a
+        /// syscall-per-parent climb, and the answer cannot change while the device is attached — so
+        /// it is taken once here rather than on every tick of the one-second battery poll, which
+        /// runs on the thread presenting frames.
+        var usbHostRegistryID: UInt64 = 0
 
         init(device: IOHIDDevice, controllerID: UInt64, model: SteamControllerModel, isActive: Bool) {
             self.device = device
@@ -255,6 +265,10 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         } else {
             heartbeatTimer?.invalidate()
             heartbeatTimer = nil
+            // Before the interfaces are restored: a rumble is held by a 40 ms resend loop, and a
+            // stream that ends mid-vibration used to leave both the motors and the loop running for
+            // the life of the app — the pad only stopped when it was unplugged.
+            stopAllRumble()
             for context in devices.values {
                 restoreAfterCapture(for: context)
             }

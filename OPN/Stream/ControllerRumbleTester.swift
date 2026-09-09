@@ -55,11 +55,18 @@ public enum ControllerRumbleTester {
     /// One Steam Controller, either or both motors, then off after the pulse.
     public static func pulseSteamController(_ deviceID: InputDeviceID, left: UInt16, right: UInt16) {
         SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: left, rightAmplitude: right)
-        Task { @MainActor in
+        // Each press owns its own stop: without cancelling the previous one, a second press was cut
+        // short by the first press's timer rather than running its full pulse.
+        pulseStopTasks[deviceID]?.cancel()
+        pulseStopTasks[deviceID] = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(pulseMilliseconds))
+            guard !Task.isCancelled else { return }
             SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+            pulseStopTasks[deviceID] = nil
         }
     }
+
+    @MainActor private static var pulseStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
 
     private static func pulse(haptics: GCDeviceHaptics, amplitude: UInt16) -> Bool {
         guard amplitude > 0 else { return true }

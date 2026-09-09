@@ -52,6 +52,7 @@ extension SteamControllerHIDMonitor {
             model: model,
             isActive: !isWirelessReceiver
         )
+        context.usbHostRegistryID = usbDeviceRegistryID(of: device)
         devices[ObjectIdentifier(device)] = context
         matchedDeviceCount = devices.count
         updateAllDevices()

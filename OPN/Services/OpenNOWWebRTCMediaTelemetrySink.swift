@@ -4,16 +4,19 @@ struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
         let level = Self.sentryLevel(for: event)
-        let message = "\(event.name): \(event.message)\(suffix)"
+        // A pre-redacted message is passed through: the attribute suffix is built from key/value
+        // pairs this module writes, so it carries nothing the redaction pass would strip.
+        let message = OpenNOWLog.Message(event.message + suffix, isRedacted: event.isRedacted && suffix.isEmpty)
+        let named = OpenNOWLog.Message("\(event.name): " + message.text, isRedacted: message.isRedacted)
         switch level {
         case .debug:
-            OpenNOWLog.debug(.stream, message)
+            OpenNOWLog.debug(.stream, named)
         case .info:
-            OpenNOWLog.info(.stream, message)
+            OpenNOWLog.info(.stream, named)
         case .warning:
-            OpenNOWLog.warning(.stream, message)
+            OpenNOWLog.warning(.stream, named)
         case .error:
-            OpenNOWLog.error(.stream, message)
+            OpenNOWLog.error(.stream, named)
         }
     }
 

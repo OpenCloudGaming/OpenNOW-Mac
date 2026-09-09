@@ -252,6 +252,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         answerTimeoutTask?.cancel()
         answerTimeoutTask = nil
         WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
+        // `resumeAnswer` arrives on libwebrtc's signalling thread and can land after `disconnect()`
+        // has cancelled the loop; starting one here then kept a strongly captured session polling
+        // stats every ten seconds for the life of the process.
+        guard !isDisconnecting else { return }
         startStatsTelemetry()
         continuation.resume(returning: answer)
     }

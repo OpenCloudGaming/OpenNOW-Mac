@@ -291,10 +291,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         guard connection == nil else { throw NativeNVSTError.alreadyRunning }
         // The flag is per-connection, not per-actor. An in-place reconnect calls this on the same
         // transport the last teardown latched it on, and every timer that guards on it — the
-        // control keepalive, the QoS feedback, the cursor watchdog — would then refuse to arm:
-        // the seat kills a session that goes 10 s without the keepalive. Cleared here rather than
-        // in teardown so the late-callback race the flag blocks stays blocked while nothing is
-        // connected.
+        // heartbeat, the control keepalive, the QoS feedback, the cursor watchdog — would then
+        // refuse to arm: the seat kills a session that goes 10 s without the keepalive. Cleared
+        // here rather than in teardown so the late-callback race the flag blocks stays blocked
+        // while nothing is connected.
         isTornDown = false
 
         let endpoints = NvstRtspEndpoints.collect(
@@ -362,18 +362,33 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// useless while diagnosing a live run: this separates "no packets arrive" from "packets do
     /// not authenticate" from "frames assemble but do not decode", every two seconds.
     private func startHeartbeat() {
+        guard !isTornDown else { return }
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled else { return }
-                await self.logCounters()
+                await self.logCounters(includingPerSecondSeries: false)
+                try? await Task.sleep(for: .seconds(2))
             }
         }
     }
 
-    private func logCounters() async {
-        guard let receiver else { return }
+    /// The per-second series grow one entry per elapsed second and are joined into the line as
+    /// text, so including them in the two-second tick made the heartbeat's cost climb with session
+    /// age — tens of kilobytes of string built, scrubbed and written on the actor that also
+    /// serialises input sends and frame handling. They are a post-mortem read, so they go out once,
+    /// with the closing summary.
+    private func logCounters(includingPerSecondSeries: Bool = true) async {
+        guard let receiver else {
+            // The heartbeat exists to tell "no packets arrive" apart from "packets do not
+            // authenticate" and "frames do not decode" — and the first of those is exactly the
+            // state where there is no receiver yet, either because negotiation has not reached
+            // PLAY or because a far seat never bound a video destination. Returning silently here
+            // made the loop mute in the one case it was written for.
+            logger?("NVST counters receiver=none media=not-started session=\(session == nil ? "negotiating" : "established")"
+                    + " bundle=\(bundle == nil ? "none" : "up") inputReady=\(bundle?.isInputReady == true)")
+            return
+        }
         let stats = receiver.stats
         // Session peak tracker, so a manual test (play a 120 title into gameplay for ~30s) yields a
         // self-verdicting line instead of forcing a grep of the raw per-interval arrays. Peak
@@ -411,7 +426,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         logger?("NVST audio tracks=\(bundle?.remoteAudioTrackCount ?? 0) pktIn=\(audio?.packets ?? 0) bytesIn=\(audio?.bytes ?? 0)"
                 + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0) ssrc=\(audio?.ssrc.map(String.init) ?? "-")")
         let video = videoPipeline?.snapshot ?? NvstVideoPipeline.Counters()
-        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ",")) bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ",")) fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ",")) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
+        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) \(perSecondSeries(stats: stats, included: includingPerSecondSeries)) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
         // Which pipeline stage a latency spike lives in. `peak*` are per-stage session maxima, so a
         // single 500 ms stall is still visible after the average has recovered.
         logger?(String(format: "NVST frame stages slow=%d frames=%llu resyncs=%d skipped=%d abandoned=%d lastLatency=%.1fms inputSendTotal=%.0fms inputSendPeak=%.1fms",
@@ -424,6 +439,14 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 + " hwDecode=\(decoder?.isHardwareAccelerated == true)"
                 + " decode\(decoder?.stageTimingSummary ?? "-")")
         await logHudCounters(receiver: receiver, stats: stats)
+    }
+
+    /// The per-second buckets as text, or a count of them when the caller is the recurring tick.
+    private func perSecondSeries(stats: NvstReceiverStats, included: Bool) -> String {
+        guard included else { return "perSecBuckets=\(stats.framesPerSecond.count)" }
+        return "maxFrame=\(stats.maxFrameBytesPerSecond.map { String($0) }.joined(separator: ","))"
+            + " bytesPerSec=\(stats.frameBytesPerSecond.map { String($0 / 1000) }.joined(separator: ","))"
+            + " fpsPerSec=\(stats.framesPerSecond.map(String.init).joined(separator: ","))"
     }
 
     /// The HUD's own numbers, so a headless run can verify them without the overlay: RTT comes from
@@ -689,6 +712,13 @@ extension NvstBifrostFreeTransport {
         qosFeedbackTask?.cancel()
         qosFeedbackTask = nil
         await logCounters()
+        // After the closing summary, not before it: a recovery negotiates a fresh session on this
+        // same actor, and carrying the peaks over made the next session's verdict line report the
+        // previous one's best interval as its own.
+        peakIntervalFps = 0
+        peakIntervalMbps = 0
+        lastSummaryFrames = 0
+        lastSummaryMediaSeconds = 0
         feedbackSender?.stop()
         feedbackSender = nil
         // The media receivers and pipeline stop before the bundle closes, so in-flight frame acks

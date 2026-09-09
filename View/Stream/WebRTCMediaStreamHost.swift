@@ -316,7 +316,6 @@ struct NativeNVSTMediaStreamSurface: View {
         }
         .background(Color.black)
         .onAppear {
-            WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
             model.startIfNeeded()
         }
         .task { await model.pollControllerBatteries() }

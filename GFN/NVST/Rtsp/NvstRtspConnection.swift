@@ -74,6 +74,7 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
     private var failure: Error?
     private var cseq = 0
     private var keepAliveTask: Task<Void, Never>?
+    private var keepAliveGeneration: UInt64 = 0
     private var keepAlivesSent = 0
     private var keepAlivesAnswered = 0
     private var lastKeepAliveStatus = 0
@@ -89,6 +90,10 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
     // MARK: - Lifecycle
 
     public func connect(sessionID: String?) async throws {
+        // Per-socket, like the connection itself. `sendKeepAlive` and every request guard on it, so
+        // a connection reused after a failure answered nothing: the keepalive loop could re-arm and
+        // then no-op every two seconds for the rest of the session.
+        failure = nil
         let parameters = NWParameters(tls: tlsOptions(), tcp: NWProtocolTCP.Options())
         let endpoint = NWEndpoint.hostPort(host: .init(target.host), port: .init(integerLiteral: target.port))
         let connection = NWConnection(to: endpoint, using: parameters)
@@ -179,15 +184,29 @@ public actor NvstRtspConnection: NvstRtspControlChannel {
 
     public func startKeepAlive(uri: String, headers: [(String, String)], interval: TimeInterval) {
         guard keepAliveTask == nil else { return }
+        keepAliveGeneration &+= 1
+        let generation = keepAliveGeneration
         keepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled, let self else { return }
                 // A non-200 is logged and the cadence continues; only a dead socket ends the loop.
                 _ = await self.sendKeepAlive(uri: uri, headers: headers)
-                if await self.failure != nil { return }
+                if await self.failure != nil { break }
             }
+            await self?.clearFinishedKeepAlive(generation: generation)
         }
+    }
+
+    /// The `keepAliveTask == nil` check above is what makes a second `startKeepAlive` a no-op, so a
+    /// loop that ends on its own — a dead socket, not a cancellation — has to release the slot.
+    /// Left held, a connection that recovered its socket ran on with no keepalive at all.
+    private func clearFinishedKeepAlive(generation: UInt64) {
+        // Only the loop that still owns the slot may release it: a stop-then-start in the meantime
+        // has already installed a newer task, and clearing that one would let a third loop start
+        // alongside it.
+        guard generation == keepAliveGeneration else { return }
+        keepAliveTask = nil
     }
 
     public func stopKeepAlive() {

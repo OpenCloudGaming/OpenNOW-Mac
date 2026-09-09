@@ -801,6 +801,9 @@ extension NvstBifrostFreeTransport {
 
     /// STUN-only ICE keepalive on the bundle socket, used when the real bundle cannot come up.
     func startBundleProbe(handoff: NVSTVideoHandoff) {
+        // The reserved socket is handed out once, so a second call would only ever build a probe
+        // with no descriptor — but the guard says so rather than relying on that.
+        guard bundleProbe == nil else { return }
         guard let descriptor = reserver?.takeBundleDescriptor(), descriptor >= 0 else {
             logger?("NVST bundle probe skipped: no reserved socket")
             return

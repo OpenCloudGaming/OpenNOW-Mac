@@ -23,6 +23,10 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     private var defaultOutputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var audioDeviceChangeGeneration: UInt64 = 0
     private var audioDeviceUnavailableRetryCount = 0
+    private var microphoneLevelRequestStartedAt = Date.distantPast
+    /// How long a `statistics` request may be outstanding before the next tick assumes its
+    /// completion is never coming.
+    static let statisticsRequestTimeout: TimeInterval = 5
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
 
     @objc(initWithOwner:)
@@ -97,6 +101,10 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     @objc func startAudioDeviceMonitoring() {
         guard !audioMonitoringActive else { return }
         audioMonitoringActive = true
+        // Per session, not per process. This object is built once and survives stop/start, so a
+        // single hotplug storm could spend the whole budget and leave every later session with no
+        // recovery at all — audio staying on a device that had gone away, with one warning.
+        audioDeviceUnavailableRetryCount = 0
         defaultInputDevice = Self.defaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice)
         defaultOutputDevice = Self.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
 
@@ -191,8 +199,15 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
                 self.owner?.handleMicrophoneLevel(0)
                 return
             }
-            guard !self.microphoneLevelRequestInFlight else { return }
+            // libwebrtc drops a pending `statistics` completion when the peer connection closes, so
+            // a latch with no expiry could be left set for good — the meter then freezes on its last
+            // value with nothing reporting why.
+            if self.microphoneLevelRequestInFlight {
+                guard Date().timeIntervalSince(self.microphoneLevelRequestStartedAt) >= Self.statisticsRequestTimeout else { return }
+                WebRTCMediaTelemetry.capture("webrtc.native.audio.microphone_level.stalled", level: .warning, message: "Microphone level request never completed; retrying.")
+            }
             self.microphoneLevelRequestInFlight = true
+            self.microphoneLevelRequestStartedAt = Date()
             peerConnection.statistics { [weak self] report in
                 guard let self else { return }
                 self.microphoneLevelRequestInFlight = false

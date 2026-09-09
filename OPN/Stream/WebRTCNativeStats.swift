@@ -9,6 +9,9 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
     private var requestInFlight = false
     private var requestLock = os_unfair_lock_s()
     private var lastRequestMs: UInt64 = 0
+    private var requestStartedMs: UInt64 = 0
+    /// How long a `statistics` request may be outstanding before the next tick stops waiting on it.
+    static let requestTimeoutMs: UInt64 = 5_000
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
     private var cachedParsedResult: [String: Any]? = nil
 
@@ -25,8 +28,15 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         let now = Self.monotonicMs()
         guard lastRequestMs == 0 || now - lastRequestMs >= 900 else { return }
         os_unfair_lock_lock(&requestLock)
-        guard !requestInFlight else { os_unfair_lock_unlock(&requestLock); return }
+        // libwebrtc drops a pending completion when the peer connection closes, so the latch can
+        // outlive the request that set it — and then every later tick returns here and the HUD sits
+        // frozen on its last numbers with nothing saying why. A stale one is retried, not trusted.
+        if requestInFlight, now &- requestStartedMs < Self.requestTimeoutMs {
+            os_unfair_lock_unlock(&requestLock)
+            return
+        }
         requestInFlight = true
+        requestStartedMs = now
         os_unfair_lock_unlock(&requestLock)
         lastRequestMs = now
         peerConnection.statistics { [weak self] report in
@@ -63,7 +73,9 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
     @objc func stopPolling() {
         timer?.cancel()
         timer = nil
+        os_unfair_lock_lock(&requestLock)
         requestInFlight = false
+        os_unfair_lock_unlock(&requestLock)
     }
 
     @objc(applyRuntimeBitrateLimitMbps:reason:sessionImpl:)

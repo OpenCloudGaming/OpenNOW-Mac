@@ -50,6 +50,12 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     private var connected = false
     private var punchStartedAt: Date?
     private var punchCount = 0
+    private var isStopped = false
+    private var isStopRequested: Bool {
+        sendLock.lock()
+        defer { sendLock.unlock() }
+        return isStopped
+    }
     private let adoptedDescriptor: Int32
     private let counterLock = NSLock()
     private var counters = NvstInboundCounters()
@@ -188,6 +194,12 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
 
     public func stop() {
         onDiagnostic?("mjolnir receiver stopping")
+        // The punch handler runs on `queue` and reinstalls `pingTimer` when the burst gives way to
+        // the keepalive; a stop from another thread could nil the slot in between and leave that
+        // replacement running. The flag is what the handler checks before installing anything.
+        sendLock.lock()
+        isStopped = true
+        sendLock.unlock()
         pingTimer?.cancel()
         pingTimer = nil
         reportTimer?.cancel()
@@ -539,7 +551,7 @@ extension NvstMjolnirReceiver {
     }
 
     private func startHolePunch(interval: TimeInterval) {
-        guard let credentials = handoff.iceCredentials else { return }
+        guard let credentials = handoff.iceCredentials, !isStopRequested else { return }
         pingTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(5))
@@ -551,6 +563,7 @@ extension NvstMjolnirReceiver {
     }
 
     private func sendHolePunch(credentials: NVSTHandoffIceCredentials) {
+        guard !isStopRequested else { return }
         punchCount += 1
         // The burst gives way to the keepalive, and the keepalive stops once the relay is up: the
         // official client sends nothing on this socket after ~7 s.

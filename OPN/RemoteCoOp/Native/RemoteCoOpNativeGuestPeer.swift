@@ -62,6 +62,11 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
     public var onSignal: (@Sendable (OPNRemoteCoOpWirePeerSignal) async -> Void)?
     /// Called off the main actor.
     public var onStats: (@Sendable (OPNRemoteCoOpGuestStats) -> Void)?
+    /// The peer connection has gone and is not coming back. Without this the guest answered the
+    /// host's heartbeats but never noticed they had stopped: a host that slept or lost its network
+    /// without closing the socket left the guest sitting on a frozen frame, still reading as
+    /// connected, with nothing to retry.
+    public var onConnectionFailed: (@Sendable (String) -> Void)?
 
     private let stateLock = NSLock()
     private var factory: RTCPeerConnectionFactory?
@@ -69,6 +74,8 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
     private var inputChannels: [RTCDataChannel] = []
     private var deliveredVideoTrackIDs: Set<String> = []
     private var isClosed = false
+    private var isConnectionFailureReported = false
+    private var disconnectedGraceTask: Task<Void, Never>?
     private var statsTask: Task<Void, Never>?
     private var previousInboundStats: (jitterBufferDelay: Double, jitterBufferEmitted: Int, framesDecoded: Int, timestamp: Date)?
     private var previousDecode: (decodeTime: Double, framesDecoded: Int)?
@@ -158,6 +165,8 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
         stateLock.withLock {
             statsTask?.cancel()
             statsTask = nil
+            disconnectedGraceTask?.cancel()
+            disconnectedGraceTask = nil
         }
         for channel in state.1 {
             channel.delegate = nil
@@ -206,7 +215,10 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
 
     public func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
 
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+        guard newState == .failed else { return }
+        reportConnectionFailure("ICE connection failed")
+    }
 
     public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
 
@@ -227,7 +239,63 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
         if shouldBind { dataChannel.delegate = self }
     }
 
-    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
+        switch newState {
+        case .failed:
+            reportConnectionFailure("The connection to the host failed")
+        case .disconnected:
+            // ICE recovers from `.disconnected` on its own often enough that reporting immediately
+            // would end sessions a brief network blip would have survived; it only counts as gone if
+            // it is still gone when the grace runs out.
+            scheduleDisconnectedGraceCheck()
+        case .connected:
+            stateLock.withLock {
+                disconnectedGraceTask?.cancel()
+                disconnectedGraceTask = nil
+            }
+        default:
+            break
+        }
+    }
+
+    private func scheduleDisconnectedGraceCheck() {
+        let task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.disconnectedGraceSeconds))
+            guard !Task.isCancelled, let self else { return }
+            let stillDown = self.peerConnectionIsDown()
+            guard stillDown else { return }
+            self.reportConnectionFailure("The connection to the host was lost")
+        }
+        let previous = stateLock.withLock { () -> Task<Void, Never>? in
+            guard !isClosed else { return task }
+            let previous = disconnectedGraceTask
+            disconnectedGraceTask = task
+            return previous
+        }
+        previous?.cancel()
+        if stateLock.withLock({ isClosed }) { task.cancel() }
+    }
+
+    private func peerConnectionIsDown() -> Bool {
+        let connection = stateLock.withLock { () -> RTCPeerConnection? in
+            isClosed ? nil : peerConnection
+        }
+        guard let connection else { return false }
+        return connection.connectionState == .disconnected || connection.connectionState == .failed
+    }
+
+    private func reportConnectionFailure(_ reason: String) {
+        let shouldReport = stateLock.withLock { () -> Bool in
+            guard !isClosed, !isConnectionFailureReported else { return false }
+            isConnectionFailureReported = true
+            return true
+        }
+        guard shouldReport else { return }
+        OpenNOWLog.warning(.stream, "Remote Co-Op guest peer lost its connection: \(reason)")
+        onConnectionFailed?(reason)
+    }
+
+    static let disconnectedGraceSeconds = 15.0
 
     // MARK: - RTCDataChannelDelegate
 
