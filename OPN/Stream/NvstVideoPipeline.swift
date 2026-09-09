@@ -558,7 +558,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
             overrunsSinceFeedbackLog += 1
             worstOverrunMicroseconds = max(worstOverrunMicroseconds, measuredFrameTimeMicroseconds)
         }
-        let shouldLog = lastFeedbackLogAt == nil || now.timeIntervalSince(lastFeedbackLogAt!) >= 1.0
+        let shouldLog = lastFeedbackLogAt.map { now.timeIntervalSince($0) >= 1.0 } ?? true
         let overruns = overrunsSinceFeedbackLog
         let worstOverrun = worstOverrunMicroseconds
         if shouldLog {

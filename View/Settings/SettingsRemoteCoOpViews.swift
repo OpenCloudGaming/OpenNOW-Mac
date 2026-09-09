@@ -201,7 +201,7 @@ struct RemoteCoOpSettingsPage: View {
         }
     }
 
-    private static let ablyDashboardURL = URL(string: "https://ably.com/accounts")!
+    private static let ablyDashboardURL: URL = URL(string: "https://ably.com/accounts") ?? URL(fileURLWithPath: "/")
 
     private var hostedSignalingSummary: String {
         guard viewModel.remoteCoOpAblyKey.isUsable else { return "Off - guests must reach this Mac" }

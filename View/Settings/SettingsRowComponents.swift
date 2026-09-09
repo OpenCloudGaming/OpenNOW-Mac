@@ -474,7 +474,12 @@ struct SettingsFlowLayout: Layout {
         // an .infinity proposal would otherwise propagate NaN into the layout graph
         // and livelock the main thread.
         let proposedWidth = proposal.width
-        let width: CGFloat = (proposedWidth?.isFinite == true && proposedWidth! > 0) ? proposedWidth! : 320
+        let width: CGFloat
+        if let candidateWidth = proposedWidth, candidateWidth.isFinite, candidateWidth > 0 {
+            width = candidateWidth
+        } else {
+            width = 320
+        }
         var size = CGSize(width: width, height: 0)
         var lineWidth: CGFloat = 0
         var lineHeight: CGFloat = 0

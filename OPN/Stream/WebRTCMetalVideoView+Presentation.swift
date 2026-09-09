@@ -13,7 +13,7 @@ import QuartzCore
 import WebRTC
 
 extension CGColorSpace {
-    nonisolated(unsafe) static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 }
 
 /// How decoded frames meet the display.

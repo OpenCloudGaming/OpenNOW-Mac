@@ -30,7 +30,12 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
         for controller in nativeControllers {
             let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
             let charging = controller.battery?.batteryState == .charging
-            let name = controller.vendorName?.trimmingCharacters(in: .whitespaces).isEmpty == false ? controller.vendorName! : "Controller"
+            let name: String
+            if let vendorName = controller.vendorName, !vendorName.trimmingCharacters(in: .whitespaces).isEmpty {
+                name = vendorName
+            } else {
+                name = "Controller"
+            }
             batteries.append(ControllerBatteryInfo(id: "native-\(ObjectIdentifier(controller).hashValue)", label: "", level: percent, charging: charging, name: name))
         }
         return batteries.enumerated().map { index, info in

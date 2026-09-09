@@ -96,7 +96,7 @@ extension OPNSentry {
         }
     }
 
-    nonisolated(unsafe) static let environmentFlagCache = EnvironmentFlagCache()
+    static let environmentFlagCache = EnvironmentFlagCache()
 
     static func environmentFlagDisabled(_ name: String) -> Bool {
         guard let value = environmentValue(name) else { return false }
@@ -399,7 +399,7 @@ extension OPNSentry {
 
     /// Compiled once. `replacingOccurrences(options: .regularExpression)` recompiles the pattern on
     /// every call, and these run on every log line the app writes.
-    private nonisolated(unsafe) static let redactionRules: [(expression: NSRegularExpression, template: String)] = {
+    private static let redactionRules: [(expression: NSRegularExpression, template: String)] = {
         let patterns: [(String, String)] = [
             // Credentials passed as query parameters — `id_token_hint` on the OIDC logout URL is the
             // one that actually reaches here, via OPNNetworkLog's request summary.
@@ -624,7 +624,7 @@ extension OPNSentry {
 
     /// Compiled once, like `redactionRules`. These run over the entire diagnostics log — megabytes
     /// — so recompiling each pattern per upload was the expensive half of preparing one.
-    private nonisolated(unsafe) static let uploadRedactionRules: [(expression: NSRegularExpression, template: String)] = {
+    private static let uploadRedactionRules: [(expression: NSRegularExpression, template: String)] = {
         let patterns: [(String, String)] = [
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"\b[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){2,7}\b"#, "[redacted-ip]"),
