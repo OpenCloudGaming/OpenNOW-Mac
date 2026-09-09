@@ -260,11 +260,11 @@ struct GameDetailPanel: View {
             viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
             return
         }
-        if selectedPlatformHasAccess(game) || selectedVariant == nil {
-            viewModel.launchSelectedGame()
-        } else {
+        guard selectedPlatformHasAccess(game) || selectedVariant == nil else {
             viewModel.handleUnownedSelectedVariantPrimaryAction()
+            return
         }
+        viewModel.launchSelectedGame()
     }
 
     func selectedVariantIsOwned(_ game: OPNCatalogGameObject) -> Bool {

@@ -46,11 +46,11 @@ public struct SteamControllerGripCombo: Codable, Equatable, Sendable {
     public mutating func toggle(_ element: SteamControllerGripComboElement) {
         switch element {
         case .button(let button):
-            if buttons.contains(button) {
-                buttons.remove(button)
-            } else {
+            guard buttons.contains(button) else {
                 buttons.formUnion(button)
+                return
             }
+            buttons.remove(button)
         case .leftTrigger:
             leftTrigger.toggle()
         case .rightTrigger:

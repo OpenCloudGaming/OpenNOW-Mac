@@ -210,11 +210,11 @@ final class LoginSession {
         legacyClientToken = ""
         legacyIdToken = ""
         legacyRefreshToken = ""
-        if tokens.isEmpty {
+        guard !tokens.isEmpty else {
             GFNTokenStore.delete(forIdentity: keychainIdentity)
-        } else {
-            GFNTokenStore.save(tokens, forIdentity: keychainIdentity)
+            return
         }
+        GFNTokenStore.save(tokens, forIdentity: keychainIdentity)
     }
 }
 

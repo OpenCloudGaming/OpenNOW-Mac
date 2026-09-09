@@ -143,11 +143,11 @@ struct LoginFormView: View {
 
     private func openSignIn() {
         viewModel.rememberSession = true
-        if viewModel.acceptedTerms {
-            isShowingSignIn = true
-        } else {
+        guard viewModel.acceptedTerms else {
             viewModel.presentTermsOfUseIfNeeded()
+            return
         }
+        isShowingSignIn = true
     }
 }
 

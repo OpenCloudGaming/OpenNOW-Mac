@@ -73,12 +73,12 @@ enum OpenNOWSessionReadyAction {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         }
-        if app.isActive {
-            OpenNOWLog.info(.app, "Session ready: brought OpenNOW to the front")
-        } else {
+        guard app.isActive else {
             app.requestUserAttention(.criticalRequest)
             OpenNOWLog.info(.app, "Session ready: activation refused by the system, bouncing the Dock icon instead")
+            return
         }
+        OpenNOWLog.info(.app, "Session ready: brought OpenNOW to the front")
     }
 
     private static func postNotification(title: String) {

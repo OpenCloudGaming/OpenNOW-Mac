@@ -128,13 +128,15 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     }
 
     func primaryAction() {
-        if game.isLaunchPatching {
+        guard !game.isLaunchPatching else {
             onQueueForPatching()
-        } else if game.cardPrimaryActionIsLaunchable {
-            onPlay()
-        } else {
-            onMarkOwned()
+            return
         }
+        guard !game.cardPrimaryActionIsLaunchable else {
+            onPlay()
+            return
+        }
+        onMarkOwned()
     }
 
     private var primaryAccessibilityLabel: String {

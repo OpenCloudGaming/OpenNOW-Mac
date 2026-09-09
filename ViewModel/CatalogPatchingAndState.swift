@@ -220,14 +220,13 @@ extension CatalogViewModel {
         result.reserveCapacity(games.count)
         for game in games {
             let key = titleGroupingKey(for: game)
-            if let existingIndex = indexByKey[key] {
-                if preferredSKU(game, over: result[existingIndex]) {
-                    result[existingIndex] = game
-                }
-            } else {
+            guard let existingIndex = indexByKey[key] else {
                 indexByKey[key] = result.count
                 result.append(game)
+                continue
             }
+            guard preferredSKU(game, over: result[existingIndex]) else { continue }
+            result[existingIndex] = game
         }
         return result
     }

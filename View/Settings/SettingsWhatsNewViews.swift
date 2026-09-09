@@ -147,11 +147,11 @@ struct WhatsNewCard: View {
     }
 
     private func toggle(_ id: String) {
-        if expandedVersionIDs.contains(id) {
+        guard !expandedVersionIDs.contains(id) else {
             expandedVersionIDs.remove(id)
-        } else {
-            expandedVersionIDs.insert(id)
+            return
         }
+        expandedVersionIDs.insert(id)
     }
 
     /// A release page URL is `…/releases/tag/v0.2.0`; the index is everything up to `/releases`.
