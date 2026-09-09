@@ -84,6 +84,9 @@ struct WhatsNewCard: View {
                     if entry.version == SettingsAppMetadata.version {
                         WhatsNewBadge(title: "INSTALLED", tone: .neutral, uiScale: uiScale)
                     }
+                    if entry.summary.isPrerelease {
+                        WhatsNewBadge(title: "BETA", tone: .neutral, uiScale: uiScale)
+                    }
                     Spacer(minLength: 8 * uiScale)
                     if let publishedAt = entry.publishedAt {
                         Text(OpenNOWUpdateFormat.releaseDate(publishedAt))

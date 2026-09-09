@@ -1,11 +1,30 @@
 import Darwin
 import Foundation
 
+enum OpenNOWUpdateChannel: String {
+    case stable
+    case beta
+}
+
 enum OpenNOWUpdatePreferences {
     static let automaticUpdateChecksEnabledKey = "OpenNOWAutomaticUpdateChecksEnabled"
     static let defaultAutomaticUpdateChecksEnabled = true
+    static let updateChannelKey = "OpenNOWUpdateChannel"
+    static let defaultUpdateChannel = OpenNOWUpdateChannel.stable
 
     private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
+
+    static var updateChannel: OpenNOWUpdateChannel {
+        get {
+            guard let rawValue = OPNAppPreferenceStorage.standard.string(forKey: updateChannelKey) else {
+                return defaultUpdateChannel
+            }
+            return OpenNOWUpdateChannel(rawValue: rawValue) ?? defaultUpdateChannel
+        }
+        set {
+            OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: updateChannelKey)
+        }
+    }
 
     static var automaticUpdateChecksEnabled: Bool {
         get {

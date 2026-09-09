@@ -146,7 +146,8 @@ extension OpenNOWUpdatePresentation {
                 tagName: "v\(version)",
                 releaseNotes: sampleReleaseNotesBody,
                 releaseURL: "https://github.com/OpenCloudGaming/OpenNOW-Mac/releases/tag/v\(version)",
-                publishedAt: Date()
+                publishedAt: Date(),
+                isPrerelease: false
             ),
             assetName: "OpenNOW-\(version)-macOS.zip",
             assetDownloadURL: "https://github.com/OpenCloudGaming/OpenNOW-Mac/releases/download/v\(version)/OpenNOW-\(version)-macOS.zip",

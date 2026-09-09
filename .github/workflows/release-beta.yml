@@ -1,0 +1,86 @@
+name: Release Beta
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: write
+
+jobs:
+  cut-beta:
+    name: Cut Beta Pre-release
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute next beta tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # release-please keeps a standing PR on main whose title names the next version it would
+          # cut (e.g. "chore(main): release 0.8.0") — reuse that computed version rather than
+          # re-deriving a semver bump from Conventional Commits ourselves.
+          PR_TITLE=$(gh pr list --state open --json headRefName,title \
+            --jq '[.[] | select(.headRefName | startswith("release-please--branches--main"))][0].title // empty')
+          if [ -z "${PR_TITLE}" ]; then
+            echo "::error::No pending release-please PR found on main — there is nothing new to cut a beta from. Land a feat/fix commit on main first."
+            exit 1
+          fi
+          BASE_VERSION=$(echo "${PR_TITLE}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -1)
+          if [ -z "${BASE_VERSION}" ]; then
+            echo "::error::Could not parse a version out of release-please PR title: ${PR_TITLE}"
+            exit 1
+          fi
+          EXISTING=$(git tag --list "v${BASE_VERSION}-beta.*" | sed -E 's/.*-beta\.([0-9]+)$/\1/' | sort -n | tail -1)
+          NEXT_N=$(( ${EXISTING:-0} + 1 ))
+          TAG="v${BASE_VERSION}-beta.${NEXT_N}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Next beta tag: ${TAG}"
+        shell: bash
+
+      - name: Create beta tag and GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag "${TAG}"
+          git push origin "${TAG}"
+          gh release create "${TAG}" --prerelease --generate-notes --title "${TAG}"
+        shell: bash
+
+      - name: Trigger build and sign workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          echo "Beta release ${TAG} created — triggering release.yml..."
+          sleep 5
+          gh workflow run release.yml --ref "${TAG}"
+          sleep 5
+          RUN_ID=$(gh run list --workflow=release.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+          echo "Release workflow started: run ${RUN_ID}"
+          echo "View: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+        shell: bash
+
+      - name: Summary
+        run: |
+          {
+            echo "### Beta Release Created"
+            echo ""
+            echo "- **Tag:** \`${{ steps.version.outputs.tag }}\`"
+            echo "- **Release URL:** ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag }}"
+            echo ""
+            echo "The [Release workflow](../release.yml) has been triggered to build, sign, and notarize."
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash

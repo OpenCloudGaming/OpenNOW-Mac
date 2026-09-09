@@ -7,6 +7,7 @@ struct AboutSettingsPage: View {
     let uiScale: CGFloat
     @State private var copiedKey = ""
     @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @AppStorage(OpenNOWUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OpenNOWUpdatePreferences.defaultUpdateChannel.rawValue
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
@@ -57,6 +58,17 @@ struct AboutSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled, uiScale: uiScale) { enabled in
                     OpenNOWAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(
+                    title: "Update Channel",
+                    subtitle: "Beta builds come from GitHub pre-releases and may be less stable.",
+                    options: ["Stable", "Beta"],
+                    selectedIndex: updateChannel == .beta ? 1 : 0,
+                    uiScale: uiScale
+                ) { index in
+                    updateChannelRawValue = (index == 1 ? OpenNOWUpdateChannel.beta : .stable).rawValue
+                    OpenNOWAppDelegate.requestApplicationUpdateCheck()
                 }
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 10 * uiScale) {
@@ -123,6 +135,10 @@ struct AboutSettingsPage: View {
 
     private var operatingSystemVersion: String {
         ProcessInfo.processInfo.operatingSystemVersionString
+    }
+
+    private var updateChannel: OpenNOWUpdateChannel {
+        OpenNOWUpdateChannel(rawValue: updateChannelRawValue) ?? OpenNOWUpdatePreferences.defaultUpdateChannel
     }
 
     private var automaticUpdateChecksSubtitle: String {

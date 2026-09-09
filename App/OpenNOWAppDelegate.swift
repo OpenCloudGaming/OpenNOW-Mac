@@ -185,7 +185,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         updateCheckTask = Task { @MainActor in
             defer { updateCheckTask = nil }
             do {
-                let release = try await githubUpdater.checkForUpdate()
+                let release = try await githubUpdater.checkForUpdate(channel: OpenNOWUpdatePreferences.updateChannel)
                 guard let release else {
                     if showingCurrentStatus {
                         OpenNOWUpdatePresentation.shared.present(.upToDate(version: githubUpdater.currentVersion))

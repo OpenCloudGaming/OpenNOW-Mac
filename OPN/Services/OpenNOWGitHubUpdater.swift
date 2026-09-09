@@ -10,6 +10,7 @@ struct OpenNOWReleaseSummary: Sendable, Equatable, Identifiable {
     let releaseNotes: String
     let releaseURL: String
     let publishedAt: Date?
+    let isPrerelease: Bool
 
     var id: String { tagName.isEmpty ? version : tagName }
 }
@@ -82,15 +83,30 @@ actor OpenNOWGitHubUpdater {
         session = URLSession(configuration: configuration)
     }
 
-    func checkForUpdate() async throws -> OpenNOWGitHubRelease? {
-        let data = try await fetchReleaseData(path: "releases/latest", operation: "updater.releaseMetadata")
-        let decoded = try JSONSerialization.jsonObject(with: data)
-        guard let json = decoded as? [String: Any] else {
-            throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
+    /// Stable only ever sees `releases/latest` (GitHub excludes prereleases and drafts from it by
+    /// design). Beta sees the newest release regardless of prerelease status, so a beta subscriber
+    /// still gets a plain stable release the moment it ships, rather than waiting for the next beta.
+    func checkForUpdate(channel: OpenNOWUpdateChannel = .stable) async throws -> OpenNOWGitHubRelease? {
+        let json: [String: Any]
+        switch channel {
+        case .stable:
+            let data = try await fetchReleaseData(path: "releases/latest", operation: "updater.releaseMetadata")
+            let decoded = try JSONSerialization.jsonObject(with: data)
+            guard let latest = decoded as? [String: Any] else {
+                throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
+            }
+            json = latest
+        case .beta:
+            let data = try await fetchReleaseData(path: "releases?per_page=1", operation: "updater.releaseMetadata")
+            let decoded = try JSONSerialization.jsonObject(with: data)
+            guard let entries = decoded as? [[String: Any]], let newest = entries.first(where: { ($0["draft"] as? Bool) != true }) else {
+                throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
+            }
+            json = newest
         }
 
         let release = try release(from: json)
-        logInfo("GitHub release metadata received latestVersion=\(release.version) currentVersion=\(currentVersion)")
+        logInfo("GitHub release metadata received latestVersion=\(release.version) currentVersion=\(currentVersion) channel=\(channel.rawValue)")
         return compareVersion(release.version, to: currentVersion) > 0 ? release : nil
     }
 
@@ -273,7 +289,8 @@ actor OpenNOWGitHubUpdater {
             tagName: tagName,
             releaseNotes: json["body"] as? String ?? "",
             releaseURL: json["html_url"] as? String ?? "",
-            publishedAt: publishedText.flatMap { releaseDateFormatter.date(from: $0) }
+            publishedAt: publishedText.flatMap { releaseDateFormatter.date(from: $0) },
+            isPrerelease: json["prerelease"] as? Bool ?? false
         )
     }
 
