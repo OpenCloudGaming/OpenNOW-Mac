@@ -246,7 +246,7 @@ extension CatalogViewModel {
         favoriteGameIdentities = identities
     }
 
-    func loadAccountAndStores() {
+    func loadAccount() {
         configureCatalogService()
         gameService.fetchUserAccount { [weak self] success, account, error in
             guard let self else { return }
@@ -257,14 +257,6 @@ extension CatalogViewModel {
                 self.accountStores = []
                 self.accountSubscriptions = []
             }
-        }
-        gameService.fetchStoreDefinitions { [weak self] success, definitions, _ in
-            guard let self else { return }
-            if success { self.storeDefinitions = definitions.map(CatalogAccountParsing.parseStoreDefinition) }
-        }
-        gameService.fetchSubscriptionDefinitions { [weak self] success, definitions, _ in
-            guard let self else { return }
-            if success { self.subscriptionDefinitions = definitions.map(CatalogAccountParsing.parseSubscriptionDefinition) }
         }
         let userId = session.userId.isEmpty ? account.userId : session.userId
         guard !userId.isEmpty else {
@@ -283,6 +275,18 @@ extension CatalogViewModel {
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.subscriptionStatus = .unavailable
             }
+        }
+    }
+
+    func loadStores() {
+        configureCatalogService()
+        gameService.fetchStoreDefinitions { [weak self] success, definitions, _ in
+            guard let self else { return }
+            if success { self.storeDefinitions = definitions.map(CatalogAccountParsing.parseStoreDefinition) }
+        }
+        gameService.fetchSubscriptionDefinitions { [weak self] success, definitions, _ in
+            guard let self else { return }
+            if success { self.subscriptionDefinitions = definitions.map(CatalogAccountParsing.parseSubscriptionDefinition) }
         }
     }
 }

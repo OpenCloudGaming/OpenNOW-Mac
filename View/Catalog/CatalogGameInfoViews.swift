@@ -255,7 +255,7 @@ struct CatalogGameInfoOverlay: View {
                             CatalogFeatureAvailabilityRow(
                                 title: technology,
                                 message: GameDetailPresentation.featureMessage(technology),
-                                locked: GameDetailPresentation.featureIsLocked(technology)
+                                isLocked: GameDetailPresentation.featureIsLocked(technology)
                             )
                         }
                     }

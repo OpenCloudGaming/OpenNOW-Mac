@@ -38,7 +38,7 @@ public struct OPNRemoteCoOpNativeDiscoveredHost: Identifiable, Equatable, @unche
     public init?(address: String) {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard let parsed = Self.parseHostAndPort(trimmed) else { return nil }
+        guard let parsed = Self.parseAddress(trimmed) else { return nil }
         guard let port = NWEndpoint.Port(rawValue: parsed.port) else { return nil }
         endpoint = .hostPort(host: NWEndpoint.Host(parsed.host), port: port)
         name = parsed.port == OPNRemoteCoOpNativeGuestServer.defaultPort ? parsed.host : "\(parsed.host):\(parsed.port)"
@@ -47,7 +47,7 @@ public struct OPNRemoteCoOpNativeDiscoveredHost: Identifiable, Equatable, @unche
 
     /// Splits `host`, `host:port`, `[v6]` and `[v6]:port`. Bracket form is required for a port on an
     /// IPv6 literal, because a bare `fd00::1:32189` is ambiguous - the last group could be either.
-    static func parseHostAndPort(_ address: String) -> (host: String, port: UInt16)? {
+    static func parseAddress(_ address: String) -> (host: String, port: UInt16)? {
         if address.hasPrefix("[") {
             guard let closingIndex = address.firstIndex(of: "]") else { return nil }
             let host = String(address[address.index(after: address.startIndex)..<closingIndex])

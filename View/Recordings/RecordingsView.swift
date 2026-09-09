@@ -99,7 +99,10 @@ struct RecordingsView: View {
                 RecordingEmptyState(kind: .library, action: { model.reload(showMessage: true) }, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visibleRecordings.isEmpty {
-                RecordingEmptyState(kind: .search, action: model.clearSearchAndFilters, uiScale: uiScale)
+                RecordingEmptyState(kind: .search, action: {
+                    model.clearSearch()
+                    model.clearFilters()
+                }, uiScale: uiScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
@@ -280,7 +283,7 @@ struct RecordingsView: View {
         } else {
             RecordingInspector(
                 recording: recording,
-                copiedPath: model.copiedPathRecordingID == recording.id,
+                isPathCopied: model.copiedPathRecordingID == recording.id,
                 message: model.message,
                 uiScale: uiScale,
                 onRestart: { model.restart(recording) },
@@ -410,12 +413,12 @@ private struct RecordingRow: View {
                 }
 
                 HStack(spacing: 7 * uiScale) {
-                    RecordingPill(text: RecordingFormat.durationText(recording.durationSeconds), active: isSelected, uiScale: uiScale)
-                    RecordingPill(text: RecordingFormat.qualityText(recording), active: false, uiScale: uiScale)
-                    RecordingPill(text: RecordingFormat.compactFileSizeText(recording.fileSizeBytes), active: false, uiScale: uiScale)
+                    RecordingPill(text: RecordingFormat.durationText(recording.durationSeconds), isActive: isSelected, uiScale: uiScale)
+                    RecordingPill(text: RecordingFormat.qualityText(recording), isActive: false, uiScale: uiScale)
+                    RecordingPill(text: RecordingFormat.compactFileSizeText(recording.fileSizeBytes), isActive: false, uiScale: uiScale)
                     Spacer(minLength: 0)
                     if recording.enhancedVideo {
-                        RecordingPill(text: "RTX", active: true, uiScale: uiScale)
+                        RecordingPill(text: "RTX", isActive: true, uiScale: uiScale)
                     }
                 }
             }
@@ -550,17 +553,17 @@ private enum RecordingThumbnailLoader {
 
 private struct RecordingPill: View {
     let text: String
-    let active: Bool
+    let isActive: Bool
     let uiScale: CGFloat
 
     var body: some View {
         Text(text)
             .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.62))
+            .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(0.62))
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.065))
-            .overlay { Rectangle().stroke(active ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
+            .background(isActive ? OpenNOWDesign.accent : Color.white.opacity(0.065))
+            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
     }
 }

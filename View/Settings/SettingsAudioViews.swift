@@ -34,7 +34,7 @@ struct AudioSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsSliderRow(title: "Microphone Volume", valueText: percentText(viewModel.streamProfile.microphoneVolume), value: viewModel.streamProfile.microphoneVolume, range: 0...1, step: 0.01, uiScale: uiScale, action: viewModel.setMicrophoneVolume)
             SettingsDivider(uiScale: uiScale)
-            SettingsMicrophoneTestRow(active: viewModel.microphoneTestActive, level: viewModel.microphoneTestLevel, message: viewModel.microphoneTestMessage, uiScale: uiScale, action: viewModel.toggleMicrophoneTest)
+            SettingsMicrophoneTestRow(isActive: viewModel.microphoneTestActive, level: viewModel.microphoneTestLevel, message: viewModel.microphoneTestMessage, uiScale: uiScale, action: viewModel.toggleMicrophoneTest)
         }
         .settingsSection("microphone")
     }

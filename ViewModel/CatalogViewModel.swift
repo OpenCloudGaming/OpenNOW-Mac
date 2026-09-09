@@ -568,7 +568,8 @@ final class CatalogViewModel {
             guard let self, !Task.isCancelled else { return }
             self.loadLibrary()
             self.loadFavorites()
-            self.loadAccountAndStores()
+            self.loadAccount()
+            self.loadStores()
         }
         // Unlike the rest of this burst, the active-session lookup goes to the streaming host
         // rather than the catalog control plane, so it contends with nothing here. Waiting for the

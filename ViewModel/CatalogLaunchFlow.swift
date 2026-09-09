@@ -212,7 +212,7 @@ extension CatalogViewModel {
         startPreparedStream(configuration, message: "Resuming \(configuration.title)...")
     }
 
-    func endActiveSessionAndLaunchSelectedGame() {
+    func switchToSelectedGame() {
         guard let activeLaunchSession, let replacement = activeSessionReplacementConfiguration else { return }
         launchFlowState = .stoppingSession
         launchFlowMessage = "Ending the current GeForce NOW session..."

@@ -10,7 +10,7 @@ import SwiftUI
 /// the picture it described and left the actions competing with the editor for the bottom edge.
 struct RecordingInspector: View {
     let recording: WebRTCStreamRecording
-    let copiedPath: Bool
+    let isPathCopied: Bool
     let message: String
     let uiScale: CGFloat
     let onRestart: () -> Void
@@ -75,7 +75,7 @@ struct RecordingInspector: View {
             .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
         Button("Reveal", action: onReveal)
             .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-        Button(copiedPath ? "Copied" : "Copy Path", action: onCopyPath)
+        Button(isPathCopied ? "Copied" : "Copy Path", action: onCopyPath)
             .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
         Button("Delete", role: .destructive, action: onDelete)
             .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))

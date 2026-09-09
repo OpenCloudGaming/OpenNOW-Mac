@@ -104,7 +104,7 @@ struct StoreConnectionRow: View {
             Rectangle()
                 .fill(isConnected ? OpenNOWDesign.accent : Color.white.opacity(0.18))
                 .frame(width: 4 * uiScale, height: 46 * uiScale)
-            StoreIcon(displayName: displayName, imageURL: iconURL, connected: isConnected, uiScale: uiScale)
+            StoreIcon(displayName: displayName, imageURL: iconURL, isConnected: isConnected, uiScale: uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(displayName)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
@@ -147,21 +147,21 @@ struct StoreConnectionRow: View {
 struct StoreIcon: View {
     let displayName: String
     let imageURL: String?
-    let connected: Bool
+    let isConnected: Bool
     let uiScale: CGFloat
 
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(connected ? OpenNOWDesign.accent.opacity(0.18) : Color.white.opacity(0.075))
+                .fill(isConnected ? OpenNOWDesign.accent.opacity(0.18) : Color.white.opacity(0.075))
             if let url = resolvedImageURL {
-                StoreRemoteIconImage(url: url, displayName: displayName, connected: connected, uiScale: uiScale)
+                StoreRemoteIconImage(url: url, displayName: displayName, isConnected: isConnected, uiScale: uiScale)
             } else {
-                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
+                StoreLocalIconImage(displayName: displayName, isConnected: isConnected, uiScale: uiScale)
             }
         }
         .frame(width: 42 * uiScale, height: 42 * uiScale)
-        .overlay { Rectangle().stroke(connected ? OpenNOWDesign.accent.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(isConnected ? OpenNOWDesign.accent.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
         .accessibilityHidden(true)
     }
 
@@ -175,7 +175,7 @@ struct StoreRemoteIconImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL
     let displayName: String
-    let connected: Bool
+    let isConnected: Bool
     let uiScale: CGFloat
 
     @State private var image: NSImage?
@@ -188,12 +188,12 @@ struct StoreRemoteIconImage: View {
                     .resizable()
                     .scaledToFit()
                     .padding(5)
-                    .saturation(connected ? 1 : 0.65)
-                    .opacity(connected ? 1 : 0.68)
+                    .saturation(isConnected ? 1 : 0.65)
+                    .opacity(isConnected ? 1 : 0.68)
             } else if hasFailed {
-                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
+                StoreLocalIconImage(displayName: displayName, isConnected: isConnected, uiScale: uiScale)
             } else {
-                StoreLocalIconImage(displayName: displayName, connected: connected, uiScale: uiScale)
+                StoreLocalIconImage(displayName: displayName, isConnected: isConnected, uiScale: uiScale)
                     .opacity(0.42)
             }
         }
@@ -215,18 +215,18 @@ struct StoreRemoteIconImage: View {
 
 struct StoreLocalIconImage: View {
     let displayName: String
-    let connected: Bool
+    let isConnected: Bool
     let uiScale: CGFloat
 
     var body: some View {
         if monogram.isEmpty {
             Image(systemName: "link")
                 .font(.settingsFont(size: 17 * uiScale, weight: .bold))
-                .foregroundStyle(connected ? OpenNOWDesign.accent : .white.opacity(0.56))
+                .foregroundStyle(isConnected ? OpenNOWDesign.accent : .white.opacity(0.56))
         } else {
             Text(monogram)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(connected ? OpenNOWDesign.accent : .white.opacity(0.56))
+                .foregroundStyle(isConnected ? OpenNOWDesign.accent : .white.opacity(0.56))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }

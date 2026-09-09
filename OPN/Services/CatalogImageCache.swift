@@ -203,7 +203,11 @@ actor CatalogImageCache {
             refreshStoredImage(for: url, eTag: stored.eTag, lastModified: stored.lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
             return stored.imageData
         }
-        return await downloadAndStoreImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+        if let downloaded = await downloadImage(for: url, eTag: "", lastModified: "", maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
+            await storeImage(downloaded, for: url)
+            return downloaded.imageData
+        }
+        return nil
     }
 
     nonisolated private func loadStoredImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> StoredImage? {
@@ -264,11 +268,13 @@ actor CatalogImageCache {
     nonisolated private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) {
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            _ = await self.downloadAndStoreImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+            if let downloaded = await self.downloadImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
+                await self.storeImage(downloaded, for: url)
+            }
         }
     }
 
-    nonisolated private func downloadAndStoreImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData? {
+    nonisolated private func downloadImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> (imageData: CatalogCachedImageData, data: Data?, response: HTTPURLResponse)? {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
@@ -285,7 +291,10 @@ actor CatalogImageCache {
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
                 await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
-                return await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)?.imageData
+                if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
+                    return (stored.imageData, nil, httpResponse)
+                }
+                return nil
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
                 await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
@@ -296,14 +305,18 @@ actor CatalogImageCache {
                 return nil
             }
             let imageData = CatalogCachedImageData(sourceData: retainingSourceData ? data : nil, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
-            store(imageData: imageData, sourceData: data, response: httpResponse, for: url)
-            await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
-            return imageData
+            return (imageData, data, httpResponse)
         } catch {
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
             await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)") }
             return nil
         }
+    }
+
+    nonisolated private func storeImage(_ downloaded: (imageData: CatalogCachedImageData, data: Data?, response: HTTPURLResponse), for url: URL) async {
+        guard let data = downloaded.data else { return }
+        store(imageData: downloaded.imageData, sourceData: data, response: downloaded.response, for: url)
+        await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
     }
 
     nonisolated private func hasCachedImage(for url: URL) -> Bool {

@@ -69,7 +69,7 @@ extension RemoteCoOpSettingsPage {
                         Text(route.status)
                             .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                             .tracking(0.6)
-                            .foregroundStyle(route.ready ? OpenNOWDesign.accent : .white.opacity(0.45))
+                            .foregroundStyle(route.isReady ? OpenNOWDesign.accent : .white.opacity(0.45))
                             .fixedSize()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,7 +123,7 @@ extension RemoteCoOpSettingsPage {
     struct ReachRoute {
         let situation: String
         let requirement: String
-        let ready: Bool
+        let isReady: Bool
         let status: String
     }
 
@@ -139,25 +139,25 @@ extension RemoteCoOpSettingsPage {
             ReachRoute(
                 situation: "On your network",
                 requirement: "Nothing to set up. The guest picks this Mac from their list, or opens the invite link.",
-                ready: true,
+                isReady: true,
                 status: "READY"
             ),
             ReachRoute(
                 situation: "Over Tailscale or a VPN",
                 requirement: "The only option that covers both halves at once: the guest reaches this Mac by tailnet address, and Tailscale's own relay carries the traffic when a direct connection fails. Nothing to set up here - the guest installs Tailscale instead.",
-                ready: true,
+                isReady: true,
                 status: "READY"
             ),
             ReachRoute(
                 situation: "Anywhere, in a browser",
                 requirement: anywhereRequirementText(hasTunnel: hasTunnel, hasHostedSignaling: hasHostedSignaling),
-                ready: isReachable,
+                isReady: isReachable,
                 status: isReachable ? "READY" : "NEEDS TUNNEL OR SIGNALING"
             ),
             ReachRoute(
                 situation: "On a school, library or cafe network",
                 requirement: relayRequirementText(hasRelay: hasRelay),
-                ready: hasRelay && isReachable && relayTestOutcome != false,
+                isReady: hasRelay && isReachable && relayTestOutcome != false,
                 status: relayStatusText(hasRelay: hasRelay, isReachable: isReachable)
             ),
         ]

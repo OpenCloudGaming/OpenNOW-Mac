@@ -262,8 +262,11 @@ final class RecordingsViewModel: ObservableObject {
 
     // MARK: - Search, filters, delete
 
-    func clearSearchAndFilters() {
+    func clearSearch() {
         searchText = ""
+    }
+
+    func clearFilters() {
         activeFilters.removeAll()
     }
 

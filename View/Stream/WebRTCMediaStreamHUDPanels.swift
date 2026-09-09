@@ -60,8 +60,8 @@ extension WebRTCMediaStreamSurface {
         }
     }
 
-    func hudMetricCard(title: String, value: String, positive: Bool) -> some View {
-        StreamHUDMetricCard(title: title, value: value, positive: positive)
+    func hudMetricCard(title: String, value: String, isPositive: Bool) -> some View {
+        StreamHUDMetricCard(title: title, value: value, isPositive: isPositive)
     }
 
     var launchOverlay: some View {

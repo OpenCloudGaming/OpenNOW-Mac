@@ -60,7 +60,7 @@ struct VendorActiveSessionCard: View {
                         Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
                             .buttonStyle(VendorLaunchSecondaryButtonStyle())
                     }
-                    Button("END AND LAUNCH") { viewModel.endActiveSessionAndLaunchSelectedGame() }
+                    Button("END AND LAUNCH") { viewModel.switchToSelectedGame() }
                         .buttonStyle(VendorLaunchPrimaryButtonStyle())
                 }
             }

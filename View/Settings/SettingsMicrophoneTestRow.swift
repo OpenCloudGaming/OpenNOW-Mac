@@ -5,7 +5,7 @@ import SwiftUI
 /// auto-stops after half a minute), so the row only reports state and toggles it. Lives in its
 /// own file because `SettingsRowComponents.swift` sits at its length budget.
 struct SettingsMicrophoneTestRow: View {
-    let active: Bool
+    let isActive: Bool
     let level: Double
     let message: String?
     let uiScale: CGFloat
@@ -26,8 +26,8 @@ struct SettingsMicrophoneTestRow: View {
             levelMeter
                 .frame(maxWidth: .infinity)
             SettingsActionButton(
-                title: active ? "STOP TEST" : "TEST MICROPHONE",
-                tone: active ? .secondary : .primary,
+                title: isActive ? "STOP TEST" : "TEST MICROPHONE",
+                tone: isActive ? .secondary : .primary,
                 minimumWidth: 150 * uiScale,
                 uiScale: uiScale,
                 action: action)
@@ -42,7 +42,7 @@ struct SettingsMicrophoneTestRow: View {
                 Rectangle()
                     .fill(Color.white.opacity(0.07))
                 Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(active ? 0.9 : 0.25))
+                    .fill(OpenNOWDesign.accent.opacity(isActive ? 0.9 : 0.25))
                     .frame(width: min(max(level, 0), 1) * proxy.size.width)
             }
         }

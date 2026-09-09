@@ -3,12 +3,12 @@ import SwiftUI
 struct StreamHUDMetricCard: View {
     let title: String
     let value: String
-    let positive: Bool
+    let isPositive: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
+                Circle().fill(isPositive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
                 Text(title.uppercased())
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
@@ -35,14 +35,14 @@ struct StreamHUDControllerRow: View {
     let label: String
     let name: String
     let level: Int
-    let charging: Bool
+    let isCharging: Bool
 
     private var isLow: Bool { level >= 0 && level <= 20 }
     private var isCritical: Bool { level >= 0 && level <= 5 }
     /// Charging reads as a positive state (accent soft); low and critical use the same warning and
     /// danger tokens the rest of the HUD uses for those conditions.
     private var gaugeColor: Color {
-        if charging { return WebRTCMediaStreamTheme.accentSoft }
+        if isCharging { return WebRTCMediaStreamTheme.accentSoft }
         if isCritical { return WebRTCMediaStreamTheme.danger }
         if isLow { return WebRTCMediaStreamTheme.warning }
         return WebRTCMediaStreamTheme.accent
@@ -78,7 +78,7 @@ struct StreamHUDControllerRow: View {
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label) \(name), battery \(level >= 0 ? "\(level) percent" : "unknown")\(charging ? ", charging" : "")")
+        .accessibilityLabel("\(label) \(name), battery \(level >= 0 ? "\(level) percent" : "unknown")\(isCharging ? ", charging" : "")")
     }
 
     /// Battery outline with proportional fill and a terminal nub, all square-cornered; the bolt sits
@@ -94,7 +94,7 @@ struct StreamHUDControllerRow: View {
                     .fill(gaugeColor)
                     .frame(width: max(0, 22 * fill), height: 7)
                     .padding(.leading, 2)
-                if charging {
+                if isCharging {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.panel)

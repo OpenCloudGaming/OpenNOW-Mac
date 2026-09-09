@@ -436,7 +436,11 @@ struct CatalogBrowseControlsView: View {
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
-                    Button("CLEAR") { viewModel.clearSearchAndFilters() }
+                    Button("CLEAR") {
+                        viewModel.clearSearch()
+                        viewModel.clearFilters()
+                        viewModel.browseCatalog()
+                    }
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(.white.opacity(0.84))
@@ -537,7 +541,11 @@ struct CatalogEmptyDestinationView: View {
                 Button(primaryActionTitle) { primaryAction() }
                     .buttonStyle(VendorGetInButtonStyle())
                 if viewModel.isBrowseMode {
-                    Button("CLEAR FILTERS") { viewModel.clearSearchAndFilters() }
+                    Button("CLEAR FILTERS") {
+                        viewModel.clearSearch()
+                        viewModel.clearFilters()
+                        viewModel.browseCatalog()
+                    }
                         .buttonStyle(VendorLaunchSecondaryButtonStyle())
                 }
             }

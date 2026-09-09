@@ -114,16 +114,16 @@ extension NativeNVSTMediaStreamSurface {
 
     var nativeHUDStatusPanel: some View {
         StreamHUDWrappingRow(minimumItemWidth: 84) {
-            StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, positive: model.microphoneEnabled && model.microphoneAvailable)
-            StreamHUDMetricCard(title: "Rec", value: model.recordingStatusText, positive: model.recordingCanStop)
-            StreamHUDMetricCard(title: "AFK", value: model.antiAFKMouseMovementEnabled ? "On" : "Off", positive: model.antiAFKMouseMovementEnabled)
+            StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, isPositive: model.microphoneEnabled && model.microphoneAvailable)
+            StreamHUDMetricCard(title: "Rec", value: model.recordingStatusText, isPositive: model.recordingCanStop)
+            StreamHUDMetricCard(title: "AFK", value: model.antiAFKMouseMovementEnabled ? "On" : "Off", isPositive: model.antiAFKMouseMovementEnabled)
             if model.sessionLimit != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    StreamHUDMetricCard(title: "Session", value: nativeSessionLimitText(at: context.date), positive: nativeSessionLimitIsHealthy(at: context.date))
+                    StreamHUDMetricCard(title: "Session", value: nativeSessionLimitText(at: context.date), isPositive: nativeSessionLimitIsHealthy(at: context.date))
                 }
             }
             if model.remoteCoOpPreferences.isEnabled {
-                StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, positive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
+                StreamHUDMetricCard(title: "Co-Op", value: model.remoteCoOpSummaryText, isPositive: model.remoteCoOpSnapshot.connectedParticipantCount > 0)
             }
         }
     }
@@ -135,7 +135,7 @@ extension NativeNVSTMediaStreamSurface {
             StreamHUDSection(label: "CONTROLLERS", spacing: 6,
                              caption: model.hudFocusID == "rumble-intensity" ? "Rumble Intensity · A steps +25%, 0 is off" : nil) {
                 ForEach(model.controllerBatteries) { battery in
-                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, charging: battery.charging)
+                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, isCharging: battery.charging)
                 }
                 // The same ceiling as Settings → Steam Controller → Rumble Intensity, reachable
                 // mid-game: a title whose special moves ignore its own vibration slider is
@@ -298,9 +298,9 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDNetworkPanel: some View {
         StreamHUDSection(label: "NETWORK", spacing: 8) {
             StreamHUDWrappingRow(minimumItemWidth: 84) {
-                StreamHUDMetricCard(title: "Health", value: nativeNetworkHealthText, positive: nativeNetworkHealthIsGood)
-                StreamHUDMetricCard(title: "Latency", value: nativeLatencyText, positive: (model.latestNativeStats?.latencyMilliseconds ?? 0) < 90)
-                StreamHUDMetricCard(title: "Loss", value: nativePacketLossText, positive: (model.latestNativeStats?.packetLoss ?? 0) == 0)
+                StreamHUDMetricCard(title: "Health", value: nativeNetworkHealthText, isPositive: nativeNetworkHealthIsGood)
+                StreamHUDMetricCard(title: "Latency", value: nativeLatencyText, isPositive: (model.latestNativeStats?.latencyMilliseconds ?? 0) < 90)
+                StreamHUDMetricCard(title: "Loss", value: nativePacketLossText, isPositive: (model.latestNativeStats?.packetLoss ?? 0) == 0)
             }
             if !nativeNetworkWarningText.isEmpty {
                 Text(nativeNetworkWarningText)

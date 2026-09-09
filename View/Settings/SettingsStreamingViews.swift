@@ -33,7 +33,7 @@ struct ServerLocationSettingsPage: View {
             }
             LazyVGrid(columns: regionColumns, alignment: .leading, spacing: 10 * uiScale) {
                 ForEach(viewModel.settingsRegionOptions, id: \.url) { option in
-                    SettingsRegionRow(option: option, selected: option.url == viewModel.selectedSettingsRegionUrl, uiScale: uiScale) {
+                    SettingsRegionRow(option: option, isSelected: option.url == viewModel.selectedSettingsRegionUrl, uiScale: uiScale) {
                         viewModel.selectSettingsRegion(option.url)
                     }
                 }

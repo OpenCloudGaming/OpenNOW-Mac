@@ -149,7 +149,9 @@ struct ControllerSearchOverlay: View {
     private var clearFiltersChip: some View {
         let isFocused = rowIndex == 1 && focusedBarIndex == ControllerSearchBar.clearIndex(groupCount: viewModel.visibleFilterGroups.count)
         return Button {
-            viewModel.clearSearchAndFilters()
+            viewModel.clearSearch()
+            viewModel.clearFilters()
+            viewModel.browseCatalog()
         } label: {
             HStack(spacing: 6 * uiScale) {
                 Image(systemName: "xmark.circle.fill")

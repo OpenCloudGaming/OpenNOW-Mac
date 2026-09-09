@@ -221,7 +221,11 @@ private struct CatalogShowAllFilterPanel: View {
                     .catalogFont(size: 14, weight: .bold)
                     .foregroundStyle(.white.opacity(0.96))
                 Spacer()
-                Button("CLEAR ALL") { viewModel.clearSearchAndFilters() }
+                Button("CLEAR ALL") {
+                    viewModel.clearSearch()
+                    viewModel.clearFilters()
+                    viewModel.browseCatalog()
+                }
                     .buttonStyle(.plain)
                     .catalogFont(size: 11, weight: .bold)
                     .foregroundStyle(.white.opacity(0.72))

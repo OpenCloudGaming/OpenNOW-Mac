@@ -233,7 +233,8 @@ extension CatalogViewModel {
         }
         gameService.syncAccountProvider(store: store) { [weak self] _, _ in
             guard let self, self.ownershipFlowStage == .resyncing else { return }
-            self.loadAccountAndStores()
+            self.loadAccount()
+            self.loadStores()
             self.loadLibrary()
             self.browseCatalog()
             self.advanceOwnershipFlow(to: .storeSelection)
@@ -315,7 +316,8 @@ extension CatalogViewModel {
             guard let self else { return }
             self.applyOwnershipMutation(success: success, onSuccess: {
                 self.actionMessage = "Store sync started."
-                self.loadAccountAndStores()
+                self.loadAccount()
+                self.loadStores()
                 self.loadLibrary()
                 self.browseCatalog()
             }, onFailure: {
@@ -336,7 +338,8 @@ extension CatalogViewModel {
             guard let self else { return }
             self.applyOwnershipMutation(success: success, onSuccess: {
                 self.actionMessage = "Account linked."
-                self.loadAccountAndStores()
+                self.loadAccount()
+                self.loadStores()
                 self.loadLibrary()
                 self.browseCatalog()
             }, onFailure: {

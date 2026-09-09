@@ -153,7 +153,8 @@ private let epoch = Date(timeIntervalSince1970: 1_700_000_000)
     model.searchText = "manor"
     model.activeFilters = [.fourK, .enhanced]
 
-    model.clearSearchAndFilters()
+    model.clearSearch()
+    model.clearFilters()
 
     #expect(model.searchText.isEmpty)
     #expect(model.activeFilters.isEmpty)

@@ -11,7 +11,8 @@ extension OPNGameService {
         applyImages(app, to: &game)
         applyVariants(app, to: &game)
         applyVariantRollup(to: &game)
-        applyGenresAndFeatures(app, to: &game)
+        applyGenres(app, to: &game)
+        applyFeatures(app, to: &game)
         return game
     }
 
@@ -184,13 +185,16 @@ extension OPNGameService {
     }
 
     /// Genres arrive as either bare strings or `{name:}` objects depending on the endpoint.
-    private func applyGenresAndFeatures(_ app: NSDictionary, to game: inout OPNGameInfo) {
+    private func applyGenres(_ app: NSDictionary, to game: inout OPNGameInfo) {
         if let genres = app["genres"] as? [Any] {
             for item in genres {
                 if let text = item as? String { appendUnique(&game.genres, text) }
                 if let dictionary = item as? NSDictionary { appendUnique(&game.genres, safeString(dictionary["name"]) ?? "") }
             }
         }
+    }
+
+    private func applyFeatures(_ app: NSDictionary, to game: inout OPNGameInfo) {
         if let features = (app["featureLabels"] ?? app["features"]) as? [String] {
             for feature in features { appendUnique(&game.featureLabels, feature) }
         }

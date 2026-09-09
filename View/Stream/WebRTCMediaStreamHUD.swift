@@ -197,16 +197,16 @@ extension WebRTCMediaStreamSurface {
 
     var hudStatusPanel: some View {
         StreamHUDWrappingRow(minimumItemWidth: 84) {
-            hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
-            hudMetricCard(title: "Rec", value: recordingStatusText, positive: recordingStatus.isRecording)
-            hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
+            hudMetricCard(title: "Mic", value: microphoneStatusText, isPositive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
+            hudMetricCard(title: "Rec", value: recordingStatusText, isPositive: recordingStatus.isRecording)
+            hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", isPositive: runtimeSettings.antiAFKMouseMovementEnabled)
             if sessionLimit != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    hudMetricCard(title: "Session", value: sessionLimitHUDText(at: context.date), positive: sessionLimitIsHealthy(at: context.date))
+                    hudMetricCard(title: "Session", value: sessionLimitHUDText(at: context.date), isPositive: sessionLimitIsHealthy(at: context.date))
                 }
             }
             if remoteCoOpEnabled {
-                hudMetricCard(title: "Co-Op", value: "NVST Only", positive: false)
+                hudMetricCard(title: "Co-Op", value: "NVST Only", isPositive: false)
             }
         }
     }
@@ -216,7 +216,7 @@ extension WebRTCMediaStreamSurface {
         if !controllerBatteries.isEmpty {
             StreamHUDSection(label: "CONTROLLERS", spacing: 6) {
                 ForEach(controllerBatteries) { battery in
-                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, charging: battery.charging)
+                    StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, isCharging: battery.charging)
                 }
             }
         }
@@ -373,9 +373,9 @@ extension WebRTCMediaStreamSurface {
     var hudNetworkPanel: some View {
         hudSection(label: "NETWORK", spacing: 8) {
             StreamHUDWrappingRow(minimumItemWidth: 84) {
-                hudMetricCard(title: "Health", value: networkHealthText, positive: networkHealthIsGood)
-                hudMetricCard(title: "Latency", value: formatted(latestStats?.latencyMs, suffix: " ms"), positive: (latestStats?.latencyMs ?? 0) < 90)
-                hudMetricCard(title: "Loss", value: formatted(latestStats?.packetLossPercent, suffix: "%"), positive: (latestStats?.packetLossPercent ?? 0) < 1)
+                hudMetricCard(title: "Health", value: networkHealthText, isPositive: networkHealthIsGood)
+                hudMetricCard(title: "Latency", value: formatted(latestStats?.latencyMs, suffix: " ms"), isPositive: (latestStats?.latencyMs ?? 0) < 90)
+                hudMetricCard(title: "Loss", value: formatted(latestStats?.packetLossPercent, suffix: "%"), isPositive: (latestStats?.packetLossPercent ?? 0) < 1)
             }
             if !networkWarningText.isEmpty {
                 Text(networkWarningText)

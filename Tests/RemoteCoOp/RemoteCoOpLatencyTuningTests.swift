@@ -150,7 +150,7 @@ struct RemoteCoOpLatencyTuningTests {
             ("fd7a:115c::1", "fd7a:115c::1", defaultPort)
         ]
         for (input, expectedHost, expectedPort) in cases {
-            let parsed = try #require(OPNRemoteCoOpNativeDiscoveredHost.parseHostAndPort(input), "\(input) should parse")
+            let parsed = try #require(OPNRemoteCoOpNativeDiscoveredHost.parseAddress(input), "\(input) should parse")
             #expect(parsed.host == expectedHost, "\(input) host")
             #expect(parsed.port == expectedPort, "\(input) port")
         }

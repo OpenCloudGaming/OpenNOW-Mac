@@ -314,11 +314,11 @@ struct GameDetailPanel: View {
 struct CatalogFeatureAvailabilityRow: View {
     let title: String
     let message: String
-    let locked: Bool
+    let isLocked: Bool
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: locked ? "lock.fill" : "checkmark.circle.fill")
+            Image(systemName: isLocked ? "lock.fill" : "checkmark.circle.fill")
                 .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(.white.opacity(0.88))
                 .frame(width: 18)

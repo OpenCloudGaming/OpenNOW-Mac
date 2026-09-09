@@ -110,7 +110,9 @@ struct CatalogMainMenuPanel: View {
                         }
                         if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
                             CatalogMainMenuRow(title: "Clear Search and Filters", subtitle: "Return to the default catalog view", systemImage: "line.3.horizontal.decrease.circle", isActive: false) {
-                                viewModel.clearSearchAndFilters()
+                                viewModel.clearSearch()
+                                viewModel.clearFilters()
+                                viewModel.browseCatalog()
                                 isPresented = false
                             }
                         }

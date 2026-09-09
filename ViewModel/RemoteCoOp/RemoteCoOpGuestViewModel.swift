@@ -91,7 +91,7 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     private var currentHostIdentifier: String?
 
     convenience init() {
-        self.init(participantID: Self.loadOrCreateParticipantID(), displayName: Host.current().localizedName ?? "OpenNOW Guest")
+        self.init(participantID: Self.ensureParticipantID(), displayName: Host.current().localizedName ?? "OpenNOW Guest")
     }
 
     init(participantID: UUID, displayName: String) {
@@ -521,7 +521,7 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         handleConnectionFailure(OPNRemoteCoOpNativeConnectionError.closed)
     }
 
-    private static func loadOrCreateParticipantID() -> UUID {
+    private static func ensureParticipantID() -> UUID {
         let defaults = UserDefaults.standard
         if let stored = defaults.string(forKey: participantIDDefaultsKey), let id = UUID(uuidString: stored) {
             return id

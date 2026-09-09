@@ -44,7 +44,7 @@ extension ControllerCatalogViewModel {
             if catalog.canResumeActiveLaunchSession {
                 catalog.resumeActiveLaunchSession()
             } else {
-                catalog.endActiveSessionAndLaunchSelectedGame()
+                catalog.switchToSelectedGame()
             }
             return true
         default:
@@ -166,7 +166,10 @@ extension ControllerCatalogViewModel {
         case .move(.left): moveSearchSelection(delta: -1)
         case .move(.right): moveSearchSelection(delta: 1)
         case .confirm: confirmSearchSelection()
-        case .actions: catalog?.clearSearchAndFilters()
+        case .actions:
+            catalog?.clearSearch()
+            catalog?.clearFilters()
+            catalog?.browseCatalog()
         case .back, .search: closeSearchOverlay()
         case .pageLeft: cycleNavigation(delta: -1)
         case .pageRight: cycleNavigation(delta: 1)
@@ -549,7 +552,9 @@ extension ControllerCatalogViewModel {
             } else if chipIndex <= catalog.visibleFilterGroups.count {
                 openFilterPicker(group: catalog.visibleFilterGroups[chipIndex - 1])
             } else {
-                catalog.clearSearchAndFilters()
+                catalog.clearSearch()
+                catalog.clearFilters()
+                catalog.browseCatalog()
             }
             return
         }
@@ -619,7 +624,9 @@ extension ControllerCatalogViewModel {
             guard !catalog.isCatalogRefreshInProgress else { return }
             catalog.refresh()
         case .clearSearch:
-            catalog.clearSearchAndFilters()
+            catalog.clearSearch()
+            catalog.clearFilters()
+            catalog.browseCatalog()
         case .recordings:
             catalog.showRecordings()
         case .settings:

@@ -216,16 +216,14 @@ extension CatalogViewModel {
         browseCatalog()
     }
 
+    /// State-only; callers pair this with `clearFilters()` then a single `browseCatalog()`.
     func clearFilters() {
-        guard !selectedFilterIds.isEmpty else { return }
         selectedFilterIds = []
-        browseCatalog()
     }
 
-    func clearSearchAndFilters() {
+    /// State-only; callers pair this with `clearFilters()` then a single `browseCatalog()`.
+    func clearSearch() {
         searchQuery = ""
-        selectedFilterIds = []
-        browseCatalog()
     }
 
     func openPanelTile(_ tile: OPNCatalogPanelTileObject) {
