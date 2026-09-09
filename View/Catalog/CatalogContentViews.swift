@@ -16,7 +16,10 @@ struct CatalogContentView: View {
     @State private var isPointerInsideDetailPanel = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.opnUIScale) private var uiScale
-    private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
+    /// stored on this struct: the struct is rebuilt on every re-render, which restarts a stored
+    /// publisher's interval before it ever fires.
+    private static let heroRotationInterval = Duration.seconds(5)
 
     var body: some View {
         let heroes = heroGames
@@ -192,10 +195,13 @@ struct CatalogContentView: View {
                     }
                 }
                 .background(OpenNOWDesign.Surface.app)
-                .onReceive(heroTimer) { _ in
-                    guard isActive, !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        heroIndex = (heroIndex + 1) % heroes.count
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: Self.heroRotationInterval)
+                        guard !Task.isCancelled, isActive, !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { continue }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            heroIndex = (heroIndex + 1) % heroes.count
+                        }
                     }
                 }
                 .onChange(of: heroIdentityList) { _, identities in

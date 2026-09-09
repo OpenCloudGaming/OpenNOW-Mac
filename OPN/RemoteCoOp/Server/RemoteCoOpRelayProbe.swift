@@ -131,6 +131,9 @@ public enum OPNRemoteCoOpRelayProbe {
         // of a ten second timeout for a relay that answered in 300 ms. Once candidates have stopped
         // arriving there is nothing left to learn, so the settle window ends the wait.
         while Date() < deadline {
+            // A closed wizard cancels this task; without checking, the probe kept an
+            // RTCPeerConnection and its gathering alive for the rest of the ten second timeout.
+            if Task.isCancelled { break }
             if await collector.finished { break }
             if await collector.settled(for: 2.5) { break }
             try? await Task.sleep(nanoseconds: 100_000_000)

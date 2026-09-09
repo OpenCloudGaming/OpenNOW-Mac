@@ -78,6 +78,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     nonisolated static let claimedNames = OSAllocatedUnfairLock(initialState: Set<String>())
     nonisolated static let activeCount = OSAllocatedUnfairLock(initialState: 0)
+    /// UNVERIFIED: the firmware re-enables mouse/keyboard emulation after a quiet period and this
+    /// re-asserts lizard mode inside it, but unlike the rumble resend two files over — which cites
+    /// SDL's `TRITON_RUMBLE_RESEND_INTERVAL_MS` — nothing records where five seconds came from. If
+    /// the real window is shorter, a trackpad intermittently drives the macOS cursor mid-stream.
+    /// Settle it against SDL's `SDL_hidapi_steam_triton.c` or on hardware.
     static let heartbeatInterval: TimeInterval = 5.0
     static let featureReportAttempts = 5
     static let powerOffCombo: GamepadButtons = [.mode, .north]

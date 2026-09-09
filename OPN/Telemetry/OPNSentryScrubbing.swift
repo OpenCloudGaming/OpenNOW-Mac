@@ -352,7 +352,7 @@ extension OPNSentry {
             }
         }
 
-        private static func contains(_ haystack: [UInt8], _ needle: [UInt8]) -> Bool {
+        static func contains(_ haystack: [UInt8], _ needle: [UInt8]) -> Bool {
             guard needle.count <= haystack.count else { return false }
             let last = haystack.count - needle.count
             var start = 0
@@ -547,8 +547,74 @@ extension OPNSentry {
         return pasteURL
     }
 
+    /// The location rules only matter to the upload, which is a whole log at once — megabytes
+    /// through five more patterns. They carry the same markers treatment as the message rules: a
+    /// rule whose keyword is nowhere in the text cannot match it.
     static func sanitizedUploadLog(_ text: String) -> String {
         var sanitized = sanitizedMessage(text)
+        var markers = UploadRedactionMarkers(scanning: sanitized)
+        for (index, rule) in uploadRedactionRules.enumerated() {
+            if let markers, !markers.mayMatchRule(at: index) { continue }
+            let range = NSRange(sanitized.startIndex..., in: sanitized)
+            let replaced = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)
+            guard replaced != sanitized else { continue }
+            sanitized = replaced
+            markers = nil
+        }
+        return sanitized
+    }
+
+    /// The upload rules' equivalent of `RedactionMarkers`, with the same ASCII-only restriction.
+    struct UploadRedactionMarkers {
+        private let hasDottedNumber: Bool
+        private let hasColon: Bool
+        private let hasLocationKeyword: Bool
+        private let hasCloudmatchHost: Bool
+
+        init?(scanning message: String) {
+            var lowercased = [UInt8]()
+            lowercased.reserveCapacity(message.utf8.count)
+            var sawDigit = false
+            var sawDot = false
+            var sawColon = false
+            for byte in message.utf8 {
+                guard byte < 0x80 else { return nil }
+                switch byte {
+                case UInt8(ascii: "0")...UInt8(ascii: "9"): sawDigit = true
+                case UInt8(ascii: "."): sawDot = true
+                case UInt8(ascii: ":"): sawColon = true
+                default: break
+                }
+                let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
+                lowercased.append(isUppercase ? byte + 0x20 : byte)
+            }
+            hasDottedNumber = sawDigit && sawDot
+            hasColon = sawColon
+            hasLocationKeyword = Self.locationKeywords.contains { RedactionMarkers.contains(lowercased, $0) }
+            hasCloudmatchHost = RedactionMarkers.contains(lowercased, Self.cloudmatchHost)
+        }
+
+        /// Indices match `uploadRedactionRules`, in order.
+        func mayMatchRule(at index: Int) -> Bool {
+            switch index {
+            case 0: return hasDottedNumber
+            case 1: return hasColon
+            case 2, 3: return hasLocationKeyword
+            case 4: return hasCloudmatchHost
+            default: return true
+            }
+        }
+
+        private static let cloudmatchHost = Array("cloudmatch".utf8)
+        private static let locationKeywords = [
+            "latitude", "longitude", "lat", "lon", "lng", "city", "country", "state", "province",
+            "postal", "zip", "timezone", "location", "region"
+        ].map { Array($0.utf8) }
+    }
+
+    /// The upload rules as they were before the gate, for the equivalence tests.
+    static func exhaustivelySanitizedUploadLog(_ text: String) -> String {
+        var sanitized = exhaustivelySanitizedMessage(text)
         for rule in uploadRedactionRules {
             let range = NSRange(sanitized.startIndex..., in: sanitized)
             sanitized = rule.expression.stringByReplacingMatches(in: sanitized, range: range, withTemplate: rule.template)

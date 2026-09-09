@@ -44,6 +44,7 @@ import SwiftUI
 struct SkeletonBlock: View {
     var cornerRadius: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var holdsShimmerClock = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -71,10 +72,15 @@ struct SkeletonBlock: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .onAppear {
                 guard !reduceMotion else { return }
+                holdsShimmerClock = true
                 CatalogShimmerClock.shared.retain()
             }
             .onDisappear {
-                guard !reduceMotion else { return }
+                // Keyed on what this view actually took, not on the setting: Reduce Motion can be
+                // toggled while skeletons are on screen, and reading it again here either leaked a
+                // 30 fps timer for the life of the app or released one this view never held.
+                guard holdsShimmerClock else { return }
+                holdsShimmerClock = false
                 CatalogShimmerClock.shared.release()
             }
     }

@@ -71,3 +71,30 @@ private func expectEquivalent(_ message: String, _ comment: Comment? = nil) {
     #expect(!sanitized.contains("hunter2"))
     #expect(!sanitized.contains("192.168.1.24"))
 }
+
+/// The upload path adds location rules and runs over a whole log at once. Same gate, same
+/// obligation: byte-for-byte what running every rule produces.
+@Test func gatedUploadRedactionMatchesTheExhaustivePass() {
+    let vectors = [
+        "region=eu-west-2 city=London timezone=Europe/London lat=51.5 lon=-0.12",
+        "seat host=eu-london-1.cloudmatch.example.com rtt=12ms",
+        "ipv6=2600:1702:7b40:6190:69ea:cb80:cf15:6289",
+        "NVST counters auth=51234 frames=7211 rtt=5.4ms",
+        "no location data here at all",
+        "",
+        "日本語 city=Tokyo",
+        "COUNTRY: Japan\nLatitude: 35.6",
+    ]
+    for vector in vectors {
+        #expect(OPNSentry.sanitizedUploadLog(vector) == OPNSentry.exhaustivelySanitizedUploadLog(vector), "\(vector)")
+    }
+}
+
+@Test func gatedUploadRedactionStillRemovesLocation() {
+    let sanitized = OPNSentry.sanitizedUploadLog("city=London lat=51.5 host=eu-west.cloudmatch.example ip=192.168.1.24")
+
+    #expect(!sanitized.contains("London"))
+    #expect(!sanitized.contains("51.5"))
+    #expect(!sanitized.contains("cloudmatch.example"))
+    #expect(!sanitized.contains("192.168.1.24"))
+}

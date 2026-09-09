@@ -50,12 +50,26 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     public var snapshot: NvstInboundCounters { lock.lock(); defer { lock.unlock() }; return counters }
 
     public func start() {
+        // A second start would leak all three sources and leave the first set running.
+        guard readSource == nil else { return }
         var flags = fcntl(descriptor, F_GETFL, 0)
         flags |= O_NONBLOCK
         _ = fcntl(descriptor, F_SETFL, flags)
 
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
         source.setEventHandler { [weak self] in self?.drain() }
+        // The close belongs here, not in `stop()`: `drain` reads the descriptor on `queue`, and
+        // closing it from the caller's thread could pull it out from under a `recvfrom` — onto a
+        // number the kernel has already handed to something else. Same shape as
+        // `NvstMjolnirReceiver`, which is the reference for this.
+        source.setCancelHandler { [weak self] in
+            guard let self else { return }
+            lock.lock()
+            let closing = descriptor
+            descriptor = -1
+            lock.unlock()
+            if closing >= 0 { close(closing) }
+        }
         source.resume()
         readSource = source
 
@@ -80,13 +94,9 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
         punchTimer = nil
         reportTimer?.cancel()
         reportTimer = nil
+        // Cancelling runs the cancel handler, which is what closes the socket.
         readSource?.cancel()
         readSource = nil
-        lock.lock()
-        let closing = descriptor
-        descriptor = -1
-        lock.unlock()
-        if closing >= 0 { close(closing) }
     }
 
     // MARK: - Internals

@@ -15,7 +15,9 @@ struct GameDetailPanel: View {
     @State var isHovering = false
     @State var showsActionsMenu = false
     @Environment(\.accessibilityReduceMotion) var reduceMotion
-    private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    /// Seconds between detail-image rotations. A `.task` loop, not a stored `Timer.publish`: this
+    /// struct is rebuilt on every re-render, and a stored publisher's interval restarts with it.
+    private static let imageRotationInterval = Duration.seconds(5)
     @Environment(\.opnUIScale) var uiScale
     @Environment(\.displayScale) private var displayScale
 
@@ -151,9 +153,12 @@ struct GameDetailPanel: View {
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
             .onHover { isHovering = $0 }
-            .onReceive(imageTimer) { _ in
-                guard !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { return }
-                moveImage(delta: 1, count: game.detailImageURLs.count)
+            .task(id: game.catalogIdentity) {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.imageRotationInterval)
+                    guard !Task.isCancelled, !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { continue }
+                    moveImage(delta: 1, count: game.detailImageURLs.count)
+                }
             }
             .onChange(of: game.catalogIdentity) { _, _ in
                 activeImageIndex = 0

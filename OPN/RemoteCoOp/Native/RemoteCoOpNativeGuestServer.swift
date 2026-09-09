@@ -121,6 +121,13 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     static let socketIdleTimeout: TimeInterval = 60
 
     public func start() {
+        // `close()` latches `isClosed`, and `accept` refuses every connection while it is set. A
+        // restarted server would bind a real listener and advertise over Bonjour while turning away
+        // every guest that found it, which reads as a broken host rather than a stopped one.
+        guard !lock.withLock({ isClosed }) else {
+            OpenNOWLog.warning(.stream, "Remote Co-Op native guest server cannot restart after close; make a new one")
+            return
+        }
         listen(on: Self.defaultPort)
         startIdleSweep()
     }
@@ -133,7 +140,13 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
                 sweepIdleConnections()
             }
         }
-        lock.withLock { idleSweepTask = task }
+        let previous = lock.withLock { () -> Task<Void, Never>? in
+            let previous = idleSweepTask
+            idleSweepTask = task
+            return previous
+        }
+        // Two sweeps would double every heartbeat and race each other's `drop`.
+        previous?.cancel()
     }
 
     /// Asks every socket to answer, and drops the ones that stopped.

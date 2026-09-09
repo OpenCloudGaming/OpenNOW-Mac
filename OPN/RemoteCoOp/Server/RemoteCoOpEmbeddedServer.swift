@@ -302,8 +302,10 @@ public actor OPNRemoteCoOpEmbeddedServer {
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.heartbeatInterval)
-                guard !Task.isCancelled else { return }
-                await self?.sweepIdleConnections()
+                // `guard let self`, not `self?.`: once the actor is gone so is the handle that
+                // could cancel this, and the loop would wake every fifteen seconds forever.
+                guard let self, !Task.isCancelled else { return }
+                await self.sweepIdleConnections()
             }
         }
     }
