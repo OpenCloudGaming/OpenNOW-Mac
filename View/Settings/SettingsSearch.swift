@@ -101,6 +101,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
         SettingsSearchEntry("Automatic Update Checks", .general, "about", keywords: ["update", "version", "release", "upgrade"]),
+        SettingsSearchEntry("Update Channel", .general, "about", keywords: ["beta", "stable", "pre-release", "update", "channel"]),
         SettingsSearchEntry("Disable Telemetry", .general, "about", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),
     ]
 
