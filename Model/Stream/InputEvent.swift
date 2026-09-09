@@ -90,12 +90,17 @@ public enum MouseEvent: Codable, Equatable, Hashable, Sendable {
     case moved(deviceID: InputDeviceID, deltaX: Int16, deltaY: Int16, timestamp: MediaTimestamp)
     case button(deviceID: InputDeviceID, button: MouseButton, isPressed: Bool, timestamp: MediaTimestamp)
     case wheel(deviceID: InputDeviceID, delta: Int16, timestamp: MediaTimestamp)
+    /// Sideways scrolling — shift-scroll, a tilt wheel, or a two-finger swipe — in the same
+    /// `WHEEL_DELTA` units as `wheel`, 120 per notch. It is its own case rather than a second
+    /// field on `wheel` because both wire encodings carry one axis per packet.
+    case horizontalWheel(deviceID: InputDeviceID, delta: Int16, timestamp: MediaTimestamp)
 
     public var deviceID: InputDeviceID {
         switch self {
         case .moved(let deviceID, _, _, _),
              .button(let deviceID, _, _, _),
-             .wheel(let deviceID, _, _):
+             .wheel(let deviceID, _, _),
+             .horizontalWheel(let deviceID, _, _):
             deviceID
         }
     }
@@ -104,7 +109,8 @@ public enum MouseEvent: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .moved(_, _, _, let timestamp),
              .button(_, _, _, let timestamp),
-             .wheel(_, _, let timestamp):
+             .wheel(_, _, let timestamp),
+             .horizontalWheel(_, _, let timestamp):
             timestamp
         }
     }

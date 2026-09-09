@@ -85,6 +85,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     private var heartbeatTask: Task<Void, Never>?
     var controlKeepAliveTask: Task<Void, Never>?
     var qosFeedbackTask: Task<Void, Never>?
+    /// Fires once, if the seat's first cursor notification never arrives; see
+    /// `NvstBifrostFreeCursorWatchdog`.
+    var cursorCaptureWatchdogTask: Task<Void, Never>?
     var qosSequence: UInt32 = 0
     var lastQosBytesReceived: UInt64 = 0
     var lastQosDelayMicroseconds: UInt32 = 0
@@ -286,6 +289,13 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
 
     public func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection {
         guard connection == nil else { throw NativeNVSTError.alreadyRunning }
+        // The flag is per-connection, not per-actor. An in-place reconnect calls this on the same
+        // transport the last teardown latched it on, and every timer that guards on it — the
+        // control keepalive, the QoS feedback, the cursor watchdog — would then refuse to arm:
+        // the seat kills a session that goes 10 s without the keepalive. Cleared here rather than
+        // in teardown so the late-callback race the flag blocks stays blocked while nothing is
+        // connected.
+        isTornDown = false
 
         let endpoints = NvstRtspEndpoints.collect(
             rawSessionJSON: allocation.rawSessionJSON,
@@ -542,6 +552,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// Raised when the game shows or hides its pointer, so the client can match it and avoid
     /// drawing a second one (or leaving one floating during mouselook).
     public internal(set) var onRemoteCursorVisibilityChanged: (@MainActor @Sendable (Bool) -> Void)?
+    /// Raised when the seat starts or stops compositing a pointer of its own into the video.
+    /// Separate from the visibility handler because the two are not the same event: capture is
+    /// switched off by the first notification of any kind, by a bitmap push that carries no
+    /// visibility, and by the watchdog for a seat that publishes nothing at all — and in the last
+    /// two the client is left with no pointer on screen unless it hears about the capture itself.
+    public internal(set) var onRemoteCursorCaptureChanged: (@MainActor @Sendable (Bool) -> Void)?
     /// Rumble from the seat, per `0x010b` command. Delivered on the main actor because the
     /// consumers (CoreHaptics engines, the Steam Controller HID monitor) live there.
     public internal(set) var onHapticEvents: (@MainActor @Sendable ([NvstHapticEvent]) -> Void)?
@@ -654,6 +670,11 @@ extension NvstBifrostFreeTransport {
         didActivateInput = false
         didAnnounceClientState = false
         registeredGamepadBitmap = nil
+        // Both exits run through here — a disconnect and the in-place reconnect's
+        // `resetForRecovery` — so the deadline is cleared on the same path that clears the flag it
+        // guards. A watchdog left running would fire into the next session's activation chain and
+        // disable a capture that had only just been turned on.
+        cancelCursorCaptureWatchdog()
         didDisableCursorCapture = false
         remoteCursorVisible = nil
         lastSnapshotAt = nil

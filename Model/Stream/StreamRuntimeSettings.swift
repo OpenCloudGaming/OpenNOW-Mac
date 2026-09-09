@@ -25,6 +25,8 @@ struct StreamRuntimeSettings: Equatable {
     var microphonePushToTalkModifierMask = 0
     var suppressInputWhenInactive = true
     var directMouseInput = true
+    var rawMouseInput = false
+    var cursorPolicy = 0
     var antiAFKMouseMovementEnabled = false
     var upscalingMode = 0
     var upscalingSharpness = 10
@@ -72,6 +74,8 @@ struct StreamRuntimeSettings: Equatable {
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
+        rawMouseInput = Self.bool(dictionary["rawMouseInput"])
+        cursorPolicy = OPNCursorPolicy.from(Self.int(dictionary["cursorPolicy"])).rawValue
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
         pillarboxFillMode = OPNPillarboxFillMode.from(Self.int(dictionary["pillarboxFillMode"], fallback: 0)).rawValue
         pillarboxFillDim = Self.int(dictionary["pillarboxFillDim"], fallback: 55)

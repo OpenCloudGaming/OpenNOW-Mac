@@ -72,7 +72,9 @@ enum SettingsSearchIndex {
     ]
 
     private static let inputEntries: [SettingsSearchEntry] = [
-        SettingsSearchEntry("Direct Mouse Input", .input, "mouse", keywords: ["pointer", "capture", "relative", "raw"]),
+        SettingsSearchEntry("Direct Mouse Input", .input, "mouse", keywords: ["pointer", "capture", "relative"]),
+        SettingsSearchEntry("Raw Mouse Input", .input, "mouse", keywords: ["raw", "hid", "acceleration", "unaccelerated", "dpi", "aim"]),
+        SettingsSearchEntry("Cursor", .input, "mouse", keywords: ["pointer", "cursor", "hide", "double cursor", "absolute", "local", "stream"]),
         SettingsSearchEntry("Mouse Sensitivity", .input, "mouse", keywords: ["pointer", "speed", "dpi"]),
         SettingsSearchEntry("Suppress Input When Inactive", .input, "mouse", keywords: ["focus", "background", "keyboard"]),
         SettingsSearchEntry("Anti-AFK Mouse Movement", .input, "mouse", keywords: ["idle", "timeout", "disconnect", "away"]),

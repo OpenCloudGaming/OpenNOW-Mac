@@ -469,22 +469,34 @@ extension NvstBifrostFreeTransport {
     /// the double-cursor bug — the seat's pointer baked into the video underneath our own.
     /// `mimicRemoteCursor` stays enabled, so notifications keep coming after capture stops.
     func handleRemoteCursor(_ cursor: NvstRemoteCursor) {
-        if !didDisableCursorCapture, let bundle {
+        // Any cursor notification proves the seat is publishing, which is the whole condition the
+        // watchdog was waiting on — a bitmap shape push counts as much as a mode change.
+        cancelCursorCaptureWatchdog()
+        if !didDisableCursorCapture {
             didDisableCursorCapture = true
-            let sent = bundle.sendControl(NvstInputActivation.mouseCursorCapture(isEnabled: false))
-            logger?("NVST seat cursor notifications started; server-composited cursor disabled sent=\(sent)")
+            // A notification proves the bundle carried it here, so this is the same shape the
+            // watchdog uses: the decision is recorded whether or not the write lands, rather than
+            // being skipped by a race that would then vanish silently.
+            let sent = bundle?.sendControl(NvstInputActivation.mouseCursorCapture(isEnabled: false)) ?? false
+            logger?("NVST seat cursor notifications started (\(cursor.summary)); server-composited cursor disabled sent=\(sent)")
+            // Ahead of the visibility guard below: a bitmap push resolves to the state we already
+            // hold and returns without ever notifying, and the client would go on suppressing its
+            // own pointer over a seat that has just stopped drawing one — no pointer at all.
+            notifySeatCompositesCursor(false)
         }
-        guard cursor.isVisible != remoteCursorVisible else { return }
+        // A bitmap push confirms the pointer rather than moving it, so it resolves to the state we
+        // already hold and falls out here.
+        guard let isVisible = cursor.visibility(following: remoteCursorVisible),
+              isVisible != remoteCursorVisible else { return }
         let previous = remoteCursorVisible
-        remoteCursorVisible = cursor.isVisible
+        remoteCursorVisible = isVisible
         // Timestamped, because the complaint is about *when* the pointer appears: this line next to
         // the seat's own notification line says whether we followed the seat or invented it.
         logger?(String(format: "NVST remote cursor %@ -> %@ at %.3fs",
                        previous.map { $0 ? "visible" : "hidden" } ?? "unknown",
-                       cursor.isVisible ? "visible" : "hidden",
+                       isVisible ? "visible" : "hidden",
                        Double(clock.elapsedMicroseconds()) / 1_000_000))
         if let notify = onRemoteCursorVisibilityChanged {
-            let isVisible = cursor.isVisible
             Task { @MainActor in notify(isVisible) }
         }
     }
@@ -495,6 +507,16 @@ extension NvstBifrostFreeTransport {
     /// races. Callers hand the handler over through the actor instead.
     public func setRemoteCursorVisibilityHandler(_ handler: (@MainActor @Sendable (Bool) -> Void)?) {
         onRemoteCursorVisibilityChanged = handler
+    }
+
+    public func setRemoteCursorCaptureHandler(_ handler: (@MainActor @Sendable (Bool) -> Void)?) {
+        onRemoteCursorCaptureChanged = handler
+    }
+
+    /// Whether the seat is drawing a pointer into the frames right now.
+    func notifySeatCompositesCursor(_ isCompositing: Bool) {
+        guard let notify = onRemoteCursorCaptureChanged else { return }
+        Task { @MainActor in notify(isCompositing) }
     }
 
     public func setHapticEventHandler(_ handler: (@MainActor @Sendable ([NvstHapticEvent]) -> Void)?) {
@@ -734,10 +756,13 @@ extension NvstBifrostFreeTransport {
         registeredGamepadBitmap = activationBitmap
         // Cursor capture ON for startup so the seat composites a pointer immediately, plus remote
         // cursor tracking so it publishes shape/mode notifications. Once a notification arrives the
-        // capture is turned back off (see `handleRemoteCursorNotification`) and the pointer becomes
-        // ours to draw — the seat keeps publishing because tracking stays on.
+        // capture is turned back off (see `handleRemoteCursor`) and the pointer becomes ours to
+        // draw — the seat keeps publishing because tracking stays on.
         sent.append("cursorCapture=\(bundle.sendControl(NvstInputActivation.mouseCursorCapture(isEnabled: true)))")
+        notifySeatCompositesCursor(true)
         sent.append("cursorTrack=\(bundle.sendControl(NvstInputActivation.mimicRemoteCursor(isEnabled: true)))")
+        // A seat that never publishes one would otherwise leave capture on for the whole session.
+        startCursorCaptureWatchdog()
         sent.append("window=\(bundle.sendControl(.windowStateChange()))")
         sent.append("system=\(bundle.sendControl(.systemStateChange()))")
         sent.append("enableOn=\(bundle.sendControl(NvstInputActivation.enableInput(counter: UInt32((videoPipeline?.snapshot.frameAcksSent ?? 0) + 1))))")

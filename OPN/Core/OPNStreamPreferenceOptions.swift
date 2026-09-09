@@ -329,6 +329,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var enablePowerSaver = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
+    public var rawMouseInput = false
     public var mouseSensitivityPercent = 100
     public var antiAFKMouseMovementEnabled = false
     public var preventDisplaySleepWhileStreaming = true
@@ -352,6 +353,8 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
     public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
     public var pillarboxFillMode = OPNPillarboxFillMode.black
+    public var cursorPolicyIndex = 0
+    public var cursorPolicy = OPNCursorPolicy.auto
     public var presentationModeIndex = 0
     public var presentationMode = 0
 

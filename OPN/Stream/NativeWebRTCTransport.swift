@@ -218,6 +218,12 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             session.sendMouseButton(button: Self.gfnMouseButton(button), down: isPressed)
         case .wheel(_, let delta, _):
             session.sendMouseWheel(delta: delta)
+        case .horizontalWheel:
+            // The Geronimo encoder carries one wheel axis: `encodeMouseWheel` writes the delta
+            // into the vertical slot of the shared motion layout, and no field beside it has ever
+            // been observed carrying a sideways value. A horizontal notch is dropped rather than
+            // guessed into a slot this transport has no reading for.
+            break
         }
     }
 

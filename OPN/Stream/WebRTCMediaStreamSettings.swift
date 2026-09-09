@@ -118,6 +118,8 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var pillarboxFillColor: String
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
+    public var rawMouseInput: Bool
+    public var cursorPolicy: Int
     public var antiAFKMouseMovementEnabled: Bool
     public var preventDisplaySleepWhileStreaming: Bool
     public var recordingVideoBitrateMbps: Int
@@ -160,6 +162,8 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 pillarboxFillColor: String = "#000000",
                 suppressInputWhenInactive: Bool = true,
                 directMouseInput: Bool = true,
+                rawMouseInput: Bool = false,
+                cursorPolicy: Int = 0,
                 antiAFKMouseMovementEnabled: Bool = false,
                 preventDisplaySleepWhileStreaming: Bool = true,
                 recordingVideoBitrateMbps: Int = 0,
@@ -201,6 +205,8 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.pillarboxFillColor = pillarboxFillColor
         self.suppressInputWhenInactive = suppressInputWhenInactive
         self.directMouseInput = directMouseInput
+        self.rawMouseInput = rawMouseInput
+        self.cursorPolicy = cursorPolicy
         self.antiAFKMouseMovementEnabled = antiAFKMouseMovementEnabled
         self.preventDisplaySleepWhileStreaming = preventDisplaySleepWhileStreaming
         self.recordingVideoBitrateMbps = max(0, min(recordingVideoBitrateMbps, 200))
@@ -244,6 +250,8 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var pillarboxFillColor: String
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
+    public var rawMouseInput: Bool
+    public var cursorPolicy: Int
     public var antiAFKMouseMovementEnabled: Bool
     public var preventDisplaySleepWhileStreaming: Bool
     public var recordingVideoBitrateMbps: Int
@@ -294,6 +302,8 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "pillarboxFillColor": pillarboxFillColor,
             "suppressInputWhenInactive": suppressInputWhenInactive,
             "directMouseInput": directMouseInput,
+            "rawMouseInput": rawMouseInput,
+            "cursorPolicy": cursorPolicy,
             "antiAFKMouseMovementEnabled": antiAFKMouseMovementEnabled,
             "preventDisplaySleepWhileStreaming": preventDisplaySleepWhileStreaming,
             "recordingVideoBitrateMbps": recordingVideoBitrateMbps,
@@ -310,12 +320,21 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
 }
 
 public enum WebRTCMediaStreamSettingsResolver {
+    /// The device's best codec, then whatever the cloud still allows: a variable that has turned a
+    /// codec off takes the stream back to H.264 rather than negotiating something the seat refuses.
+    static func permittedCodec(profile: WebRTCMediaStreamProfile,
+                               capabilities: WebRTCMediaDeviceCapabilities,
+                               cloudVariables: WebRTCMediaCloudVariables) -> String {
+        let codec = resolvedCodec(profile: profile, capabilities: capabilities)
+        if !cloudVariables.allowH265, codec == "H265" { return "H264" }
+        if !cloudVariables.allowAV1, codec == "AV1" { return "H264" }
+        return codec
+    }
+
     public static func resolve(profile: WebRTCMediaStreamProfile,
                                capabilities: WebRTCMediaDeviceCapabilities,
                                cloudVariables: WebRTCMediaCloudVariables = WebRTCMediaCloudVariables()) -> WebRTCMediaResolvedStreamSettings {
-        var codec = resolvedCodec(profile: profile, capabilities: capabilities)
-        if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
-        if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
+        let codec = permittedCodec(profile: profile, capabilities: capabilities, cloudVariables: cloudVariables)
         // HDR is a 10-bit HEVC/AV1 stream by definition: an 8-bit request with HDR on would have
         // the seat encode PQ into a bit depth the decoder then flattens, so the tier is lifted here
         // and HDR is dropped where the codec cannot carry it at all.
@@ -364,6 +383,8 @@ public enum WebRTCMediaStreamSettingsResolver {
             pillarboxFillColor: profile.pillarboxFillColor,
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
+            rawMouseInput: profile.rawMouseInput,
+            cursorPolicy: OPNCursorPolicy.from(profile.cursorPolicy).rawValue,
             antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
             preventDisplaySleepWhileStreaming: profile.preventDisplaySleepWhileStreaming,
             recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,

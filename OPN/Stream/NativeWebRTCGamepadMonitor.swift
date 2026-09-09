@@ -80,7 +80,15 @@ public final class NativeWebRTCGamepadMonitor {
     private let bindingClock = ContinuousClock()
     private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]
     private var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
-    private var localCursorModeHeld: Set<InputDeviceID> = []
+    /// Whether the Steam guide chord is currently driving the real macOS pointer. The stream view
+    /// must not hide a cursor the player is actively aiming with.
+    var onLocalCursorInjectionChanged: ((Bool) -> Void)?
+    private var localCursorModeHeld: Set<InputDeviceID> = [] {
+        didSet {
+            guard oldValue.isEmpty != localCursorModeHeld.isEmpty else { return }
+            onLocalCursorInjectionChanged?(!localCursorModeHeld.isEmpty)
+        }
+    }
     private var chordTracker = StreamOSKChordTracker()
     private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
     private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]

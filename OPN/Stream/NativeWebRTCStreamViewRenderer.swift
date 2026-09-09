@@ -56,12 +56,17 @@ extension NativeWebRTCStreamView {
     public func restoreInputFocus() {
         guard remoteInputEnabled, NSApplication.shared.isActive, window?.isKeyWindow == true else { return }
         window?.makeFirstResponder(self)
-        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative, directMouseInputEnabled { setPointerLocked(true) }
+        // Not gated on Direct Mouse Input: relative mode is reached by following the seat into
+        // mouselook as well as by choosing it, and coming back from the HUD or the on-screen
+        // keyboard without retaking the pointer would leave the game aiming with a free cursor
+        // that walks straight out of the window.
+        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative { setPointerLocked(true) }
     }
 
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
+        window?.invalidateCursorRects(for: self)
         nativeNVSTMetalView?.frame = videoSurface.bounds
         if nativeNVSTRendererEnabled {
             updateNativeNVSTRendererWindowFrame()

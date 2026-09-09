@@ -219,6 +219,68 @@ private actor ControlledNativeInputRecorder {
     #expect(await recorder.snapshot() == [.event(up), .event(down)])
 }
 
+@Test func nativeNVSTDispatcherCoalescesAdjacentHorizontalWheelDetents() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 3) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(.mouse(.horizontalWheel(deviceID: "mouse", delta: 40, timestamp: timestamp)))
+    dispatcher.enqueue(.mouse(.horizontalWheel(deviceID: "mouse", delta: 80, timestamp: MediaTimestamp(nanoseconds: 2_000))))
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [
+        .event(press),
+        .event(.mouse(.horizontalWheel(deviceID: "mouse", delta: 120, timestamp: MediaTimestamp(nanoseconds: 2_000)))),
+    ])
+}
+
+@Test func nativeNVSTDispatcherPreservesOppositeHorizontalWheelEdges() async {
+    let recorder = NativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let right = UserInputEvent.mouse(.horizontalWheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
+    let left = UserInputEvent.mouse(.horizontalWheel(deviceID: "mouse", delta: -120, timestamp: MediaTimestamp(nanoseconds: 2_000)))
+
+    dispatcher.enqueue(right)
+    dispatcher.enqueue(left)
+    await dispatcher.finish()
+
+    #expect(await recorder.snapshot() == [.event(right), .event(left)])
+}
+
+/// A diagonal swipe emits one packet per axis, and neither axis may be folded into the other —
+/// merging them would turn a sideways detent into a vertical one.
+@Test func nativeNVSTDispatcherKeepsWheelAxesSeparate() async {
+    let recorder = ControlledNativeInputRecorder()
+    let dispatcher = NativeNVSTInputDispatcher(capacity: 4) { input in
+        await recorder.append(input)
+    }
+    let timestamp = MediaTimestamp(nanoseconds: 1_000)
+    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
+    let vertical = UserInputEvent.mouse(.wheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
+    let horizontal = UserInputEvent.mouse(.horizontalWheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
+
+    dispatcher.enqueue(press)
+    await recorder.waitForCount(1)
+    dispatcher.enqueue(vertical)
+    dispatcher.enqueue(horizontal)
+    dispatcher.enqueue(vertical)
+    let finishTask = Task { await dispatcher.finish() }
+    await recorder.unblock()
+    await finishTask.value
+
+    #expect(await recorder.snapshot() == [.event(press), .event(vertical), .event(horizontal), .event(vertical)])
+}
+
 @Test func nativeNVSTDispatcherKeepsAbsolutePositionWithButtonUnderPressure() async {
     let recorder = ControlledNativeInputRecorder()
     let dispatcher = NativeNVSTInputDispatcher(capacity: 2) { input in
@@ -383,4 +445,118 @@ private actor ControlledNativeInputRecorder {
 
     #expect(initialStates == [true])
     #expect(updatedStates == [false])
+}
+
+/// Builds the scroll event AppKit would deliver for one moment of a trackpad gesture. CoreGraphics
+/// rounds point deltas to whole points, so the sideways noise of a real two-finger scroll — a few
+/// tenths of a point per event — is modelled here as one point: the same free-running carry, one
+/// detent sooner.
+private func nativeScrollGestureEvent(deltaX: Double, deltaY: Double, phase: Int64, momentumPhase: Int64 = 0) -> NSEvent? {
+    guard let source = CGEventSource(stateID: .privateState),
+          let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: 0, wheel3: 0) else { return nil }
+    event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+    event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: deltaY)
+    event.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: deltaX)
+    event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: deltaY)
+    event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: deltaX)
+    event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+    event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentumPhase)
+    return NSEvent(cgEvent: event)
+}
+
+/// A notched wheel with a tilt: no phases at all, and a sideways delta that is entirely deliberate.
+private func nativeTiltWheelEvent(lines: Int32) -> NSEvent? {
+    guard let source = CGEventSource(stateID: .privateState),
+          let event = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 2, wheel1: 0, wheel2: lines, wheel3: 0) else { return nil }
+    return NSEvent(cgEvent: event)
+}
+
+private func nativeHorizontalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
+    events.compactMap { event in
+        guard case .mouse(.horizontalWheel(_, let delta, _)) = event else { return nil }
+        return delta
+    }
+}
+
+private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
+    events.compactMap { event in
+        guard case .mouse(.wheel(_, let delta, _)) = event else { return nil }
+        return delta
+    }
+}
+
+/// The common gesture in the whole client: a vertical two-finger scroll whose every event also
+/// carries a little sideways travel. Not one horizontal packet may leave — its wire meaning is an
+/// unverified reading of the type-10 body, and the momentum tail must not reopen the axis either.
+@Test @MainActor func nativeScrollVerticalGestureEmitsNoHorizontalWheel() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+
+    view.scrollWheel(with: try #require(nativeScrollGestureEvent(deltaX: 1, deltaY: -6, phase: 1)))
+    for _ in 0..<20 {
+        view.scrollWheel(with: try #require(nativeScrollGestureEvent(deltaX: 1, deltaY: -6, phase: 2)))
+    }
+    for _ in 0..<10 {
+        view.scrollWheel(with: try #require(nativeScrollGestureEvent(deltaX: 1, deltaY: -2, phase: 0, momentumPhase: 2)))
+    }
+
+    #expect(nativeHorizontalWheelDeltas(events).isEmpty)
+    #expect(nativeVerticalWheelDeltas(events).count == 31)
+}
+
+/// The containment must not cost the gesture it is named after: sideways travel that dominates is
+/// sideways intent, and goes out on the first event of the swipe with nothing shaved off the front.
+@Test @MainActor func nativeScrollSidewaysGestureStillEmitsHorizontalWheel() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+
+    view.scrollWheel(with: try #require(nativeScrollGestureEvent(deltaX: 6, deltaY: 0, phase: 1)))
+    view.scrollWheel(with: try #require(nativeScrollGestureEvent(deltaX: 4, deltaY: 0, phase: 2)))
+
+    #expect(nativeHorizontalWheelDeltas(events) == [720, 480])
+}
+
+/// A mouse wheel reports no phase at all, so there is no gesture to scope: a tilt (and shift-scroll,
+/// which arrives the same way) has to pass straight through.
+@Test @MainActor func nativeScrollTiltWheelWithoutPhaseEmitsHorizontalWheel() throws {
+    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    var events: [UserInputEvent] = []
+    view.onInputEvent = { events.append($0) }
+
+    view.scrollWheel(with: try #require(nativeTiltWheelEvent(lines: 1)))
+    view.scrollWheel(with: try #require(nativeTiltWheelEvent(lines: -2)))
+
+    #expect(nativeHorizontalWheelDeltas(events) == [120, -240])
+}
+
+/// Why the axis cannot be judged event by event: the middle line here has |dx| far larger than
+/// |dy| yet belongs to the momentum tail of a vertical flick, and the lock latched at the start of
+/// the gesture is what keeps it quiet. The following gesture starts the judgement over.
+@Test func nativeScrollAxisFilterLatchesPerGesture() {
+    var filter = NativeWebRTCScrollAxisFilter()
+    let flick = filter.allowsHorizontal(phase: .began, deltaX: 0.4, deltaY: -6)
+    let tail = filter.allowsHorizontal(phase: .momentum, deltaX: 4, deltaY: -0.2)
+    let swipe = filter.allowsHorizontal(phase: .began, deltaX: 4, deltaY: -0.2)
+    let swipeTail = filter.allowsHorizontal(phase: .gesture, deltaX: 0.1, deltaY: -3)
+
+    #expect(!flick)
+    #expect(!tail)
+    #expect(swipe)
+    #expect(swipeTail)
+}
+
+/// Jitter under a detent's worth of travel decides nothing, and nothing sideways is emitted while
+/// the gesture is still unreadable.
+@Test func nativeScrollAxisFilterWithholdsHorizontalUntilTheGestureIsReadable() {
+    var filter = NativeWebRTCScrollAxisFilter()
+    let jitter = [filter.allowsHorizontal(phase: .began, deltaX: 0.3, deltaY: 0.2),
+                  filter.allowsHorizontal(phase: .gesture, deltaX: 0.3, deltaY: 0.2)]
+    let sideways = filter.allowsHorizontal(phase: .gesture, deltaX: 3, deltaY: 0.1)
+    let wheel = filter.allowsHorizontal(phase: .none, deltaX: 0, deltaY: -1)
+
+    #expect(jitter == [false, false])
+    #expect(sideways)
+    #expect(wheel)
 }

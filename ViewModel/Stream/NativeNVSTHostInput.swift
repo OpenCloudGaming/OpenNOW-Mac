@@ -21,11 +21,22 @@ extension NativeNVSTHostViewModel {
         view.directMouseInputEnabled = profile.directMouseInput
         mouseSensitivityPercent = profile.mouseSensitivityPercent
         view.mouseSensitivity = Double(profile.mouseSensitivityPercent) / 100
+        view.rawMouseInputEnabled = profile.rawMouseInput
+        view.cursorPolicy = profile.cursorPolicy
+        cursorPolicyIndex = profile.cursorPolicy.rawValue
         view.locksPointerWhenRelativeModeSelected = true
         view.confinesCursorToWindowInAbsoluteMode = profile.directMouseInput
         view.hidesCursorWhilePointerLocked = true
-        view.onPointerLockChanged = { [weak self] locked in self?.pointerLocked = locked }
+        view.onPointerLockChanged = { [weak self, weak view] locked in
+            self?.pointerLocked = locked
+            self?.mouseInputIsRelative = view?.effectiveMouseMode == .relative
+        }
+        view.onMouseInputModeChanged = { [weak self] mode in self?.mouseInputIsRelative = mode == .relative }
         if path == nil { view.mouseInputMode = .absolute }
+        // A bootstrap so the surface has an aspect before any frame arrives. The requested profile is
+        // only a request — the first decoded frame reports what the seat actually sent and corrects
+        // this, which matters most on a cross-device resume, where the geometry stays the origin
+        // device's and this value would otherwise letterbox and aim the pointer against a fiction.
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
         let pushToTalkEnabled = profile.microphoneMode.caseInsensitiveCompare("push-to-talk") == .orderedSame

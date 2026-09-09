@@ -193,7 +193,7 @@ extension WebRTCMediaStreamSurface {
 
     func togglePointerLockFromHUD() {
         guard isStreamReady, runtimeSettings.directMouseInput else { return }
-        nativeView?.setPointerLocked(!pointerLocked)
+        nativeView?.setManualPointerCapture(!pointerLocked)
     }
 
     func toggleFullScreenFromHUD() {

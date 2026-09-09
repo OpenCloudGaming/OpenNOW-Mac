@@ -20,7 +20,9 @@ extension NativeWebRTCStreamView {
         window?.makeFirstResponder(self)
         updatePointerLockCursorVisibility()
         installPointerLockMonitor()
+        startRawMouseCaptureIfNeeded()
         installPointerLockNotifications()
+        applyLocalCursorPolicy()
         notifyPointerLockChanged(true)
     }
 
@@ -35,6 +37,7 @@ extension NativeWebRTCStreamView {
         }
         isPointerLocked = false
         removePointerLockMonitor()
+        stopRawMouseCapture()
         if let restoreLocation = pointerLockRestoreLocation {
             moveCursor(toScreenPoint: restoreLocation)
         }
@@ -43,6 +46,17 @@ extension NativeWebRTCStreamView {
             NSCursor.unhide()
             pointerLockCursorHidden = false
         }
+        // Every route that ends a capture comes through here — the toggle, a click outside, focus
+        // loss, the HUD, an in-place reconnect dropping remote input, teardown — so this is the one
+        // place the manual override has to be forgotten. Nothing releases the pointer without it.
+        manualPointerCaptureOverride = false
+        // The override swallowed every seat mode change while it was held, so the mode can be stale
+        // in the direction that has no lock behind it: `.relative` with the pointer released is
+        // where `routeInputEvent` drops every mouse event and the mouse is simply dead until the
+        // seat next changes its mind. Only that direction is replayed — following the seat back
+        // into mouselook here would retake the pointer the player just asked to get back.
+        if remoteCursorWantsPointer == true, mouseInputMode != .absolute { mouseInputMode = .absolute }
+        applyLocalCursorPolicy()
         notifyPointerLockChanged(false)
     }
 
@@ -83,17 +97,38 @@ extension NativeWebRTCStreamView {
         let windowPoint = window.convertPoint(fromScreen: confined)
         let viewPoint = convert(windowPoint, from: nil)
         guard let absoluteEvent = absoluteMouseEvent(at: viewPoint, timestamp: Self.timestamp()) else { return true }
+        lastEmittedAbsoluteMouseEvent = absoluteEvent
         onAbsoluteMouseMove?(absoluteEvent)
         return true
     }
 
     func notifyPointerLockChanged(_ locked: Bool) {
         onPointerLockChanged?(locked)
+        onMouseInputModeChanged?(effectiveMouseMode)
         WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
     }
 
+    /// The player's own capture toggle: Cmd+P and the HUD tile. Distinct from `setPointerLocked`,
+    /// which the seat's cursor notifications drive as well — a capture asked for by hand sticks
+    /// until it is released by hand, and the next `setRemoteCursorVisible` must not undo it.
+    public func setManualPointerCapture(_ captured: Bool) {
+        setPointerLocked(captured)
+        // Only a capture that actually took hold sticks. `enablePointerLock` gives up when there is
+        // no window or macOS refuses the association, and an override with no lock behind it would
+        // silence seat cursor notifications for the rest of the session.
+        manualPointerCaptureOverride = captured && isPointerLocked
+    }
+
+    /// What the seat says about the game's own cursor, applied to this client's input mode.
+    ///
+    /// A hidden remote cursor means the game is in mouselook, where absolute coordinates address
+    /// nothing, so the client follows it into relative mode whatever Direct Mouse Input says; that
+    /// preference gates whether an ordinary click may take the pointer, which is a different
+    /// question. A capture the player forced by hand outranks both.
     public func setRemoteCursorVisible(_ isVisible: Bool) {
-        let mode: NativeStreamMouseInputMode = isVisible || !directMouseInputEnabled ? .absolute : .relative
+        remoteCursorWantsPointer = isVisible
+        guard !manualPointerCaptureOverride else { return }
+        let mode: NativeStreamMouseInputMode = isVisible ? .absolute : .relative
         mouseInputMode = mode
         if mode == .relative {
             if remoteInputEnabled { setPointerLocked(true) }

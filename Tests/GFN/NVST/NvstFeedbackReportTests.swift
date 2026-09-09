@@ -255,8 +255,11 @@ struct NvstInputActivationTests {
         // An explicit visibility byte wins over the id.
         let explicitlyHidden = NvstControlCommand(code: 0x010f, payload: bytes("020000000a00140000"))
         #expect(NvstRemoteCursor.from(explicitlyHidden)?.isVisible == false)
-        // 0x0110 is ambiguous (our capture table calls it video-stream-progress), so it must NOT
-        // be read as a cursor — otherwise every progress message would un-hide the pointer.
+        // Both come back as cursor notifications, and only the system one may move visibility;
+        // NvstRemoteCursorBitmapTests holds that rule against the bitmap form.
+        #expect(NvstRemoteCursor.from(hidden)?.source == .systemCursor)
+        // A 0x0110 too short to carry the id/size pair the official handler logs is not readable
+        // as a bitmap cursor and stays unparsed.
         #expect(NvstRemoteCursor.from(NvstControlCommand(code: 0x0110, payload: Data([0, 0, 0, 0]))) == nil)
         // Anything else is not a cursor message.
         #expect(NvstRemoteCursor.from(NvstControlCommand(code: 0x0200, payload: Data([0]))) == nil)

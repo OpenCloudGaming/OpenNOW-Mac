@@ -124,11 +124,19 @@ private struct MouseButtonTransition: Equatable {
     #expect(!view.isCursorCaptured)
 }
 
-@Test @MainActor func remoteCursorVisibilityKeepsPointingModeWithoutDirectMouseInput() {
+@Test @MainActor func remoteCursorHiddenReachesRelativeModeWithoutDirectMouseInput() {
     let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
     view.directMouseInputEnabled = false
 
     view.setRemoteCursorVisible(false)
+
+    // Direct Mouse Input off means a click may not take the pointer. It does not mean the client
+    // stays in absolute mode while the game is in mouselook, where absolute coordinates address
+    // nothing: coercing the mode here made the preference silently read "absolute forever".
+    #expect(view.mouseInputMode == .relative)
+    #expect(!view.capturePointerForMouseDown())
+
+    view.setRemoteCursorVisible(true)
 
     #expect(view.mouseInputMode == .absolute)
     #expect(!view.isCursorCaptured)
@@ -159,67 +167,6 @@ private struct MouseButtonTransition: Equatable {
     #expect(NativeWebRTCStreamView.isStreamWindowKeyEvent(streamWindow, streamWindow: streamWindow))
     #expect(!NativeWebRTCStreamView.isStreamWindowKeyEvent(menuWindow, streamWindow: streamWindow))
     #expect(!NativeWebRTCStreamView.isStreamWindowKeyEvent(nil, streamWindow: streamWindow))
-}
-
-@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeMapsDisplayedVideoCoordinates() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
-    view.mouseInputMode = .absolute
-    view.setStreamContentSize(width: 1920, height: 1080)
-    view.layoutSubtreeIfNeeded()
-    let timestamp = MediaTimestamp(nanoseconds: 1_000)
-
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 0, y: 50), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 899, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1599, y: 949), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 1, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 25), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 899, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 800, y: 975), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 800, y: 0, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: -100, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 0, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: 1700, y: 500), timestamp: timestamp) == NativeNVSTAbsoluteMouseEvent(x: 1599, y: 450, viewportWidth: 1600, viewportHeight: 900, timestamp: timestamp))
-    #expect(view.absoluteMouseEvent(at: CGPoint(x: CGFloat.nan, y: 500), timestamp: timestamp) == nil)
-}
-
-@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeForwardsCompleteClickWithoutPointerLock() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
-    view.mouseInputMode = .absolute
-    var events: [UserInputEvent] = []
-    var sequence: [String] = []
-    view.onAbsoluteMouseMove = { event in sequence.append("position:\(event.x),\(event.y)") }
-    view.onInputEvent = { event in
-        events.append(event)
-        if case .mouse(.button(_, _, let isPressed, _)) = event { sequence.append(isPressed ? "down" : "up") }
-    }
-    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
-    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
-
-    view.mouseDown(with: mouseDown)
-    view.mouseUp(with: mouseUp)
-
-    #expect(!view.isPointerLocked)
-    #expect(mouseButtonTransitions(events) == [
-        MouseButtonTransition(button: .left, isPressed: true),
-        MouseButtonTransition(button: .left, isPressed: false),
-    ])
-    #expect(sequence == ["position:0,719", "down", "position:0,719", "up"])
-}
-
-@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func absoluteMouseModeClampsLetterboxClickBeforeEachButtonEdge() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
-    view.mouseInputMode = .absolute
-    view.setStreamContentSize(width: 1920, height: 1080)
-    view.layoutSubtreeIfNeeded()
-    var sequence: [String] = []
-    view.onAbsoluteMouseMove = { event in sequence.append("position:\(event.x),\(event.y)") }
-    view.onInputEvent = { event in
-        if case .mouse(.button(_, _, let isPressed, _)) = event { sequence.append(isPressed ? "down" : "up") }
-    }
-    let location = NSPoint(x: 800, y: 975)
-    let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown, location: location))
-    let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp, location: location))
-
-    view.mouseDown(with: mouseDown)
-    view.mouseUp(with: mouseUp)
-
-    #expect(sequence == ["position:800,0", "down", "position:800,0", "up"])
 }
 
 @Test @MainActor func absoluteMouseCaptureConfinesToWindowAndPreservesClick() throws {

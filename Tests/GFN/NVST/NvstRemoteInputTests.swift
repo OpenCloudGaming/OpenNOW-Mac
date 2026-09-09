@@ -229,6 +229,40 @@ struct NvstRemoteInputTests {
                            "rtcp_on_sctp_private"])
     }
 
+    /// The captured wheel layout: a zero word, then the notch count times `WHEEL_DELTA`, then a
+    /// zero word. Held here so the axis split below cannot silently move the vertical delta.
+    @Test func verticalWheelKeepsTheCapturedLayout() {
+        let data = NvstRemoteInput.mouseWheel(delta: -120)
+        #expect([UInt8](data) == [0x00, 0x00, 0x00, 0x0a,   // length = 4 + 6
+                                 0x0a, 0x00, 0x00, 0x00,   // type 10 = wheel
+                                 0x00, 0x00,                // word 0
+                                 0xff, 0x88,                // one downward notch, as captured
+                                 0x00, 0x00])               // word 2
+    }
+
+    /// Sideways scrolling reuses type 10 with the delta in word 0 — the `dx` slot of the shape the
+    /// relative move uses. That placement is an inference, not a capture, which is why the packet
+    /// leaves the vertical word at zero: a misread of word 0 can never be weighed against a real
+    /// scroll.
+    @Test func horizontalWheelCarriesTheDeltaInTheLeadingWordAlone() {
+        let data = NvstRemoteInput.mouseWheelHorizontal(delta: 120)
+        #expect([UInt8](data) == [0x00, 0x00, 0x00, 0x0a,   // length = 4 + 6
+                                 0x0a, 0x00, 0x00, 0x00,   // type 10 = wheel
+                                 0x00, 0x78,                // one notch to the side
+                                 0x00, 0x00,                // vertical stays zero
+                                 0x00, 0x00])
+    }
+
+    @Test func horizontalWheelDeltasAreSignedBigEndian() {
+        for delta in [Int16.min, -120, -1, 1, 120, Int16.max] {
+            let data = NvstRemoteInput.mouseWheelHorizontal(delta: delta)
+            let word = Int16(bitPattern: UInt16(data[8]) << 8 | UInt16(data[9]))
+            #expect(word == delta)
+            #expect(data.count == 14)
+            #expect([UInt8](data[10...]) == [0, 0, 0, 0])
+        }
+    }
+
     @Test func theCommandCodeIsTheRemoteInputChannelCommand() {
         #expect(NvstRemoteInput.commandCode == 0x206)
         #expect(NvstControlCommandCode(rawValue: 0x206).name == "ri-command")

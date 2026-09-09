@@ -42,47 +42,6 @@ extension NativeWebRTCStreamView {
         return strokes
     }
 
-    func emitMouseMove(_ event: NSEvent) {
-        if !isPointerLocked, mouseInputMode == .absolute {
-            emitAbsoluteMousePosition(event)
-            return
-        }
-        let scaled = Self.scaledMouseDelta(deltaX: event.deltaX, deltaY: event.deltaY, sensitivity: mouseSensitivity, remainder: &mouseDeltaRemainder)
-        emitMouseMove(deltaX: scaled.x, deltaY: scaled.y)
-    }
-
-    /// Applies the sensitivity multiplier to one motion event. Whole counts go out now; the
-    /// fractional rest is carried into the next event, so the sum over a movement equals the
-    /// scaled input exactly and a 25% setting still registers single-count nudges over time.
-    static func scaledMouseDelta(deltaX: CGFloat, deltaY: CGFloat, sensitivity: Double, remainder: inout CGPoint) -> (x: Int16, y: Int16) {
-        let scaledX = deltaX * CGFloat(sensitivity) + remainder.x
-        let scaledY = deltaY * CGFloat(sensitivity) + remainder.y
-        let wholeX = scaledX.rounded(.towardZero)
-        let wholeY = scaledY.rounded(.towardZero)
-        remainder = CGPoint(x: scaledX - wholeX, y: scaledY - wholeY)
-        return (clampedInt16(Int(wholeX)), clampedInt16(Int(wholeY)))
-    }
-
-    func emitMouseMove(deltaX: Int16, deltaY: Int16) {
-        guard deltaX != 0 || deltaY != 0 else { return }
-        onInputEvent?(.mouse(.moved(
-            deviceID: "mouse",
-            deltaX: deltaX,
-            deltaY: deltaY,
-            timestamp: Self.timestamp()
-        )))
-    }
-
-    func emitScrollWheel(_ event: NSEvent) {
-        let delta = Self.accumulatedWheelDelta(
-            scrollingDeltaY: event.scrollingDeltaY,
-            hasPreciseScrollingDeltas: event.hasPreciseScrollingDeltas,
-            remainder: &preciseScrollRemainder
-        )
-        guard delta != 0 else { return }
-        onInputEvent?(.mouse(.wheel(deviceID: "mouse", delta: delta, timestamp: Self.timestamp())))
-    }
-
     func installPointerLockMonitor() {
         guard pointerLockMonitor == nil else { return }
         pointerLockMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]) { [weak self] event in
@@ -149,7 +108,13 @@ extension NativeWebRTCStreamView {
         let windowToken = center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.handleFocusLoss() }
         }
-        pointerLockNotificationTokens = [appToken, windowToken]
+        let appActiveToken = center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: NSApplication.shared, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyLocalCursorPolicy() }
+        }
+        let windowKeyToken = center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyLocalCursorPolicy() }
+        }
+        pointerLockNotificationTokens = [appToken, windowToken, appActiveToken, windowKeyToken]
     }
 
     func removePointerLockNotifications() {
@@ -169,12 +134,6 @@ extension NativeWebRTCStreamView {
         CGDisplayMoveCursorToPoint(CGDirectDisplayID(screenNumber.uint32Value), displayPoint)
     }
 
-    func capturePointerForMouseDown() -> Bool {
-        guard remoteInputEnabled, directMouseInputEnabled, mouseInputMode == .relative, !isPointerLocked else { return false }
-        setPointerLocked(true)
-        return isPointerLocked
-    }
-
     static func confinedCursorPoint(_ point: CGPoint, to windowFrame: CGRect) -> CGPoint? {
         guard point.x.isFinite, point.y.isFinite, windowFrame.origin.x.isFinite, windowFrame.origin.y.isFinite,
               windowFrame.width.isFinite, windowFrame.height.isFinite, windowFrame.width >= 2, windowFrame.height >= 2 else { return nil }
@@ -184,43 +143,83 @@ extension NativeWebRTCStreamView {
         )
     }
 
-    static func accumulatedWheelDelta(scrollingDeltaY: Double,
-                                      hasPreciseScrollingDeltas: Bool,
-                                      remainder: inout Double) -> Int16 {
-        guard scrollingDeltaY.isFinite else { return 0 }
-        if !hasPreciseScrollingDeltas {
-            remainder = 0
-            let scaled = min(max((scrollingDeltaY * 120).rounded(), Double(Int16.min)), Double(Int16.max))
-            return Int16(scaled)
-        }
-        remainder += scrollingDeltaY
-        let completeDetents = remainder.rounded(.towardZero)
-        guard completeDetents != 0 else { return 0 }
-        let packetLimit = Double(Int16.max / 120)
-        let packetDetents = min(max(completeDetents, -packetLimit), packetLimit)
-        remainder -= packetDetents
-        return Int16(packetDetents * 120)
-    }
-
     func emitAbsoluteMousePosition(_ event: NSEvent) {
         guard !isPointerLocked, mouseInputMode == .absolute else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard let absoluteEvent = absoluteMouseEvent(at: point, timestamp: Self.timestamp()) else { return }
+        // The seat leaves its pointer where we last put it, so repeating that exact position tells
+        // it nothing — and macOS delivers a move for every backing pixel crossed plus one before
+        // each button edge. Only the position counts; the timestamp differs every time by design.
+        if let last = lastEmittedAbsoluteMouseEvent, Self.isSamePointerPosition(last, absoluteEvent) { return }
+        lastEmittedAbsoluteMouseEvent = absoluteEvent
         onAbsoluteMouseMove?(absoluteEvent)
     }
 
+    static func isSamePointerPosition(_ lhs: NativeNVSTAbsoluteMouseEvent, _ rhs: NativeNVSTAbsoluteMouseEvent) -> Bool {
+        lhs.x == rhs.x && lhs.y == rhs.y &&
+            lhs.viewportWidth == rhs.viewportWidth && lhs.viewportHeight == rhs.viewportHeight
+    }
+
     func absoluteMouseEvent(at point: CGPoint, timestamp: MediaTimestamp) -> NativeNVSTAbsoluteMouseEvent? {
+        absoluteMouseEvent(at: point, timestamp: timestamp, backingScale: window?.backingScaleFactor ?? 1)
+    }
+
+    /// The absolute position for a point in this view: the source pixel the player is pointing at,
+    /// expressed in the backing pixels of the displayed video.
+    ///
+    /// Backing pixels rather than points, because on a Retina display one point covers two stream
+    /// pixels and a position in points can only ever address every second one — a visible stair-step
+    /// when aiming. Position and viewport are converted together: the seat divides one by the other,
+    /// so a viewport left in points would undo the whole conversion.
+    ///
+    /// The `.stretchEdges` and `.cropFill` fills reproject the picture inside the drawable, so the
+    /// point is put through the same geometry the fill shader samples with before it becomes a
+    /// pixel — without that, every click in those modes lands wrong away from the picture centre.
+    func absoluteMouseEvent(at point: CGPoint,
+                            timestamp: MediaTimestamp,
+                            backingScale: CGFloat) -> NativeNVSTAbsoluteMouseEvent? {
         let contentFrame = videoContentFrame()
-        guard contentFrame.width > 0, contentFrame.height > 0, point.x.isFinite, point.y.isFinite else { return nil }
-        let x = floor(point.x - contentFrame.minX)
-        let y = floor(contentFrame.maxY - point.y)
+        guard contentFrame.width > 0, contentFrame.height > 0,
+              contentFrame.minX.isFinite, contentFrame.maxY.isFinite,
+              point.x.isFinite, point.y.isFinite,
+              backingScale.isFinite, backingScale > 0 else { return nil }
+        let displayed = CGPoint(x: (point.x - contentFrame.minX) / contentFrame.width,
+                                y: (contentFrame.maxY - point.y) / contentFrame.height)
+        let source = pillarboxPointerMapping().sourceUnitPoint(forDisplayed: displayed)
+        let viewportWidth = max(1, (contentFrame.width * backingScale).rounded())
+        let viewportHeight = max(1, (contentFrame.height * backingScale).rounded())
         return NativeNVSTAbsoluteMouseEvent(
-            x: Int32(clamping: Int(min(max(0, x), contentFrame.width - 1))),
-            y: Int32(clamping: Int(min(max(0, y), contentFrame.height - 1))),
-            viewportWidth: Int32(clamping: Int(contentFrame.width)),
-            viewportHeight: Int32(clamping: Int(contentFrame.height)),
+            x: Int32(clamping: Int(Self.pixelIndex(unit: source.x, extent: viewportWidth))),
+            y: Int32(clamping: Int(Self.pixelIndex(unit: source.y, extent: viewportHeight))),
+            viewportWidth: Int32(clamping: Int(viewportWidth)),
+            viewportHeight: Int32(clamping: Int(viewportHeight)),
             timestamp: timestamp
         )
+    }
+
+    /// Where the fill shader put the picture in the frame on screen.
+    ///
+    /// Read per event and never cached: the bar geometry is measured on the decode thread and
+    /// latches slowly — around a second before the first rect, several more before a changed one —
+    /// so a session starts unbarred and can pick up bars mid-game.
+    ///
+    /// The numbers come from the fill pass itself, not from the selected mode plus a detector
+    /// reading. The shader disables the effect for conditions this side cannot see (a non-identity
+    /// codec crop, a degenerate size) and several render paths never run it at all; in those the
+    /// picture is untransformed while Stretch or Crop is still the chosen mode, and reprojecting a
+    /// click for a transform that never happened is exactly the miss this mapping exists to avoid.
+    func pillarboxPointerMapping() -> OPNPillarboxPointerMapping {
+        guard let committed = nvstBifrostFreeRenderer?.committedPillarboxFill else { return .identity }
+        return OPNPillarboxPointerMapping(committed: committed)
+    }
+
+    /// A normalised coordinate as a pixel index inside `extent`.
+    ///
+    /// The epsilon covers the handful of ulps the trip through normalised coordinates costs: without
+    /// it a point sitting exactly on a pixel boundary lands one pixel short of where it is.
+    static func pixelIndex(unit: CGFloat, extent: CGFloat) -> Double {
+        let pixel = (Double(unit) * Double(extent) + 1e-6).rounded(.down)
+        return min(max(0, pixel), Double(extent) - 1)
     }
 
     func videoContentFrame() -> CGRect {
@@ -255,6 +254,8 @@ extension NativeWebRTCStreamView {
         textInputState.cancel()
         activeGamepadStates.removeAll()
         preciseScrollRemainder = 0
+        preciseHorizontalScrollRemainder = 0
+        lastEmittedAbsoluteMouseEvent = nil
         for event in keyboardEvents {
             onInputEvent?(.keyboard(KeyboardEvent(
                 deviceID: event.deviceID,
@@ -279,12 +280,17 @@ extension NativeWebRTCStreamView {
         guard let event = absoluteMouseEvent(at: viewPoint, timestamp: timestamp) else { return }
         isEmittingNeutralizingAbsolutePosition = true
         defer { isEmittingNeutralizingAbsolutePosition = false }
+        // Deliberately not deduped: this is the position a button edge is about to be applied at,
+        // and it travels on a path the ordinary move events cannot reach. It is still recorded, so
+        // the move that follows the click does not repeat it.
+        lastEmittedAbsoluteMouseEvent = event
         onAbsoluteMouseMove?(event)
     }
 
     func handleFocusLoss() {
         releasePressedInputs()
         setPointerLocked(false)
+        applyLocalCursorPolicy()
     }
 
     func receiveGamepadState(_ state: GamepadState) {
@@ -302,6 +308,10 @@ extension NativeWebRTCStreamView {
             if mouseInputMode == .absolute { emitCurrentAbsoluteMousePosition(timestamp: timestamp) }
             onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: false, timestamp: timestamp)))
         }
+        // Every mouse-mode change runs through here before the mode flips, so this is also where the
+        // dedupe record has to go: after a flip the seat's pointer is no longer ours to assume, and
+        // the position that re-establishes it must go out even if it repeats the last one.
+        lastEmittedAbsoluteMouseEvent = nil
     }
 
     static func mouseButtonOrder(_ button: MouseButton) -> Int {

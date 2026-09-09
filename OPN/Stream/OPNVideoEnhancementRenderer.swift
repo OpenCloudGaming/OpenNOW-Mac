@@ -145,6 +145,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
     var outputPipelines: [String: any MTLRenderPipelineState] = [:]
     var failedOutputPipelines: Set<String> = []
     let pillarboxDetector = OPNPillarboxDetector()
+    /// What the fill pass committed for the frame this renderer drew last, for the pointer to map
+    /// clicks with. Written by the encode, read from wherever an input event arrives.
+    nonisolated let pillarboxFillCommit = OPNCommittedPillarboxFillBox()
     var lastLoggedFillMode: OPNPillarboxFillMode?
     var lastLoggedContentRect: OPNPillarboxContentRect?
     var fillHistoryRGBPipeline: (any MTLRenderPipelineState)?
@@ -222,6 +225,11 @@ final class OPNVideoEnhancementRenderer: NSObject {
     ) -> Bool {
         let start = CACurrentMediaTime()
         populateResult(result, settings: settings)
+        // Only the spatial encode below draws the fill, and it republishes what it committed on
+        // its way out. Every other path here — the Core Image branch, its MetalFX variant, and
+        // each early bail into WebRTC's own renderer — puts the picture on screen untransformed,
+        // so the pointer must not inherit geometry from a frame that took a different one.
+        pillarboxFillCommit.clear()
         guard let frame, let view, let settings, let result, settings.configuredTier != .off else {
             result?.fallbackReason = "enhancement disabled"
             result?.enhancedPixelBuffer = nil
@@ -508,7 +516,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     ///
     /// Four columns covers 4:2:0 chroma siting plus the ringing of one DCT block. The
     /// cost is under a third of a percent of picture width.
-    static let pillarboxEdgeInsetColumns = 4.0
+    nonisolated static let pillarboxEdgeInsetColumns = 4.0
 
     /// The content span with ``pillarboxEdgeInsetColumns`` trimmed from each side.
     ///
@@ -516,7 +524,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     /// mirror the picture about these edges, so a span that disagreed between the fill
     /// history and the pass that samples it would slide the reflection sideways and put
     /// back the visible join the trim exists to remove.
-    static func pillarboxInsetSpan(
+    nonisolated static func pillarboxInsetSpan(
         contentRect: OPNPillarboxContentRect,
         sourceWidth: Double
     ) -> (left: Double, right: Double) {
@@ -532,7 +540,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     /// Pure so the geometry can be tested without a GPU. Returns a disabled set
     /// (mode 0) whenever fill cannot be drawn correctly, which keeps every caller
     /// from having to repeat the same guards.
-    static func pillarboxUniforms(
+    nonisolated static func pillarboxUniforms(
         mode: OPNPillarboxFillMode,
         contentRect: OPNPillarboxContentRect,
         codecCropIsIdentity: Bool,

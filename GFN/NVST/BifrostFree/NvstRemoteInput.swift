@@ -232,6 +232,30 @@ public enum NvstRemoteInput {
         return packet(type: .mouseWheel, body: writer.data)
     }
 
+    /// A sideways wheel movement, in the same `WHEEL_DELTA` units.
+    ///
+    /// Measured: the type-10 body is three big-endian words; word 1 carries the vertical notch
+    /// count (one downward notch captured as -120) and word 0 was zero in every capture of a
+    /// vertical scroll.
+    ///
+    /// Inferred: that word 0 is the horizontal delta. No capture ever carried a non-zero value
+    /// there. The reading rests on the body being the same three-word shape as the type-7 relative
+    /// move — `[dx][dy][flags]` — with the vertical wheel sitting in the `dy` slot, which leaves
+    /// the `dx` slot as where a sideways delta would go; Win32 pairs `WM_MOUSEWHEEL` and
+    /// `WM_MOUSEHWHEEL` the same way, both carrying a `WHEEL_DELTA`-scaled short. Word 0 being a
+    /// mode, an index or padding fits the same evidence.
+    ///
+    /// Which is why the two axes never share a packet: sending horizontal with the vertical word
+    /// at zero means a misread of word 0 can only be weighed against a zero vertical delta, never
+    /// against a real scroll. Vertical scrolling is the capture-verified path here and stays
+    /// byte-identical to what it sends today.
+    public static func mouseWheelHorizontal(delta: Int16) -> Data {
+        var writer = NvstByteWriter(capacity: 6)
+        writer.u16BE(UInt16(bitPattern: delta))
+        writer.zeroes(4)
+        return packet(type: .mouseWheel, body: writer.data)
+    }
+
     /// A relative pointer move: `[i16 BE dx][i16 BE dy][u16 BE flags]`. The `0x800` flag would
     /// make it absolute, so a relative move leaves the flags at zero.
     public static func mouseMove(deltaX: Int16, deltaY: Int16, flags: UInt16 = 0) -> Data {

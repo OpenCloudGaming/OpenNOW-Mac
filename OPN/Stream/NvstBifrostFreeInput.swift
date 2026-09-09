@@ -435,6 +435,8 @@ extension NvstBifrostFreeTransport {
             )
         case .mouse(.wheel(_, let delta, _)):
             NvstRemoteInput.mouseWheel(delta: delta)
+        case .mouse(.horizontalWheel(_, let delta, _)):
+            NvstRemoteInput.mouseWheelHorizontal(delta: delta)
         case .text, .gamepad:
             nil
         }

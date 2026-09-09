@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-struct NativeWebRTCStreamViewMouseSensitivityTests {
+@MainActor struct NativeWebRTCStreamViewMouseSensitivityTests {
     private func run(_ deltas: [(CGFloat, CGFloat)], sensitivity: Double) -> (x: Int, y: Int) {
         var remainder = CGPoint.zero
         var total = (x: 0, y: 0)

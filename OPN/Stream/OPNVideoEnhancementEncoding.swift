@@ -65,6 +65,11 @@ extension OPNVideoEnhancementRenderer {
                           fillHistory: fillHistory, destinationTexture: destinationTexture, uniforms: &uniforms)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
+        // Publish the uniforms this pass was actually encoded with — after the `fill.w = 0`
+        // fallback above, and only once the draw is on the command buffer. The pointer reprojects
+        // clicks with these numbers, and anything derived a second time from the detector or the
+        // selected mode can disagree with what the shader did.
+        pillarboxFillCommit.commit(OPNCommittedPillarboxFill(fill: uniforms.fill, geometry: uniforms.fillGeometry))
         return true
     }
 

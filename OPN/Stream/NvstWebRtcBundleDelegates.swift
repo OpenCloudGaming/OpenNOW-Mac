@@ -121,7 +121,7 @@ extension NvstWebRtcBundle {
         // The visibility byte's position is inferred, not captured, so the raw payload is
         // logged next to the decision it produced. "Pointer shows or hides at the wrong time"
         // cannot be told from "the seat said something we misread" without both halves.
-        describeCursorCommand(command, decision: cursor.isVisible)
+        describeCursorCommand(command, cursor: cursor)
         onRemoteCursor?(cursor)
     }
 
@@ -232,9 +232,9 @@ extension NvstWebRtcBundle {
     /// Logs one line per *change* in what the seat says about the pointer, with the bytes it said
     /// it in. Unchanged repeats are counted rather than logged: the seat repeats the same
     /// notification many times a second.
-    func describeCursorCommand(_ command: NvstControlCommand, decision: Bool) {
+    func describeCursorCommand(_ command: NvstControlCommand, cursor: NvstRemoteCursor) {
         let hex = command.payload.prefix(16).map { String(format: "%02x", $0) }.joined()
-        let key = "\(command.code.rawValue)/\(hex)/\(decision)"
+        let key = "\(command.code.rawValue)/\(hex)/\(cursor.summary)"
         let shouldLog: Bool = lock.withLock {
             cursorNotificationCount += 1
             guard key != lastCursorNotification else { return false }
@@ -242,16 +242,17 @@ extension NvstWebRtcBundle {
             return true
         }
         guard shouldLog else { return }
-        logger?(String(format: "NVST cursor notify code=0x%04x len=%d visible=%@ payload=%@ seen=%d",
-                       command.code.rawValue, command.payload.count, decision ? "y" : "n", hex, cursorNotificationCount))
+        logger?(String(format: "NVST cursor notify code=0x%04x len=%d %@ payload=%@ seen=%d",
+                       command.code.rawValue, command.payload.count, cursor.summary, hex, cursorNotificationCount))
     }
 
-    /// A cursor-shaped command the parse refused. `0x0110` is the standing ambiguity — OpenNOW
-    /// calls it a bitmap cursor, our own capture-derived table calls it video-stream-progress — and
-    /// this is what tells us which, from a session where the pointer misbehaved.
+    /// A bitmap cursor whose payload is too short to carry the id/size pair the official handler
+    /// logs. The layout of `0x0110` past those two words is unrecovered, so the whole payload is
+    /// logged — 32 bytes rather than the 16 the parsed line needs — and its length with it: a real
+    /// capture is what would settle the offsets, and this is where one arrives.
     func describeCursorCommandIfUnparsed(_ command: NvstControlCommand) {
         guard command.code == NvstRemoteCursor.bitmapCursorCode else { return }
-        let hex = command.payload.prefix(16).map { String(format: "%02x", $0) }.joined()
+        let hex = command.payload.prefix(32).map { String(format: "%02x", $0) }.joined()
         let shouldLog: Bool = lock.withLock {
             guard hex != lastUnparsedCursorPayload else { return false }
             lastUnparsedCursorPayload = hex

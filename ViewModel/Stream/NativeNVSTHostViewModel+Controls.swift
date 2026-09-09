@@ -22,7 +22,8 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
-            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected || nativeView?.directMouseInputEnabled != true, group: "input", columns: 4, action: toggleNativePointerLock),
+            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected, group: "input", columns: 4, action: toggleNativePointerLock),
+            StreamHUDFocusEntry(id: "cursor-policy", isDisabled: !isConnected, group: "input", columns: 4, action: cycleCursorPolicy),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showStreamControls() }),
@@ -208,13 +209,21 @@ extension NativeNVSTHostViewModel {
             if unifiedHUDVisible { setUnifiedHUDVisible(false) }
             onScreenKeyboard.reset()
             restorePointerLockOnKeyboardHide = pointerLocked
+            restoreManualCaptureOnKeyboardHide = nativeView?.manualPointerCaptureOverride ?? false
             if pointerLocked { nativeView?.setPointerLocked(false) }
         }
         onScreenKeyboardVisible = visible
         nativeView?.localOverlayCapturesInput = visible
         guard !visible, restorePointerLockOnKeyboardHide else { return }
+        let restoreManualCapture = restoreManualCaptureOnKeyboardHide
         restorePointerLockOnKeyboardHide = false
-        if NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true {
+        restoreManualCaptureOnKeyboardHide = false
+        guard NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true else { return }
+        // A capture the player took by hand comes back as one: restoring it as an ordinary lock
+        // would hand it to the next seat cursor notification to release.
+        if restoreManualCapture {
+            nativeView?.setManualPointerCapture(true)
+        } else {
             nativeView?.setPointerLocked(true)
         }
     }
@@ -418,12 +427,18 @@ extension NativeNVSTHostViewModel {
         hudGamepadTracker.reset()
         if visible {
             if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
+            // Read before the input drop: dropping remote input releases the pointer, and the
+            // release is the one place that forgets the override. Without this the HUD silently
+            // ended a capture the player took by hand, and closing it again left the pointer free.
+            restoreManualCaptureOnHUDHide = nativeView?.manualPointerCaptureOverride ?? false
             nativeView?.remoteInputEnabled = false
             unifiedHUDVisible = true
             hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
         } else {
             unifiedHUDVisible = false
             hudFocusID = nil
+            let restoreManualCapture = restoreManualCaptureOnHUDHide
+            restoreManualCaptureOnHUDHide = false
             // Not unconditionally `true`: the network monitor blocks remote input while the path is
             // down and puts the recovery overlay up, but `isConnected` stays true through a drop, so
             // the HUD hotkey still works. Without this term, opening and closing the HUD during an
@@ -431,20 +446,27 @@ extension NativeNVSTHostViewModel {
             // resuming into a session that cannot receive them - until the next path update.
             nativeView?.remoteInputEnabled = networkPathAvailable
             nativeView?.restoreInputFocus()
+            // Same gate as the line above, and for the same reason: `enablePointerLock` does not
+            // consult `remoteInputEnabled`, so an unguarded restore would take the pointer back
+            // during an outage, behind the recovery overlay.
+            if restoreManualCapture, networkPathAvailable, NSApplication.shared.isActive,
+               nativeView?.window?.isKeyWindow == true {
+                nativeView?.setManualPointerCapture(true)
+            }
         }
         WebRTCMediaTelemetry.capture("nvst.ui.hud.toggle", level: .info, message: visible ? "Native NVST HUD shown." : "Native NVST HUD hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(visible)])
     }
 
     func toggleNativePointerLock() {
-        guard isConnected, !isEnding, !didEnd, nativeView?.directMouseInputEnabled == true else { return }
+        guard isConnected, !isEnding, !didEnd else { return }
         if pointerLocked {
-            nativeView?.setPointerLocked(false)
+            nativeView?.setManualPointerCapture(false)
         } else {
             // Close the HUD first so remote input is live, then force the capture regardless
             // of the server-driven cursor mode (this is the manual override for games that
             // never signal a cursor-hide).
             setUnifiedHUDVisible(false)
-            nativeView?.setPointerLocked(true)
+            nativeView?.setManualPointerCapture(true)
         }
     }
 

@@ -157,6 +157,120 @@ import Testing
         #expect(NvstBifrostFreeTransport.mediaCodec(.av1) == .av1)
     }
 
+    /// A seat that never publishes a cursor notification would otherwise composite its pointer for
+    /// the whole session, under the client's own — two cursors, forever. The deadline is fired
+    /// directly here rather than waited out; `cursorCaptureWatchdogDelay` is what schedules it.
+    @Test func theCursorWatchdogDisablesTheSeatPointerWhenNoNotificationArrives() async {
+        let transport = NvstBifrostFreeTransport()
+        await transport.startCursorCaptureWatchdog()
+        let armed = await transport.cursorCaptureWatchdogTask
+        #expect(armed != nil)
+        await transport.disableCursorCaptureAfterSilentSeat()
+        #expect(await transport.didDisableCursorCapture)
+        let cleared = await transport.cursorCaptureWatchdogTask
+        #expect(cleared == nil)
+        // The seat is silent by definition here, so nothing may have decided the pointer's state.
+        #expect(await transport.remoteCursorVisible == nil)
+    }
+
+    /// The first notification is what the watchdog was waiting for, so it stands down — and a
+    /// bitmap shape push counts, which is why `NvstRemoteCursor` parses `0x0110` at all.
+    @Test func aSeatCursorNotificationStandsTheWatchdogDown() async throws {
+        let transport = NvstBifrostFreeTransport()
+        await transport.startCursorCaptureWatchdog()
+        var bitmapPayload = NvstByteWriter(capacity: 8)
+        bitmapPayload.u32LE(4)
+        bitmapPayload.u32LE(1024)
+        let bitmap = try #require(NvstRemoteCursor.from(
+            NvstControlCommand(code: NvstRemoteCursor.bitmapCursorCode, payload: bitmapPayload.data)))
+        await transport.handleRemoteCursor(bitmap)
+        let cancelled = await transport.cursorCaptureWatchdogTask
+        #expect(cancelled == nil)
+    }
+
+    /// The same invariant as the parser's, held at the seam that actually owns the pointer state:
+    /// a shape push arriving during mouselook must not raise the cursor the game hid.
+    @Test func aBitmapPushDoesNotUnhideThePointerOnTheTransport() async throws {
+        let transport = NvstBifrostFreeTransport()
+        await transport.handleRemoteCursor(NvstRemoteCursor(isVisible: false))
+        #expect(await transport.remoteCursorVisible == false)
+        var bitmapPayload = NvstByteWriter(capacity: 8)
+        bitmapPayload.u32LE(1)
+        bitmapPayload.u32LE(256)
+        let bitmap = try #require(NvstRemoteCursor.from(
+            NvstControlCommand(code: NvstRemoteCursor.bitmapCursorCode, payload: bitmapPayload.data)))
+        await transport.handleRemoteCursor(bitmap)
+        #expect(await transport.remoteCursorVisible == false)
+    }
+
+    /// Teardown is the one path both a disconnect and the in-place reconnect run through, and it
+    /// clears the deadline alongside the flag it guards: a watchdog surviving into the next
+    /// session would disable a capture that had just been switched on.
+    @Test func teardownClearsTheCursorWatchdogWithTheCaptureFlag() async {
+        let transport = NvstBifrostFreeTransport()
+        await transport.startCursorCaptureWatchdog()
+        await transport.disableCursorCaptureAfterSilentSeat()
+        await transport.disconnect()
+        let cleared = await transport.cursorCaptureWatchdogTask
+        #expect(cleared == nil)
+        #expect(await transport.didDisableCursorCapture == false)
+        // Nothing re-arms while the transport is torn down: the flag is cleared by the next
+        // `connect`, not by the watchdog asking again.
+        await transport.startCursorCaptureWatchdog()
+        let rearmed = await transport.cursorCaptureWatchdogTask
+        #expect(rearmed == nil)
+    }
+
+    /// `isTornDown` is per-connection, and an in-place reconnect runs on the same actor the last
+    /// teardown latched it on. Left latched, the reconnected session armed no cursor watchdog, no
+    /// QoS feedback and — the one that ends the session — no control keepalive: the seat kills a
+    /// client that goes 10 s without command `0x200`.
+    @Test func aReconnectOnTheSameTransportArmsItsTimersAgain() async {
+        let transport = NvstBifrostFreeTransport(controlTimeout: .milliseconds(200))
+        await transport.disconnect()
+        #expect(await transport.isTornDown)
+
+        // Fails on the missing endpoint, which is the point: the flag belongs to the start of a
+        // connection attempt, not to whether that attempt succeeds.
+        _ = try? await transport.connect(allocation: allocation(rawSessionJSON: "{}", signalingServer: ""),
+                                         mediaReceiver: NativeNVSTMediaSession())
+        #expect(await transport.isTornDown == false)
+
+        await transport.startCursorCaptureWatchdog()
+        #expect(await transport.cursorCaptureWatchdogTask != nil)
+        await transport.startControlKeepAlive()
+        #expect(await transport.controlKeepAliveTask != nil)
+        await transport.startQosFeedback()
+        #expect(await transport.qosFeedbackTask != nil)
+        await transport.disconnect()
+    }
+
+    /// The seat can stop compositing its pointer without ever publishing a visibility: the watchdog
+    /// deadline on a seat that publishes nothing, and a bitmap-only push that resolves to the state
+    /// already held. The client suppresses its own pointer while the seat draws one, so unless it
+    /// hears about the capture itself both of those leave the session with no pointer at all.
+    @Test @MainActor func theClientHearsWhenTheSeatStopsCompositingItsPointer() async throws {
+        let recorder = SeatCursorCaptureRecorder()
+        let transport = NvstBifrostFreeTransport()
+        await transport.setRemoteCursorCaptureHandler { isCompositing in recorder.record(isCompositing) }
+
+        await transport.disableCursorCaptureAfterSilentSeat()
+        await Task.yield()
+        #expect(recorder.values == [false])
+        #expect(await transport.remoteCursorVisible == nil)
+
+        let bitmapTransport = NvstBifrostFreeTransport()
+        await bitmapTransport.setRemoteCursorCaptureHandler { isCompositing in recorder.record(isCompositing) }
+        var bitmapPayload = NvstByteWriter(capacity: 8)
+        bitmapPayload.u32LE(4)
+        bitmapPayload.u32LE(1024)
+        let bitmap = try #require(NvstRemoteCursor.from(
+            NvstControlCommand(code: NvstRemoteCursor.bitmapCursorCode, payload: bitmapPayload.data)))
+        await bitmapTransport.handleRemoteCursor(bitmap)
+        await Task.yield()
+        #expect(recorder.values == [false, false])
+    }
+
     @Test func twoSocketsAreReservedWithOfficialLengthIceCredentials() async throws {
         let reserver = NvstLocalBundleReserver()
         let reservation = try await reserver.reserveBundle()
@@ -172,5 +286,14 @@ import Testing
         #expect(reserver.takeMjolnirDescriptor() == -1)
         close(descriptor)
         reserver.release()
+    }
+}
+
+/// The transport's capture notifications land on the main actor, where the stream view lives.
+@MainActor final class SeatCursorCaptureRecorder {
+    private(set) var values: [Bool] = []
+
+    func record(_ isCompositing: Bool) {
+        values.append(isCompositing)
     }
 }

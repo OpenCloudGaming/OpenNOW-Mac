@@ -43,6 +43,11 @@ extension OPNVideoEnhancementRenderer {
         descriptor.storageMode = .shared
         guard let target = device.makeTexture(descriptor: descriptor), let commandBuffer = commandQueue.makeCommandBuffer() else { return nil }
         let result = OPNVideoEnhancementResult()
+        // This render is off the display loop and into a texture nobody sees, so what the last
+        // drawn frame committed has to survive it — the pointer is still mapping against the
+        // picture on screen, not against this snapshot.
+        let onScreenFill = pillarboxFillCommit.value
+        defer { pillarboxFillCommit.commit(onScreenFill) }
         guard encodeSpatialTextureFrame(textureFrame, destinationTexture: target, commandBuffer: commandBuffer, settings: settings, result: result) else { return nil }
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()

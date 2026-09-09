@@ -152,6 +152,8 @@ public enum OPNStreamPreferences {
         Keys.powerSaverEnabled,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
+        Keys.rawMouseInput,
+        Keys.cursorPolicyIndex,
         Keys.mouseSensitivityPercent,
         Keys.antiAFKMouseMovementEnabled,
         Keys.preventDisplaySleepWhileStreaming,

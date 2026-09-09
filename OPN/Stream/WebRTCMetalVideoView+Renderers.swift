@@ -174,6 +174,12 @@ extension OPNMetalVideoView {
         return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3, pillarboxFillMode: values.4, pillarboxFillDim: values.5, pillarboxFillColor: values.6)
     }
 
+    /// The pillarbox fill the last drawn frame actually went through. `none` whenever the draw took
+    /// a path with no fill pass, which is what a pointer needs to know before reprojecting a click.
+    var committedPillarboxFill: OPNCommittedPillarboxFill {
+        enhancementRenderer?.pillarboxFillCommit.value ?? .notApplied
+    }
+
     func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
         guard customDrawableRenderingEnabled != enabled else { return }
         customDrawableRenderingEnabled = enabled

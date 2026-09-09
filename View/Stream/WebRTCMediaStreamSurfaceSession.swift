@@ -86,6 +86,8 @@ extension WebRTCMediaStreamSurface {
                 microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
                 transport.setMicrophoneEnabled(microphoneEnabled)
                 nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
+                nativeView.rawMouseInputEnabled = runtimeSettings.rawMouseInput
+                nativeView.cursorPolicy = OPNCursorPolicy.from(runtimeSettings.cursorPolicy)
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
                 lastAcceptedStreamInputAt = Date()
                 refreshAntiAFKMouseMovementTask()
@@ -184,9 +186,11 @@ extension WebRTCMediaStreamSurface {
         if unifiedHUDVisible { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
-        if let mouse = mouseEvent(from: event) {
+        if mouseEvent(from: event) != nil {
+            // Direct Mouse Input governs taking the pointer without being asked, not which modes
+            // exist: a locked pointer is either one the player asked for or the seat's own
+            // mouselook, and dropping motion in either case leaves the mouse dead.
             guard pointerLocked else { return .drop }
-            if !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
         }
         return .send
     }

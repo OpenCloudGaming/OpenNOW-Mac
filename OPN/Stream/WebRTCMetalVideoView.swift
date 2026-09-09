@@ -321,6 +321,10 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
 
         setCustomDrawableRenderingEnabled(false)
+        // libwebrtc's renderers draw the decoded frame as it is: no fill pass runs, so whatever
+        // geometry an earlier frame committed must not be left standing for the pointer to
+        // reproject clicks with.
+        enhancementRenderer?.pillarboxFillCommit.clear()
         let renderer = rendererForFrame(frame, diagnostics: &diagnostics)
         if let renderer {
             renderer.drawFrame(frame)

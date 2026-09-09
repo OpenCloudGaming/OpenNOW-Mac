@@ -245,6 +245,16 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setRawMouseInputEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveRawMouseInputEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setCursorPolicyIndex(_ index: Int) {
+        OPNStreamPreferences.saveCursorPolicyIndex(index)
+        loadSettingsPreferences()
+    }
+
     func setAntiAFKMouseMovementEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled)
         actionMessage = enabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled."

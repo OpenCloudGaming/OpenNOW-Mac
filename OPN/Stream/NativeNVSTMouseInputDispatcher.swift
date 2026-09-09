@@ -211,6 +211,14 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
             guard let delta = Self.sum(oldDelta, newDelta) else { return false }
             inputs[inputs.count - 1] = .event(.mouse(.wheel(deviceID: newDeviceID, delta: delta, timestamp: timestamp)))
             return true
+        // The axes never merge into one another: only a sideways detent behind a sideways detent
+        // folds, so a diagonal swipe keeps both packets and neither axis absorbs the other's notch.
+        case (.event(.mouse(.horizontalWheel(let oldDeviceID, let oldDelta, _))),
+              .event(.mouse(.horizontalWheel(let newDeviceID, let newDelta, let timestamp))))
+            where oldDeviceID == newDeviceID && (oldDelta > 0) == (newDelta > 0):
+            guard let delta = Self.sum(oldDelta, newDelta) else { return false }
+            inputs[inputs.count - 1] = .event(.mouse(.horizontalWheel(deviceID: newDeviceID, delta: delta, timestamp: timestamp)))
+            return true
         case (.event(.gamepad(let oldState)), .event(.gamepad(let newState)))
             where oldState.playerIndex == newState.playerIndex && oldState.deviceID == newState.deviceID &&
                 oldState.buttons == newState.buttons &&
@@ -233,6 +241,15 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
         }
     }
 
+    private static func isWheel(_ input: NativeNVSTInput) -> Bool {
+        switch input {
+        case .event(.mouse(.wheel)), .event(.mouse(.horizontalWheel)):
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func isAbsoluteMove(_ input: NativeNVSTInput) -> Bool {
         if case .absoluteMove = input { return true }
         return false
@@ -240,7 +257,7 @@ private final class NativeNVSTInputBuffer: @unchecked Sendable {
 
     private func capacityLimit(for input: NativeNVSTInput) -> Int {
         if Self.isAbsoluteMove(input) { return protectedCapacity }
-        if case .event(.mouse(.wheel)) = input { return max(ordinaryCapacity, protectedCapacity - 10) }
+        if Self.isWheel(input) { return max(ordinaryCapacity, protectedCapacity - 10) }
         if case .event(.mouse(.button)) = input, inputs.last.map(Self.isAbsoluteMove) == true { return protectedCapacity }
         return ordinaryCapacity
     }
