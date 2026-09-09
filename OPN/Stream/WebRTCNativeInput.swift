@@ -165,14 +165,14 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             inputReady = false
         }
         os_unfair_lock_unlock(&stateLock)
-        if open {
-            // A channel that closes and reopens keeps `handshakeComplete` latched, so the seat's
-            // handshake message never arrives again and the keepalive had nothing to restart it —
-            // input read as ready while its heartbeat stayed dead for the rest of the session.
-            if isInputReady { startHeartbeat(sessionImpl: sessionImpl) }
-        } else {
+        guard open else {
             stopHeartbeat()
+            return
         }
+        // A reopened channel keeps `handshakeComplete` latched, so the handshake that starts the
+        // keepalive never arrives again and input reads as ready with a dead heartbeat.
+        guard isInputReady else { return }
+        startHeartbeat(sessionImpl: sessionImpl)
     }
 
     @objc(handleDataChannelMessageWithLabel:data:sessionImpl:)

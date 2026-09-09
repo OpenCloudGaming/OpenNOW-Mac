@@ -303,12 +303,12 @@ extension OPNSentry {
     /// still finds. Any byte outside ASCII gives up the gate and runs every rule, which is what the
     /// code did before.
     struct RedactionMarkers {
-        private let hasQueryDelimiter: Bool
-        private let hasJWTPrefix: Bool
-        private let hasAuthorizationScheme: Bool
-        private let hasCredentialKeyword: Bool
-        private let hasDottedNumber: Bool
-        private let hasColon: Bool
+        private let isQueryDelimiterPresent: Bool
+        private let isJWTPrefixPresent: Bool
+        private let isAuthorizationSchemePresent: Bool
+        private let isCredentialKeywordPresent: Bool
+        private let isDottedNumberPresent: Bool
+        private let isColonPresent: Bool
 
         init?(scanning message: String) {
             var lowercased = [UInt8]()
@@ -329,25 +329,25 @@ extension OPNSentry {
                 let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
                 lowercased.append(isUppercase ? byte + 0x20 : byte)
             }
-            hasQueryDelimiter = sawQueryDelimiter
-            hasColon = sawColon
+            isQueryDelimiterPresent = sawQueryDelimiter
+            isColonPresent = sawColon
             // Conservative on purpose: the rule needs four dotted digit runs, and "a digit and a dot
             // somewhere" is a superset of that. A superset costs a wasted pass, never a missed match.
-            hasDottedNumber = sawDigit && sawDot
-            hasJWTPrefix = Self.contains(lowercased, Self.jwtPrefix)
-            hasAuthorizationScheme = Self.authorizationSchemes.contains { Self.contains(lowercased, $0) }
-            hasCredentialKeyword = Self.credentialKeywords.contains { Self.contains(lowercased, $0) }
+            isDottedNumberPresent = sawDigit && sawDot
+            isJWTPrefixPresent = Self.contains(lowercased, Self.jwtPrefix)
+            isAuthorizationSchemePresent = Self.authorizationSchemes.contains { Self.contains(lowercased, $0) }
+            isCredentialKeywordPresent = Self.credentialKeywords.contains { Self.contains(lowercased, $0) }
         }
 
         /// Indices match `redactionRules`, in order.
         func mayMatchRule(at index: Int) -> Bool {
             switch index {
-            case 0: return hasQueryDelimiter
-            case 1: return hasJWTPrefix
-            case 2: return hasAuthorizationScheme
-            case 3: return hasCredentialKeyword
-            case 4: return hasDottedNumber
-            case 5: return hasColon
+            case 0: return isQueryDelimiterPresent
+            case 1: return isJWTPrefixPresent
+            case 2: return isAuthorizationSchemePresent
+            case 3: return isCredentialKeywordPresent
+            case 4: return isDottedNumberPresent
+            case 5: return isColonPresent
             default: return true
             }
         }
@@ -566,10 +566,10 @@ extension OPNSentry {
 
     /// The upload rules' equivalent of `RedactionMarkers`, with the same ASCII-only restriction.
     struct UploadRedactionMarkers {
-        private let hasDottedNumber: Bool
-        private let hasColon: Bool
-        private let hasLocationKeyword: Bool
-        private let hasCloudmatchHost: Bool
+        private let isDottedNumberPresent: Bool
+        private let isColonPresent: Bool
+        private let isLocationKeywordPresent: Bool
+        private let isCloudmatchHostPresent: Bool
 
         init?(scanning message: String) {
             var lowercased = [UInt8]()
@@ -588,19 +588,19 @@ extension OPNSentry {
                 let isUppercase = byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z")
                 lowercased.append(isUppercase ? byte + 0x20 : byte)
             }
-            hasDottedNumber = sawDigit && sawDot
-            hasColon = sawColon
-            hasLocationKeyword = Self.locationKeywords.contains { RedactionMarkers.contains(lowercased, $0) }
-            hasCloudmatchHost = RedactionMarkers.contains(lowercased, Self.cloudmatchHost)
+            isDottedNumberPresent = sawDigit && sawDot
+            isColonPresent = sawColon
+            isLocationKeywordPresent = Self.locationKeywords.contains { RedactionMarkers.contains(lowercased, $0) }
+            isCloudmatchHostPresent = RedactionMarkers.contains(lowercased, Self.cloudmatchHost)
         }
 
         /// Indices match `uploadRedactionRules`, in order.
         func mayMatchRule(at index: Int) -> Bool {
             switch index {
-            case 0: return hasDottedNumber
-            case 1: return hasColon
-            case 2, 3: return hasLocationKeyword
-            case 4: return hasCloudmatchHost
+            case 0: return isDottedNumberPresent
+            case 1: return isColonPresent
+            case 2, 3: return isLocationKeywordPresent
+            case 4: return isCloudmatchHostPresent
             default: return true
             }
         }

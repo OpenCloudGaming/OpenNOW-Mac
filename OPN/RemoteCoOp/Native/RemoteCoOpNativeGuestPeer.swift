@@ -74,7 +74,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
     private var inputChannels: [RTCDataChannel] = []
     private var deliveredVideoTrackIDs: Set<String> = []
     private var isClosed = false
-    private var didReportConnectionFailure = false
+    private var isConnectionFailureReported = false
     private var disconnectedGraceTask: Task<Void, Never>?
     private var statsTask: Task<Void, Never>?
     private var previousInboundStats: (jitterBufferDelay: Double, jitterBufferEmitted: Int, framesDecoded: Int, timestamp: Date)?
@@ -286,8 +286,8 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
 
     private func reportConnectionFailure(_ reason: String) {
         let shouldReport = stateLock.withLock { () -> Bool in
-            guard !isClosed, !didReportConnectionFailure else { return false }
-            didReportConnectionFailure = true
+            guard !isClosed, !isConnectionFailureReported else { return false }
+            isConnectionFailureReported = true
             return true
         }
         guard shouldReport else { return }

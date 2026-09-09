@@ -51,7 +51,7 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     private var punchStartedAt: Date?
     private var punchCount = 0
     private var isStopped = false
-    private var hasStopped: Bool {
+    private var isStopRequested: Bool {
         sendLock.lock()
         defer { sendLock.unlock() }
         return isStopped
@@ -551,7 +551,7 @@ extension NvstMjolnirReceiver {
     }
 
     private func startHolePunch(interval: TimeInterval) {
-        guard let credentials = handoff.iceCredentials, !hasStopped else { return }
+        guard let credentials = handoff.iceCredentials, !isStopRequested else { return }
         pingTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(5))
@@ -563,7 +563,7 @@ extension NvstMjolnirReceiver {
     }
 
     private func sendHolePunch(credentials: NVSTHandoffIceCredentials) {
-        guard !hasStopped else { return }
+        guard !isStopRequested else { return }
         punchCount += 1
         // The burst gives way to the keepalive, and the keepalive stops once the relay is up: the
         // official client sends nothing on this socket after ~7 s.
