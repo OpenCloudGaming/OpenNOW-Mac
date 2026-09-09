@@ -68,7 +68,7 @@ public final class NvstBifrostFreeVideoRenderer {
                   let nv12 = snapshotTransfer.convert(buffer, to: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) else { return nil }
             let image = CIImage(cvPixelBuffer: nv12)
             let context = CIContext(options: [.cacheIntermediates: false])
-            guard let data = context.jpegRepresentation(of: image, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else { return nil }
+            guard let data = context.jpegRepresentation(of: image, colorSpace: CGColorSpace.sRGBForRender, options: [:]) else { return nil }
             do {
                 try data.write(to: url, options: .atomic)
             } catch {

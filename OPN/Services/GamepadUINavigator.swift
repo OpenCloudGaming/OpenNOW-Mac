@@ -118,16 +118,12 @@ final class GamepadUINavigator: ObservableObject {
     private func handleThumbstick(deviceID: InputDeviceID, x: Float, y: Float) {
         let horizontal = abs(x) > Self.thumbstickDeadzone ? x : 0
         let vertical = abs(y) > Self.thumbstickDeadzone ? y : 0
-        guard horizontal != 0 || vertical != 0 else {
+        guard let direction = ControllerInputDirection.resolved(horizontal: horizontal, vertical: vertical) else {
             thumbstickRepeatState.removeAll()
             return
         }
         let isFirstActive = thumbstickRepeatState.isEmpty
-        if abs(horizontal) > abs(vertical) {
-            emitRepeatedMove(x > 0 ? .right : .left, force: isFirstActive)
-        } else {
-            emitRepeatedMove(y > 0 ? .up : .down, force: isFirstActive)
-        }
+        emitRepeatedMove(direction, force: isFirstActive)
         _ = deviceID
     }
 

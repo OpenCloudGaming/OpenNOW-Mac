@@ -8,6 +8,15 @@ enum ControllerInputDirection: Equatable {
     case down
     case left
     case right
+
+    /// Resolves thumbstick dead-zone and horizontal/vertical dominance into a discrete direction.
+    static func resolved(horizontal: Float, vertical: Float) -> ControllerInputDirection? {
+        guard horizontal != 0 || vertical != 0 else { return nil }
+        if abs(horizontal) > abs(vertical) {
+            return horizontal > 0 ? .right : .left
+        }
+        return vertical > 0 ? .up : .down
+    }
 }
 
 enum ControllerInputCommand: Equatable {
@@ -227,16 +236,11 @@ final class ControllerInputRouter: NSObject, ObservableObject {
     private func handleThumbstick(xValue: Float, yValue: Float, controller: GCController) {
         let horizontal = abs(xValue) > thumbstickDeadzone ? xValue : 0
         let vertical = abs(yValue) > thumbstickDeadzone ? yValue : 0
-        guard horizontal != 0 || vertical != 0 else {
+        guard let direction = ControllerInputDirection.resolved(horizontal: horizontal, vertical: vertical) else {
             thumbstickRepeatState.removeAll()
             return
         }
-
-        if abs(horizontal) > abs(vertical) {
-            emitRepeatedMove(horizontal > 0 ? .right : .left, controller: controller)
-        } else {
-            emitRepeatedMove(vertical > 0 ? .up : .down, controller: controller)
-        }
+        emitRepeatedMove(direction, controller: controller)
     }
 
     private func emitRepeatedMove(_ direction: ControllerInputDirection, controller: GCController) {

@@ -6,6 +6,14 @@ import Foundation
 import Observation
 
 extension CatalogViewModel {
+    private func applyOwnershipMutation(success: Bool, onSuccess: @escaping () -> Void, onFailure: @escaping () -> Void) {
+        guard success else {
+            onFailure()
+            return
+        }
+        onSuccess()
+    }
+
     func openStoreForSelectedVariant() {
         guard let selectedGame else { return }
         let variantIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
@@ -51,17 +59,17 @@ extension CatalogViewModel {
             actionMessage = "Removing from favorites..."
             gameService.removeFavoriteApp(appId) { [weak self] success, error in
                 guard let self else { return }
-                if success {
+                self.applyOwnershipMutation(success: success, onSuccess: {
                     self.actionMessage = "Removed from favorites."
                     self.reloadFavoritesAfterChange()
                     self.refreshShowAllIfFavoritesFiltered()
-                } else {
+                }, onFailure: {
                     self.favoriteGames = previousGames
                     self.favoriteGameIdentities = previousIdentities
                     self.updateGameFavoriteState(identity: identity, isFavorited: true)
                     if self.refreshAuthIfNeeded(error: error) { return }
                     self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
-                }
+                })
             }
         } else {
             favoriteGameIdentities.insert(identity)
@@ -72,17 +80,17 @@ extension CatalogViewModel {
             actionMessage = "Adding to favorites..."
             gameService.addFavoriteApp(appId) { [weak self] success, error in
                 guard let self else { return }
-                if success {
+                self.applyOwnershipMutation(success: success, onSuccess: {
                     self.actionMessage = "Added to favorites."
                     self.reloadFavoritesAfterChange()
                     self.refreshShowAllIfFavoritesFiltered()
-                } else {
+                }, onFailure: {
                     self.favoriteGames = previousGames
                     self.favoriteGameIdentities = previousIdentities
                     self.updateGameFavoriteState(identity: identity, isFavorited: false)
                     if self.refreshAuthIfNeeded(error: error) { return }
                     self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
-                }
+                })
             }
         }
     }
@@ -197,18 +205,18 @@ extension CatalogViewModel {
         setActionMessage("Adding free-to-play \(title) to library...")
         gameService.addOwnedVariant(variantId) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
                 self.actionMessage = "Added to library. Launching \(title)..."
                 self.refreshCatalogAfterOwnershipChange()
                 if let game = self.selectedGame {
                     self.launch(game: game, variantIndex: variantIndex)
                 }
-            } else {
+            }, onFailure: {
                 if self.refreshAuthIfNeeded(error: error) { return }
                 self.errorMessage = error.isEmpty ? "Unable to add this free-to-play game to your library." : error
                 self.markSelectedVariantOwned()
-            }
+            })
         }
     }
 
@@ -246,15 +254,15 @@ extension CatalogViewModel {
         setActionMessage("Adding \(title) to library...")
         gameService.addOwnedVariant(variantId) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
                 self.advanceOwnershipFlow(to: .success)
                 self.ownershipFlowMessage = ""
                 self.actionMessage = "Added to library."
                 self.refreshCatalogAfterOwnershipChange()
-            } else {
+            }, onFailure: {
                 self.errorMessage = error.isEmpty ? "Unable to add this game to your library." : error
-            }
+            })
         }
     }
 
@@ -270,13 +278,13 @@ extension CatalogViewModel {
         setActionMessage("Removing \(title) from library...")
         gameService.removeOwnedVariant(variantId) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: false)
                 self.actionMessage = "Removed from library."
                 self.refreshCatalogAfterOwnershipChange()
-            } else {
+            }, onFailure: {
                 self.errorMessage = error.isEmpty ? "Unable to remove this game from your library." : error
-            }
+            })
         }
     }
 
@@ -285,13 +293,13 @@ extension CatalogViewModel {
         let variantId = variant.id
         gameService.selectOwnedVariant(variantId) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.selectedGame?.variants.forEach { $0.librarySelected = $0.id == variantId }
                 self.actionMessage = "Store selection updated."
                 self.refreshCatalogAfterOwnershipChange()
-            } else {
+            }, onFailure: {
                 self.errorMessage = error.isEmpty ? "Unable to update store selection." : error
-            }
+            })
         }
     }
 
@@ -305,14 +313,14 @@ extension CatalogViewModel {
         setActionMessage("Syncing \(displayName(forStore: store)) account...")
         gameService.syncAccountProvider(store: store) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.actionMessage = "Store sync started."
                 self.loadAccountAndStores()
                 self.loadLibrary()
                 self.browseCatalog()
-            } else {
+            }, onFailure: {
                 self.errorMessage = error.isEmpty ? "Unable to sync this store account." : error
-            }
+            })
         }
     }
 
@@ -326,14 +334,14 @@ extension CatalogViewModel {
         setActionMessage("Opening \(displayName(forStore: store)) account linking...")
         gameService.startAccountLinking(store: store) { [weak self] success, error in
             guard let self else { return }
-            if success {
+            self.applyOwnershipMutation(success: success, onSuccess: {
                 self.actionMessage = "Account linked."
                 self.loadAccountAndStores()
                 self.loadLibrary()
                 self.browseCatalog()
-            } else {
+            }, onFailure: {
                 self.errorMessage = error.isEmpty ? "Unable to link this store account." : error
-            }
+            })
         }
     }
 

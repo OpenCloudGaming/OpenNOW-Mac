@@ -12,6 +12,10 @@ import MetalKit
 import QuartzCore
 import WebRTC
 
+extension CGColorSpace {
+    nonisolated(unsafe) static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+}
+
 /// How decoded frames meet the display.
 ///
 /// Measured 2026-09-04 on a 120 Hz panel with a 120 fps stream: decode completions arrive in bursts
@@ -121,14 +125,14 @@ extension OPNMetalVideoView {
         let width = source.width
         let height = source.height
         commandBuffer.addCompletedHandler { _ in
-            guard let image = CIImage(mtlTexture: stagingTexture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else {
+            guard let image = CIImage(mtlTexture: stagingTexture, options: [.colorSpace: CGColorSpace.sRGBForRender as Any]) else {
                 OpenNOWLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
                 return
             }
             // Metal's origin is top-left, Core Image's bottom-left.
             let oriented = image.oriented(.downMirrored)
             let context = CIContext(options: [.cacheIntermediates: false])
-            guard let data = context.jpegRepresentation(of: oriented, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else {
+            guard let data = context.jpegRepresentation(of: oriented, colorSpace: CGColorSpace.sRGBForRender, options: [:]) else {
                 OpenNOWLog.warning(.stream, "Render snapshot: JPEG encode failed")
                 return
             }
@@ -162,9 +166,9 @@ extension OPNMetalVideoView {
             settings.configuredTier = .spatial
         }
         guard let texture = enhancementRenderer.renderOffscreenSnapshot(frame, settings: settings, size: size),
-              let image = CIImage(mtlTexture: texture, options: [.colorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any]) else { return nil }
+              let image = CIImage(mtlTexture: texture, options: [.colorSpace: CGColorSpace.sRGBForRender as Any]) else { return nil }
         let context = CIContext(options: [.cacheIntermediates: false])
-        guard let data = context.jpegRepresentation(of: image.oriented(.downMirrored), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [:]) else { return nil }
+        guard let data = context.jpegRepresentation(of: image.oriented(.downMirrored), colorSpace: CGColorSpace.sRGBForRender, options: [:]) else { return nil }
         do { try data.write(to: url, options: .atomic) } catch { return nil }
         return size
     }
