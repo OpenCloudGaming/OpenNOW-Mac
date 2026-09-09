@@ -208,6 +208,8 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     private var lastFrameAckAt: Date?
     /// Throttle for `logFeedbackSample`.
     private var lastFeedbackLogAt: Date?
+    private var overrunsSinceFeedbackLog = 0
+    private var worstOverrunMicroseconds = 0
     /// Session-clock stamp of the previous frame ack, for the measured inter-frame interval.
     private var lastAckElapsedMicroseconds: UInt64?
     /// Frames handled since the last 0x203 report, for that report's `groupCount` — a real
@@ -536,26 +538,41 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         if firstFailure { logger?("NVST frame ack write failed") }
     }
 
-    /// Throttled to ~1/s: what we actually sent in 0x204/0x203, next to what it implies about
+    /// Throttled to 1/s: what we actually sent in 0x204/0x203, next to what it implies about
     /// cadence and where the time went. Correlating this against the periodic `NVST counters`
     /// received-fps series is how a guess about seat pacer behavior gets checked against reality
     /// instead of staying a guess — this is what a vendor capture would otherwise be needed for.
+    ///
+    /// An overrun used to bypass the throttle, on the reading that a measured time past the seat's
+    /// target is the rare, interesting case. At 120 fps it is not rare: the target is 8333 µs and
+    /// 5K decode alone measures 7.9–10 ms, so nearly every report overran and this logged ~17
+    /// times a second — synchronously, on the decode queue, at roughly half a millisecond a line.
+    /// The overruns are still reported, as a count and a worst case on the next throttled line, so
+    /// the signal survives without the frame path paying for it.
     private func logFeedbackSample(interFrame: UInt32, measuredFrameTimeMicroseconds: Int,
                                    clientMicroseconds: Int, hopMs: Double, decodeMs: Double) {
-        // A reported overrun is the rare, interesting case — that is the client sending the seat
-        // a measured time past its target, exactly the signal this whole investigation is about —
-        // so it always logs immediately. Keeping up only needs a heartbeat.
         let isOverrun = measuredFrameTimeMicroseconds > Int(frameTimeMicroseconds)
         lock.lock()
         let now = Date()
-        let shouldLog = isOverrun || lastFeedbackLogAt == nil || now.timeIntervalSince(lastFeedbackLogAt!) >= 1.0
-        if shouldLog { lastFeedbackLogAt = now }
+        if isOverrun {
+            overrunsSinceFeedbackLog += 1
+            worstOverrunMicroseconds = max(worstOverrunMicroseconds, measuredFrameTimeMicroseconds)
+        }
+        let shouldLog = lastFeedbackLogAt == nil || now.timeIntervalSince(lastFeedbackLogAt!) >= 1.0
+        let overruns = overrunsSinceFeedbackLog
+        let worstOverrun = worstOverrunMicroseconds
+        if shouldLog {
+            lastFeedbackLogAt = now
+            overrunsSinceFeedbackLog = 0
+            worstOverrunMicroseconds = 0
+        }
         lock.unlock()
         guard shouldLog, let logger else { return }
         let impliedFps = interFrame > 0 ? 1_000_000.0 / Double(interFrame) : 0
+        let overrunSummary = overruns > 0 ? String(format: " OVERRUN x%d worstUs=%d", overruns, worstOverrun) : ""
         logger(String(format: "NVST feedback%@ ack#=%u interFrameUs=%u impliedFps=%.1f measuredUs=%d"
                        + " clientUs=%d targetUs=%u hop=%.2fms decode=%.2fms",
-                       isOverrun ? " OVERRUN" : "", frameAckNumber, interFrame, impliedFps, measuredFrameTimeMicroseconds,
+                       overrunSummary, frameAckNumber, interFrame, impliedFps, measuredFrameTimeMicroseconds,
                        clientMicroseconds, frameTimeMicroseconds, hopMs, decodeMs))
     }
 
