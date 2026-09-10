@@ -9,6 +9,7 @@ import Testing
     private let upscalingDenoiseKey = "OpenNOW.Stream.UpscalingDenoise"
     private let upscalingTargetIndexKey = "OpenNOW.Stream.UpscalingTargetIndex"
     private let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
+    private let steamBigPictureModeKey = "OpenNOW.Stream.SteamBigPictureMode"
 
     @Test func exposesOffMetalFXAndSpatialUpscalingModes() {
         // MetalFX stays at index 1: existing stored indices must not silently repoint at Spatial.
@@ -130,6 +131,18 @@ import Testing
             #expect(profile.maxBitrateMbps == 75)
             #expect(profile.colorQuality.value == "10bit_420")
             #expect(profile.enableHdr)
+        }
+    }
+
+    /// Steam Big Picture Mode lives on the General page, so the Video page's restore button must
+    /// leave it alone.
+    @Test func steamBigPictureModeSurvivesStreamingProfileRestore() {
+        withPreservedPreferences(streamingProfileKeys + [steamBigPictureModeKey]) {
+            OPNStreamPreferences.saveSteamBigPictureMode(true)
+
+            OPNStreamPreferences.restoreStreamingProfileDefaults()
+
+            #expect(OPNStreamPreferences.loadProfile().steamBigPictureMode)
         }
     }
 

@@ -150,7 +150,6 @@ public enum OPNStreamPreferences {
         Keys.l4sEnabled,
         Keys.hdrEnabled,
         Keys.powerSaverEnabled,
-        Keys.steamBigPictureMode,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
         Keys.rawMouseInput,

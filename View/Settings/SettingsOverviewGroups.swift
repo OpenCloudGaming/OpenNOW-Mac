@@ -114,9 +114,12 @@ struct GameLaunchSettingsPage: View {
                 title: "Steam Big Picture Mode",
                 subtitle: "Request gamepad-friendly launchers such as Steam Big Picture. Applies to new GeForce NOW sessions only.",
                 isOn: viewModel.streamProfile.steamBigPictureMode,
-                uiScale: uiScale,
-                action: viewModel.setSteamBigPictureMode
-            )
+                isNew: OpenNOWNewSettings.isNew(.steamBigPictureMode),
+                uiScale: uiScale
+            ) { newValue in
+                OpenNOWNewSettings.acknowledge(.steamBigPictureMode)
+                viewModel.setSteamBigPictureMode(newValue)
+            }
         }
     }
 }
