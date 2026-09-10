@@ -29,7 +29,7 @@ import Foundation
     OPNSessionManager.shared.setAccessToken("token")
     OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
-    settings["resolution"] = "7680x4320"
+    settings.merge(["resolution": "7680x4320", "appLaunchMode": 2]) { _, new in new }
 
     let result = await withCheckedContinuation { continuation in
         OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
@@ -58,6 +58,7 @@ import Foundation
     #expect(claimRequestData?["partnerCustomData"] as? String == "")
     #expect(claimRequestData?["userAge"] as? Int == 0)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
+    #expect(claimRequestData?["appLaunchMode"] as? Int == 2)
     #expect(claimRequestData?["transport"] == nil)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
     #expect(claimMonitorSettings.first?["widthInPixels"] as? Int == 7680)

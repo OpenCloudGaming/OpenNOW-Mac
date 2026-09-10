@@ -327,6 +327,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var enableL4S = false
     public var enableHdr = false
     public var enablePowerSaver = false
+    public var steamBigPictureMode = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
     public var rawMouseInput = false

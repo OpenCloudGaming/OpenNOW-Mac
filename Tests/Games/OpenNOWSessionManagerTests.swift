@@ -20,6 +20,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(requestData["partnerCustomData"] as? String == "partner-data")
     #expect(requestData["userAge"] as? Int == 21)
     #expect(requestData["secureRTSPSupported"] as? Bool == false)
+    #expect(requestData["appLaunchMode"] as? Int == 1)
     #expect(requestData["transport"] == nil)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
@@ -129,6 +130,31 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(transport["policy"] as? Int == 1)
     #expect(transport["relayProtocol"] as? Int == 2)
     #expect(transport["relayLocation"] as? Int == 1)
+    }
+}
+
+@Test func sessionManagerCreateRequestsTheGamepadFriendlyLauncherForBigPictureMode() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "create-big-picture.example.test"
+    SessionManagerURLProtocol.install(host: host) { _ in
+        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["appLaunchMode"] = 2
+
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+
+    let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+    let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+
+    #expect(createSucceeded == true)
+    #expect(createError.isEmpty)
+    #expect(requestData["appLaunchMode"] as? Int == 2)
     }
 }
 

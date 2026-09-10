@@ -103,6 +103,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var sdrColorSpace: Int
     public var hdrColorSpace: Int
     public var enablePowerSaver: Bool
+    public var steamBigPictureMode: Bool
     public var microphoneMode: String
     public var microphoneDeviceId: String
     public var microphonePushToTalkKeyCode: Int
@@ -147,6 +148,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 sdrColorSpace: Int = 2,
                 hdrColorSpace: Int = 0,
                 enablePowerSaver: Bool = false,
+                steamBigPictureMode: Bool = false,
                 microphoneMode: String = "disabled",
                 microphoneDeviceId: String = "",
                 microphonePushToTalkKeyCode: Int = 9,
@@ -190,6 +192,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.sdrColorSpace = sdrColorSpace
         self.hdrColorSpace = hdrColorSpace
         self.enablePowerSaver = enablePowerSaver
+        self.steamBigPictureMode = steamBigPictureMode
         self.microphoneMode = microphoneMode
         self.microphoneDeviceId = microphoneDeviceId
         self.microphonePushToTalkKeyCode = microphonePushToTalkKeyCode
@@ -235,6 +238,8 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var hudStreamingMode: Int
     public var sdrColorSpace: Int
     public var hdrColorSpace: Int
+    /// CloudMatch wire value: 1 is the default launcher, 2 asks for a gamepad-friendly one.
+    public var appLaunchMode: Int
     public var microphoneMode: String
     public var microphoneDeviceId: String
     public var microphonePushToTalkKeyCode: Int
@@ -287,6 +292,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "hudStreamingMode": hudStreamingMode,
             "sdrColorSpace": sdrColorSpace,
             "hdrColorSpace": hdrColorSpace,
+            "appLaunchMode": appLaunchMode,
             "microphoneMode": microphoneMode,
             "microphoneDeviceId": microphoneDeviceId,
             "microphonePushToTalkKeyCode": microphonePushToTalkKeyCode,
@@ -368,6 +374,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             hudStreamingMode: min(max(profile.hudStreamingMode, 0), 2),
             sdrColorSpace: min(max(profile.sdrColorSpace, 0), 2),
             hdrColorSpace: min(max(profile.hdrColorSpace, 0), 2),
+            appLaunchMode: profile.steamBigPictureMode ? 2 : 1,
             microphoneMode: profile.microphoneMode,
             microphoneDeviceId: profile.microphoneDeviceId,
             microphonePushToTalkKeyCode: profile.microphonePushToTalkKeyCode,

@@ -429,6 +429,26 @@ struct WebRTCStreamingPathTests {
         #expect(dictionary["preventDisplaySleepWhileStreaming"] as? Bool == false)
     }
 
+    @Test("big picture mode asks the seat for the gamepad-friendly launcher")
+    func bigPictureModeAsksTheSeatForTheGamepadFriendlyLauncher() {
+        let off = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+        #expect(off.appLaunchMode == 1)
+
+        let on = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(steamBigPictureMode: true),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+        let dictionary = on.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")
+
+        #expect(on.appLaunchMode == 2)
+        #expect(dictionary["appLaunchMode"] as? Int == 2)
+        // The snapshot is re-resolved from the dictionary before the request goes out.
+        #expect(webRTCMediaProfile(from: dictionary).steamBigPictureMode)
+    }
+
     @Test("keeps H265 for native WebRTC")
     func keepsH265ForNativeWebRTC() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(

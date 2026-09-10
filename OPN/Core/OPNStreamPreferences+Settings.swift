@@ -147,6 +147,7 @@ extension OPNStreamPreferences {
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
+    public static func saveSteamBigPictureMode(_ value: Bool) { storage.set(value, forKey: k.steamBigPictureMode) }
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
     public static func saveRawMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.rawMouseInput) }
@@ -270,6 +271,7 @@ extension OPNStreamPreferences {
         profile.enableL4S = bool(value(dictionary, k.l4sEnabled), false)
         profile.enableHdr = bool(value(dictionary, k.hdrEnabled), false)
         profile.enablePowerSaver = bool(value(dictionary, k.powerSaverEnabled), false)
+        profile.steamBigPictureMode = bool(value(dictionary, k.steamBigPictureMode), false)
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
         profile.rawMouseInput = bool(value(dictionary, k.rawMouseInput), false)
@@ -330,6 +332,7 @@ extension OPNStreamPreferences {
             k.l4sEnabled: profile.enableL4S,
             k.hdrEnabled: profile.enableHdr,
             k.powerSaverEnabled: profile.enablePowerSaver,
+            k.steamBigPictureMode: profile.steamBigPictureMode,
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
             k.rawMouseInput: profile.rawMouseInput,

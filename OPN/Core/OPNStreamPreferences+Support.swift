@@ -481,6 +481,7 @@ extension OPNStreamPreferences {
         static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"
         static let l4sEnabled = "OpenNOW.Stream.L4SEnabled"
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
+        static let steamBigPictureMode = "OpenNOW.Stream.SteamBigPictureMode"
         static let legacyTransportNoticeDismissed = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
         static let decodeMeasurements = "OpenNOW.Stream.DecodeMeasurements"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"

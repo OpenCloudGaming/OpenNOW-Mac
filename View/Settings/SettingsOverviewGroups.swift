@@ -83,6 +83,7 @@ struct GeneralSettingsGroup: View {
     static let sections: [SettingsSection] =
         InterfaceSettingsPage.sections
         + [
+            SettingsSection("game-launch", "Game Launch"),
             SettingsSection("discord", "Discord"),
             SettingsSection("about", "About"),
             SettingsSection("system", "This Mac"),
@@ -91,12 +92,31 @@ struct GeneralSettingsGroup: View {
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             InterfaceSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            GameLaunchSettingsPage(viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("game-launch")
             DiscordSettingsPage(uiScale: uiScale)
                 .settingsSection("discord")
             AboutSettingsPage(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("about")
             SystemSettingsPage(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("system")
+        }
+    }
+}
+
+struct GameLaunchSettingsPage: View {
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+
+    var body: some View {
+        SettingsCard(title: "Game Launch", uiScale: uiScale) {
+            SettingsToggleRow(
+                title: "Steam Big Picture Mode",
+                subtitle: "Request gamepad-friendly launchers such as Steam Big Picture. Applies to new GeForce NOW sessions only.",
+                isOn: viewModel.streamProfile.steamBigPictureMode,
+                uiScale: uiScale,
+                action: viewModel.setSteamBigPictureMode
+            )
         }
     }
 }

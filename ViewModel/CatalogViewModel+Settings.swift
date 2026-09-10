@@ -230,6 +230,11 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setSteamBigPictureMode(_ enabled: Bool) {
+        OPNStreamPreferences.saveSteamBigPictureMode(enabled)
+        loadSettingsPreferences()
+    }
+
     func setSuppressInputWhenInactive(_ enabled: Bool) {
         OPNStreamPreferences.saveSuppressInputWhenInactive(enabled)
         loadSettingsPreferences()
