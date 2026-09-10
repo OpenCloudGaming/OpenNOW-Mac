@@ -473,7 +473,7 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
     }
 
     @discardableResult
-    private func applyDensity(targetScale: CGFloat) -> Bool {
+    func applyDensity(targetScale: CGFloat) -> Bool {
         guard let root = window?.contentView?.layer else { return false }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -482,19 +482,40 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
         return didChange
     }
 
-    /// The layer class SwiftUI draws its vector content into, resolved once. Identifying it by
-    /// `String(describing: type(of:))` allocated a string and ran type introspection for every
-    /// layer in the window on every pass, which is most of what this walk used to cost.
-    private static let drawingLayerClass: AnyClass? = NSClassFromString("CGDrawingLayer")
+    private static let drawingLayerClasses: [AnyClass] = resolveDrawingLayerClasses()
 
-    /// Returns whether anything needed changing, so the caller can walk less often while the tree
-    /// is settled.
+    private static func resolveDrawingLayerClasses() -> [AnyClass] {
+        var classes: [AnyClass] = []
+        let imageCount = _dyld_image_count()
+        for index in 0..<imageCount {
+            guard let imageName = _dyld_get_image_name(index) else { continue }
+            if strstr(imageName, "SwiftUI") == nil { continue }
+            var count: UInt32 = 0
+            guard let classNames = objc_copyClassNamesForImage(imageName, &count) else { continue }
+            defer { free(UnsafeMutableRawPointer(mutating: classNames)) }
+            for classIndex in 0..<Int(count) {
+                let className = classNames[classIndex]
+                if strstr(className, "CGDrawingLayer") != nil, let resolvedClass = objc_getClass(className) as? AnyClass {
+                    classes.append(resolvedClass)
+                }
+            }
+        }
+        return classes
+    }
+
+    static func isDrawingLayer(_ layer: CALayer) -> Bool {
+        guard let layerClass = object_getClass(layer) else { return false }
+        if drawingLayerClasses.contains(where: { $0 === layerClass }) {
+            return true
+        }
+        return strstr(object_getClassName(layer), "CGDrawingLayer") != nil
+    }
+
     @discardableResult
     private func forceContentsScale(_ layer: CALayer, targetScale: CGFloat) -> Bool {
         if layer is CAMetalLayer { return false }
         var didChange = false
-        if let drawingLayerClass = Self.drawingLayerClass, object_getClass(layer) === drawingLayerClass,
-           abs(layer.contentsScale - targetScale) > 0.0001 {
+        if Self.isDrawingLayer(layer), abs(layer.contentsScale - targetScale) > 0.0001 {
             layer.contentsScale = targetScale
             layer.setNeedsDisplay()
             markOwningHostingViewDirty(layer)
@@ -511,9 +532,7 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
         var current: CALayer? = layer
         while let candidate = current {
             if let view = candidate.delegate as? NSView {
-                // `strncmp` on the runtime's own name: the generic parameter makes an `is` check
-                // impossible, and describing the type would allocate on a path that runs per layer.
-                if strncmp(object_getClassName(view), "NSHostingView", 13) == 0 {
+                if strstr(object_getClassName(view), "NSHostingView") != nil {
                     view.needsDisplay = true
                 }
                 return
