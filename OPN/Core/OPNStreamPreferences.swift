@@ -27,10 +27,10 @@ public enum OPNStreamPreferences {
         OPNStreamBitrateOption(label: "25 Mbps", mbps: 25),
         OPNStreamBitrateOption(label: "50 Mbps", mbps: 50),
         OPNStreamBitrateOption(label: "75 Mbps", mbps: 75),
-        OPNStreamBitrateOption(label: "100 Mbps", mbps: 100),
-        // 5K at 120 fps has room above the vendor default of 100; the announce clamps at 150 000
-        // and the session request at 1 000 000, so this is the first value the seat can refuse.
-        OPNStreamBitrateOption(label: "150 Mbps", mbps: 150)
+        // 100 Mbps is the vendor default ceiling. A 150 Mbps option used to sit above it and was
+        // dropped: past the default the announce clamps at 150 000 and the session request at
+        // 1 000 000, so the seat is free to refuse the session rather than negotiate the rate.
+        OPNStreamBitrateOption(label: "100 Mbps", mbps: 100)
     ]
     public static let colorQualityOptions = [
         OPNStreamColorQualityOption(label: "8-bit 4:2:0", value: "8bit_420"),
