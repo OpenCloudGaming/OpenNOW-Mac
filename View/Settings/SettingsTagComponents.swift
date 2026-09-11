@@ -22,7 +22,7 @@ struct SettingsRowTitle: View {
     let uiScale: CGFloat
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8 * uiScale) {
+        HStack(alignment: .center, spacing: 8 * uiScale) {
             Text(title)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                 .foregroundStyle(.white)
