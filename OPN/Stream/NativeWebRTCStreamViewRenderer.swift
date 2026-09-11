@@ -54,7 +54,8 @@ extension NativeWebRTCStreamView {
     }
 
     public func restoreInputFocus() {
-        guard remoteInputEnabled, NSApplication.shared.isActive, window?.isKeyWindow == true else { return }
+        guard remoteInputEnabled, !localOverlayCapturesInput,
+              NSApplication.shared.isActive, window?.isKeyWindow == true else { return }
         window?.makeFirstResponder(self)
         // Not gated on Direct Mouse Input: relative mode is reached by following the seat into
         // mouselook as well as by choosing it, and coming back from the HUD or the on-screen

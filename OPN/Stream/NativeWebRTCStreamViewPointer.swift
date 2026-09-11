@@ -132,7 +132,7 @@ extension NativeWebRTCStreamView {
         mouseInputMode = mode
         if mode == .relative {
             if remoteInputEnabled { setPointerLocked(true) }
-        } else {
+        } else if isPointerLocked {
             setPointerLocked(false)
         }
     }
