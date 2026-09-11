@@ -21,14 +21,16 @@ struct OpenNOWStartupLoadingView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.opnUIScale) private var uiScale
-    @State private var startDate = Date()
+    @State private var clock = OpenNOWStartupClock()
 
     var body: some View {
         GeometryReader { proxy in
             let metrics = OpenNOWStartupMetrics(size: proxy.size, uiScale: uiScale)
 
-            TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.heroFrameInterval)) { timeline in
-                let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
+            // `.animation` rather than `.periodic`: the periodic schedule fires off a timer that
+            // drifts against the display refresh, so even an unloaded run beats against vsync.
+            TimelineView(.animation(minimumInterval: OpenNOWDesign.Motion.heroFrameInterval, paused: false)) { timeline in
+                let elapsed = clock.advance(to: timeline.date)
                 let stage = OpenNOWStartupStage(
                     progress: startupClamp(elapsed / duration),
                     elapsed: elapsed,
@@ -39,15 +41,21 @@ struct OpenNOWStartupLoadingView: View {
                 ZStack {
                     OpenNOWStartupBackdrop(stage: stage, metrics: metrics)
 
+                    // `.equatable()` on the layers that go static: each compares only the values it
+                    // actually draws, so a chrome layer whose reveal finished at 26% of the run
+                    // stops rebuilding its shapes and text on every one of the remaining frames.
                     OpenNOWStartupFrameMarks(stage: stage, metrics: metrics)
+                        .equatable()
 
                     OpenNOWStartupLockup(stage: stage, metrics: metrics)
 
                     if !metrics.compact {
                         OpenNOWStartupTelemetry(stage: stage, metrics: metrics)
+                            .equatable()
                     }
 
                     OpenNOWStartupRail(stage: stage, metrics: metrics)
+                        .equatable()
 
                     if !stage.reduceMotion {
                         OpenNOWStartupScanBeam(stage: stage, metrics: metrics)
@@ -59,7 +67,6 @@ struct OpenNOWStartupLoadingView: View {
             .clipped()
         }
         .background(.black)
-        .onAppear { startDate = Date() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("OpenNOW is starting")
     }

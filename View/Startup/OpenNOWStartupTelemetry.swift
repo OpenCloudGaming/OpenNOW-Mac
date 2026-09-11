@@ -4,9 +4,16 @@ import SwiftUI
 /// spanning exactly the rail width beneath it, so every station's marker, label
 /// and stamp sit on a shared baseline instead of drifting per row the way the
 /// left-anchored ledger did.
-struct OpenNOWStartupTelemetry: View {
+struct OpenNOWStartupTelemetry: View, Equatable {
     let stage: OpenNOWStartupStage
     let metrics: OpenNOWStartupMetrics
+
+    /// The last station settles at 0.84, so progress past that changes nothing on this layer.
+    static func == (lhs: OpenNOWStartupTelemetry, rhs: OpenNOWStartupTelemetry) -> Bool {
+        min(lhs.stage.progress, 0.85) == min(rhs.stage.progress, 0.85)
+            && lhs.stage.duration == rhs.stage.duration
+            && lhs.metrics == rhs.metrics
+    }
 
     private static let entries: [(label: String, mark: Double)] = [
         ("core.bootstrap", 0.20),

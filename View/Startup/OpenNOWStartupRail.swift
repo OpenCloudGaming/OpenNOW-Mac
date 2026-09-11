@@ -2,14 +2,26 @@ import SwiftUI
 
 /// Segmented progress. Discrete cells snapping on read as machine state; the
 /// smooth capsule this replaces read as a generic download bar.
-struct OpenNOWStartupRail: View {
+struct OpenNOWStartupRail: View, Equatable {
     let stage: OpenNOWStartupStage
     let metrics: OpenNOWStartupMetrics
 
+    /// The bar is quantised twice over - whole cells, whole percent - so it only has a new frame
+    /// to draw when one of those steps, not on every tick between them.
+    static func == (lhs: OpenNOWStartupRail, rhs: OpenNOWStartupRail) -> Bool {
+        lhs.percent == rhs.percent
+            && lhs.filledCount == rhs.filledCount
+            && lhs.stage.statusText == rhs.stage.statusText
+            && lhs.stage.frameMarks == rhs.stage.frameMarks
+            && lhs.stage.bloom == rhs.stage.bloom
+            && lhs.metrics == rhs.metrics
+    }
+
+    fileprivate var percent: Int { Int((stage.progress * 100).rounded()) }
+    fileprivate var filledCount: Int { Int((Double(metrics.railCells) * stage.progress).rounded(.down)) }
+
     var body: some View {
         let scale = metrics.uiScale
-        let fill = stage.progress
-        let percent = Int((stage.progress * 100).rounded())
 
         VStack(spacing: 10 * scale) {
             HStack(alignment: .firstTextBaseline) {
@@ -26,7 +38,7 @@ struct OpenNOWStartupRail: View {
                     .contentTransition(.identity)
             }
 
-            OpenNOWStartupSegmentBar(fill: fill, cells: metrics.railCells, scale: scale)
+            OpenNOWStartupSegmentBar(filledCount: filledCount, cells: metrics.railCells, scale: scale)
                 .frame(height: (metrics.compact ? 8 : 11) * scale)
         }
         .frame(width: metrics.railWidth)
@@ -37,13 +49,12 @@ struct OpenNOWStartupRail: View {
 }
 
 private struct OpenNOWStartupSegmentBar: View {
-    let fill: Double
+    let filledCount: Int
     let cells: Int
     let scale: CGFloat
 
     var body: some View {
         let accent = OpenNOWDesign.accent
-        let filledCount = Int((Double(cells) * fill).rounded(.down))
 
         HStack(spacing: 3 * scale) {
             ForEach(0..<cells, id: \.self) { index in

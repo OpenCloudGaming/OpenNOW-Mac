@@ -58,18 +58,22 @@ private struct OpenNOWStartupLogoCore: View {
         let accent = OpenNOWDesign.accent
 
         ZStack {
-            // RGB split ghosts collapse into register as the beam clears the logo.
-            logo
-                .hueRotation(.degrees(-52))
-                .offset(x: -offset)
-                .opacity(chroma * 0.85)
-                .blendMode(.screen)
+            // RGB split ghosts collapse into register as the beam clears the logo. Dropped rather
+            // than left at zero opacity once they do: each is a screen blend over an SVG, which
+            // costs its offscreen pass every frame whether or not anything of it is visible.
+            if chroma > 0.01 {
+                logo
+                    .hueRotation(.degrees(-52))
+                    .offset(x: -offset)
+                    .opacity(chroma * 0.85)
+                    .blendMode(.screen)
 
-            logo
-                .hueRotation(.degrees(48))
-                .offset(x: offset)
-                .opacity(chroma * 0.85)
-                .blendMode(.screen)
+                logo
+                    .hueRotation(.degrees(48))
+                    .offset(x: offset)
+                    .opacity(chroma * 0.85)
+                    .blendMode(.screen)
+            }
 
             logo
                 .shadow(color: accent.opacity(0.34 + bloom * 0.22), radius: (metrics.compact ? 14 : 20) * metrics.uiScale)
@@ -109,12 +113,7 @@ private struct OpenNOWStartupWordmark: View {
                     if letter == " " {
                         Color.clear.frame(width: size * 0.34, height: 1)
                     } else {
-                        Text(String(letter))
-                            .font(OpenNOWDesign.Typography.display(size: size))
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
-                            .offset(y: CGFloat(1 - reveal) * 10 * scale)
-                            .opacity(reveal)
-                            .blur(radius: CGFloat(1 - reveal) * 5)
+                        OpenNOWStartupWordmarkLetter(letter: letter, size: size, reveal: reveal, scale: scale)
                     }
                 }
             }
@@ -125,5 +124,31 @@ private struct OpenNOWStartupWordmark: View {
                 .foregroundStyle(OpenNOWDesign.accent.opacity(0.92 * settle))
                 .opacity(settle)
         }
+    }
+}
+
+/// The blur is what makes a letter arrive rather than appear, and it is also an offscreen pass per
+/// letter per frame — so it exists only while the letter is still arriving.
+private struct OpenNOWStartupWordmarkLetter: View {
+    let letter: Character
+    let size: CGFloat
+    let reveal: Double
+    let scale: CGFloat
+
+    var body: some View {
+        if reveal < 0.999 {
+            glyph
+                .offset(y: CGFloat(1 - reveal) * 10 * scale)
+                .opacity(reveal)
+                .blur(radius: CGFloat(1 - reveal) * 5)
+        } else {
+            glyph
+        }
+    }
+
+    private var glyph: some View {
+        Text(String(letter))
+            .font(OpenNOWDesign.Typography.display(size: size))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
     }
 }

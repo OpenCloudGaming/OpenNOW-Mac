@@ -2,9 +2,14 @@ import SwiftUI
 
 /// Corner brackets, product mark and build stamp. HUD chrome, drawn with the
 /// app's square geometry rather than the rounded cards this screen used before.
-struct OpenNOWStartupFrameMarks: View {
+struct OpenNOWStartupFrameMarks: View, Equatable {
     let stage: OpenNOWStartupStage
     let metrics: OpenNOWStartupMetrics
+
+    /// Everything here is keyed off `frameMarks`, which is settled by 26% of the run.
+    static func == (lhs: OpenNOWStartupFrameMarks, rhs: OpenNOWStartupFrameMarks) -> Bool {
+        lhs.stage.frameMarks == rhs.stage.frameMarks && lhs.metrics == rhs.metrics
+    }
 
     private static let version: String = {
         let bundle = Bundle.main.infoDictionary

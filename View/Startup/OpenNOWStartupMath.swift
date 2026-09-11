@@ -1,5 +1,11 @@
 import SwiftUI
 
+extension OpenNOWStartupMetrics: Equatable {
+    static func == (lhs: OpenNOWStartupMetrics, rhs: OpenNOWStartupMetrics) -> Bool {
+        lhs.size == rhs.size && lhs.uiScale == rhs.uiScale
+    }
+}
+
 func startupClamp(_ value: Double) -> Double {
     min(max(value, 0), 1)
 }
