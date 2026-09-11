@@ -127,6 +127,52 @@ extension OPNGameService {
             return !didDeliverNetworkPanels
         }
 
+        /// Fills only the enrichment-owned fields that the bare parse leaves empty, from what this
+        /// group already handed out, so a redelivery is never poorer than what is on screen.
+        func carryingDeliveredBadges(over panels: [OPNPanelResult]) -> [OPNPanelResult] {
+            lock.lock()
+            let delivered = latestPanels
+            lock.unlock()
+            guard !delivered.isEmpty else { return panels }
+            var priorGames: [String: OPNGameInfo] = [:]
+            for panel in delivered {
+                for section in panel.sections {
+                    for game in section.games {
+                        priorGames[Self.badgeKey(for: game)] = game
+                    }
+                }
+            }
+            guard !priorGames.isEmpty else { return panels }
+            return panels.map { panel in
+                var panel = panel
+                panel.sections = panel.sections.map { section in
+                    var section = section
+                    section.games = section.games.map { game in
+                        guard let prior = priorGames[Self.badgeKey(for: game)] else { return game }
+                        return Self.carrying(prior, over: game)
+                    }
+                    return section
+                }
+                return panel
+            }
+        }
+
+        private static func badgeKey(for game: OPNGameInfo) -> String {
+            game.uuid.isEmpty ? game.id : game.uuid
+        }
+
+        private static func carrying(_ prior: OPNGameInfo, over game: OPNGameInfo) -> OPNGameInfo {
+            var game = game
+            if game.promoTag.isEmpty { game.promoTag = prior.promoTag }
+            if game.skuTags.isEmpty { game.skuTags = prior.skuTags }
+            if game.campaignIds.isEmpty { game.campaignIds = prior.campaignIds }
+            if !game.isFreeToPlay { game.isFreeToPlay = prior.isFreeToPlay }
+            if !game.isInLibrary { game.isInLibrary = prior.isInLibrary }
+            if !game.isFavorited { game.isFavorited = prior.isFavorited }
+            if !game.isPatching { game.isPatching = prior.isPatching }
+            return game
+        }
+
         func recipients(delivering panels: [OPNPanelResult]) -> [OPNPanelCallback] {
             lock.lock()
             defer { lock.unlock() }
@@ -200,7 +246,7 @@ extension OPNGameService {
             // then redeliver once metadata enrichment completes so promo/sku
             // badges (Free, -XX%) appear on panel games too.
             group.markNetworkPanelsDelivered()
-            self.dispatchPanelGroup(group, panels: panels)
+            self.dispatchPanelGroup(group, panels: group.carryingDeliveredBadges(over: panels))
             // Cache the parsed set right away: enrichment takes seconds (dozens of
             // metadata queries), so waiting for it means a launch the user cuts
             // short leaves nothing on disk for the next one to paint from.

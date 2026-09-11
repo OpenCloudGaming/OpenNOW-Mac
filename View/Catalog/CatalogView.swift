@@ -292,6 +292,12 @@ struct CatalogView: View {
             consumePendingGameShortcut()
             updateWindowTitleForActiveStream()
         }
+        // Reported from the view rather than from the fetch callbacks: the point of the signal is
+        // that a frame carrying real content has been built, not that bytes arrived.
+        .task(id: viewModel.hasStartupContent) { @MainActor in
+            guard viewModel.hasStartupContent else { return }
+            OpenNOWStartupReadiness.shared.markContentReady()
+        }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }

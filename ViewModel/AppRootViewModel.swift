@@ -12,6 +12,8 @@ import Foundation
 @MainActor
 final class AppRootViewModel: ObservableObject {
     static let defaultWindowTitle = "OpenNOW"
+    /// Ceiling on the hold described in `dismissStartupLoading`.
+    private static let contentReadinessTimeout = Duration.seconds(3)
 
     @Published var windowTitle = AppRootViewModel.defaultWindowTitle
     @Published var isShowingStartupLoading = true
@@ -73,6 +75,12 @@ final class AppRootViewModel: ObservableObject {
         } catch {
             isShowingStartupLoading = false
             return
+        }
+        // A restored session means the catalog is what the fade will uncover, so hold for it: its
+        // first layout pass resizes the top bar and swaps the marquee skeleton for the hero, and
+        // playing that out in the open is the flicker the splash exists to cover.
+        if usesQuickStartupIntro {
+            await OpenNOWStartupReadiness.shared.waitForContent(timeout: Self.contentReadinessTimeout)
         }
         // The fade itself is the view's: it animates on this value rather than being wrapped in a
         // `withAnimation` here, which is what kept SwiftUI out of this file.

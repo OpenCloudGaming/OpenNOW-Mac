@@ -57,6 +57,7 @@ struct CatalogContentView: View {
                                     title: viewModel.activeHomeSessionTitle,
                                     isResumable: session.isResumable,
                                     serverIp: session.serverIp,
+                                    availableWidth: viewport.size.width,
                                     onResume: { viewModel.resumeActiveHomeSession() },
                                     onEnd: { viewModel.endActiveHomeSession() }
                                 )
@@ -142,7 +143,7 @@ struct CatalogContentView: View {
                                             .frame(height: 0)
                                             .id(railAnchor)
                                     }
-                                    CatalogRailView(viewModel: viewModel, section: section, onShowAll: { viewModel.openShowAll(section) })
+                                    CatalogRailView(viewModel: viewModel, section: section, availableWidth: viewport.size.width, onShowAll: { viewModel.openShowAll(section) })
                                     if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                         GameDetailPanel(
                                             viewModel: viewModel,
@@ -301,15 +302,20 @@ struct CatalogHeroView: View {
     var body: some View {
         if let game {
             GeometryReader { proxy in
-                let heroHeight = proxy.size.height > 1 ? proxy.size.height : CatalogVendorLayout.heroHeight(for: proxy.size.width, viewportHeight: availableHeight, scale: uiScale)
-                let imageLeading = CatalogVendorLayout.heroImageLeading(for: proxy.size.width)
-                let textWidth = CatalogVendorLayout.heroTextWidth(for: proxy.size.width)
+                // Never wider than the page. `proxy` measures the scroll view's *content*, and until
+                // the scroll view constrains it that is the widest rail, not the viewport - measured
+                // at 3976pt against a 2562pt page. Sizing the artwork from that drew it 1.6x too
+                // large and cropped, then snapped it back the moment the content width settled.
+                let bandWidth = min(proxy.size.width, availableWidth)
+                let heroHeight = proxy.size.height > 1 ? proxy.size.height : CatalogVendorLayout.heroHeight(for: bandWidth, viewportHeight: availableHeight, scale: uiScale)
+                let imageLeading = CatalogVendorLayout.heroImageLeading(for: bandWidth)
+                let textWidth = CatalogVendorLayout.heroTextWidth(for: bandWidth)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
                     CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill) { color in
                         scrimColor = color
                     }
-                    .frame(width: max(proxy.size.width - imageLeading, 1), height: heroHeight)
+                    .frame(width: max(bandWidth - imageLeading, 1), height: heroHeight)
                     .mask(CatalogHeroVendorImageMask())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                     .clipped()
@@ -339,8 +345,8 @@ struct CatalogHeroView: View {
                     }
                     .frame(width: textWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, proxy.size.width < 760 ? 76 : 102)
-                    .padding(.leading, CatalogVendorLayout.heroTextLeading(for: proxy.size.width))
+                    .padding(.top, bandWidth < 760 ? 76 : 102)
+                    .padding(.leading, CatalogVendorLayout.heroTextLeading(for: bandWidth))
 
                     HStack {
                         if activeIndex > 0 {
@@ -371,6 +377,10 @@ struct CatalogHeroView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 34 * uiScale)
                 }
+                // The band itself, not just the pieces inside it. Everything here anchors to the
+                // band's edges - the artwork trails, the dots centre - so a container stretched to
+                // the scroll view's content width parks them off screen until it settles.
+                .frame(width: bandWidth, alignment: .leading)
             }
             .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, viewportHeight: availableHeight, scale: uiScale))
             .clipShape(Rectangle())

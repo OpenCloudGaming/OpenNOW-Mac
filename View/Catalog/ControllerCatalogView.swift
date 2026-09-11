@@ -466,6 +466,7 @@ private struct ControllerGamesPage: View {
                                 title: viewModel.activeHomeSessionTitle,
                                 isResumable: session.isResumable,
                                 serverIp: session.serverIp,
+                                availableWidth: layout.contentWidth,
                                 onResume: { viewModel.resumeActiveHomeSession() },
                                 onEnd: { viewModel.endActiveHomeSession() }
                             )

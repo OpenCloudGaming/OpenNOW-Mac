@@ -133,9 +133,6 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if #available(macOS 11.0, *) {
                 window.titlebarSeparatorStyle = .none
             }
-            if let fitted = OpenNOWWindowFitting.fittedFrame(for: window) {
-                window.setFrame(fitted, display: true)
-            }
         }
     }
 
@@ -146,39 +143,6 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             super.viewDidMoveToWindow()
             onWindowChanged?(window)
         }
-    }
-}
-
-enum OpenNOWWindowFitting {
-    static let targetFillRatio: CGFloat = 0.85
-
-    @MainActor
-    static func fittedFrame(for window: NSWindow) -> CGRect? {
-        let screen = window.screen ?? NSScreen.main
-        guard let screen else { return nil }
-        let visible = screen.visibleFrame
-        let allowedWidth = visible.width * targetFillRatio
-        let allowedHeight = visible.height * targetFillRatio
-        let current = window.frame
-        let widthScale = allowedWidth / current.width
-        let heightScale = allowedHeight / current.height
-        guard widthScale < 1 || heightScale < 1 else { return nil }
-        let scale = min(widthScale, heightScale)
-        guard scale < 1 else { return nil }
-        // Never shrink below the window's minimum content size: SwiftUI keeps
-        // laying the content out at its minWidth/minHeight, so a smaller frame
-        // just clips the trailing edge instead of resizing the interface.
-        let minFrame = window.frameRect(forContentRect: CGRect(origin: .zero, size: window.contentMinSize)).size
-        let newSize = CGSize(
-            width: max(floor(current.width * scale), minFrame.width),
-            height: max(floor(current.height * scale), minFrame.height)
-        )
-        guard newSize.width < current.width || newSize.height < current.height else { return nil }
-        let origin = CGPoint(
-            x: visible.midX - newSize.width / 2,
-            y: visible.midY - newSize.height / 2
-        )
-        return CGRect(origin: origin, size: newSize)
     }
 }
 

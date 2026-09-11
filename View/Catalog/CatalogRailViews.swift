@@ -11,6 +11,9 @@ import SwiftUI
 struct CatalogRailView: View {
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
+    /// Width of the page, not of the scroll content: the content is as wide as the widest rail
+    /// until it settles, which parks anything trailing-anchored off screen.
+    var availableWidth: CGFloat = 0
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
     @State private var isRailHovering = false
@@ -135,6 +138,7 @@ struct CatalogRailView: View {
                 .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
             }
         }
+        .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
         .onAppear { prefetchNearVisibleImages() }
         .onChange(of: games.map(\.catalogIdentity)) { _, _ in prefetchNearVisibleImages() }
     }
@@ -351,6 +355,7 @@ struct VendorActiveSessionHomeBanner: View {
     let title: String
     let isResumable: Bool
     let serverIp: String
+    var availableWidth: CGFloat = 0
     let onResume: () -> Void
     let onEnd: () -> Void
 
@@ -388,6 +393,9 @@ struct VendorActiveSessionHomeBanner: View {
         }
         .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
         .padding(.vertical, 10 * uiScale)
+        // Clamp before the chrome so the background and hairline paint at the page width, not at
+        // the scroll view's inflated content width.
+        .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
         .background(OpenNOWDesign.Surface.chrome)
         .overlay(alignment: .bottom) {
             Rectangle()

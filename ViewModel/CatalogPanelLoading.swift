@@ -36,6 +36,16 @@ extension CatalogViewModel {
         return "\(bytes) / \(statistics.entryCount) \(entryLabel)"
     }
 
+    /// True once the page has something real to draw rather than skeletons. Read by the launch
+    /// splash, which holds its last frame until then.
+    ///
+    /// Both queries have to have landed, not just one: the main panels arrive from cache well before
+    /// the marquee, so sections alone let the fade uncover a page whose hero was still missing.
+    var hasStartupContent: Bool {
+        guard !isLoadingMarquee, !isLoadingPanels else { return false }
+        return !heroRotationGames.isEmpty || !catalogSections.isEmpty
+    }
+
     func loadPanels() {
         isLoadingPanels = true
         isLoadingMarquee = true

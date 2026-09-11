@@ -566,3 +566,41 @@ let libraryPaginationResponder: SessionManagerURLProtocol.Handler = { request in
         #expect(result.7.isEmpty)
     }
 }
+
+/// The parsed network payload arrives without the promo/sku fields that metadata enrichment fills
+/// in, so redelivering it bare over an already-painted enriched set blinked the badges off.
+@Test func panelRedeliveryCarriesBadgesAlreadyOnScreen() {
+    func panel(_ games: [OPNGameInfo]) -> OPNPanelResult {
+        OPNPanelResult(id: "panel", sections: [OPNPanelSection(id: "section", games: games)])
+    }
+    var enriched = OPNGameInfo()
+    enriched.uuid = "game-uuid"
+    enriched.promoTag = "FREE"
+    enriched.skuTags = ["discount"]
+    enriched.campaignIds = ["campaign"]
+    enriched.isFreeToPlay = true
+    enriched.isInLibrary = true
+
+    var bare = OPNGameInfo()
+    bare.uuid = "game-uuid"
+
+    var stranger = OPNGameInfo()
+    stranger.uuid = "other-uuid"
+    stranger.promoTag = ""
+
+    let group = OPNGameService.PanelFetchGroup { _, _, _ in }
+    _ = group.recipients(delivering: [panel([enriched])])
+
+    let carried = group.carryingDeliveredBadges(over: [panel([bare, stranger])])
+    let games = carried.flatMap(\.sections).flatMap(\.games)
+    #expect(games[0].promoTag == "FREE")
+    #expect(games[0].skuTags == ["discount"])
+    #expect(games[0].campaignIds == ["campaign"])
+    #expect(games[0].isFreeToPlay)
+    #expect(games[0].isInLibrary)
+    // A game the prior delivery never carried has nothing to inherit.
+    #expect(games[1].promoTag.isEmpty)
+
+    let untouched = OPNGameService.PanelFetchGroup { _, _, _ in }
+    #expect(untouched.carryingDeliveredBadges(over: [panel([bare])]) == [panel([bare])])
+}

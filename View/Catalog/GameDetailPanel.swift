@@ -28,7 +28,9 @@ struct GameDetailPanel: View {
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             let panelHeight = CatalogVendorLayout.detailPanelHeight(for: availableWidth, viewportHeight: viewportHeight, scale: uiScale)
             GeometryReader { proxy in
-                let panelWidth = max(1, proxy.size.width)
+                // `proxy` measures the scroll content - the widest rail until the page settles - so
+                // the band the panel really occupies is whichever of the two is narrower.
+                let panelWidth = max(1, availableWidth > 0 ? min(proxy.size.width, availableWidth) : proxy.size.width)
                 // AppKit hosts (Show All grid) size the row themselves; trust the measured height there.
                 let resolvedHeight = proxy.size.height > 1 ? proxy.size.height : panelHeight
                 let contentWidth = min(panelWidth * 0.43, 820)
@@ -149,7 +151,7 @@ struct GameDetailPanel: View {
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
                 .background(OpenNOWDesign.Surface.chrome)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
             .onHover { isHovering = $0 }

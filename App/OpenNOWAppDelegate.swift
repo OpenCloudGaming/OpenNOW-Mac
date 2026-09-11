@@ -30,6 +30,12 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         sender.reply(toOpenOrPrint: .success)
     }
 
+    /// The only hook that runs before SwiftUI's window exists. `applicationDidFinishLaunching` is far
+    /// too late for this: the window is already on screen by then.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        OpenNOWWindowFitting.installEarlyFitting()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything can log: installed from the stream view's `onAppear`, every line captured
         // ahead of the first stream took the sinkless path and went to `NSLog` only — out of the
